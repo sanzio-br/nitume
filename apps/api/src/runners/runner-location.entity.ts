@@ -5,6 +5,7 @@ import {
   Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { GeoPoint } from '../common/enums';
 
 @Entity('runner_locations')
 export class RunnerLocation {
@@ -20,7 +21,7 @@ export class RunnerLocation {
 
   @Index({ spatial: true })
   @Column({ type: 'geography', spatialFeatureType: 'Point', srid: 4326 })
-  coordinates: string;
+  coordinates: GeoPoint;
 
   @Column({ type: 'timestamptz' })
   capturedAt: Date;

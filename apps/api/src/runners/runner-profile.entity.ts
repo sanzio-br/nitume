@@ -9,6 +9,7 @@ import {
 import {
   RunnerAvailability,
   VerificationLevel,
+  GeoPoint,
 } from '../common/enums';
 
 @Entity('runner_profiles')
@@ -59,7 +60,7 @@ export class RunnerProfile {
 
   @Index({ spatial: true })
   @Column({ type: 'geography', spatialFeatureType: 'Point', srid: 4326, nullable: true })
-  currentLocation: string | null;
+  currentLocation: GeoPoint | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   lastPingAt: Date | null;

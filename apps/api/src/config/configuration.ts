@@ -27,6 +27,14 @@ export interface AppConfig {
     rateLimitPerPhone: number;
     senderTransport: 'console' | 'africas_talking';
   };
+  security: {
+    bcryptRounds: number;
+  };
+  atsms: {
+    apiKey: string | null;
+    username: string | null;
+    senderId: string | null;
+  };
 }
 
 const int = (value: string | undefined, fallback: number): number => {
@@ -66,5 +74,13 @@ export const configuration = (): AppConfig => ({
     senderTransport:
       (process.env.OTP_SENDER_TRANSPORT as AppConfig['otp']['senderTransport']) ??
       'console',
+  },
+  security: {
+    bcryptRounds: int(process.env.BCRYPT_ROUNDS, 12),
+  },
+  atsms: {
+    apiKey: process.env.ATSMS_API_KEY ?? null,
+    username: process.env.ATSMS_USERNAME ?? null,
+    senderId: process.env.ATSMS_SENDER_ID ?? null,
   },
 });

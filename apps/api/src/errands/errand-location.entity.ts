@@ -1,5 +1,5 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import { ErrandPointType } from '../common/enums';
+import { ErrandPointType, GeoPoint } from '../common/enums';
 
 @Entity('errand_locations')
 export class ErrandLocation {
@@ -19,7 +19,7 @@ export class ErrandLocation {
 
   @Index({ spatial: true })
   @Column({ type: 'geography', spatialFeatureType: 'Point', srid: 4326 })
-  coordinates: string;
+  coordinates: GeoPoint;
 
   @Column({ type: 'varchar', length: 500 })
   addressText: string;

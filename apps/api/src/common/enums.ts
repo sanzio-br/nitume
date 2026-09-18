@@ -177,3 +177,13 @@ export enum NotificationSendStatus {
   FAILED = 'failed',
   DEAD_LETTERED = 'dead_lettered',
 }
+
+/**
+ * GeoJSON Point used by TypeORM for `geography(Point,4326)` columns. TypeORM
+ * serializes this object with JSON.stringify on write and hydrates reads back
+ * into the same shape (via ST_AsGeoJSON).
+ */
+export interface GeoPoint {
+  type: 'Point';
+  coordinates: [number, number];
+}
