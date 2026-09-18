@@ -1,0 +1,69 @@
+# === Node / NestJS / npm ===
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# === Angular ===
+.angular/
+*.js.map
+*.css.map
+web/environments/*.local.ts
+
+# === Flutter / Dart ===
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+.packages
+build/
+*.iml
+.metadata
+mobile/**/ios/Pods/
+mobile/**/ios/.symlinks/
+mobile/**/ios/Flutter/Generated.xcconfig
+mobile/**/android/.gradle/
+mobile/**/android/local.properties
+mobile/**/android/key.properties
+mobile/**/android/app/key.properties
+
+# === Env & secrets (never commit) ===
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+service-account*.json
+secrets/
+
+# === macOS / OS ===
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# === Editors / IDEs ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# === Terraform / infra artifacts ===
+*.tfstate
+*.tfstate.*
+terraform/.terraform/
+terraform/.terraform.lock.hcl
