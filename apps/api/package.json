@@ -19,6 +19,15 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "typeorm": "TS_NODE_TRANSPILE_ONLY=1 ts-node node_modules/typeorm/cli.js",
+    "migration:run": "npm run typeorm -- migration:run -d src/databases/data-source.ts",
+    "migration:revert": "npm run typeorm -- migration:revert -d src/databases/data-source.ts",
+    "migration:show": "npm run typeorm -- migration:show -d src/databases/data-source.ts",
+    "migration:generate": "npm run typeorm -- migration:generate -d src/databases/data-source.ts",
+    "migration:create": "npm run typeorm -- migration:create",
+    "schema:sync": "npm run typeorm -- schema:sync -d src/databases/data-source.ts",
+    "schema:drop": "npm run typeorm -- schema:drop -d src/databases/data-source.ts",
+    "migration:refresh": "TS_NODE_TRANSPILE_ONLY=1 ts-node src/databases/scripts/refresh-schema.ts && npm run seed:admin",
     "seed:admin": "TS_NODE_TRANSPILE_ONLY=1 ts-node src/databases/seeds/seed-admin.ts"
   },
   "dependencies": {

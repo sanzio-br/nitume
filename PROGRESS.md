@@ -46,3 +46,34 @@ of the instructions applies everywhere.
 - **Repeat-usage** metric left undisclosed (the admin errand list rows carry no
   customer reference per row).
 - **Auto-assign / live Socket.IO task feed** (Core loop "manual assign" first).
+
+## API DB migrations — CLI commands wired
+
+Added migration tooling to `apps/api` (previously TypeORM migrations existed but no
+commands drove them). Verified end-to-end against a scratch Postgres DB.
+
+**Completed**
+
+- `apps/api/package.json` scripts:
+  - `npm run typeorm -- <args>` — bare CLI passthrough (ts-node transpile).
+  - `migration:run` / `migration:revert` / `migration:show` / `migration:generate` /
+    `migration:create` — all target `src/databases/data-source.ts`.
+  - `schema:sync` / `schema:drop` (TypeORM `SCHEMA_DROP` used only where a
+    `DROP DATABASE` is acceptable; see refresh note).
+  - `migration:refresh` — `refresh-schema.ts` resets the `public` schema (drops
+    app tables/sequences/types but **preserves the postgis extension**, since the
+    `nitume` role is not a superuser and cannot re-create it), then reapplies all
+    migrations, then `seed:admin`.
+- Verified on a throwaway `nitume_migtest` DB: full refresh → 26 public tables,
+  migration recorded, admin `+254722000101` seeded, postgis intact; `migration:show`
+  reports it applied.
+
+**Notes / caveats**
+
+- The **single existing migration cannot create postgis** as the `nitume` role
+  (`CREATE EXTENSION postgis` requires superuser). Migrations must run against a DB
+  where postgis is already installed (e.g. `nitume_dev`, which hosts the current
+  real dev data) or postgis must be installed ahead of time.
+- `.env` currently points `DATABASE_NAME=nitume` (empty DB, no postgis) while the
+  live API/dev data resides in `nitume_dev`; whichever DB is canonical, ensure the
+  migration target has postgis present before running `migration:run`.
