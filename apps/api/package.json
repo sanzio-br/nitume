@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "seed:admin": "TS_NODE_TRANSPILE_ONLY=1 ts-node src/databases/seeds/seed-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
