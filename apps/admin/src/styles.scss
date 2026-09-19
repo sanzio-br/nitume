@@ -4,22 +4,31 @@
    component primitives EVERY admin screen reuses. Per
    AGENT_BUILD_INSTRUCTIONS §4: token layer first, reuse via
    components — never copy-pasted per-screen markup.
+
+   All values VERBATIM from designs/nitume_design_system.html.
+   Amber/red are chip-only semantic accents — never large surfaces.
    ============================================================ */
 
 @use './styles/tokens' as *;
+@use './styles/ops' as *;
 
 /* --- Base --- */
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body { height: 100%; }
+html,
+body {
+  height: 100%;
+}
 
 body {
   margin: 0;
-  font-family: var(--font-ui);
+  font-family: var(--nitume-font-ui);
   font-size: 15px;
   line-height: 1.5;
-  color: var(--blue);
-  background: var(--slate);
+  color: var(--nitume-blue);
+  background: var(--nitume-slate);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -27,84 +36,206 @@ body {
 /* Numeric data: Fira Code exclusively (timestamps, prices, counters,
    ratings, ETAs, coordinates). Never Fira Sans for numerals. */
 .num {
-  font-family: var(--font-num);
+  font-family: var(--nitume-font-num);
   font-feature-settings: 'tnum' 1;
 }
 
-h1, h2, h3, h4, h5 { font-family: var(--font-ui); font-weight: 700; margin: 0; color: var(--blue); }
+h1,
+h2,
+h3,
+h4,
+h5 {
+  font-family: var(--nitume-font-ui);
+  font-weight: 700;
+  margin: 0;
+  color: var(--nitume-blue);
+}
 
-a { color: inherit; text-decoration: none; }
-button { font-family: inherit; }
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font-family: inherit;
+}
 
 /* --- Semantic chip accents — amber/red are CHIP-ONLY (see design shelf
    rules): never large surfaces, never button fills. --- */
 .chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-family: var(--font-ui); font-size: 12px; font-weight: 600;
-  padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--nitume-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
-.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
 
-.chip-success { background: var(--green-050); color: var(--green-700); }
-.chip-pending { background: var(--amber-050); color: var(--amber); }
-.chip-danger  { background: var(--red-050);   color: var(--red); }
-.chip-info    { background: var(--blue-050);  color: var(--blue); }
+.chip-success {
+  background: var(--nitume-green-050);
+  color: var(--nitume-green-700);
+}
+.chip-pending {
+  background: var(--nitume-amber-050);
+  color: var(--nitume-amber);
+}
+.chip-danger {
+  background: var(--nitume-red-050);
+  color: var(--nitume-red);
+}
+.chip-info {
+  background: var(--nitume-blue-050);
+  color: var(--nitume-blue);
+}
+/* Neutral (cancelled/expired/offline/failed-without-reproach): within-palette
+   slate-on-slate extension of the four documented chips. */
+.chip-neutral {
+  background: var(--nitume-slate);
+  color: var(--nitume-slate-600);
+}
 
 /* --- Buttons: primary=green (white text ALWAYS on green), secondary
    =blue, outline, text. --- */
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  font-family: var(--font-ui); font-weight: 600; font-size: 14.5px;
-  padding: 12px 22px; border-radius: 999px; border: 1px solid transparent;
-  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--nitume-font-ui);
+  font-weight: 600;
+  font-size: 14.5px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-.btn-primary { background: var(--green); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--green-700); }
+.btn-primary {
+  background: var(--nitume-green);
+  color: var(--nitume-white);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--nitume-green-700);
+}
 
-.btn-secondary { background: var(--blue); color: #fff; }
-.btn-secondary:hover:not(:disabled) { background: var(--blue-700); }
+.btn-secondary {
+  background: var(--nitume-blue);
+  color: var(--nitume-white);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--nitume-blue-700);
+}
 
-.btn-outline { background: #fff; border-color: var(--slate-line); color: var(--blue); }
-.btn-outline:hover:not(:disabled) { border-color: var(--blue); }
+.btn-outline {
+  background: var(--nitume-white);
+  border-color: var(--nitume-slate-line);
+  color: var(--nitume-blue);
+}
+.btn-outline:hover:not(:disabled) {
+  border-color: var(--nitume-blue);
+}
 
-.btn-text { background: transparent; color: var(--blue); padding: 12px 6px; }
+.btn-text {
+  background: transparent;
+  color: var(--nitume-blue);
+  padding: 12px 6px;
+}
 
 /* --- Cards / surfaces --- */
 .card {
-  background: #fff; border: 1px solid var(--slate-line);
-  border-radius: var(--r-m); padding: 20px;
+  background: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-m);
+  padding: 20px;
 }
 
 /* --- Form fields (design shelf field pattern) --- */
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field-label { font-size: 12.5px; font-weight: 600; color: var(--slate-600); }
-.field-input {
-  font-family: var(--font-ui); font-size: 14.5px; color: var(--blue);
-  background: #fff; border: 1px solid var(--slate-line);
-  border-radius: var(--r-s); padding: 11px 14px; width: 100%;
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.field-input::placeholder { color: var(--slate-400); }
-.field-input:focus { outline: 2px solid var(--green); outline-offset: 1px; border-color: var(--green); }
-.field-input.is-invalid { border-color: var(--red); outline-color: var(--red); }
+.field-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--nitume-slate-600);
+}
+.field-input {
+  font-family: var(--nitume-font-ui);
+  font-size: 14.5px;
+  color: var(--nitume-blue);
+  background: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-s);
+  padding: 11px 14px;
+  width: 100%;
+}
+.field-input::placeholder {
+  color: var(--nitume-slate-400);
+}
+.field-input:focus {
+  outline: 2px solid var(--nitume-green);
+  outline-offset: 1px;
+  border-color: var(--nitume-green);
+}
+.field-input.is-invalid {
+  border-color: var(--nitume-red);
+  outline-color: var(--nitume-red);
+}
 
 /* --- List item pattern (mobile-first list interface) --- */
 .list-item {
-  display: flex; align-items: center; gap: 14px; padding: 16px 18px;
-  border-bottom: 1px solid var(--slate-line); cursor: pointer;
-  transition: background .12s;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--nitume-slate-line);
+  cursor: pointer;
+  transition: background 0.12s;
 }
-.list-item:hover { background: var(--slate); }
-.list-item:last-child { border-bottom: none; }
-.list-body { flex: 1; min-width: 0; }
-.list-title { font-size: 14.5px; font-weight: 600; }
-.list-meta { font-family: var(--font-num); font-size: 12px; color: var(--slate-600); margin-top: 2px; }
-.list-progress { font-family: var(--font-num); font-size: 12.5px; font-weight: 600; color: var(--slate-600); flex: 0 0 auto; }
-.list-progress.complete { color: var(--green-700); }
-
-/* --- Status tag patterns (matching dashboard shelf) --- */
-.status-tag {
-  display: inline-block; font-size: 11px; font-weight: 700;
-  padding: 4px 10px; border-radius: 999px;
+.list-item:hover {
+  background: var(--nitume-slate);
+}
+.list-item:last-child {
+  border-bottom: none;
+}
+.list-body {
+  flex: 1;
+  min-width: 0;
+}
+.list-title {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.list-meta {
+  font-family: var(--nitume-font-num);
+  font-size: 12px;
+  color: var(--nitume-slate-600);
+  margin-top: 2px;
+}
+.list-progress {
+  font-family: var(--nitume-font-num);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--nitume-slate-600);
+  flex: 0 0 auto;
+}
+.list-progress.complete {
+  color: var(--nitume-green-700);
 }

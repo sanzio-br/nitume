@@ -2,14 +2,16 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import {
-  ActingRole,
-  AuthTokens,
+  Errand,
   ErrandStatus,
+  ErrandStatusHistoryEntry,
   ListErrandsResult,
   ListRunnersResult,
   OtpRequestResult,
   OtpVerifyResult,
   RefreshResult,
+  ResolveDisputeResult,
+  ResolveDisputeVerdict,
   UserMe,
 } from '../api-types';
 
@@ -17,96 +19,73 @@ import {
  * Thin typed wrapper over the committed NestJS `apps/api` surface
  * (global prefix `/api/v1`, port 3000, JWT bearer auth).
  *
- * Every admin call carries:
- *  - `Authorization: Bearer <accessToken>`
- *  - `x-nitume-acting-role: admin` (the committed acting-role contract that
- *    lets one account expose different role surfaces; guards read it via
- *    `UserRole`/`Roles` on the API side).
+ * Auth is attached by the shared `authHttpInterceptor` (access token +
+ * `x-nitume-acting-role: admin`); this service never reads localStorage.
+ * Endpoints follow the committed controller surface in `apps/api` — do not
+ * invent paths or fields the API does not actually return.
  */
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private readonly base = environment.apiBaseUrl;
+  private readonly base = `${environment.apiBaseUrl}/api/v1`;
 
   constructor(private readonly http: HttpClient) {}
 
-  private token(): { auth: string; acting: ActingRole } {
-    const tokens = this.readTokens();
-    const acting: ActingRole = 'admin';
-    return {
-      auth: tokens?.accessToken ? `Bearer ${tokens.accessToken}` : '',
-      acting,
-    };
-  }
-
-  private readTokens(): AuthTokens | null {
-    try {
-      const raw = window.localStorage.getItem('nitume_admin_tokens');
-      return raw ? (JSON.parse(raw) as AuthTokens) : null;
-    } catch {
-      return null;
-    }
-  }
-
   /** POST /auth/otp/request — in dev the OTP prints to the API console. */
   requestOtp(phone: string) {
-    return this.http.post<OtpRequestResult>(
-      `${this.base}/auth/otp/request`,
-      { phone },
-    );
+    return this.http.post<OtpRequestResult>(`${this.base}/auth/otp/request`, { phone });
   }
 
-  /** POST /auth/otp/verify — returns `{ user, tokens }`. Stores the pair. */
+  /** POST /auth/otp/verify — returns `{ user, tokens }` for an admin acting role. */
   verifyOtp(phone: string, code: string, role: string) {
-    return this.http
-      .post<OtpVerifyResult>(`${this.base}/auth/otp/verify`, { phone, code, role })
-      .pipe(
-        // tap into a side channel rather than a shared store to keep this
-        // service dependency-light for the admin shell.
-      );
+    return this.http.post<OtpVerifyResult>(`${this.base}/auth/otp/verify`, {
+      phone,
+      code,
+      role,
+    });
   }
 
   /** POST /auth/refresh — rotates the access/refresh pair. */
   refresh(refreshToken: string) {
-    return this.http.post<RefreshResult>(`${this.base}/auth/refresh`, {
-      refreshToken,
-    });
+    return this.http.post<RefreshResult>(`${this.base}/auth/refresh`, { refreshToken });
   }
 
-  /** GET /users/me */
+  /** GET /users/me — the acting admin's public profile (phone, role, status). */
   me() {
-    const { auth, acting } = this.token();
-    return this.http.get<UserMe>(`${this.base}/users/me`, {
-      headers: this.headers(auth, acting),
-    });
+    return this.http.get<UserMe>(`${this.base}/users/me`);
   }
 
-  /** GET /errands — admin sees all; optional status + cursor pagination. */
-  listErrands(status?: ErrandStatus | null, cursor?: string | null) {
-    const { auth, acting } = this.token();
+  /** GET /errands — admins see all errands; optional status + cursor pagination. */
+  listErrands(status?: ErrandStatus | null, cursor?: string | null, limit = 100) {
     let params = new HttpParams();
     if (status) params = params.set('status', status);
     if (cursor) params = params.set('cursor', cursor);
-    return this.http.get<ListErrandsResult>(`${this.base}/errands`, {
-      params,
-      headers: this.headers(auth, acting),
+    params = params.set('limit', String(limit));
+    return this.http.get<ListErrandsResult>(`${this.base}/errands`, { params });
+  }
+
+  /** GET /errands/:id — full errand row. */
+  getErrand(id: string) {
+    return this.http.get<Errand>(`${this.base}/errands/${id}`);
+  }
+
+  /** GET /errands/:id/history — append-only status timeline (chronological). */
+  getErrandHistory(id: string) {
+    return this.http.get<ErrandStatusHistoryEntry[]>(`${this.base}/errands/${id}/history`);
+  }
+
+  /** PATCH /errands/:id/resolve-dispute — admin verdict with mandatory rationale. */
+  resolveDispute(id: string, verdict: ResolveDisputeVerdict, rationale: string) {
+    return this.http.patch<ResolveDisputeResult>(`${this.base}/errands/${id}/resolve-dispute`, {
+      verdict,
+      rationale,
     });
   }
 
   /** GET /runners — admin runner directory (cursor-paginated). */
-  listRunners(cursor?: string | null) {
-    const { auth, acting } = this.token();
+  listRunners(cursor?: string | null, limit = 100) {
     let params = new HttpParams();
     if (cursor) params = params.set('cursor', cursor);
-    return this.http.get<ListRunnersResult>(`${this.base}/runners`, {
-      params,
-      headers: this.headers(auth, acting),
-    });
-  }
-
-  private headers(auth: string, acting: ActingRole): Record<string, string> {
-    return {
-      ...(auth ? { Authorization: auth } : {}),
-      'x-nitume-acting-role': acting,
-    };
+    params = params.set('limit', String(limit));
+    return this.http.get<ListRunnersResult>(`${this.base}/runners`, { params });
   }
 }

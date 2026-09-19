@@ -7,25 +7,25 @@
 
 :root {
   // --- Brand palette (exact, do not alter) ---
-  --nitume-blue:        #0B2545; // text, headers, nav
-  --nitume-white:       #FFFFFF; // canvas, primary cards
-  --nitume-slate:       #F4F6F9; // outer bg, card separators
-  --nitume-green:       #04AF4D; // primary actions, active/success
+  --nitume-blue: #0b2545; // text, headers, nav
+  --nitume-white: #ffffff; // canvas, primary cards
+  --nitume-slate: #f4f6f9; // outer bg, card separators
+  --nitume-green: #04af4d; // primary actions, active/success
 
   // --- Derived tones (tints/shades of the 4 core colors only) ---
-  --nitume-blue-700:    #08192F; // nav hover / pressed
-  --nitume-blue-050:    #E9EDF3; // faint blue chip bg
-  --nitume-slate-line:  #E2E7EF; // hairline borders
-  --nitume-slate-600:   #5C6B85; // muted body text
-  --nitume-slate-400:   #8C97AC; // placeholder / faint labels
-  --nitume-green-050:   #E3F8EA; // success chip bg
-  --nitume-green-700:   #038A3D; // green hover / pressed
+  --nitume-blue-700: #08192f; // nav hover / pressed
+  --nitume-blue-050: #e9edf3; // faint blue chip bg
+  --nitume-slate-line: #e2e7ef; // hairline borders
+  --nitume-slate-600: #5c6b85; // muted body text
+  --nitume-slate-400: #8c97ac; // placeholder / faint labels
+  --nitume-green-050: #e3f8ea; // success chip bg
+  --nitume-green-700: #038a3d; // green hover / pressed
 
   // --- Functional accents (chip-only, never large surfaces) ---
-  --nitume-amber:       #B8860B; // pending / needs-attention
-  --nitume-amber-050:   #FBF3E1;
-  --nitume-red:         #C1433C; // disputes / failed
-  --nitume-red-050:     #FBEAE9;
+  --nitume-amber: #b8860b; // pending / needs-attention
+  --nitume-amber-050: #fbf3e1;
+  --nitume-red: #c1433c; // disputes / failed
+  --nitume-red-050: #fbeae9;
 
   // --- Radii ---
   --nitume-r-s: 8px;

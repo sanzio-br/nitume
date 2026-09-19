@@ -32,10 +32,37 @@
   .nav-item.active{background:var(--green);color:#fff;}
   .nav-item .badge-count{margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;font-family:'Fira Code',monospace;}
   .nav-item.active .badge-count{background:rgba(255,255,255,0.25);}
-  .sidebar-foot{margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px 10px;border-top:1px solid rgba(255,255,255,0.1);}
+  .sidebar-foot{margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px 10px;border-top:1px solid rgba(255,255,255,0.1);cursor:pointer;}
+  .sidebar-foot:hover{background:rgba(255,255,255,0.05);border-radius:9px;}
   .sidebar-foot .av{width:32px;height:32px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;}
   .sidebar-foot .name{font-size:12.5px;font-weight:600;color:#fff;}
   .sidebar-foot .role{font-size:10.5px;color:#7E8CA8;}
+  .sidebar-foot .logout-hint{margin-left:auto;font-size:10.5px;color:#7E8CA8;}
+
+  /* ---- Login screen ---- */
+  #login-screen{position:fixed;inset:0;z-index:200;background:var(--blue);display:flex;align-items:center;justify-content:center;padding:24px;}
+  #login-screen.hidden{display:none;}
+  .login-card{width:100%;max-width:380px;background:var(--white);border-radius:20px;padding:36px;box-shadow:0 40px 90px -30px rgba(0,0,0,0.4);}
+  .login-brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:20px;color:var(--blue);margin-bottom:6px;}
+  .login-brand .dot{width:9px;height:9px;border-radius:50%;background:var(--green);}
+  .login-sub{font-size:13px;color:var(--slate-600);margin:0 0 28px;}
+  .login-label{font-size:12px;font-weight:600;color:var(--slate-600);margin-bottom:6px;display:block;}
+  .login-input{width:100%;background:var(--slate);border:1px solid var(--slate-line);border-radius:10px;padding:12px 14px;font-size:14px;font-family:'Fira Sans',sans-serif;color:var(--blue);margin-bottom:16px;}
+  .login-input:focus{outline:2px solid var(--green);border-color:var(--green);}
+  .login-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+  .login-remember{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--slate-600);}
+  .login-remember input{accent-color:var(--green);width:14px;height:14px;}
+  .login-forgot{font-size:12.5px;color:var(--green-700);font-weight:600;cursor:pointer;background:none;border:none;font-family:'Fira Sans',sans-serif;}
+  .login-submit{width:100%;background:var(--green);color:#fff;border:none;padding:13px;border-radius:10px;font-weight:700;font-size:14.5px;cursor:pointer;margin-bottom:14px;}
+  .login-error{background:var(--red-050);color:var(--red);font-size:12px;font-weight:600;padding:10px 12px;border-radius:8px;margin-bottom:16px;display:none;}
+  .login-error.show{display:block;}
+  .login-foot{text-align:center;font-size:11.5px;color:var(--slate-400);margin-top:6px;}
+  .login-2fa{display:none;}
+  .login-2fa.active{display:block;}
+  .login-otp-row{display:flex;gap:8px;margin-bottom:20px;}
+  .login-otp-box{flex:1;height:48px;border-radius:10px;background:var(--slate);border:1px solid var(--slate-line);display:flex;align-items:center;justify-content:center;font-family:'Fira Code',monospace;font-size:17px;font-weight:600;}
+  .login-otp-box.filled{border-color:var(--green);}
+  .login-back-link{font-size:12.5px;color:var(--slate-600);cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-bottom:20px;background:none;border:none;font-family:'Fira Sans',sans-serif;}
 
   .main{padding:26px 34px 50px;}
   .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px;flex-wrap:wrap;gap:14px;}
@@ -166,6 +193,52 @@
 </head>
 <body>
 
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="login-screen">
+  <div class="login-card">
+
+    <!-- Step 1: credentials -->
+    <div id="login-step-credentials">
+      <div class="login-brand"><span class="dot"></span>Nitume Ops</div>
+      <p class="login-sub">Internal access only. Sign in with your Nitume ops account.</p>
+      <div class="login-error" id="login-error">Incorrect email or password. Try again or reset your password.</div>
+      <label class="login-label">Work email</label>
+      <input class="login-input" id="login-email" type="email" placeholder="you@nitume.com" value="njeri.a@nitume.com">
+      <label class="login-label">Password</label>
+      <input class="login-input" id="login-password" type="password" placeholder="••••••••" value="••••••••">
+      <div class="login-row">
+        <label class="login-remember"><input type="checkbox" checked> Keep me signed in</label>
+        <button class="login-forgot" onclick="showForgot()">Forgot password?</button>
+      </div>
+      <button class="login-submit" onclick="submitCredentials()">Sign in</button>
+      <p class="login-foot">Protected by two-factor authentication · Nitume internal systems</p>
+    </div>
+
+    <!-- Step 2: 2FA -->
+    <div id="login-step-2fa" class="login-2fa">
+      <button class="login-back-link" onclick="backToCredentials()">← Back</button>
+      <div class="login-brand"><span class="dot"></span>Verify it's you</div>
+      <p class="login-sub">Enter the 6-digit code from your authenticator app.</p>
+      <div class="login-otp-row">
+        <div class="login-otp-box filled">4</div><div class="login-otp-box filled">1</div><div class="login-otp-box filled">9</div><div class="login-otp-box filled">2</div><div class="login-otp-box">•</div><div class="login-otp-box">•</div>
+      </div>
+      <button class="login-submit" onclick="completeLogin()">Verify &amp; sign in</button>
+      <p class="login-foot">Lost your device? Contact your ops admin to reset 2FA.</p>
+    </div>
+
+    <!-- Step 3: forgot password -->
+    <div id="login-step-forgot" class="login-2fa">
+      <button class="login-back-link" onclick="backToCredentials()">← Back to sign in</button>
+      <div class="login-brand"><span class="dot"></span>Reset password</div>
+      <p class="login-sub">We'll email a reset link to your work address.</p>
+      <label class="login-label">Work email</label>
+      <input class="login-input" type="email" value="njeri.a@nitume.com">
+      <button class="login-submit" onclick="backToCredentials()">Send reset link</button>
+    </div>
+
+  </div>
+</div>
+
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><span class="dot"></span>Nitume Ops</div>
@@ -183,7 +256,7 @@
       <div class="nav-label">Insights</div>
       <button class="nav-item" data-p="p-reports" onclick="showPanel('p-reports',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-4 4"/></svg>Reports</button>
     </div>
-    <div class="sidebar-foot"><div class="av">NA</div><div><div class="name">Njeri A.</div><div class="role">Ops Lead · Nairobi</div></div></div>
+    <div class="sidebar-foot" onclick="logOut()"><div class="av">NA</div><div><div class="name">Njeri A.</div><div class="role">Ops Lead · Nairobi</div></div><span class="logout-hint">Log out</span></div>
   </aside>
 
   <main class="main">
@@ -494,6 +567,31 @@
   function closeDrawer(){
     document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('active'));
     document.getElementById('drawer-overlay').classList.remove('active');
+  }
+
+  /* ---- Login flow ---- */
+  function showLoginStep(id){
+    ['login-step-credentials','login-step-2fa','login-step-forgot'].forEach(function(sid){
+      document.getElementById(sid).style.display = (sid === id) ? 'block' : 'none';
+    });
+  }
+  function submitCredentials(){
+    document.getElementById('login-error').classList.remove('show');
+    showLoginStep('login-step-2fa');
+  }
+  function completeLogin(){
+    document.getElementById('login-screen').classList.add('hidden');
+  }
+  function backToCredentials(){
+    showLoginStep('login-step-credentials');
+  }
+  function showForgot(){
+    showLoginStep('login-step-forgot');
+  }
+  function logOut(){
+    document.getElementById('login-screen').classList.remove('hidden');
+    showLoginStep('login-step-credentials');
+    closeDrawer();
   }
 </script>
 </body>

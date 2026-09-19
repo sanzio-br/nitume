@@ -1,5 +1,3 @@
-import { environment } from '../../environments/environment';
-
 /**
  * Typed response shapes mirrored from the committed `apps/api` surface
  * (the single source of truth for route paths, request/response shapes,
@@ -52,23 +50,29 @@ export interface AdminUser {
 }
 
 // --- Errands(task queue) ---
+/**
+ * Errand statuses VERBATIM from `apps/api` `ErrandStatus` (the state machine
+ * in §3.3): uppercase enum strings from the NestJS surface. The admin client
+ * does not translate case — the API is the single source of truth.
+ */
 export type ErrandStatusString =
-  | 'draft'
-  | 'requested'
-  | 'quoted'
-  | 'accepted'
-  | 'payment_pending'
-  | 'payment_confirmed'
-  | 'runner_assigned'
-  | 'in_progress'
-  | 'awaiting_customer'
-  | 'completed'
-  | 'confirmed'
-  | 'settled'
-  | 'cancelled'
-  | 'failed'
-  | 'disputed'
-  | 'expired';
+  | 'DRAFT'
+  | 'REQUESTED'
+  | 'QUOTED'
+  | 'ACCEPTED'
+  | 'PAYMENT_CONFIRMED'
+  | 'RUNNER_ASSIGNED'
+  | 'RUNNER_EN_ROUTE'
+  | 'ARRIVED'
+  | 'IN_PROGRESS'
+  | 'AWAITING_CUSTOMER'
+  | 'COMPLETED'
+  | 'CONFIRMED'
+  | 'SETTLED'
+  | 'CANCELLED'
+  | 'FAILED'
+  | 'DISPUTED'
+  | 'EXPIRED';
 
 export interface ErrandLocation {
   pointType: 'pickup' | 'dropoff' | 'task_site';
@@ -113,6 +117,7 @@ export interface ErrandListItem {
   quotedPrice?: string | null;
   urgency?: string;
   deadlineAt?: string | null;
+  runnerProfileId?: string | null;
   createdAt: string;
 }
 
@@ -137,35 +142,44 @@ export interface ErrandDetail {
   history: ErrandStatusHistoryEntry[];
 }
 
+/** Verdicts for `PATCH /errands/:id/resolve-dispute` (§3.3 DISPUTED → CONFIRMED/CANCELLED). */
+export type ResolveDisputeVerdict = 'runner' | 'customer';
+
+export interface ResolveDisputeResult {
+  errand: Errand;
+  history: ErrandStatusHistoryEntry;
+}
+
 // --- Runners ---
 export type RunnerAvailability = 'online' | 'offline' | 'busy';
-export type VerificationStatus =
-  | 'pending'
-  | 'approved'
-  | 'rejected'
-  | 'in_review';
+export type VerificationStatus = 'pending' | 'approved' | 'rejected' | 'in_review';
 
 export interface RunnerSkill {
   id: string;
   skill: string;
 }
 
+/**
+ * Admin runner-directory row (`GET /runners` → `listForAdmin`). The API
+ * returns the full `RunnerProfile` entity plus a skills counter, so the
+ * trust/load metrics below arrive as decimal strings (numeric columns).
+ */
 export interface RunnerListItem {
   id: string;
   userId: string;
   verificationLevel?: string;
+  trustScore?: string;
+  completionRate?: string;
+  onTimeRate?: string;
+  cancellationRate?: string;
   avgRating?: string;
   errandsCompleted?: number;
+  maxPurchaseAdvance?: string;
   availability?: RunnerAvailability;
+  lastPingAt?: string | null;
   skillsCount?: number;
   createdAt: string;
-  user?: {
-    id: string;
-    phone?: string;
-    firstName?: string | null;
-    lastName?: string | null;
-    status?: string;
-  };
+  updatedAt?: string;
 }
 
 export interface ListRunnersResult {
@@ -218,7 +232,7 @@ export interface ListPaymentsResult {
 export const ACTING_ROLE_ADMIN = 'admin';
 
 export type ActingRole = 'admin' | 'runner' | 'customer';
-export type AuthTokens = TokenPair Waiting; // alias: verify/refresh both return a TokenPair
+
 export interface RefreshResult {
   user: UserMe;
   tokens: TokenPair;
@@ -231,8 +245,13 @@ export interface AuthState {
   tokens: TokenPair | null;
   user: UserMe | null;
   actingRole: ActingRole;
+  /** UI-only lifecycle of the admin session (never sent to the API). */
+  status: AuthStatus;
 }
 
+export type AuthStatus =
+  'idle' | 'requesting' | 'verifying' | 'authenticated' | 'refreshing' | 'expired';
 
 // --- Alias: auth-store/auth.service expect `AuthTokens` (== TokenPair) ---
+
 export type AuthTokens = TokenPair;
