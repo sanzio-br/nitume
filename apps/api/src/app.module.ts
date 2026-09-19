@@ -12,6 +12,8 @@ import { HealthController } from './health/health.controller';
 import { RedisModule } from './infra/redis/redis.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { MatchingModule } from './matching/matching.module';
+import { PaymentsModule } from './payments/payments.module';
 import { RunnersModule } from './runners/runners.module';
 import { UsersModule } from './users/users.module';
 
@@ -39,6 +41,8 @@ import { UsersModule } from './users/users.module';
     RunnersModule,
     AuthModule,
     ErrandsModule,
+    MatchingModule,
+    PaymentsModule,
   ],
   controllers: [HealthController],
   providers: [

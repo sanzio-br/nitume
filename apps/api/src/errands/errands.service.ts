@@ -15,6 +15,7 @@ import {
   ErrandStatus,
   GeoPoint,
   StatusHistoryActor,
+  AssignmentStatus,
 } from '../common/enums';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
@@ -24,6 +25,7 @@ import { ErrandLocation } from './errand-location.entity';
 import { ErrandStateMachine } from './errand-state-machine';
 import { ErrandStatusHistory } from './errand-status-history.entity';
 import { Errand } from './errand.entity';
+import { Quote } from './quote.entity';
 import {
   CreateErrandDto,
   ErrandItemDto,
@@ -38,6 +40,18 @@ export interface ActorReference {
 export interface ViewerContext {
   role: string;
   userId: string;
+}
+
+export interface QuoteInput {
+  total: number;
+  baseFee?: number;
+  distanceFee?: number;
+  timeFee?: number;
+  urgencyFee?: number;
+  complexityFee?: number;
+  premiumFee?: number;
+  currency?: string;
+  expiresAt?: string;
 }
 
 export interface ErrandResult {
@@ -224,62 +238,149 @@ export class ErrandsService {
     note?: string,
     subject?: ViewerContext,
   ): Promise<ErrandResult> {
-    return this.dataSource.transaction(async (manager) => {
-      const errand = await manager.getRepository(Errand).findOne({
-        where: { id: errandId },
-      });
-      if (!errand) {
-        throw new NotFoundException('Errand not found');
-      }
-      const fromStatus = errand.status;
-      if (!ErrandStateMachine.canTransition(fromStatus, to)) {
-        throw new ConflictException(
-          `Illegal status transition: ${fromStatus} -> ${to}`,
-        );
-      }
-      if (!ErrandStateMachine.actorCanPerform(fromStatus, to, actor.type)) {
-        throw new ForbiddenException(
-          `Actor '${actor.type}' cannot perform ${fromStatus} -> ${to}`,
-        );
-      }
-      await this.enforceSubject(manager, errand, actor, subject);
+    return this.dataSource.transaction((manager) =>
+      this.performTransition(manager, errandId, to, actor, note, subject),
+    );
+  }
 
-      errand.status = to;
-      try {
-        await manager.getRepository(Errand).save(errand);
-      } catch (err) {
-        if (err instanceof Error) {
-          throw new ConflictException(
-            'Concurrent modification detected. Retry the transition.',
-          );
-        }
-        throw err;
-      }
-
-      const history = await this.appendHistory(manager, errandId, {
-        fromStatus,
-        toStatus: to,
-        actor: { type: actor.type, id: actor.id ?? null },
-        note: note ?? null,
-      });
-
-      setImmediate(() => {
-        this.events.emit('errand.status_changed', {
-          errandId,
-          status: to,
-          from: fromStatus,
-          actor: actor.type,
-        });
-      });
-
-      return { errand, history };
+  private async performTransition(
+    manager: EntityManager,
+    errandId: string,
+    to: ErrandStatus,
+    actor: ActorReference,
+    note?: string,
+    subject?: ViewerContext,
+  ): Promise<ErrandResult> {
+    const errand = await manager.getRepository(Errand).findOne({
+      where: { id: errandId },
     });
+    if (!errand) {
+      throw new NotFoundException('Errand not found');
+    }
+    const fromStatus = errand.status;
+    if (!ErrandStateMachine.canTransition(fromStatus, to)) {
+      throw new ConflictException(
+        `Illegal status transition: ${fromStatus} -> ${to}`,
+      );
+    }
+    if (!ErrandStateMachine.actorCanPerform(fromStatus, to, actor.type)) {
+      throw new ForbiddenException(
+        `Actor '${actor.type}' cannot perform ${fromStatus} -> ${to}`,
+      );
+    }
+    await this.enforceSubject(manager, errand, actor, subject);
+
+    errand.status = to;
+    try {
+      await manager.getRepository(Errand).save(errand);
+    } catch (err) {
+      if (err instanceof Error) {
+        throw new ConflictException(
+          'Concurrent modification detected. Retry the transition.',
+        );
+      }
+      throw err;
+    }
+
+    const history = await this.appendHistory(manager, errandId, {
+      fromStatus,
+      toStatus: to,
+      actor: { type: actor.type, id: actor.id ?? null },
+      note: note ?? null,
+    });
+
+    setImmediate(() => {
+      this.events.emit('errand.status_changed', {
+        errandId,
+        status: to,
+        from: fromStatus,
+        actor: actor.type,
+      });
+    });
+
+    return { errand, history };
   }
 
   async historyFor(errandId: string): Promise<ErrandStatusHistory[]> {
     return this.history.find({
       where: { errandId },
       order: { createdAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Admin quote step: prices the errand and moves REQUESTED -> QUOTED in one
+   * transaction. The quoted price is captured on the errand; the full
+   * breakdown lands in `quotes` (auditable pricing provenance).
+   */
+  async quote(
+    errandId: string,
+    quote: QuoteInput,
+    actor: ActorReference,
+    note?: string,
+  ): Promise<{ errand: Errand; history: ErrandStatusHistory; quote: Quote }> {
+    return this.dataSource.transaction(async (manager) => {
+      const done = await this.performTransition(
+        manager,
+        errandId,
+        ErrandStatus.QUOTED,
+        actor,
+        note,
+      );
+      const quoteRepo = manager.getRepository(Quote);
+      const row = await quoteRepo.save(
+        quoteRepo.create({
+          errandId,
+          baseFee: (quote.baseFee ?? quote.total).toString(),
+          distanceFee: (quote.distanceFee ?? 0).toString(),
+          timeFee: (quote.timeFee ?? 0).toString(),
+          urgencyFee: (quote.urgencyFee ?? 0).toString(),
+          complexityFee: (quote.complexityFee ?? 0).toString(),
+          premiumFee: (quote.premiumFee ?? 0).toString(),
+          total: quote.total.toString(),
+          currency: quote.currency ?? 'KES',
+          expiresAt: quote.expiresAt ? new Date(quote.expiresAt) : null,
+        }),
+      );
+      return { errand: done.errand, history: done.history, quote: row };
+    });
+  }
+
+  /**
+   * v1 semi-automated matching: the admin's one-click assignment. Creates an
+   * accepted assignment for the runner and moves PAYMENT_CONFIRMED ->
+   * RUNNER_ASSIGNED in the same transaction.
+   */
+  async assign(
+    errandId: string,
+    runnerProfileId: string,
+    actor: ActorReference,
+    note?: string,
+  ): Promise<{ errand: Errand; history: ErrandStatusHistory; assignment: ErrandAssignment }> {
+    return this.dataSource.transaction(async (manager) => {
+      const runner = await manager
+        .getRepository(RunnerProfile)
+        .findOne({ where: { id: runnerProfileId } });
+      if (!runner) {
+        throw new NotFoundException('Runner profile not found');
+      }
+      const done = await this.performTransition(
+        manager,
+        errandId,
+        ErrandStatus.RUNNER_ASSIGNED,
+        actor,
+        note,
+      );
+      const assignmentRepo = manager.getRepository(ErrandAssignment);
+      const assignment = await assignmentRepo.save(
+        assignmentRepo.create({
+          errandId,
+          runnerProfileId,
+          status: AssignmentStatus.ASSIGNED,
+          decidedAt: new Date(),
+        }),
+      );
+      return { errand: done.errand, history: done.history, assignment };
     });
   }
 

@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   MaxLength,
@@ -29,6 +30,16 @@ export class AddVerificationDto {
   @IsString()
   @MaxLength(255)
   documentS3Key?: string;
+}
+
+export class ReviewVerificationDto {
+  @IsIn(['approved', 'rejected'])
+  decision: 'approved' | 'rejected';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reviewerNote?: string;
 }
 
 export class SetSkillsDto {

@@ -6,6 +6,7 @@ import {
   RunnerSkill,
   RunnerVerificationType,
   VerificationLevel,
+  VerificationStatus,
 } from '../common/enums';
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
@@ -139,4 +140,108 @@ export class RunnersService {
     }
     return [...new Set(areas)].filter(Boolean);
   }
+
+  /** Admin ops list: live runner directory with verification + load summary. */
+  async listForAdmin(opts: {
+    limit?: number;
+    cursor?: string | null;
+  }): Promise<{ items: (RunnerProfile & { skillsCount: number })[]; nextCursor: string | null }> {
+    const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
+    const qb = this.profiles
+      .createQueryBuilder('p')
+      .orderBy('p."createdAt"', 'DESC')
+      .addOrderBy('p.id', 'DESC')
+      .limit(limit + 1);
+
+    const decoded = decodeCursor(opts.cursor);
+    if (decoded) {
+      const [createdAt, id] = decoded;
+      qb.andWhere(
+        '(p."createdAt" < :createdAt OR (p."createdAt" = :createdAt AND p.id < :id))',
+        { createdAt: new Date(createdAt), id },
+      );
+    }
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > limit;
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+
+    const counts = await this.skillCounts(page.map((p) => p.id));
+    return {
+      // eslint-disable-next-line no-misused-spread -- entity → admin-list DTO shape
+      items: page.map((p) => ({ ...p, skillsCount: counts[p.id] ?? 0 })),
+      nextCursor: hasMore && last ? encodeCursor(last) : null,
+    };
+  }
+
+  private async skillCounts(profileIds: string[]): Promise<Record<string, number>> {
+    if (profileIds.length === 0) {
+      return {};
+    }
+    const rows = await this.skills
+      .createQueryBuilder('s')
+      .select('s."runnerProfileId"', 'pid')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('s."runnerProfileId" IN (:...ids)', { ids: profileIds })
+      .groupBy('s."runnerProfileId"')
+      .getRawMany<{ pid: string; cnt: string }>();
+    return Object.fromEntries(rows.map((r) => [r.pid, Number(r.cnt)]));
+  }
+
+  /** Admin review of a runner verification submission. */
+  async reviewVerification(
+    verificationId: string,
+    review: { decision: 'approved' | 'rejected'; reviewerNote?: string },
+    adminUserId: string,
+  ): Promise<RunnerVerification> {
+    const verification = await this.verifications.findOne({
+      where: { id: verificationId },
+    });
+    if (!verification) {
+      throw new NotFoundException('Verification not found');
+    }
+    if (verification.status !== VerificationStatus.PENDING) {
+      throw new NotFoundException(
+        `Verification already resolved (${verification.status})`,
+      );
+    }
+    verification.status =
+      review.decision === 'approved'
+        ? VerificationStatus.APPROVED
+        : VerificationStatus.REJECTED;
+    verification.reviewerNote = review.reviewerNote ?? null;
+    verification.reviewedBy = adminUserId;
+    verification.reviewedAt = new Date();
+    await this.verifications.save(verification);
+
+    if (
+      review.decision === 'approved' &&
+      verification.verificationType === RunnerVerificationType.GOVERNMENT_ID
+    ) {
+      const profile = await this.profileById(verification.runnerProfileId);
+      if (profile.verificationLevel === VerificationLevel.ONE_BASIC) {
+        profile.verificationLevel = VerificationLevel.TWO_ID_VERIFIED;
+        await this.profiles.save(profile);
+      }
+    }
+    return verification;
+  }
 }
+
+const encodeCursor = (profile: RunnerProfile): string =>
+  Buffer.from(`${profile.createdAt.toISOString()}::${profile.id}`, 'utf-8').toString('base64');
+
+const decodeCursor = (cursor: string | null | undefined): [string, string] | null => {
+  if (!cursor) {
+    return null;
+  }
+  try {
+    const [createdAt, id] = Buffer.from(cursor, 'base64')
+      .toString('utf-8')
+      .split('::');
+    return createdAt && id ? [createdAt, id] : null;
+  } catch {
+    return null;
+  }
+};

@@ -30,6 +30,13 @@ export interface AppConfig {
   security: {
     bcryptRounds: number;
   };
+  pricing: {
+    serviceFeeRate: number;
+    runnerFeeRate: number;
+  };
+  payments: {
+    mpesaTransport: string;
+  };
   atsms: {
     apiKey: string | null;
     username: string | null;
@@ -77,6 +84,16 @@ export const configuration = (): AppConfig => ({
   },
   security: {
     bcryptRounds: int(process.env.BCRYPT_ROUNDS, 12),
+  },
+  // PENDING OWNER DECISION: exact commission/runner-fee rates. Placeholders
+  // from the business plan's indicative 20-25% range; production values must
+  // be set by the project owner before launch.
+  pricing: {
+    serviceFeeRate: Number.parseFloat(process.env.PRICING_SERVICE_FEE_RATE ?? '0.2'),
+    runnerFeeRate: Number.parseFloat(process.env.PRICING_RUNNER_FEE_RATE ?? '0.3'),
+  },
+  payments: {
+    mpesaTransport: process.env.PAYMENTS_MPESA_TRANSPORT ?? 'console',
   },
   atsms: {
     apiKey: process.env.ATSMS_API_KEY ?? null,
