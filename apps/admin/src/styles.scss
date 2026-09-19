@@ -1,0 +1,110 @@
+/* ============================================================
+   NITUME ADMIN — global stylesheet
+   Loads design tokens + lays down the type pair and the shared
+   component primitives EVERY admin screen reuses. Per
+   AGENT_BUILD_INSTRUCTIONS §4: token layer first, reuse via
+   components — never copy-pasted per-screen markup.
+   ============================================================ */
+
+@use './styles/tokens' as *;
+
+/* --- Base --- */
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--blue);
+  background: var(--slate);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Numeric data: Fira Code exclusively (timestamps, prices, counters,
+   ratings, ETAs, coordinates). Never Fira Sans for numerals. */
+.num {
+  font-family: var(--font-num);
+  font-feature-settings: 'tnum' 1;
+}
+
+h1, h2, h3, h4, h5 { font-family: var(--font-ui); font-weight: 700; margin: 0; color: var(--blue); }
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+
+/* --- Semantic chip accents — amber/red are CHIP-ONLY (see design shelf
+   rules): never large surfaces, never button fills. --- */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+  padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+}
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.chip-success { background: var(--green-050); color: var(--green-700); }
+.chip-pending { background: var(--amber-050); color: var(--amber); }
+.chip-danger  { background: var(--red-050);   color: var(--red); }
+.chip-info    { background: var(--blue-050);  color: var(--blue); }
+
+/* --- Buttons: primary=green (white text ALWAYS on green), secondary
+   =blue, outline, text. --- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-ui); font-weight: 600; font-size: 14.5px;
+  padding: 12px 22px; border-radius: 999px; border: 1px solid transparent;
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-primary { background: var(--green); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--green-700); }
+
+.btn-secondary { background: var(--blue); color: #fff; }
+.btn-secondary:hover:not(:disabled) { background: var(--blue-700); }
+
+.btn-outline { background: #fff; border-color: var(--slate-line); color: var(--blue); }
+.btn-outline:hover:not(:disabled) { border-color: var(--blue); }
+
+.btn-text { background: transparent; color: var(--blue); padding: 12px 6px; }
+
+/* --- Cards / surfaces --- */
+.card {
+  background: #fff; border: 1px solid var(--slate-line);
+  border-radius: var(--r-m); padding: 20px;
+}
+
+/* --- Form fields (design shelf field pattern) --- */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 12.5px; font-weight: 600; color: var(--slate-600); }
+.field-input {
+  font-family: var(--font-ui); font-size: 14.5px; color: var(--blue);
+  background: #fff; border: 1px solid var(--slate-line);
+  border-radius: var(--r-s); padding: 11px 14px; width: 100%;
+}
+.field-input::placeholder { color: var(--slate-400); }
+.field-input:focus { outline: 2px solid var(--green); outline-offset: 1px; border-color: var(--green); }
+.field-input.is-invalid { border-color: var(--red); outline-color: var(--red); }
+
+/* --- List item pattern (mobile-first list interface) --- */
+.list-item {
+  display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+  border-bottom: 1px solid var(--slate-line); cursor: pointer;
+  transition: background .12s;
+}
+.list-item:hover { background: var(--slate); }
+.list-item:last-child { border-bottom: none; }
+.list-body { flex: 1; min-width: 0; }
+.list-title { font-size: 14.5px; font-weight: 600; }
+.list-meta { font-family: var(--font-num); font-size: 12px; color: var(--slate-600); margin-top: 2px; }
+.list-progress { font-family: var(--font-num); font-size: 12.5px; font-weight: 600; color: var(--slate-600); flex: 0 0 auto; }
+.list-progress.complete { color: var(--green-700); }
+
+/* --- Status tag patterns (matching dashboard shelf) --- */
+.status-tag {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  padding: 4px 10px; border-radius: 999px;
+}

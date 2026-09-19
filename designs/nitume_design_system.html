@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nitume — Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   NITUME DESIGN SYSTEM
+   Palette: Deep Trust Blue / Pure White / Cool Slate / Action Green
+   Type: Fira Sans (UI/text) + Fira Code (numeric data)
+   ============================================================ */
+:root{
+  /* --- Brand palette (exact, do not alter) --- */
+  --blue:      #0B2545;   /* text, headers, nav */
+  --white:     #FFFFFF;   /* canvas, primary cards */
+  --slate:     #F4F6F9;   /* outer bg, card separators */
+  --green:     #04AF4D;   /* primary actions, active/success */
+
+  /* --- Derived tones (tints/shades of the 4 core colors only) --- */
+  --blue-700:  #08192F;   /* nav hover / pressed */
+  --blue-050:  #E9EDF3;   /* faint blue chip bg */
+  --slate-line:#E2E7EF;   /* hairline borders on white/slate */
+  --slate-600: #5C6B85;   /* muted body text (blue, desaturated) */
+  --slate-400: #8C97AC;   /* placeholder / faint labels */
+  --green-050: #E3F8EA;   /* success chip bg */
+  --green-700: #038A3D;   /* green hover / pressed */
+
+  /* --- Functional (minimal, outside the 4-color brand, used only for alerts) --- */
+  --amber:     #B8860B;   /* pending / needs-attention text on slate chip */
+  --amber-050: #FBF3E1;
+  --red:       #C1433C;   /* disputes / failed only */
+  --red-050:   #FBEAE9;
+
+  --r-s:8px; --r-m:14px; --r-l:20px;
+  --font-ui:'Fira Sans', system-ui, sans-serif;
+  --font-num:'Fira Code', ui-monospace, monospace;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--slate);color:var(--blue);font-family:var(--font-ui);padding:56px 24px 100px;}
+.wrap{max-width:980px;margin:0 auto;}
+h1,h2,h3{font-family:var(--font-ui);font-weight:700;margin:0;color:var(--blue);}
+.page-title{font-size:30px;margin-bottom:6px;}
+.page-sub{color:var(--slate-600);font-size:15px;margin-bottom:56px;}
+section{margin-bottom:52px;}
+section h2{font-size:13px;text-transform:uppercase;letter-spacing:0.06em;color:var(--slate-600);margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid var(--slate-line);}
+
+/* --- Color swatches --- */
+.swatch-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+@media(max-width:700px){.swatch-row{grid-template-columns:1fr 1fr;}}
+.swatch{background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);overflow:hidden;}
+.swatch .fill{height:84px;}
+.swatch .meta{padding:12px 14px;}
+.swatch .meta b{display:block;font-size:13px;}
+.swatch .meta span{font-family:var(--font-num);font-size:12px;color:var(--slate-600);}
+
+/* --- Type scale --- */
+.type-row{display:flex;align-items:baseline;gap:20px;padding:14px 0;border-bottom:1px solid var(--slate-line);}
+.type-row:last-child{border-bottom:none;}
+.type-label{width:170px;flex:0 0 auto;font-family:var(--font-num);font-size:11.5px;color:var(--slate-600);}
+.t-h1{font-size:34px;font-weight:700;}
+.t-h2{font-size:24px;font-weight:600;}
+.t-h3{font-size:17px;font-weight:600;}
+.t-body{font-size:15px;font-weight:400;color:var(--blue);}
+.t-muted{font-size:13.5px;color:var(--slate-600);}
+.t-num{font-family:var(--font-num);font-size:20px;font-weight:600;}
+.t-num-sm{font-family:var(--font-num);font-size:13px;color:var(--slate-600);}
+
+/* --- Buttons --- */
+.demo-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+.btn{font-family:var(--font-ui);font-weight:600;font-size:14.5px;padding:12px 22px;border-radius:999px;border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center;gap:8px;}
+.btn-primary{background:var(--green);color:var(--white);}
+.btn-primary:hover{background:var(--green-700);}
+.btn-secondary{background:var(--blue);color:var(--white);}
+.btn-secondary:hover{background:var(--blue-700);}
+.btn-outline{background:var(--white);border-color:var(--slate-line);color:var(--blue);}
+.btn-outline:hover{border-color:var(--blue);}
+.btn-text{background:none;color:var(--blue);padding:12px 6px;}
+
+/* --- Badges / status chips --- */
+.chip{font-family:var(--font-ui);font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;}
+.chip-success{background:var(--green-050);color:var(--green-700);}
+.chip-info{background:var(--blue-050);color:var(--blue);}
+.chip-pending{background:var(--amber-050);color:var(--amber);}
+.chip-danger{background:var(--red-050);color:var(--red);}
+.chip-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+/* --- Cards --- */
+.card-demo{background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);padding:20px;}
+.card-row{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+@media(max-width:700px){.card-row{grid-template-columns:1fr;}}
+
+/* --- List item pattern (mobile-first list interface) --- */
+.list-demo{background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);overflow:hidden;}
+.list-item{display:flex;align-items:center;gap:14px;padding:16px 18px;border-bottom:1px solid var(--slate-line);}
+.list-item:last-child{border-bottom:none;}
+.check{width:22px;height:22px;border-radius:6px;border:2px solid var(--slate-line);flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
+.check.done{background:var(--green);border-color:var(--green);}
+.check.done svg{width:12px;height:12px;}
+.li-body{flex:1;min-width:0;}
+.li-title{font-size:14.5px;font-weight:600;}
+.li-title.done{color:var(--slate-600);text-decoration:line-through;text-decoration-color:var(--slate-line);}
+.li-meta{font-family:var(--font-num);font-size:12px;color:var(--slate-600);margin-top:2px;}
+.li-progress{font-family:var(--font-num);font-size:12.5px;font-weight:600;color:var(--slate-600);flex:0 0 auto;}
+.li-progress.complete{color:var(--green-700);}
+
+/* --- Form field pattern --- */
+.field-demo{display:flex;flex-direction:column;gap:6px;max-width:320px;}
+.field-label{font-size:12.5px;font-weight:600;color:var(--slate-600);}
+.field-input{font-family:var(--font-ui);font-size:14.5px;background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-s);padding:11px 14px;color:var(--blue);}
+.field-input:focus{outline:2px solid var(--green);outline-offset:1px;border-color:var(--green);}
+
+/* --- Rules --- */
+.rules{background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);padding:22px 24px;}
+.rules li{font-size:14px;color:var(--slate-600);margin-bottom:10px;line-height:1.55;}
+.rules li b{color:var(--blue);}
+.rules li code{font-family:var(--font-num);background:var(--slate);padding:1px 6px;border-radius:4px;font-size:12.5px;color:var(--blue);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1 class="page-title">Nitume Design System</h1>
+  <p class="page-sub">Token reference and component patterns for all Nitume surfaces — website, Customer app, Runner app, Admin dashboard.</p>
+
+  <section>
+    <h2>Color</h2>
+    <div class="swatch-row">
+      <div class="swatch"><div class="fill" style="background:#0B2545;"></div><div class="meta"><b>Deep Trust Blue</b><span>#0B2545 — text, headers, nav</span></div></div>
+      <div class="swatch"><div class="fill" style="background:#FFFFFF;border-bottom:1px solid var(--slate-line);"></div><div class="meta"><b>Pure White</b><span>#FFFFFF — canvas, cards</span></div></div>
+      <div class="swatch"><div class="fill" style="background:#F4F6F9;"></div><div class="meta"><b>Cool Slate</b><span>#F4F6F9 — outer bg, separators</span></div></div>
+      <div class="swatch"><div class="fill" style="background:#04AF4D;"></div><div class="meta"><b>Action Green</b><span>#04AF4D — primary actions, success</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Typography</h2>
+    <div class="type-row"><span class="type-label">H1 / Fira Sans 700</span><span class="t-h1">Track your errand live</span></div>
+    <div class="type-row"><span class="type-label">H2 / Fira Sans 600</span><span class="t-h2">Nearby jobs</span></div>
+    <div class="type-row"><span class="type-label">H3 / Fira Sans 600</span><span class="t-h3">Apartment check — Nyali</span></div>
+    <div class="type-row"><span class="type-label">Body / Fira Sans 400</span><span class="t-body">Runner will video the compound, both bedrooms and the bathroom.</span></div>
+    <div class="type-row"><span class="type-label">Muted / Fira Sans 400</span><span class="t-muted">Verified · 4.9 rating · 137 errands completed</span></div>
+    <div class="type-row"><span class="type-label">Numeric / Fira Code 600</span><span class="t-num">KSh 2,200</span></div>
+    <div class="type-row"><span class="type-label">Numeric sm / Fira Code</span><span class="t-num-sm">10:28 AM · ETA 12 min · 3/5 steps</span></div>
+  </section>
+
+  <section>
+    <h2>Buttons</h2>
+    <div class="demo-row">
+      <button class="btn btn-primary">Add errand</button>
+      <button class="btn btn-secondary">View details</button>
+      <button class="btn btn-outline">Decline</button>
+      <button class="btn btn-text">Skip for now</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Status chips</h2>
+    <div class="demo-row">
+      <span class="chip chip-success"><span class="chip-dot"></span>Completed</span>
+      <span class="chip chip-info"><span class="chip-dot"></span>Assigned</span>
+      <span class="chip chip-pending"><span class="chip-dot"></span>Awaiting review</span>
+      <span class="chip chip-danger"><span class="chip-dot"></span>Disputed</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>List item pattern — mobile-first task list</h2>
+    <div class="list-demo">
+      <div class="list-item">
+        <div class="check done"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <div class="li-body"><div class="li-title done">Collect documents — CBD</div><div class="li-meta">Completed 10:47 AM</div></div>
+        <div class="li-progress complete">5/5</div>
+      </div>
+      <div class="list-item">
+        <div class="check"></div>
+        <div class="li-body"><div class="li-title">Buy groceries — Carrefour Sarit</div><div class="li-meta">Due today, 6:00 PM</div></div>
+        <div class="li-progress">2/5</div>
+      </div>
+      <div class="list-item">
+        <div class="check"></div>
+        <div class="li-body"><div class="li-title">Apartment inspection — Nyali</div><div class="li-meta">Runner en route · ETA 12 min</div></div>
+        <div class="li-progress">1/4</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Cards &amp; form fields</h2>
+    <div class="card-row">
+      <div class="card-demo">
+        <div class="field-demo">
+          <label class="field-label">Task description</label>
+          <input class="field-input" value="Check the apartment in Nyali...">
+          <label class="field-label" style="margin-top:10px;">Deadline</label>
+          <input class="field-input" value="Today, flexible">
+        </div>
+      </div>
+      <div class="card-demo">
+        <div class="li-title" style="margin-bottom:10px;">Runner — Brian K.</div>
+        <div class="demo-row" style="margin-bottom:10px;">
+          <span class="chip chip-success"><span class="chip-dot"></span>Verified</span>
+          <span class="t-num-sm">4.9 ★ · 137 tasks</span>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;">Assign to this task</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Usage rules</h2>
+    <ul class="rules">
+      <li><b>Text &amp; nav:</b> <code>#0B2545</code> is the only color for primary text, headings and navigation surfaces.</li>
+      <li><b>Backgrounds:</b> cards and primary content sit on <code>#FFFFFF</code>; the app canvas and separators between cards use <code>#F4F6F9</code>.</li>
+      <li><b>Action green</b> <code>#04AF4D</code> is reserved for primary buttons, active toggles, checked/complete states — never used decoratively.</li>
+      <li><b>Contrast:</b> any label placed inside a green or blue filled surface uses <code>#FFFFFF</code> text — never dark text on green.</li>
+      <li><b>Fira Sans</b> for every UI label, description, task text and button. <b>Fira Code</b> is reserved for numeric data only: timestamps, due dates, prices, counters like <code>3/5</code>, ratings, ETAs.</li>
+      <li>Amber and red exist only as small semantic accents for "pending" and "disputed/failed" states — they are not brand colors and never appear as backgrounds larger than a chip.</li>
+    </ul>
+  </section>
+
+</div>
+</body>
+</html>

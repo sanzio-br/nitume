@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nitume — Runner App (Full Flow)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue:#0B2545; --blue-700:#08192F; --blue-050:#E9EDF3;
+    --white:#FFFFFF; --slate:#F4F6F9; --slate-line:#E2E7EF;
+    --slate-600:#5C6B85; --slate-400:#8C97AC;
+    --green:#04AF4D; --green-700:#038A3D; --green-050:#E3F8EA;
+    --amber:#B8860B; --amber-050:#FBF3E1;
+    --red:#C1433C; --red-050:#FBEAE9;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Fira Sans',sans-serif;background:var(--slate);min-height:100vh;color:var(--blue);display:flex;flex-direction:column;align-items:center;padding:48px 20px 80px;}
+  .num{font-family:'Fira Code',monospace;}
+  .lab{text-align:center;margin-bottom:22px;max-width:420px;}
+  .lab .eyebrow{color:var(--green-700);font-weight:700;font-size:13px;letter-spacing:0.02em;margin-bottom:8px;}
+  .lab h1{font-size:24px;font-weight:700;margin:0 0 8px;}
+  .lab p{font-size:13px;color:var(--slate-600);margin:0;}
+  .screen-nav{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:560px;margin-bottom:28px;}
+  .snbtn{font-size:11px;font-weight:600;background:var(--white);border:1px solid var(--slate-line);color:var(--slate-600);padding:6px 10px;border-radius:999px;cursor:pointer;font-family:'Fira Sans',sans-serif;}
+  .snbtn:hover{border-color:var(--blue);color:var(--blue);}
+
+  .phone{width:375px;height:812px;background:var(--blue-700);border-radius:52px;padding:14px;box-shadow:0 40px 90px -30px rgba(11,37,69,0.45), 0 0 0 1px rgba(11,37,69,0.15);position:relative;}
+  .screen{width:100%;height:100%;background:var(--slate);border-radius:38px;overflow:hidden;position:relative;display:flex;flex-direction:column;}
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:26px;background:var(--blue-700);border-radius:0 0 16px 16px;z-index:40;}
+  .statusbar{height:44px;flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 6px;font-size:13px;font-weight:600;font-family:'Fira Code',monospace;}
+
+  .view{flex:1;overflow-y:auto;display:none;flex-direction:column;padding-bottom:12px;}
+  .view.active{display:flex;}
+  .overlay{position:absolute;inset:0;background:var(--slate);z-index:30;display:none;flex-direction:column;padding-top:44px;}
+  .overlay.active{display:flex;}
+  .ov-body{flex:1;overflow-y:auto;padding-bottom:20px;}
+  .ov-header{display:flex;align-items:center;gap:12px;padding:10px 20px 14px;flex:0 0 auto;}
+  .ov-back{width:32px;height:32px;border-radius:50%;background:var(--white);border:1px solid var(--slate-line);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;}
+  .ov-header h2{font-size:18px;font-weight:700;margin:0;}
+  .ov-step{font-size:11px;color:var(--slate-600);font-family:'Fira Code',monospace;margin-left:auto;}
+
+  .topbar{padding:8px 20px 14px;display:flex;justify-content:space-between;align-items:center;}
+  .topbar h2{font-size:21px;font-weight:700;margin:0;}
+  .bell{width:36px;height:36px;border-radius:50%;background:var(--white);border:1px solid var(--slate-line);display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;}
+  .bell .dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--red);border:1.5px solid var(--white);}
+
+  .avail-row{margin:0 20px 16px;background:var(--blue);color:var(--white);border-radius:14px;padding:15px 18px;display:flex;justify-content:space-between;align-items:center;}
+  .avail-row .l{display:flex;align-items:center;gap:10px;}
+  .avail-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(4,175,77,0.3);}
+  .avail-row b{font-size:14px;}
+  .avail-row span{font-size:11px;color:#AEB9CC;display:block;font-family:'Fira Code',monospace;}
+  .toggle{width:42px;height:24px;background:var(--green);border-radius:999px;position:relative;cursor:pointer;}
+  .toggle::after{content:'';position:absolute;right:2px;top:2px;width:20px;height:20px;background:#fff;border-radius:50%;}
+
+  .sec-label{padding:6px 20px 10px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--slate-600);}
+  .offer-card{margin:0 20px 12px;background:var(--white);border:1px solid var(--slate-line);border-radius:14px;padding:16px;cursor:pointer;}
+  .offer-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+  .offer-tag{font-size:10.5px;font-weight:700;background:var(--green-050);color:var(--green-700);padding:4px 9px;border-radius:999px;}
+  .offer-pay{font-family:'Fira Code',monospace;font-weight:600;font-size:17px;}
+  .offer-title{font-size:14px;font-weight:600;margin:0 0 4px;}
+  .offer-meta{font-size:11.5px;color:var(--slate-600);margin-bottom:12px;font-family:'Fira Code',monospace;}
+  .offer-actions{display:flex;gap:8px;}
+  .btn-sm{flex:1;text-align:center;padding:10px;border-radius:10px;font-size:12.5px;font-weight:700;border:none;font-family:'Fira Sans',sans-serif;cursor:pointer;}
+  .btn-accept{background:var(--green);color:var(--white);}
+  .btn-decline{background:transparent;border:1px solid var(--slate-line);color:var(--slate-600);}
+
+  .job-map{margin:0 20px 14px;height:190px;border-radius:16px;position:relative;overflow:hidden;background:
+    linear-gradient(0deg, rgba(11,37,69,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11,37,69,0.05) 1px, transparent 1px),#EAEEF4;background-size:22px 22px;}
+  .job-route{position:absolute;left:30px;top:140px;width:190px;height:2px;background:repeating-linear-gradient(to right, var(--blue) 0 8px, transparent 8px 14px);transform:rotate(-20deg);transform-origin:left center;}
+  .jpin{position:absolute;width:13px;height:13px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);}
+  .jpin.a{left:24px;top:134px;background:var(--blue);}
+  .jpin.b{left:200px;top:60px;background:var(--green);}
+  .nav-chip{position:absolute;bottom:12px;left:12px;right:12px;background:#fff;border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 8px 20px -10px rgba(0,0,0,.25);}
+  .nav-chip b{font-size:13px;}
+  .nav-chip span{font-size:11px;color:var(--slate-600);font-family:'Fira Code',monospace;}
+  .go-btn{background:var(--green);color:#fff;font-size:11.5px;font-weight:700;padding:7px 12px;border-radius:8px;}
+
+  .step-card{margin:0 20px 10px;background:var(--white);border:1px solid var(--slate-line);border-radius:12px;padding:13px 15px;display:flex;align-items:center;gap:12px;}
+  .step-check{width:22px;height:22px;border-radius:6px;border:2px solid var(--slate-line);flex:0 0 auto;}
+  .step-check.done{background:var(--green);border-color:var(--green);display:flex;align-items:center;justify-content:center;}
+  .step-check.done svg{width:11px;height:11px;}
+  .step-text{flex:1;font-size:13px;font-weight:600;cursor:pointer;}
+  .step-sub{font-size:11px;color:var(--slate-600);font-weight:400;font-family:'Fira Code',monospace;}
+  .upload-btn{font-size:11px;font-weight:700;background:var(--blue);color:var(--white);padding:7px 11px;border-radius:8px;cursor:pointer;}
+
+  .bal-card{margin:0 20px 16px;background:var(--blue);color:var(--white);border-radius:16px;padding:20px;}
+  .bal-card span{font-size:11.5px;color:#AEB9CC;}
+  .bal-card h3{font-family:'Fira Code',monospace;font-size:30px;margin:6px 0 14px;font-weight:600;}
+  .bal-actions{display:flex;gap:10px;}
+  .bal-btn{flex:1;text-align:center;padding:10px;border-radius:10px;font-size:12px;font-weight:700;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);cursor:pointer;}
+  .chart-row{margin:0 20px 16px;background:var(--white);border:1px solid var(--slate-line);border-radius:14px;padding:16px;}
+  .chart-bars{display:flex;align-items:flex-end;gap:8px;height:90px;margin-top:10px;}
+  .bar{flex:1;background:var(--green-050);border-radius:5px 5px 0 0;}
+  .bar.hi{background:var(--green);}
+  .bar-lab{display:flex;gap:8px;margin-top:6px;}
+  .bar-lab span{flex:1;text-align:center;font-size:10px;color:var(--slate-600);font-family:'Fira Code',monospace;}
+  .payout-row{margin:0 20px 8px;background:var(--white);border:1px solid var(--slate-line);border-radius:10px;padding:12px 15px;display:flex;justify-content:space-between;font-size:12.5px;}
+  .payout-row b{font-family:'Fira Code',monospace;}
+
+  .profile-head{padding:10px 20px 18px;text-align:center;}
+  .profile-avatar-lg{width:70px;height:70px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px;color:#fff;margin:0 auto 12px;}
+  .profile-head h3{margin:0;font-size:18px;}
+  .verified-line{font-size:12px;color:var(--green-700);font-weight:700;margin-top:4px;}
+  .stat-row3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 20px 16px;}
+  .stat-b{background:var(--white);border:1px solid var(--slate-line);border-radius:12px;padding:12px;text-align:center;}
+  .stat-b b{display:block;font-family:'Fira Code',monospace;font-size:16px;}
+  .stat-b span{font-size:10px;color:var(--slate-600);}
+  .badge-row{padding:0 20px;display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
+  .badge{font-size:11px;font-weight:600;background:var(--green-050);color:var(--green-700);padding:6px 11px;border-radius:999px;}
+  .menu-row{margin:0 20px 8px;background:var(--white);border:1px solid var(--slate-line);border-radius:12px;padding:13px 15px;display:flex;justify-content:space-between;align-items:center;font-size:13.5px;font-weight:500;cursor:pointer;}
+  .menu-row .arrow{color:var(--slate-400);}
+  .menu-row.danger{color:var(--red);}
+
+  .tabbar{flex:0 0 auto;display:flex;justify-content:space-around;padding:10px 8px 18px;border-top:1px solid var(--slate-line);background:var(--white);}
+  .tab{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--slate-400);font-size:10px;font-weight:700;background:none;border:none;cursor:pointer;font-family:'Fira Sans',sans-serif;}
+  .tab.active{color:var(--green-700);}
+  .tab svg{width:21px;height:21px;}
+  .frame-label{margin-top:22px;font-size:12.5px;color:var(--slate-600);text-align:center;max-width:375px;}
+
+  /* Auth / onboarding (shared pattern) */
+  .auth-wrap{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 28px;}
+  .auth-logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:22px;margin-bottom:30px;}
+  .auth-logo .dot{width:9px;height:9px;border-radius:50%;background:var(--green);}
+  .auth-wrap h1{font-size:22px;font-weight:700;margin:0 0 8px;}
+  .auth-wrap p.sub{font-size:13px;color:var(--slate-600);margin:0 0 26px;}
+  .field{background:var(--white);border:1px solid var(--slate-line);border-radius:10px;padding:12px 14px;font-size:13.5px;color:var(--blue);width:100%;font-family:'Fira Sans',sans-serif;}
+  .cta-fixed{margin:auto 20px 6px;background:var(--green);color:var(--white);text-align:center;padding:15px;border-radius:14px;font-weight:700;font-size:14.5px;cursor:pointer;border:none;width:calc(100% - 40px);}
+  .cta-outline{margin:0 20px 6px;background:var(--white);border:1px solid var(--slate-line);color:var(--blue);text-align:center;padding:14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;width:calc(100% - 40px);}
+  .otp-row{display:flex;gap:8px;margin-bottom:22px;}
+  .otp-box{width:44px;height:52px;border-radius:10px;background:var(--white);border:1px solid var(--slate-line);display:flex;align-items:center;justify-content:center;font-family:'Fira Code',monospace;font-size:18px;font-weight:600;}
+  .otp-box.filled{border-color:var(--green);}
+  .resend{font-size:12.5px;color:var(--slate-600);text-align:center;}
+  .resend b{color:var(--green-700);cursor:pointer;}
+
+  /* Upload / camera placeholder */
+  .upload-box{margin:0 20px 16px;height:220px;border:2px dashed var(--slate-line);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--white);gap:10px;}
+  .upload-box svg{width:36px;height:36px;}
+  .upload-box p{font-size:12.5px;color:var(--slate-600);margin:0;}
+  .doc-thumb-row{display:flex;gap:10px;padding:0 20px 16px;}
+  .doc-thumb{flex:1;aspect-ratio:1.4;border-radius:12px;background:linear-gradient(135deg,var(--blue-050),var(--slate-line));display:flex;align-items:center;justify-content:center;font-size:22px;}
+
+  .verif-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--slate-line);font-size:13px;}
+  .verif-row:last-child{border-bottom:none;}
+  .verif-status{font-size:11px;font-weight:700;color:var(--green-700);}
+  .verif-status.pending{color:var(--amber);}
+
+  .price-card{margin:20px;background:var(--white);border:1px solid var(--slate-line);border-radius:16px;padding:20px;}
+</style>
+</head>
+<body>
+
+<div class="lab">
+  <div class="eyebrow">NITUME · RUNNER APP — FULL FLOW</div>
+  <h1>Every screen, end to end</h1>
+  <p>Sign up → verification → go online → accept a job → navigate → capture evidence → request a price change → complete → get paid.</p>
+</div>
+
+<div class="screen-nav">
+  <button class="snbtn" onclick="goRoot('v-jobs')">Jobs</button>
+  <button class="snbtn" onclick="jump('v-auth-phone')">Onboarding</button>
+  <button class="snbtn" onclick="jump('v-onboard-id')">ID verification</button>
+  <button class="snbtn" onclick="jump('v-onboard-selfie')">Selfie check</button>
+  <button class="snbtn" onclick="jump('v-onboard-pending')">Verification status</button>
+  <button class="snbtn" onclick="jump('v-job-detail')">Job offer detail</button>
+  <button class="snbtn" onclick="goRoot('v-active')">Active job</button>
+  <button class="snbtn" onclick="jump('v-evidence-capture')">Evidence capture</button>
+  <button class="snbtn" onclick="jump('v-price-request')">Price change request</button>
+  <button class="snbtn" onclick="jump('v-job-summary')">Job summary</button>
+  <button class="snbtn" onclick="jump('v-payout')">Payout request</button>
+  <button class="snbtn" onclick="jump('v-edit-skills')">Edit skills/areas</button>
+  <button class="snbtn" onclick="jump('v-notifications')">Notifications</button>
+</div>
+
+<div class="phone">
+  <div class="notch"></div>
+  <div class="screen">
+    <div class="statusbar"><span>9:41</span><span>●●● 5G 76%</span></div>
+
+    <!-- ============ ROOT TAB VIEWS ============ -->
+    <div class="view active" id="v-jobs">
+      <div class="topbar"><h2>Nearby jobs</h2><div class="bell" onclick="jump('v-notifications')"><span class="dot"></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B2545" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></div></div>
+      <div class="avail-row">
+        <div class="l"><span class="avail-dot"></span><div><b>Online</b><span>Westlands · Kilimani · CBD</span></div></div>
+        <div class="toggle"></div>
+      </div>
+      <div class="sec-label">3 offers near you</div>
+      <div class="offer-card" onclick="jump('v-job-detail')">
+        <div class="offer-top"><span class="offer-tag">Inspection</span><span class="offer-pay">KSh 1,750</span></div>
+        <p class="offer-title">Check apartment — Nyali</p>
+        <p class="offer-meta">1.2 km away · 45 min task · Photos + video required</p>
+        <div class="offer-actions"><button class="btn-sm btn-decline" onclick="event.stopPropagation()">Decline</button><button class="btn-sm btn-accept" onclick="event.stopPropagation();showView('v-active')">Accept</button></div>
+      </div>
+      <div class="offer-card">
+        <div class="offer-top"><span class="offer-tag">Shopping</span><span class="offer-pay">KSh 900</span></div>
+        <p class="offer-title">Buy groceries — Carrefour Sarit</p>
+        <p class="offer-meta">2.8 km away · Budget KSh 5,000 · Customer pays merchant</p>
+        <div class="offer-actions"><button class="btn-sm btn-decline">Decline</button><button class="btn-sm btn-accept">Accept</button></div>
+      </div>
+      <div class="offer-card">
+        <div class="offer-top"><span class="offer-tag">Documents</span><span class="offer-pay">KSh 500</span></div>
+        <p class="offer-title">Deliver contract — Upper Hill</p>
+        <p class="offer-meta">4.1 km away · Signature on delivery</p>
+        <div class="offer-actions"><button class="btn-sm btn-decline">Decline</button><button class="btn-sm btn-accept">Accept</button></div>
+      </div>
+    </div>
+
+    <div class="view" id="v-active">
+      <div class="topbar"><h2>Active job</h2></div>
+      <div class="job-map">
+        <div class="job-route"></div>
+        <div class="jpin a"></div>
+        <div class="jpin b"></div>
+        <div class="nav-chip"><div><b>Links Road, Nyali</b><span>1.2 km · 6 min</span></div><span class="go-btn">Navigate</span></div>
+      </div>
+      <div class="sec-label">Checklist</div>
+      <div class="step-card">
+        <div class="step-check done"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <div class="step-text">Arrived at location<div class="step-sub">10:28 AM · GPS confirmed</div></div>
+      </div>
+      <div class="step-card">
+        <div class="step-check done"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <div class="step-text" onclick="jump('v-evidence-capture')">Compound photos<div class="step-sub">3 photos uploaded</div></div>
+      </div>
+      <div class="step-card">
+        <div class="step-check"></div>
+        <div class="step-text" onclick="jump('v-evidence-capture')">Bedroom &amp; bathroom video<div class="step-sub">Required</div></div>
+        <span class="upload-btn" onclick="jump('v-evidence-capture')">Upload</span>
+      </div>
+      <div class="step-card">
+        <div class="step-check"></div>
+        <div class="step-text">Caretaker notes<div class="step-sub">Write a short summary</div></div>
+        <span class="upload-btn">Add</span>
+      </div>
+      <div class="sec-label">Price too low for the item found?</div>
+      <div class="step-card" style="cursor:pointer;" onclick="jump('v-price-request')">
+        <div class="step-text">⚠️ Request price authorization<div class="step-sub">Ask the customer to approve a higher amount</div></div>
+      </div>
+      <div class="step-card" style="margin-top:6px;background:var(--green);border:none;cursor:pointer;" onclick="jump('v-job-summary')">
+        <div class="step-text" style="color:var(--white);">Mark task complete<div class="step-sub" style="color:rgba(255,255,255,0.8);">Customer will confirm evidence</div></div>
+      </div>
+    </div>
+
+    <div class="view" id="v-earnings">
+      <div class="topbar"><h2>Earnings</h2></div>
+      <div class="bal-card">
+        <span>Available balance</span>
+        <h3 class="num">KSh 8,450</h3>
+        <div class="bal-actions"><div class="bal-btn" onclick="jump('v-payout')">Request payout</div><div class="bal-btn">Payout history</div></div>
+      </div>
+      <div class="chart-row">
+        <div class="sec-label" style="padding:0 0 2px;">This week</div>
+        <div class="chart-bars">
+          <div class="bar" style="height:35%"></div><div class="bar" style="height:55%"></div><div class="bar hi" style="height:85%"></div><div class="bar" style="height:40%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:30%"></div><div class="bar" style="height:20%"></div>
+        </div>
+        <div class="bar-lab"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+      </div>
+      <div class="sec-label">Recent payouts</div>
+      <div class="payout-row"><span>Apartment check — Nyali</span><b>+ KSh 1,750</b></div>
+      <div class="payout-row"><span>Grocery run — Sarit</span><b>+ KSh 720</b></div>
+      <div class="payout-row"><span>Payout to M-Pesa</span><b>− KSh 6,000</b></div>
+    </div>
+
+    <div class="view" id="v-profile">
+      <div class="topbar"><h2>Profile</h2></div>
+      <div class="profile-head"><div class="profile-avatar-lg">BK</div><h3>Brian K.</h3><p class="verified-line">● Verified Runner · Level 3 — Trusted</p></div>
+      <div class="stat-row3">
+        <div class="stat-b"><b>137</b><span>ERRANDS</span></div>
+        <div class="stat-b"><b>4.9</b><span>RATING</span></div>
+        <div class="stat-b"><b>98.7%</b><span>COMPLETION</span></div>
+      </div>
+      <div class="sec-label">Skills &amp; areas</div>
+      <div class="badge-row">
+        <span class="badge">Shopping</span><span class="badge">Inspections</span><span class="badge">Documents</span><span class="badge">Property visits</span><span class="badge">CBD</span><span class="badge">Westlands</span><span class="badge">Kilimani</span>
+      </div>
+      <div class="menu-row" onclick="jump('v-edit-skills')">Edit skills &amp; service areas<span class="arrow">›</span></div>
+      <div class="menu-row" onclick="jump('v-notifications')">Notifications<span class="arrow">›</span></div>
+      <div class="menu-row">Verification documents<span class="arrow">›</span></div>
+      <div class="menu-row">Support<span class="arrow">›</span></div>
+      <div class="menu-row danger" onclick="jump('v-auth-phone')">Log out<span class="arrow">›</span></div>
+    </div>
+
+    <div class="tabbar">
+      <button class="tab active" data-view="v-jobs" onclick="showView('v-jobs', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Jobs</button>
+      <button class="tab" data-view="v-active" onclick="showView('v-active', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>Active</button>
+      <button class="tab" data-view="v-earnings" onclick="showView('v-earnings', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12h6M12 9v6"/></svg>Earnings</button>
+      <button class="tab" data-view="v-profile" onclick="showView('v-profile', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Profile</button>
+    </div>
+
+    <!-- ============ OVERLAY SCREENS ============ -->
+
+    <div class="overlay" id="v-auth-phone">
+      <div class="auth-wrap">
+        <div class="auth-logo"><span class="dot"></span>Nitume <span style="font-size:12px;font-weight:600;color:var(--slate-600);">Runner</span></div>
+        <h1>Earn on your own schedule.</h1>
+        <p class="sub">Enter your phone number to sign in or apply as a Runner.</p>
+        <input class="field" placeholder="+254 7XX XXX XXX" style="margin-bottom:16px;">
+        <button class="cta-fixed" style="margin:0 0 14px;width:100%;" onclick="jump('v-auth-otp')">Send code</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="v-auth-otp">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div></div>
+      <div class="auth-wrap" style="padding-top:0;">
+        <h1>Enter the code</h1>
+        <p class="sub">We sent a 6-digit code to +254 733 111 222.</p>
+        <div class="otp-row"><div class="otp-box filled">7</div><div class="otp-box filled">1</div><div class="otp-box filled">9</div><div class="otp-box filled">0</div><div class="otp-box">•</div><div class="otp-box">•</div></div>
+        <button class="cta-fixed" style="margin:0 0 16px;width:100%;" onclick="jump('v-onboard-id')">Verify &amp; continue</button>
+        <p class="resend">Didn't get it? <b>Resend code</b></p>
+      </div>
+    </div>
+
+    <div class="overlay" id="v-onboard-id">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>ID verification</h2><span class="ov-step">Step 1 of 2</span></div>
+      <div class="ov-body">
+        <p style="padding:0 20px;font-size:13px;color:var(--slate-600);margin:0 0 14px;">Upload clear photos of the front and back of your National ID.</p>
+        <div class="doc-thumb-row"><div class="doc-thumb">🪪</div><div class="doc-thumb">🪪</div></div>
+        <div class="upload-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0B2545" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m21 15-5-5L5 19"/></svg>
+          <p>Tap to take a photo or upload</p>
+        </div>
+      </div>
+      <button class="cta-fixed" onclick="jump('v-onboard-selfie')">Continue →</button>
+    </div>
+
+    <div class="overlay" id="v-onboard-selfie">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Selfie check</h2><span class="ov-step">Step 2 of 2</span></div>
+      <div class="ov-body">
+        <p style="padding:0 20px;font-size:13px;color:var(--slate-600);margin:0 0 14px;">We use this to confirm you match your ID — this is never shown to customers.</p>
+        <div class="upload-box" style="height:260px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0B2545" stroke-width="1.6"><circle cx="12" cy="9" r="3.2"/><path d="M5 20c0-3.8 3.1-6 7-6s7 2.2 7 6"/><rect x="2.5" y="2.5" width="19" height="19" rx="4"/></svg>
+          <p>Center your face in the frame</p>
+        </div>
+      </div>
+      <button class="cta-fixed" onclick="jump('v-onboard-pending')">Submit for review →</button>
+    </div>
+
+    <div class="overlay" id="v-onboard-pending">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Verification status</h2></div>
+      <div class="ov-body">
+        <div class="offer-card" style="cursor:default;">
+          <div class="verif-row"><span>Phone number</span><span class="verif-status">Verified</span></div>
+          <div class="verif-row"><span>National ID</span><span class="verif-status">Verified</span></div>
+          <div class="verif-row"><span>Selfie / liveness check</span><span class="verif-status pending">In review</span></div>
+          <div class="verif-row"><span>M-Pesa identity match</span><span class="verif-status pending">In review</span></div>
+        </div>
+        <p style="padding:14px 20px 0;font-size:12.5px;color:var(--slate-600);">Verification usually takes under 24 hours. We'll notify you the moment you're approved to start accepting jobs.</p>
+      </div>
+      <button class="cta-outline" onclick="jump('v-jobs', true)">Back to app</button>
+    </div>
+
+    <div class="overlay" id="v-job-detail">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Job offer</h2></div>
+      <div class="ov-body">
+        <div class="job-map" style="margin-top:0;">
+          <div class="job-route"></div><div class="jpin a"></div><div class="jpin b"></div>
+        </div>
+        <div class="offer-card" style="cursor:default;">
+          <div class="offer-top"><span class="offer-tag">Inspection</span><span class="offer-pay">KSh 1,750</span></div>
+          <p class="offer-title">Check apartment — Nyali</p>
+          <p style="font-size:12.5px;color:var(--slate-600);margin:0 0 10px;">Video the compound, both bedrooms and the bathroom. Speak to the caretaker about the reported water leak.</p>
+          <div class="verif-row"><span>Distance</span><span class="num">1.2 km</span></div>
+          <div class="verif-row"><span>Estimated time</span><span class="num">45 min</span></div>
+          <div class="verif-row"><span>Payout</span><span class="num">KSh 1,750</span></div>
+        </div>
+      </div>
+      <div style="padding:0 20px;display:flex;gap:10px;">
+        <button class="cta-outline" style="margin:0;width:100%;" onclick="pop()">Decline</button>
+        <button class="cta-fixed" style="margin:0;width:100%;" onclick="jump('v-active', true)">Accept job</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="v-evidence-capture">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Capture evidence</h2></div>
+      <div class="ov-body">
+        <div class="upload-box" style="height:240px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0B2545" stroke-width="1.6"><rect x="2.5" y="6" width="19" height="14" rx="2.5"/><path d="M8 6l1.5-2.5h5L16 6"/><circle cx="12" cy="13" r="4"/></svg>
+          <p>Tap to take a photo or video</p>
+        </div>
+        <div class="doc-thumb-row"><div class="doc-thumb">🏠</div><div class="doc-thumb">🛏️</div><div class="doc-thumb">🚿</div></div>
+        <p style="padding:0 20px;font-size:11.5px;color:var(--slate-600);">Photos upload immediately and are timestamped &amp; geo-tagged automatically — this is what builds the task's evidence timeline.</p>
+      </div>
+      <button class="cta-fixed" onclick="pop()">Save to task</button>
+    </div>
+
+    <div class="overlay" id="v-price-request">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Request price change</h2></div>
+      <div class="ov-body">
+        <div class="price-card">
+          <div class="sec-label" style="padding:0 0 8px;">Original authorization</div>
+          <p class="num" style="font-size:22px;margin:0 0 16px;">KSh 40,000</p>
+          <div class="sec-label" style="padding:0 0 8px;">New price at the shop</div>
+          <input class="field num" value="KSh 45,000" style="margin-bottom:14px;">
+          <div class="sec-label" style="padding:0 0 8px;">Reason</div>
+          <textarea class="field" rows="3">Shop said the model I confirmed on the phone is out of stock; only the newer version is available, priced KSh 5,000 higher.</textarea>
+        </div>
+      </div>
+      <button class="cta-fixed" onclick="pop()">Send to customer for approval</button>
+    </div>
+
+    <div class="overlay" id="v-job-summary">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Job complete</h2></div>
+      <div class="ov-body" style="text-align:center;padding-top:10px;">
+        <div class="profile-avatar-lg" style="background:var(--green-050);"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#04AF4D" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <h3 style="font-size:17px;margin:0 0 4px;">Nice work, Brian.</h3>
+        <p style="font-size:12.5px;color:var(--slate-600);margin:0 0 20px;">Apartment check — Nyali · awaiting customer confirmation</p>
+        <div class="offer-card" style="text-align:left;cursor:default;">
+          <div class="verif-row"><span>Base + report fee</span><span class="num">KSh 1,700</span></div>
+          <div class="verif-row"><span>Distance bonus</span><span class="num">KSh 50</span></div>
+          <div class="verif-row" style="font-weight:700;"><span>You earned</span><span class="num" style="color:var(--green-700);">KSh 1,750</span></div>
+        </div>
+      </div>
+      <button class="cta-fixed" onclick="jump('v-jobs', true)">Back to jobs</button>
+    </div>
+
+    <div class="overlay" id="v-payout">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Request payout</h2></div>
+      <div class="ov-body">
+        <div class="bal-card" style="margin-top:0;"><span>Available balance</span><h3 class="num">KSh 8,450</h3></div>
+        <div class="sec-label" style="padding-top:0;">Amount</div>
+        <div style="padding:0 20px;"><input class="field num" value="KSh 8,450"></div>
+        <div class="sec-label">Send to</div>
+        <div style="padding:0 20px;"><input class="field num" value="M-Pesa · +254 733 111 222"></div>
+      </div>
+      <button class="cta-fixed" onclick="pop()">Confirm payout</button>
+    </div>
+
+    <div class="overlay" id="v-edit-skills">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Skills &amp; areas</h2></div>
+      <div class="ov-body">
+        <div class="sec-label" style="padding-top:0;">Skills</div>
+        <div class="badge-row">
+          <span class="badge">✓ Shopping</span><span class="badge">✓ Inspections</span><span class="badge">✓ Documents</span><span class="badge">✓ Property visits</span>
+          <span class="badge" style="background:var(--slate);color:var(--slate-600);">+ Representation</span>
+          <span class="badge" style="background:var(--slate);color:var(--slate-600);">+ Business tasks</span>
+        </div>
+        <div class="sec-label">Service areas</div>
+        <div class="badge-row">
+          <span class="badge">✓ CBD</span><span class="badge">✓ Westlands</span><span class="badge">✓ Kilimani</span>
+          <span class="badge" style="background:var(--slate);color:var(--slate-600);">+ Lavington</span>
+          <span class="badge" style="background:var(--slate);color:var(--slate-600);">+ Karen</span>
+        </div>
+      </div>
+      <button class="cta-fixed" onclick="pop()">Save changes</button>
+    </div>
+
+    <div class="overlay" id="v-notifications">
+      <div class="ov-header"><div class="ov-back" onclick="pop()">←</div><h2>Notifications</h2></div>
+      <div class="ov-body" style="padding:0;">
+        <div class="offer-card" style="cursor:default;border-radius:0;border-left:none;border-right:none;margin:0;"><p class="offer-title" style="margin:0 0 2px;">New job offer nearby</p><p class="offer-meta" style="margin:0;">Apartment check — Nyali · KSh 1,750 · 2m ago</p></div>
+        <div class="offer-card" style="cursor:default;border-radius:0;border-left:none;border-right:none;margin:0;"><p class="offer-title" style="margin:0 0 2px;">Payout sent</p><p class="offer-meta" style="margin:0;">KSh 6,000 to M-Pesa · 1h ago</p></div>
+        <div class="offer-card" style="cursor:default;border-radius:0;border-left:none;border-right:none;margin:0;"><p class="offer-title" style="margin:0 0 2px;">You were rated 5 stars</p><p class="offer-meta" style="margin:0;">"Thorough and quick" — Achieng O. · Yesterday</p></div>
+        <div class="offer-card" style="cursor:default;border-radius:0;border-left:none;border-right:none;margin:0;"><p class="offer-title" style="margin:0 0 2px;">Verification approved</p><p class="offer-meta" style="margin:0;">You're now a Level 3 — Trusted Runner · Mon</p></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<p class="frame-label">Tap the quick links above, the tab bar, or elements inside the app (job cards, checklist rows, profile menu) to move through the full flow.</p>
+
+<script>
+  var stack = [];
+  function showView(id, btn){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    var target = btn && btn.tagName ? btn : document.querySelector('.tab[data-view="'+id+'"]');
+    if(target) target.classList.add('active');
+    closeAllOverlays();
+  }
+  function closeAllOverlays(){ document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('active')); stack = []; }
+  function jump(id, resetStack){
+    if(resetStack){ closeAllOverlays(); showView('v-jobs'); return; }
+    document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    stack.push(id);
+  }
+  function pop(){
+    stack.pop();
+    document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('active'));
+    if(stack.length){ document.getElementById(stack[stack.length-1]).classList.add('active'); }
+  }
+  function goRoot(id){ closeAllOverlays(); showView(id); }
+</script>
+</body>
+</html>

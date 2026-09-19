@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nitume — Someone there, when you can't be.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue:#0B2545; --blue-700:#08192F; --blue-050:#E9EDF3;
+    --white:#FFFFFF; --slate:#F4F6F9; --slate-line:#E2E7EF;
+    --slate-600:#5C6B85; --slate-400:#8C97AC;
+    --green:#04AF4D; --green-700:#038A3D; --green-050:#E3F8EA;
+    --amber:#B8860B; --amber-050:#FBF3E1;
+    --red:#C1433C; --red-050:#FBEAE9;
+    --r-s:8px; --r-m:14px; --r-l:22px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--white);color:var(--blue);font-family:'Fira Sans',sans-serif;line-height:1.5;}
+  .num{font-family:'Fira Code',monospace;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 32px;}
+  .page{display:none;}
+  .page.active{display:block;}
+
+  nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.95);backdrop-filter:blur(6px);border-bottom:1px solid var(--slate-line);}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:76px;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:21px;color:var(--blue);text-decoration:none;cursor:pointer;border:none;background:none;font-family:'Fira Sans',sans-serif;}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--green);}
+  .navlinks{display:flex;gap:30px;list-style:none;margin:0;padding:0;}
+  .navlinks button{color:var(--slate-600);text-decoration:none;font-size:14.5px;font-weight:500;background:none;border:none;cursor:pointer;font-family:'Fira Sans',sans-serif;padding:0;}
+  .navlinks button:hover,.navlinks button.on{color:var(--blue);}
+  @media (max-width:900px){.navlinks{display:none;}}
+
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:999px;font-weight:600;font-size:14.5px;text-decoration:none;border:1px solid transparent;cursor:pointer;font-family:'Fira Sans',sans-serif;}
+  .btn-primary{background:var(--green);color:var(--white);}
+  .btn-primary:hover{background:var(--green-700);}
+  .btn-outline{border-color:var(--slate-line);color:var(--blue);background:var(--white);}
+  .btn-outline:hover{border-color:var(--blue);}
+
+  /* ===== HOME ===== */
+  .hero{padding:88px 0 56px;background:var(--white);}
+  .hero-grid{display:grid;grid-template-columns:1.05fr 0.95fr;gap:60px;align-items:center;}
+  @media (max-width:900px){.hero-grid{grid-template-columns:1fr;}}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;color:var(--green-700);font-weight:600;font-size:13px;margin-bottom:18px;}
+  .eyebrow .rule{width:26px;height:1.5px;background:var(--green-700);display:inline-block;}
+  h1.hero-h{font-size:50px;line-height:1.08;font-weight:700;letter-spacing:-0.01em;margin:0 0 20px;color:var(--blue);}
+  .hero-sub{font-size:17px;color:var(--slate-600);max-width:460px;margin:0 0 32px;}
+  .hero-actions{display:flex;gap:14px;margin-bottom:36px;flex-wrap:wrap;}
+  .hero-proof{display:flex;gap:28px;flex-wrap:wrap;}
+  .proof-item{font-size:13px;color:var(--slate-600);}
+  .proof-item b{display:block;font-family:'Fira Code',monospace;font-size:22px;color:var(--blue);font-weight:600;}
+
+  .ticket{background:var(--white);border-radius:var(--r-l);border:1px solid var(--slate-line);padding:26px;box-shadow:0 24px 50px -30px rgba(11,37,69,0.25);}
+  .ticket-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;}
+  .tag-chip{font-size:12px;font-weight:600;color:var(--blue);background:var(--blue-050);padding:5px 10px;border-radius:999px;}
+  .task-id{font-family:'Fira Code',monospace;font-size:12px;color:var(--slate-400);}
+  .ticket h3{margin:0 0 6px;font-size:19px;font-weight:600;}
+  .ticket p.desc{margin:0 0 18px;color:var(--slate-600);font-size:14px;}
+  .route{position:relative;padding-left:20px;margin-bottom:18px;}
+  .route .pt{position:relative;padding:0 0 20px 0;font-size:13.5px;}
+  .route .pt:last-child{padding-bottom:0;}
+  .route .pt::before{content:'';position:absolute;left:-20px;top:3px;width:9px;height:9px;border-radius:50%;background:var(--blue);}
+  .route .pt.dest::before{background:var(--green);}
+  .route::after{content:'';position:absolute;left:-16px;top:8px;bottom:16px;width:1px;background:var(--slate-line);}
+  .route .pt .lbl{color:var(--slate-400);font-size:11px;text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:2px;}
+  .ticket-foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--slate-line);padding-top:16px;}
+  .runner-chip{display:flex;align-items:center;gap:10px;}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600;}
+  .runner-name{font-size:13.5px;font-weight:600;}
+  .runner-sub{font-family:'Fira Code',monospace;font-size:11px;color:var(--slate-400);}
+  .status-pill{font-size:12px;font-weight:600;color:var(--amber);background:var(--amber-050);padding:6px 12px;border-radius:999px;display:flex;align-items:center;gap:6px;}
+  .status-pill .pulse{width:6px;height:6px;border-radius:50%;background:var(--amber);animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(184,134,11,0.4);}70%{box-shadow:0 0 0 8px rgba(184,134,11,0);}100%{box-shadow:0 0 0 0 rgba(184,134,11,0);}}
+
+  .problem{padding:64px 0;background:var(--slate);}
+  .problem-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:36px;margin-top:38px;}
+  @media (max-width:860px){.problem-grid{grid-template-columns:1fr;}}
+  .problem h2{font-size:30px;font-weight:700;max-width:640px;margin:0;}
+  .p-item{background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);padding:22px;}
+  .p-item .p-word{font-size:17px;font-weight:700;color:var(--blue);margin:0 0 8px;}
+  .p-item p{color:var(--slate-600);font-size:14.5px;margin:0;}
+
+  .cats{padding:64px 0;}
+  .section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:36px;flex-wrap:wrap;}
+  .section-head h2{font-size:30px;font-weight:700;margin:0;}
+  .section-head p{color:var(--slate-600);max-width:340px;margin:0;font-size:14.5px;}
+  .cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media (max-width:860px){.cat-grid{grid-template-columns:1fr 1fr;}}
+  @media (max-width:560px){.cat-grid{grid-template-columns:1fr;}}
+  .cat-card{background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);padding:22px;}
+  .cat-card .icn{width:36px;height:36px;border-radius:9px;background:var(--green-050);display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
+  .cat-card h4{margin:0 0 8px;font-size:16px;font-weight:600;}
+  .cat-card p{margin:0;font-size:13px;color:var(--slate-600);}
+
+  .trust{padding:64px 0;background:var(--slate);}
+  .trust-grid{display:grid;grid-template-columns:0.95fr 1.05fr;gap:60px;align-items:center;}
+  @media (max-width:900px){.trust-grid{grid-template-columns:1fr;}}
+  .trust h2{font-size:30px;font-weight:700;margin:0 0 16px;}
+  .trust p.lead{color:var(--slate-600);font-size:15.5px;max-width:440px;margin:0 0 24px;}
+  .trust-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px;}
+  .trust-list li{display:flex;gap:12px;align-items:flex-start;font-size:14px;color:var(--slate-600);}
+  .check{flex:0 0 auto;width:18px;height:18px;border-radius:6px;background:var(--green);display:flex;align-items:center;justify-content:center;margin-top:2px;}
+  .check svg{width:10px;height:10px;}
+
+  .profile-card{background:var(--blue);color:var(--white);border-radius:var(--r-l);padding:30px;}
+  .profile-top{display:flex;gap:14px;align-items:center;margin-bottom:20px;}
+  .profile-avatar{width:54px;height:54px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;color:var(--white);}
+  .profile-name{font-size:19px;font-weight:700;margin:0;}
+  .profile-sub{font-family:'Fira Code',monospace;font-size:12.5px;color:#AEB9CC;margin-top:2px;display:flex;align-items:center;gap:6px;}
+  .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+  .stat{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:13px 12px;}
+  .stat b{display:block;font-family:'Fira Code',monospace;font-size:19px;font-weight:600;}
+  .stat span{font-size:10.5px;color:#AEB9CC;}
+  .skill-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .skill{font-size:12px;background:rgba(255,255,255,0.09);border:1px solid rgba(255,255,255,0.12);padding:6px 11px;border-radius:999px;color:#E7ECF4;}
+
+  .segments{padding:64px 0;}
+  .seg-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media (max-width:800px){.seg-grid{grid-template-columns:1fr;}}
+  .seg-card{border-radius:var(--r-l);padding:36px;cursor:pointer;}
+  .seg-card.diaspora{background:var(--blue);color:#DCE3EE;}
+  .seg-card.business{background:var(--white);border:1px solid var(--slate-line);color:var(--blue);}
+  .seg-card h3{font-size:24px;font-weight:700;margin:0 0 12px;color:inherit;}
+  .seg-card p{font-size:14px;max-width:340px;margin:0 0 24px;}
+  .seg-card.diaspora p{color:#AEB9CC;}
+  .seg-card.business p{color:var(--slate-600);}
+  .seg-card a{font-size:14px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;}
+  .seg-card.diaspora a{color:var(--white);}
+  .seg-card.business a{color:var(--green-700);}
+
+  .how{padding:64px 0;background:var(--slate);}
+  .how-list{margin-top:38px;}
+  .how-row{display:grid;grid-template-columns:60px 1fr 1fr;gap:22px;padding:22px 24px;background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);align-items:baseline;margin-bottom:10px;}
+  @media (max-width:760px){.how-row{grid-template-columns:36px 1fr;}.how-row .how-desc{grid-column:2;}}
+  .how-num{font-family:'Fira Code',monospace;font-size:18px;color:var(--slate-400);font-weight:600;}
+  .how-title{font-size:16px;font-weight:600;}
+  .how-desc{color:var(--slate-600);font-size:14px;}
+
+  .cta{padding:80px 0;text-align:center;}
+  .cta h2{font-size:36px;max-width:640px;margin:0 auto 26px;font-weight:700;}
+  .cta .btn-primary{padding:15px 30px;font-size:15.5px;}
+  footer{border-top:1px solid var(--slate-line);padding:34px 0;}
+  footer .wrap{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;}
+  footer .fcols{color:var(--slate-400);font-size:13px;}
+  footer .flinks{display:flex;gap:20px;}
+  footer .flinks button{background:none;border:none;color:var(--slate-600);font-size:13px;cursor:pointer;font-family:'Fira Sans',sans-serif;padding:0;}
+
+  /* ===== SUB-PAGE HERO (shared) ===== */
+  .subhero{padding:64px 0 48px;}
+  .subhero .eyebrow{margin-bottom:16px;}
+  .subhero h1{font-size:42px;font-weight:700;margin:0 0 18px;max-width:640px;letter-spacing:-0.01em;}
+  .subhero p{font-size:16px;color:var(--slate-600);max-width:520px;margin:0 0 30px;}
+
+  /* ===== BUSINESS PAGE ===== */
+  .biz-band{background:var(--blue);color:#fff;}
+  .biz-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px;}
+  @media (max-width:760px){.biz-stats{grid-template-columns:1fr;}}
+  .biz-stat{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:20px;}
+  .biz-stat b{display:block;font-family:'Fira Code',monospace;font-size:26px;margin-bottom:4px;}
+  .biz-stat span{font-size:12.5px;color:#AEB9CC;}
+  .plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  @media (max-width:900px){.plan-grid{grid-template-columns:1fr;}}
+  .plan-card{background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);padding:26px;}
+  .plan-card.featured{border-color:var(--green);box-shadow:0 0 0 1px var(--green);}
+  .plan-card .ptag{font-size:11px;font-weight:700;color:var(--green-700);background:var(--green-050);padding:4px 10px;border-radius:999px;display:inline-block;margin-bottom:14px;}
+  .plan-card h4{font-size:19px;margin:0 0 4px;}
+  .plan-card .price{font-family:'Fira Code',monospace;font-size:26px;font-weight:600;margin-bottom:16px;}
+  .plan-card .price span{font-size:12px;color:var(--slate-600);font-weight:400;font-family:'Fira Sans',sans-serif;}
+  .plan-list{list-style:none;margin:0 0 20px;padding:0;display:flex;flex-direction:column;gap:10px;}
+  .plan-list li{font-size:13.5px;color:var(--slate-600);display:flex;gap:9px;align-items:flex-start;}
+
+  /* ===== DIASPORA PAGE ===== */
+  .quote-block{background:var(--slate);border-left:3px solid var(--green);border-radius:0 var(--r-m) var(--r-m) 0;padding:24px 28px;margin:30px 0;}
+  .quote-block p{font-size:17px;font-weight:500;margin:0 0 8px;color:var(--blue);}
+  .quote-block span{font-size:12.5px;color:var(--slate-600);}
+  .use-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media (max-width:760px){.use-grid{grid-template-columns:1fr;}}
+  .use-card{background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);padding:20px;}
+  .use-card h4{margin:0 0 8px;font-size:15px;}
+  .use-card p{margin:0;font-size:13.5px;color:var(--slate-600);}
+
+  /* ===== BECOME A RUNNER PAGE ===== */
+  .earn-band{background:var(--green-050);}
+  .step-num-row{display:flex;gap:16px;}
+  @media (max-width:760px){.step-num-row{flex-direction:column;}}
+  .step-num-card{flex:1;background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-m);padding:22px;text-align:center;}
+  .step-num-card .n{width:34px;height:34px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Fira Code',monospace;font-weight:600;margin:0 auto 14px;}
+  .req-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;}
+  .req-list li{display:flex;gap:12px;font-size:14.5px;color:var(--slate-600);align-items:flex-start;}
+
+  /* ===== AUTH PAGE ===== */
+  .auth-page{padding:80px 0 100px;display:flex;justify-content:center;}
+  .auth-card{width:100%;max-width:400px;background:var(--white);border:1px solid var(--slate-line);border-radius:var(--r-l);padding:36px;box-shadow:0 24px 50px -30px rgba(11,37,69,0.2);}
+  .auth-tabs{display:flex;background:var(--slate);border-radius:999px;padding:4px;margin-bottom:26px;}
+  .auth-tab{flex:1;text-align:center;padding:9px;border-radius:999px;font-size:13.5px;font-weight:600;cursor:pointer;color:var(--slate-600);}
+  .auth-tab.on{background:var(--white);color:var(--blue);box-shadow:0 2px 6px rgba(11,37,69,0.08);}
+  .auth-field-label{font-size:12px;font-weight:600;color:var(--slate-600);margin-bottom:6px;display:block;}
+  .auth-input{width:100%;background:var(--slate);border:1px solid var(--slate-line);border-radius:10px;padding:12px 14px;font-size:14px;font-family:'Fira Sans',sans-serif;color:var(--blue);margin-bottom:16px;}
+  .auth-input:focus{outline:2px solid var(--green);border-color:var(--green);}
+  .auth-submit{width:100%;background:var(--green);color:#fff;border:none;padding:13px;border-radius:10px;font-weight:700;font-size:14.5px;cursor:pointer;margin-bottom:16px;}
+  .auth-divider{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--slate-400);margin:16px 0;}
+  .auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--slate-line);}
+  .auth-alt{width:100%;background:var(--white);border:1px solid var(--slate-line);padding:12px;border-radius:10px;font-size:13.5px;font-weight:600;cursor:pointer;color:var(--blue);}
+  .auth-foot{text-align:center;font-size:12.5px;color:var(--slate-600);margin-top:20px;}
+  .auth-foot b{color:var(--green-700);cursor:pointer;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <button class="brand" onclick="showPage('home')"><span class="dot"></span>Nitume</button>
+    <ul class="navlinks">
+      <li><button onclick="showPage('home')" id="nl-home" class="on">Home</button></li>
+      <li><button onclick="showPage('business')" id="nl-business">For Business</button></li>
+      <li><button onclick="showPage('diaspora')" id="nl-diaspora">For Diaspora</button></li>
+      <li><button onclick="showPage('runner')" id="nl-runner">Become a Runner</button></li>
+    </ul>
+    <div style="display:flex;gap:12px;">
+      <button class="btn btn-outline" onclick="showPage('auth')">Log in</button>
+      <button class="btn btn-primary" onclick="showPage('auth')">Request a task</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HOME PAGE ============ -->
+<div class="page active" id="page-home">
+  <header class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="eyebrow"><span class="rule"></span>Verified people, real evidence</div>
+        <h1 class="hero-h">Someone there, when you can't be.</h1>
+        <p class="hero-sub">Nitume sends a verified person to buy, check, collect or represent you anywhere in Nairobi — with proof of every step, and payments that never sit in a stranger's hands.</p>
+        <div class="hero-actions">
+          <button class="btn btn-primary" onclick="showPage('auth')">Request a task →</button>
+          <a href="#how" class="btn btn-outline">See how it works</a>
+        </div>
+        <div class="hero-proof">
+          <div class="proof-item"><b class="num">2,400+</b>verified runners</div>
+          <div class="proof-item"><b class="num">98.6%</b>completion rate</div>
+          <div class="proof-item"><b class="num">8</b>towns covered</div>
+        </div>
+      </div>
+      <div class="ticket">
+        <div class="ticket-head"><span class="tag-chip">Inspection</span><span class="task-id">#NT-10482</span></div>
+        <h3>Check the apartment in Nyali</h3>
+        <p class="desc">Video the compound, both bedrooms and the bathroom. Speak to the caretaker about the water leak.</p>
+        <div class="route">
+          <div class="pt"><span class="lbl">Runner starts</span>Nyali Beach Road, Mombasa</div>
+          <div class="pt dest"><span class="lbl">Task site</span>Links Road Apartments, Nyali</div>
+        </div>
+        <div class="ticket-foot">
+          <div class="runner-chip"><div class="avatar">BK</div><div><div class="runner-name">Brian K.</div><div class="runner-sub">Verified · 4.9 · 137 tasks</div></div></div>
+          <span class="status-pill"><span class="pulse"></span>En route</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="problem">
+    <div class="wrap">
+      <h2>You don't have a delivery problem. You have a trust problem.</h2>
+      <div class="problem-grid">
+        <div class="p-item"><p class="p-word">Time</p><p>You have things that need doing, but not the hours left in the day to do them.</p></div>
+        <div class="p-item"><p class="p-word">Distance</p><p>You're across town, in another city, or another country — and the task is here.</p></div>
+        <div class="p-item"><p class="p-word">Trust</p><p>You don't know who to hand KSh 30,000, or your front-door keys, to.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cats" id="categories">
+    <div class="wrap">
+      <div class="section-head"><h2>What you can ask for</h2><p>Six defined categories. Every request maps to a clear scope, price and evidence type.</p></div>
+      <div class="cat-grid">
+        <div class="cat-card"><div class="icn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#04AF4D" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><h4>Buy For Me</h4><p>Groceries, electronics, gifts, spares — bought against your budget, receipt attached.</p></div>
+        <div class="cat-card"><div class="icn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#04AF4D" stroke-width="2"><rect x="3" y="8" width="14" height="10" rx="2"/><path d="M17 12h3l2 3v3h-5"/><circle cx="7.5" cy="20.5" r="1.5"/><circle cx="17.5" cy="20.5" r="1.5"/></svg></div><h4>Get It For Me</h4><p>Pickup and delivery between two points — parcels, documents, dry-cleaning, cakes.</p></div>
+        <div class="cat-card"><div class="icn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#04AF4D" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></div><h4>Check It For Me</h4><p>Photos, video and a written report on an apartment, car, shop or supplier.</p></div>
+        <div class="cat-card"><div class="icn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#04AF4D" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div><h4>Go There For Me</h4><p>Attend a viewing, meet a supplier, represent you where you physically can't be.</p></div>
+        <div class="cat-card"><div class="icn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#04AF4D" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h4>Wait For Me</h4><p>Queues and admin errands — document collection, office submissions.</p></div>
+        <div class="cat-card"><div class="icn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#04AF4D" stroke-width="2"><rect x="3" y="7" width="7" height="7" rx="1"/><rect x="14" y="7" width="7" height="7" rx="1"/><rect x="3" y="16" width="7" height="4" rx="1"/><rect x="14" y="16" width="7" height="4" rx="1"/></svg></div><h4>Business Tasks</h4><p>Branding checks, stock verification and site visits across many locations.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="trust" id="trust">
+    <div class="wrap trust-grid">
+      <div>
+        <h2>Every runner carries a trust profile — not just a star rating.</h2>
+        <p class="lead">You're not hiring "some guy from WhatsApp." You're hiring a verified, rated, accountable person with a history.</p>
+        <ul class="trust-list">
+          <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>National ID, phone, face and M-Pesa identity all verified before a runner can take a paid task.</li>
+          <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Completion rate, on-time rate and cancellation rate — visible, not hidden behind a single average.</li>
+          <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Every task logs a timestamped timeline — arrival, photos, payment, delivery — for both sides.</li>
+        </ul>
+      </div>
+      <div class="profile-card">
+        <div class="profile-top"><div class="profile-avatar">BK</div><div><p class="profile-name">Brian K.</p><p class="profile-sub">● Verified Runner #10482 · Nairobi</p></div></div>
+        <div class="stat-row">
+          <div class="stat"><b class="num">137</b><span>errands done</span></div>
+          <div class="stat"><b class="num">4.9</b><span>rating</span></div>
+          <div class="stat"><b class="num">98.7%</b><span>completion</span></div>
+        </div>
+        <div class="skill-row"><span class="skill">Shopping</span><span class="skill">Documents</span><span class="skill">Inspections</span><span class="skill">Property visits</span><span class="skill">CBD · Westlands · Kilimani</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="segments" id="segments">
+    <div class="wrap">
+      <div class="section-head"><h2>Built for two kinds of trust</h2><p>The same verified network, two very different reasons to rely on it.</p></div>
+      <div class="seg-grid">
+        <div class="seg-card diaspora" onclick="showPage('diaspora')"><h3>For Kenyans abroad</h3><p>Your trusted person in Kenya — for the property check, the family errand, the document your relative shouldn't have to handle alone.</p><a>Request from anywhere →</a></div>
+        <div class="seg-card business" onclick="showPage('business')"><h3>For businesses</h3><p>Your field team, without hiring one. Dispatch verified people to inspect, verify and collect across every branch.</p><a>See business plans →</a></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="how" id="how">
+    <div class="wrap">
+      <div class="section-head"><h2>How a task moves</h2><p>Every request follows the same accountable path, from ask to evidence.</p></div>
+      <div class="how-list">
+        <div class="how-row"><div class="how-num">01</div><div class="how-title">Describe the task</div><div class="how-desc">Category, location, deadline and budget — priced instantly.</div></div>
+        <div class="how-row"><div class="how-num">02</div><div class="how-title">A verified runner is matched</div><div class="how-desc">Ranked by distance, trust score and skill — you see who's coming.</div></div>
+        <div class="how-row"><div class="how-num">03</div><div class="how-title">Track it live</div><div class="how-desc">Watch the runner en route, get notified on arrival, approve any price change.</div></div>
+        <div class="how-row"><div class="how-num">04</div><div class="how-title">Confirm with evidence</div><div class="how-desc">Photos, receipts and a timestamped timeline before you release payment.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap"><h2>Whatever it is — someone can be there in an hour.</h2><button class="btn btn-primary" onclick="showPage('auth')">Request your first task →</button></div>
+  </section>
+</div>
+
+<!-- ============ BUSINESS PAGE ============ -->
+<div class="page" id="page-business">
+  <header class="subhero biz-band">
+    <div class="wrap">
+      <div class="eyebrow" style="color:#5FE092;"><span class="rule" style="background:#5FE092;"></span>Nitume for Business</div>
+      <h1 style="color:#fff;">Your field team, without hiring one.</h1>
+      <p style="color:#AEB9CC;">Dispatch verified people to inspect shops, verify stock, collect documents and visit customers across every branch — priced per task or on a monthly plan.</p>
+      <button class="btn btn-primary" onclick="showPage('auth')">Talk to sales →</button>
+      <div class="biz-stats">
+        <div class="biz-stat"><b class="num">20+</b><span>branches covered for a single retail account</span></div>
+        <div class="biz-stat"><b class="num">98.6%</b><span>task completion rate across business accounts</span></div>
+        <div class="biz-stat"><b class="num">&lt; 2 min</b><span>average time to submit a task via API</span></div>
+      </div>
+    </div>
+  </header>
+
+  <section class="cats">
+    <div class="wrap">
+      <div class="section-head"><h2>Built for outsourced field operations</h2><p>Everything a distributed team needs, without adding headcount.</p></div>
+      <div class="cat-grid">
+        <div class="cat-card"><div class="icn">🏬</div><h4>Branding &amp; compliance checks</h4><p>Photograph signage, shelf placement and displays across every location.</p></div>
+        <div class="cat-card"><div class="icn">📦</div><h4>Stock verification</h4><p>Confirm what's actually on shelves versus what your system reports.</p></div>
+        <div class="cat-card"><div class="icn">📝</div><h4>Document &amp; signature runs</h4><p>Collect signed contracts, delivery notes and paperwork between offices.</p></div>
+        <div class="cat-card"><div class="icn">🏠</div><h4>Property &amp; site inspections</h4><p>Photo and video reports on any property in the Nitume network.</p></div>
+        <div class="cat-card"><div class="icn">🤝</div><h4>Customer visits</h4><p>Send a verified representative to meet a customer on your behalf.</p></div>
+        <div class="cat-card"><div class="icn">🔌</div><h4>API access</h4><p>Submit and track tasks programmatically — <span class="num">POST /tasks</span> from your own systems.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cats">
+    <div class="wrap">
+      <div class="section-head"><h2>Plans</h2><p>Pay per task, or move to a monthly plan as volume grows.</p></div>
+      <div class="plan-grid">
+        <div class="plan-card">
+          <span class="ptag">STARTER</span>
+          <h4>Pay per task</h4>
+          <div class="price">Task pricing<span> · no minimum</span></div>
+          <ul class="plan-list">
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Standard task pricing</li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Admin dashboard access</li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Email support</li>
+          </ul>
+          <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="showPage('auth')">Get started</button>
+        </div>
+        <div class="plan-card featured">
+          <span class="ptag">BUSINESS PRO</span>
+          <h4>KSh 15,000<span style="font-size:13px;font-weight:400;">/mo</span></h4>
+          <div class="price" style="font-size:13px;color:var(--slate-600);font-weight:400;">Discounted task fees</div>
+          <ul class="plan-list">
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Everything in Starter</li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Priority runner matching</li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Weekly reporting</li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Dedicated support</li>
+          </ul>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="showPage('auth')">Get started</button>
+        </div>
+        <div class="plan-card">
+          <span class="ptag">ENTERPRISE</span>
+          <h4>Custom</h4>
+          <div class="price" style="font-size:13px;color:var(--slate-600);font-weight:400;">Volume-based pricing</div>
+          <ul class="plan-list">
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Full API access</li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>Multi-city coverage</li>
+            <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>SLA-backed support</li>
+          </ul>
+          <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="showPage('auth')">Talk to sales</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta"><div class="wrap"><h2>Turn Nitume's runner network into your field team.</h2><button class="btn btn-primary" onclick="showPage('auth')">Talk to sales →</button></div></section>
+</div>
+
+<!-- ============ DIASPORA PAGE ============ -->
+<div class="page" id="page-diaspora">
+  <header class="subhero" style="background:var(--slate);">
+    <div class="wrap">
+      <div class="eyebrow"><span class="rule"></span>Nitume for the diaspora</div>
+      <h1>Your trusted person in Kenya.</h1>
+      <p>You don't have to ask a cousin or a friend to drop everything. Request a verified local runner for the property check, the family errand, or the document that needs handling properly — from anywhere in the world.</p>
+      <button class="btn btn-primary" onclick="showPage('auth')">Request from abroad →</button>
+      <div class="quote-block">
+        <p>"I needed someone to go to my apartment in Kilimani, check the water leak, speak to the caretaker and send me a report. Nitume had someone there in an hour."</p>
+        <span>— Kenyan customer based in London</span>
+      </div>
+    </div>
+  </header>
+
+  <section class="cats">
+    <div class="wrap">
+      <div class="section-head"><h2>What people abroad ask for most</h2><p>Real, recurring requests from diaspora customers.</p></div>
+      <div class="use-grid">
+        <div class="use-card"><h4>🏠 Property checks</h4><p>Regular inspection visits with photos and video of your property while you're away.</p></div>
+        <div class="use-card"><h4>🔧 Contractor supervision</h4><p>Confirm renovation or repair work is actually progressing as agreed.</p></div>
+        <div class="use-card"><h4>📝 Document &amp; admin handling</h4><p>Collect certificates, submit paperwork, or deliver documents to your lawyer.</p></div>
+        <div class="use-card"><h4>👨‍👩‍👧 Family errands</h4><p>Groceries, medicine pickup, or a visit to check in on a relative — without leaning on family.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="trust">
+    <div class="wrap">
+      <div class="section-head"><h2>Pay from anywhere, on your card</h2><p>No need for a Kenyan M-Pesa account — pay by card from wherever you are, and the runner is paid locally.</p></div>
+    </div>
+  </section>
+
+  <section class="cta"><div class="wrap"><h2>Someone can be there today — wherever "there" is in Kenya.</h2><button class="btn btn-primary" onclick="showPage('auth')">Request your first task →</button></div></section>
+</div>
+
+<!-- ============ BECOME A RUNNER PAGE ============ -->
+<div class="page" id="page-runner">
+  <header class="subhero earn-band">
+    <div class="wrap">
+      <div class="eyebrow"><span class="rule"></span>Earn with Nitume</div>
+      <h1>Turn spare hours into steady income.</h1>
+      <p>Accept tasks near you, get paid per job, and build a verified track record that unlocks higher-paying work. No shifts, no boss — just jobs you choose to take.</p>
+      <button class="btn btn-primary" onclick="showPage('auth')">Apply to become a Runner →</button>
+    </div>
+  </header>
+
+  <section class="cats">
+    <div class="wrap">
+      <div class="section-head"><h2>How it works</h2><p></p></div>
+      <div class="step-num-row">
+        <div class="step-num-card"><div class="n">1</div><h4 style="font-size:14.5px;margin:0 0 6px;">Apply &amp; verify</h4><p style="font-size:13px;color:var(--slate-600);margin:0;">ID, phone, selfie and M-Pesa identity check — usually under 24 hours.</p></div>
+        <div class="step-num-card"><div class="n">2</div><h4 style="font-size:14.5px;margin:0 0 6px;">Set your areas</h4><p style="font-size:13px;color:var(--slate-600);margin:0;">Choose the neighborhoods and task types you want to work.</p></div>
+        <div class="step-num-card"><div class="n">3</div><h4 style="font-size:14.5px;margin:0 0 6px;">Accept jobs</h4><p style="font-size:13px;color:var(--slate-600);margin:0;">Go online, accept offers near you, and get turn-by-turn navigation.</p></div>
+        <div class="step-num-card"><div class="n">4</div><h4 style="font-size:14.5px;margin:0 0 6px;">Get paid</h4><p style="font-size:13px;color:var(--slate-600);margin:0;">Earnings land in your Nitume balance — request an M-Pesa payout anytime.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="trust">
+    <div class="wrap trust-grid">
+      <div>
+        <h2>What you need to apply</h2>
+        <ul class="req-list">
+          <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>A valid Kenyan National ID</li>
+          <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>A smartphone with GPS and mobile data</li>
+          <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>An active M-Pesa line in your own name</li>
+          <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>A way of getting around your chosen service area</li>
+        </ul>
+      </div>
+      <div class="profile-card">
+        <div class="profile-top"><div class="profile-avatar">FM</div><div><p class="profile-name">Faith M.</p><p class="profile-sub">● Runner since March 2026</p></div></div>
+        <div class="stat-row">
+          <div class="stat"><b class="num">KSh 34K</b><span>last 30 days</span></div>
+          <div class="stat"><b class="num">89</b><span>errands</span></div>
+          <div class="stat"><b class="num">4.8</b><span>rating</span></div>
+        </div>
+        <div class="skill-row"><span class="skill">"Flexible enough to fit around my other work — I choose what I take."</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta"><div class="wrap"><h2>Apply in under ten minutes.</h2><button class="btn btn-primary" onclick="showPage('auth')">Apply to become a Runner →</button></div></section>
+</div>
+
+<!-- ============ LOGIN / SIGNUP PAGE ============ -->
+<div class="page" id="page-auth">
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <div class="auth-tab on" id="at-login" onclick="setAuthTab('login')">Log in</div>
+        <div class="auth-tab" id="at-signup" onclick="setAuthTab('signup')">Sign up</div>
+      </div>
+      <label class="auth-field-label">Phone number</label>
+      <input class="auth-input" placeholder="+254 7XX XXX XXX">
+      <div id="signup-extra" style="display:none;">
+        <label class="auth-field-label">Full name</label>
+        <input class="auth-input" placeholder="Your full name">
+      </div>
+      <button class="auth-submit" onclick="showPage('home')">Send verification code</button>
+      <div class="auth-divider">or</div>
+      <button class="auth-alt">Continue with Google</button>
+      <p class="auth-foot">By continuing you agree to Nitume's Terms &amp; Privacy Policy.</p>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <button class="brand" onclick="showPage('home')"><span class="dot"></span>Nitume</button>
+    <div class="flinks">
+      <button onclick="showPage('business')">For Business</button>
+      <button onclick="showPage('diaspora')">For Diaspora</button>
+      <button onclick="showPage('runner')">Become a Runner</button>
+    </div>
+    <div class="fcols">Nairobi · Mombasa · Kisumu · Nakuru · Eldoret · Thika — © 2026 Nitume</div>
+  </div>
+</footer>
+
+<script>
+  function showPage(id){
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.getElementById('page-'+id).classList.add('active');
+    document.querySelectorAll('.navlinks button').forEach(b=>b.classList.remove('on'));
+    var link = document.getElementById('nl-'+id);
+    if(link) link.classList.add('on');
+    window.scrollTo(0,0);
+  }
+  function setAuthTab(which){
+    document.getElementById('at-login').classList.toggle('on', which==='login');
+    document.getElementById('at-signup').classList.toggle('on', which==='signup');
+    document.getElementById('signup-extra').style.display = which==='signup' ? 'block' : 'none';
+  }
+</script>
+</body>
+</html>

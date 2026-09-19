@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nitume — Ops Dashboard (Full Flow)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue:#0B2545; --blue-700:#08192F; --blue-050:#E9EDF3;
+    --white:#FFFFFF; --slate:#F4F6F9; --slate-line:#E2E7EF;
+    --slate-600:#5C6B85; --slate-400:#8C97AC;
+    --green:#04AF4D; --green-700:#038A3D; --green-050:#E3F8EA;
+    --amber:#B8860B; --amber-050:#FBF3E1;
+    --red:#C1433C; --red-050:#FBEAE9;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Fira Sans',sans-serif;background:var(--slate);color:var(--blue);}
+  .num{font-family:'Fira Code',monospace;}
+  .app{display:grid;grid-template-columns:236px 1fr;min-height:100vh;position:relative;}
+  @media (max-width:900px){.app{grid-template-columns:1fr;}.sidebar{display:none;}}
+
+  .sidebar{background:var(--blue);color:#DCE3EE;padding:22px 16px;display:flex;flex-direction:column;}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;margin-bottom:30px;padding:0 6px;color:#fff;}
+  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--green);}
+  .nav-group{margin-bottom:22px;}
+  .nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.06em;color:#7E8CA8;padding:0 10px;margin-bottom:8px;}
+  .nav-item{display:flex;align-items:center;gap:11px;padding:10px 10px;border-radius:9px;font-size:13.5px;font-weight:500;color:#C3CADC;cursor:pointer;margin-bottom:2px;background:none;border:none;width:100%;text-align:left;font-family:'Fira Sans',sans-serif;}
+  .nav-item svg{width:17px;height:17px;flex:0 0 auto;}
+  .nav-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
+  .nav-item.active{background:var(--green);color:#fff;}
+  .nav-item .badge-count{margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;font-family:'Fira Code',monospace;}
+  .nav-item.active .badge-count{background:rgba(255,255,255,0.25);}
+  .sidebar-foot{margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px 10px;border-top:1px solid rgba(255,255,255,0.1);}
+  .sidebar-foot .av{width:32px;height:32px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;}
+  .sidebar-foot .name{font-size:12.5px;font-weight:600;color:#fff;}
+  .sidebar-foot .role{font-size:10.5px;color:#7E8CA8;}
+
+  .main{padding:26px 34px 50px;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px;flex-wrap:wrap;gap:14px;}
+  .topbar h1{font-size:23px;font-weight:700;margin:0;}
+  .topbar .sub{font-size:12.5px;color:var(--slate-600);margin-top:2px;font-family:'Fira Code',monospace;}
+  .top-actions{display:flex;gap:10px;align-items:center;}
+  .search-box{background:var(--white);border:1px solid var(--slate-line);border-radius:10px;padding:9px 14px;font-size:13px;color:var(--slate-400);display:flex;align-items:center;gap:8px;width:220px;}
+  .btn-city{background:var(--white);border:1px solid var(--slate-line);border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;}
+
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:22px;}
+  @media (max-width:1200px){.kpi-row{grid-template-columns:repeat(3,1fr);}}
+  .kpi-card{background:var(--white);border:1px solid var(--slate-line);border-radius:14px;padding:16px 18px;}
+  .kpi-card .l{font-size:11px;color:var(--slate-600);font-weight:700;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;}
+  .kpi-card b{font-family:'Fira Code',monospace;font-size:25px;font-weight:600;display:block;}
+  .kpi-card .delta{font-size:11px;color:var(--green-700);font-weight:600;font-family:'Fira Code',monospace;}
+  .kpi-card .delta.down{color:var(--red);}
+
+  .map-layout{display:grid;grid-template-columns:1fr 320px;gap:18px;}
+  @media (max-width:1100px){.map-layout{grid-template-columns:1fr;}}
+  .map-panel{background:var(--white);border:1px solid var(--slate-line);border-radius:16px;padding:0;overflow:hidden;height:520px;position:relative;}
+  .map-canvas{width:100%;height:100%;background:
+    linear-gradient(0deg, rgba(11,37,69,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11,37,69,0.045) 1px, transparent 1px), #EEF1F5;background-size:26px 26px;position:relative;}
+  .zone{position:absolute;border-radius:50%;background:rgba(4,175,77,0.06);border:1px dashed rgba(4,175,77,0.3);}
+  .runner-pt{position:absolute;width:13px;height:13px;border-radius:50%;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,0.2);cursor:pointer;}
+  .runner-pt.busy{background:var(--amber);}
+  .runner-pt.idle{background:var(--green);}
+  .errand-line{position:absolute;height:2px;background:repeating-linear-gradient(to right, var(--blue) 0 6px, transparent 6px 11px);}
+  .map-legend{position:absolute;bottom:16px;left:16px;background:#fff;border-radius:12px;padding:12px 16px;box-shadow:0 10px 24px -14px rgba(0,0,0,0.3);font-size:12px;display:flex;gap:16px;}
+  .legend-item{display:flex;align-items:center;gap:7px;}
+  .legend-dot{width:9px;height:9px;border-radius:50%;}
+  .map-topstat{position:absolute;top:16px;left:16px;background:#fff;border-radius:12px;padding:10px 16px;box-shadow:0 10px 24px -14px rgba(0,0,0,0.3);display:flex;gap:22px;}
+  .map-topstat div{text-align:center;}
+  .map-topstat b{display:block;font-family:'Fira Code',monospace;font-size:16px;}
+  .map-topstat span{font-size:10px;color:var(--slate-600);}
+
+  .side-panel{background:var(--white);border:1px solid var(--slate-line);border-radius:16px;padding:18px;height:520px;overflow-y:auto;}
+  .side-panel h3{font-size:14.5px;margin:0 0 14px;font-weight:700;}
+  .live-row{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--slate-line);align-items:center;cursor:pointer;}
+  .live-row:last-child{border-bottom:none;}
+  .live-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+  .live-row .t{font-size:12.5px;font-weight:600;}
+  .live-row .s{font-size:11px;color:var(--slate-600);font-family:'Fira Code',monospace;}
+
+  .table-card{background:var(--white);border:1px solid var(--slate-line);border-radius:14px;overflow:hidden;}
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--slate-600);padding:14px 18px;border-bottom:1px solid var(--slate-line);background:var(--slate);}
+  td{padding:14px 18px;font-size:13px;border-bottom:1px solid var(--slate-line);}
+  tr:last-child td{border-bottom:none;}
+  tr.clickable{cursor:pointer;}
+  tr.clickable:hover{background:var(--slate);}
+  .task-id{color:var(--slate-400);font-size:11px;font-family:'Fira Code',monospace;}
+  .task-cat{font-weight:600;}
+  .status-tag{font-size:11px;font-weight:700;padding:5px 10px;border-radius:999px;display:inline-block;}
+  .status-tag.assigned{background:var(--green-050);color:var(--green-700);}
+  .status-tag.route{background:var(--amber-050);color:var(--amber);}
+  .status-tag.wait{background:var(--slate);color:var(--slate-600);}
+  .status-tag.dispute{background:var(--red-050);color:var(--red);}
+  .row-assign{font-size:12px;font-weight:700;color:var(--blue);background:none;border:1px solid var(--slate-line);padding:6px 12px;border-radius:8px;cursor:pointer;}
+
+  .verif-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;}
+  @media (max-width:900px){.verif-grid{grid-template-columns:1fr;}}
+  .verif-card{background:var(--white);border:1px solid var(--slate-line);border-radius:14px;padding:18px;}
+  .verif-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;cursor:pointer;}
+  .verif-top .who{display:flex;gap:10px;align-items:center;}
+  .verif-avatar{width:38px;height:38px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;}
+  .verif-name{font-size:13.5px;font-weight:600;}
+  .verif-sub{font-size:11px;color:var(--slate-600);font-family:'Fira Code',monospace;}
+  .doc-row{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:8px 0;border-top:1px solid var(--slate-line);}
+  .doc-row:first-of-type{border-top:none;}
+  .doc-status{font-size:11px;font-weight:700;color:var(--green-700);}
+  .doc-status.pending{color:var(--amber);}
+  .verif-actions{display:flex;gap:8px;margin-top:14px;}
+  .btn-approve{flex:1;background:var(--green);color:#fff;text-align:center;padding:9px;border-radius:9px;font-size:12.5px;font-weight:700;border:none;cursor:pointer;}
+  .btn-reject{flex:1;background:transparent;border:1px solid var(--slate-line);color:var(--slate-600);text-align:center;padding:9px;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;}
+
+  .dispute-card{background:var(--white);border:1px solid var(--slate-line);border-radius:14px;padding:18px;margin-bottom:12px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;}
+  .dispute-title{font-size:14px;font-weight:600;margin:0 0 4px;}
+  .dispute-sub{font-size:11.5px;color:var(--slate-600);font-family:'Fira Code',monospace;}
+  .dispute-evidence{display:flex;gap:6px;margin-top:10px;}
+  .ev-chip{font-size:10.5px;background:var(--slate);color:var(--slate-600);padding:4px 9px;border-radius:999px;}
+
+  /* Reports panel */
+  .rep-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media (max-width:1000px){.rep-grid{grid-template-columns:1fr 1fr;}}
+  .rep-card{background:var(--white);border:1px solid var(--slate-line);border-radius:16px;padding:20px;}
+  .rep-card h4{font-size:13px;margin:0 0 16px;font-weight:700;}
+  .rep-bars{display:flex;align-items:flex-end;gap:8px;height:120px;}
+  .rep-bar{flex:1;background:var(--green-050);border-radius:5px 5px 0 0;position:relative;}
+  .rep-bar.hi{background:var(--green);}
+  .rep-bar-lab{display:flex;gap:8px;margin-top:8px;}
+  .rep-bar-lab span{flex:1;text-align:center;font-size:10px;color:var(--slate-600);font-family:'Fira Code',monospace;}
+  .rep-stat-list{display:flex;flex-direction:column;gap:12px;}
+  .rep-stat-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;}
+  .rep-stat-row b{font-family:'Fira Code',monospace;}
+  .rep-donut{width:110px;height:110px;border-radius:50%;margin:0 auto 16px;background:conic-gradient(var(--green) 0deg 355deg, var(--slate-line) 355deg 360deg);display:flex;align-items:center;justify-content:center;position:relative;}
+  .rep-donut::after{content:'98.6%';position:absolute;background:var(--white);width:78px;height:78px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Fira Code',monospace;font-weight:600;font-size:14px;}
+
+  /* Drawer */
+  .drawer-overlay{position:fixed;inset:0;background:rgba(11,37,69,0.35);z-index:90;display:none;}
+  .drawer-overlay.active{display:block;}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:420px;max-width:92vw;background:var(--slate);z-index:100;transform:translateX(100%);transition:transform .25s ease;box-shadow:-20px 0 50px -20px rgba(11,37,69,0.3);display:flex;flex-direction:column;}
+  .drawer.active{transform:translateX(0);}
+  .drawer-head{padding:20px 22px;background:var(--white);border-bottom:1px solid var(--slate-line);display:flex;justify-content:space-between;align-items:center;flex:0 0 auto;}
+  .drawer-head h3{font-size:16px;margin:0;font-weight:700;}
+  .drawer-close{width:32px;height:32px;border-radius:50%;background:var(--slate);border:none;cursor:pointer;font-size:16px;color:var(--slate-600);}
+  .drawer-body{flex:1;overflow-y:auto;padding:18px 22px 30px;}
+  .drawer-section{margin-bottom:20px;}
+  .drawer-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--slate-600);margin-bottom:10px;}
+  .drawer-card{background:var(--white);border:1px solid var(--slate-line);border-radius:12px;padding:14px 16px;}
+  .drawer-row{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid var(--slate-line);}
+  .drawer-row:last-child{border-bottom:none;}
+  .drawer-row b{font-family:'Fira Code',monospace;font-weight:600;}
+  .drawer-timeline{position:relative;padding-left:20px;}
+  .dt-item{position:relative;padding-bottom:16px;font-size:12.5px;}
+  .dt-item:last-child{padding-bottom:0;}
+  .dt-item::before{content:'';position:absolute;left:-20px;top:2px;width:8px;height:8px;border-radius:50%;background:var(--green);}
+  .dt-item::after{content:'';position:absolute;left:-16.5px;top:10px;bottom:-4px;width:1px;background:var(--slate-line);}
+  .dt-item:last-child::after{display:none;}
+  .dt-time{color:var(--slate-600);font-family:'Fira Code',monospace;font-size:11px;display:block;}
+  .drawer-actions{display:flex;gap:10px;margin-top:6px;}
+  .ev-thumb-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .ev-thumb{aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,var(--blue-050),var(--slate-line));display:flex;align-items:center;justify-content:center;font-size:16px;}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="dot"></span>Nitume Ops</div>
+    <div class="nav-group">
+      <div class="nav-label">Monitor</div>
+      <button class="nav-item active" data-p="p-map" onclick="showPanel('p-map',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>Live map</button>
+      <button class="nav-item" data-p="p-queue" onclick="showPanel('p-queue',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>Task queue<span class="badge-count">42</span></button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Network</div>
+      <button class="nav-item" data-p="p-runners" onclick="showPanel('p-runners',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><circle cx="18" cy="9" r="2.5"/><path d="M22 20c0-2.5-2-4-4.5-4.3"/></svg>Runners</button>
+      <button class="nav-item" data-p="p-disputes" onclick="showPanel('p-disputes',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Disputes<span class="badge-count">7</span></button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Insights</div>
+      <button class="nav-item" data-p="p-reports" onclick="showPanel('p-reports',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-4 4"/></svg>Reports</button>
+    </div>
+    <div class="sidebar-foot"><div class="av">NA</div><div><div class="name">Njeri A.</div><div class="role">Ops Lead · Nairobi</div></div></div>
+  </aside>
+
+  <main class="main">
+
+    <!-- LIVE MAP -->
+    <section class="panel active" id="p-map">
+      <div class="topbar">
+        <div><h1>Live operations</h1><div class="sub">Nairobi · Friday 18 Sep, 2:14 PM</div></div>
+        <div class="top-actions"><div class="search-box">🔍 Search task or runner…</div><div class="btn-city">📍 Nairobi ▾</div></div>
+      </div>
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="l">Today's errands</div><b class="num">347</b><span class="delta">↑ 12% vs yesterday</span></div>
+        <div class="kpi-card"><div class="l">Active runners</div><b class="num">129</b><span class="delta">86 idle · 43 on task</span></div>
+        <div class="kpi-card"><div class="l">Pending tasks</div><b class="num">42</b><span class="delta down">↑ 5 unmatched &gt;10 min</span></div>
+        <div class="kpi-card"><div class="l">Completed</div><b class="num">276</b><span class="delta">98.6% on time</span></div>
+        <div class="kpi-card"><div class="l">Disputes</div><b class="num">7</b><span class="delta down">2 unresolved &gt;24h</span></div>
+      </div>
+      <div class="map-layout">
+        <div class="map-panel">
+          <div class="map-canvas">
+            <div class="map-topstat"><div><b>129</b><span>RUNNERS</span></div><div><b>84</b><span>ACTIVE TASKS</span></div><div><b>3</b><span>FLAGGED</span></div></div>
+            <div class="zone" style="width:180px;height:180px;left:80px;top:120px;"></div>
+            <div class="zone" style="width:140px;height:140px;left:420px;top:220px;"></div>
+            <div class="errand-line" style="width:140px;left:150px;top:180px;transform:rotate(18deg);"></div>
+            <div class="errand-line" style="width:100px;left:440px;top:270px;transform:rotate(-25deg);"></div>
+            <div class="runner-pt idle" style="left:120px;top:160px;" onclick="openDrawer('runner')"></div>
+            <div class="runner-pt busy" style="left:220px;top:200px;" onclick="openDrawer('task')"></div>
+            <div class="runner-pt idle" style="left:300px;top:110px;" onclick="openDrawer('runner')"></div>
+            <div class="runner-pt busy" style="left:450px;top:250px;" onclick="openDrawer('task')"></div>
+            <div class="runner-pt idle" style="left:520px;top:180px;" onclick="openDrawer('runner')"></div>
+            <div class="runner-pt busy" style="left:380px;top:340px;" onclick="openDrawer('task')"></div>
+            <div class="runner-pt idle" style="left:180px;top:320px;" onclick="openDrawer('runner')"></div>
+            <div class="runner-pt idle" style="left:560px;top:340px;" onclick="openDrawer('runner')"></div>
+            <div class="map-legend"><div class="legend-item"><span class="legend-dot" style="background:var(--green);"></span>Idle</div><div class="legend-item"><span class="legend-dot" style="background:var(--amber);"></span>On task</div></div>
+          </div>
+        </div>
+        <div class="side-panel">
+          <h3>Live feed</h3>
+          <div class="live-row" onclick="openDrawer('task')"><span class="live-dot" style="background:var(--green);"></span><div><div class="t">Runner arrived — #10482</div><div class="s">Brian K. · Nyali · 2:11 PM</div></div></div>
+          <div class="live-row" onclick="openDrawer('task')"><span class="live-dot" style="background:var(--amber);"></span><div><div class="t">Evidence uploaded — #10479</div><div class="s">Faith M. · Sarit Centre · 2:08 PM</div></div></div>
+          <div class="live-row" onclick="openDrawer('task')"><span class="live-dot" style="background:var(--red);"></span><div><div class="t">Price change requested — #10475</div><div class="s">KSh 40,000 → 45,000 · 2:05 PM</div></div></div>
+          <div class="live-row" onclick="openDrawer('task')"><span class="live-dot" style="background:var(--green);"></span><div><div class="t">Task completed — #10471</div><div class="s">Peter O. · CBD · 1:58 PM</div></div></div>
+          <div class="live-row" onclick="openDrawer('runner')"><span class="live-dot" style="background:var(--slate-400);"></span><div><div class="t">New runner registered</div><div class="s">Awaiting ID verification · 1:52 PM</div></div></div>
+          <div class="live-row" onclick="openDrawer('task')"><span class="live-dot" style="background:var(--amber);"></span><div><div class="t">Runner en route — #10480</div><div class="s">Grace W. · Kilimani · 1:49 PM</div></div></div>
+          <div class="live-row" onclick="openDrawer('task')"><span class="live-dot" style="background:var(--red);"></span><div><div class="t">Cancellation — #10468</div><div class="s">Customer unreachable · 1:40 PM</div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TASK QUEUE -->
+    <section class="panel" id="p-queue">
+      <div class="topbar">
+        <div><h1>Task queue</h1><div class="sub">42 tasks pending across Nairobi</div></div>
+        <div class="top-actions"><div class="search-box">🔍 Filter by category…</div><div class="btn-city">Auto-assign ▾</div></div>
+      </div>
+      <div class="table-card">
+        <table>
+          <thead><tr><th>Task</th><th>Category</th><th>Customer</th><th>Status</th><th>Value</th><th></th></tr></thead>
+          <tbody>
+            <tr class="clickable" onclick="openDrawer('task')"><td><div class="task-cat">Apartment check — Nyali</div><div class="task-id">#NT-10482</div></td><td>Inspection</td><td>Achieng O.</td><td><span class="status-tag route">En route</span></td><td class="num">KSh 2,200</td><td><button class="row-assign" onclick="event.stopPropagation();openDrawer('task')">View</button></td></tr>
+            <tr class="clickable" onclick="openDrawer('task')"><td><div class="task-cat">Buy groceries — Sarit</div><div class="task-id">#NT-10484</div></td><td>Buy For Me</td><td>James K.</td><td><span class="status-tag wait">Unmatched</span></td><td class="num">KSh 1,000</td><td><button class="row-assign" onclick="event.stopPropagation();openDrawer('task')">Assign</button></td></tr>
+            <tr class="clickable" onclick="openDrawer('task')"><td><div class="task-cat">NTSA document pickup</div><div class="task-id">#NT-10485</div></td><td>Queue/Admin</td><td>Wanjiku M.</td><td><span class="status-tag wait">Unmatched</span></td><td class="num">KSh 600</td><td><button class="row-assign" onclick="event.stopPropagation();openDrawer('task')">Assign</button></td></tr>
+            <tr class="clickable" onclick="openDrawer('task')"><td><div class="task-cat">Branding check — 12 shops</div><div class="task-id">#NT-10486</div></td><td>Business</td><td>Java House HQ</td><td><span class="status-tag assigned">Assigned</span></td><td class="num">KSh 14,400</td><td><button class="row-assign" onclick="event.stopPropagation();openDrawer('task')">View</button></td></tr>
+            <tr class="clickable" onclick="openDrawer('dispute')"><td><div class="task-cat">Deliver contract — Upper Hill</div><div class="task-id">#NT-10487</div></td><td>Documents</td><td>Samuel T.</td><td><span class="status-tag dispute">Disputed</span></td><td class="num">KSh 500</td><td><button class="row-assign" onclick="event.stopPropagation();openDrawer('dispute')">Review</button></td></tr>
+            <tr class="clickable" onclick="openDrawer('task')"><td><div class="task-cat">Property viewing — Kileleshwa</div><div class="task-id">#NT-10488</div></td><td>Representation</td><td>Diaspora — UK</td><td><span class="status-tag route">En route</span></td><td class="num">KSh 2,800</td><td><button class="row-assign" onclick="event.stopPropagation();openDrawer('task')">View</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- RUNNERS -->
+    <section class="panel" id="p-runners">
+      <div class="topbar">
+        <div><h1>Runner verification</h1><div class="sub">14 applications awaiting review</div></div>
+        <div class="top-actions"><div class="search-box">🔍 Search runners…</div></div>
+      </div>
+      <div class="verif-grid">
+        <div class="verif-card">
+          <div class="verif-top" onclick="openDrawer('runner')"><div class="who"><div class="verif-avatar">MW</div><div><div class="verif-name">Mercy W.</div><div class="verif-sub">Applied 2 days ago · Nairobi</div></div></div></div>
+          <div class="doc-row"><span>National ID</span><span class="doc-status">Verified</span></div>
+          <div class="doc-row"><span>Phone number</span><span class="doc-status">Verified</span></div>
+          <div class="doc-row"><span>Selfie / liveness check</span><span class="doc-status">Verified</span></div>
+          <div class="doc-row"><span>M-Pesa identity match</span><span class="doc-status pending">Pending review</span></div>
+          <div class="verif-actions"><button class="btn-reject">Reject</button><button class="btn-approve">Approve</button></div>
+        </div>
+        <div class="verif-card">
+          <div class="verif-top" onclick="openDrawer('runner')"><div class="who"><div class="verif-avatar">DK</div><div><div class="verif-name">Dennis K.</div><div class="verif-sub">Applied 5 hours ago · Nairobi</div></div></div></div>
+          <div class="doc-row"><span>National ID</span><span class="doc-status">Verified</span></div>
+          <div class="doc-row"><span>Phone number</span><span class="doc-status">Verified</span></div>
+          <div class="doc-row"><span>Selfie / liveness check</span><span class="doc-status pending">Pending review</span></div>
+          <div class="doc-row"><span>M-Pesa identity match</span><span class="doc-status pending">Pending review</span></div>
+          <div class="verif-actions"><button class="btn-reject">Reject</button><button class="btn-approve">Approve</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DISPUTES -->
+    <section class="panel" id="p-disputes">
+      <div class="topbar"><div><h1>Disputes</h1><div class="sub">7 open · 2 unresolved past 24 hours</div></div></div>
+      <div class="dispute-card">
+        <div><p class="dispute-title">Wrong item purchased — #NT-10441</p><p class="dispute-sub">Customer: Samuel T. · Runner: Peter O. · Opened 2 hours ago</p><div class="dispute-evidence"><span class="ev-chip">Receipt</span><span class="ev-chip">3 photos</span><span class="ev-chip">Chat log</span><span class="ev-chip">Timeline</span></div></div>
+        <button class="row-assign" onclick="openDrawer('dispute')">Review evidence</button>
+      </div>
+      <div class="dispute-card">
+        <div><p class="dispute-title">Delivery delay dispute — #NT-10438</p><p class="dispute-sub">Customer: Grace N. · Runner: Faith M. · Opened 6 hours ago</p><div class="dispute-evidence"><span class="ev-chip">GPS trail</span><span class="ev-chip">Timeline</span></div></div>
+        <button class="row-assign" onclick="openDrawer('dispute')">Review evidence</button>
+      </div>
+      <div class="dispute-card">
+        <div><p class="dispute-title">Price authorization dispute — #NT-10425</p><p class="dispute-sub">Customer: James K. · Runner: Brian K. · Opened 1 day ago</p><div class="dispute-evidence"><span class="ev-chip">Authorization log</span><span class="ev-chip">Receipt</span></div></div>
+        <button class="row-assign" onclick="openDrawer('dispute')">Review evidence</button>
+      </div>
+    </section>
+
+    <!-- REPORTS -->
+    <section class="panel" id="p-reports">
+      <div class="topbar">
+        <div><h1>Reports</h1><div class="sub">Last 30 days · Nairobi</div></div>
+        <div class="top-actions"><div class="btn-city">Export CSV</div></div>
+      </div>
+      <div class="rep-grid">
+        <div class="rep-card">
+          <h4>Errands per day</h4>
+          <div class="rep-bars">
+            <div class="rep-bar" style="height:45%"></div><div class="rep-bar" style="height:55%"></div><div class="rep-bar" style="height:40%"></div><div class="rep-bar hi" style="height:85%"></div><div class="rep-bar" style="height:65%"></div><div class="rep-bar" style="height:70%"></div><div class="rep-bar" style="height:50%"></div>
+          </div>
+          <div class="rep-bar-lab"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+        </div>
+        <div class="rep-card">
+          <h4>Completion rate</h4>
+          <div class="rep-donut"></div>
+          <p style="text-align:center;font-size:12px;color:var(--slate-600);margin:0;">276 of 280 errands completed on time</p>
+        </div>
+        <div class="rep-card">
+          <h4>Revenue breakdown</h4>
+          <div class="rep-stat-list">
+            <div class="rep-stat-row"><span>Platform commission</span><b class="num">KSh 612,000</b></div>
+            <div class="rep-stat-row"><span>Booking &amp; urgency fees</span><b class="num">KSh 94,000</b></div>
+            <div class="rep-stat-row"><span>Business subscriptions</span><b class="num">KSh 180,000</b></div>
+            <div class="rep-stat-row" style="border-top:1px solid var(--slate-line);padding-top:12px;font-weight:700;"><span>Total (30d)</span><b class="num" style="color:var(--green-700);">KSh 886,000</b></div>
+          </div>
+        </div>
+        <div class="rep-card">
+          <h4>Runner network growth</h4>
+          <div class="rep-bars">
+            <div class="rep-bar" style="height:30%"></div><div class="rep-bar" style="height:38%"></div><div class="rep-bar" style="height:50%"></div><div class="rep-bar" style="height:58%"></div><div class="rep-bar hi" style="height:75%"></div>
+          </div>
+          <div class="rep-bar-lab"><span>W1</span><span>W2</span><span>W3</span><span>W4</span><span>W5</span></div>
+        </div>
+        <div class="rep-card">
+          <h4>By category</h4>
+          <div class="rep-stat-list">
+            <div class="rep-stat-row"><span>Buy For Me</span><b class="num">32%</b></div>
+            <div class="rep-stat-row"><span>Get It For Me</span><b class="num">27%</b></div>
+            <div class="rep-stat-row"><span>Check It For Me</span><b class="num">21%</b></div>
+            <div class="rep-stat-row"><span>Go There For Me</span><b class="num">9%</b></div>
+            <div class="rep-stat-row"><span>Wait For Me</span><b class="num">6%</b></div>
+            <div class="rep-stat-row"><span>Business</span><b class="num">5%</b></div>
+          </div>
+        </div>
+        <div class="rep-card">
+          <h4>Repeat usage</h4>
+          <div class="rep-donut" style="background:conic-gradient(var(--green) 0deg 234deg, var(--slate-line) 234deg 360deg);"></div>
+          <p style="text-align:center;font-size:12px;color:var(--slate-600);margin:0;">65% of customers placed a 2nd task within 30 days</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ DRAWERS ============ -->
+  <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+
+  <div class="drawer" id="drawer-task">
+    <div class="drawer-head"><h3>Task #NT-10482</h3><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
+    <div class="drawer-body">
+      <div class="drawer-section">
+        <span class="status-tag route">En route</span>
+        <h3 style="font-size:16px;margin:10px 0 4px;">Apartment check — Nyali</h3>
+        <p style="font-size:12.5px;color:var(--slate-600);margin:0;">Achieng O. · Inspection · Created today, 10:03 AM</p>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Runner</div>
+        <div class="drawer-card" style="display:flex;align-items:center;gap:12px;">
+          <div class="verif-avatar">BK</div>
+          <div><div style="font-weight:600;font-size:13.5px;">Brian K.</div><div class="num" style="font-size:11px;color:var(--slate-600);">Verified · 4.9 · 137 tasks</div></div>
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Timeline</div>
+        <div class="drawer-card">
+          <div class="drawer-timeline">
+            <div class="dt-item">Task accepted<span class="dt-time">10:03 AM</span></div>
+            <div class="dt-item">Payment confirmed<span class="dt-time">10:04 AM</span></div>
+            <div class="dt-item">Runner en route<span class="dt-time">10:12 AM</span></div>
+            <div class="dt-item">GPS: 1.2 km from destination<span class="dt-time">10:22 AM</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Payment</div>
+        <div class="drawer-card">
+          <div class="drawer-row"><span>Service fee</span><b class="num">KSh 700</b></div>
+          <div class="drawer-row"><span>Runner fee</span><b class="num">KSh 1,500</b></div>
+          <div class="drawer-row"><span>Merchant amount</span><b class="num">—</b></div>
+          <div class="drawer-row"><span>Total</span><b class="num">KSh 2,200</b></div>
+        </div>
+      </div>
+      <div class="drawer-actions">
+        <button class="btn-reject" onclick="closeDrawer()">Cancel task</button>
+        <button class="btn-approve" onclick="closeDrawer()">Reassign runner</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer" id="drawer-runner">
+    <div class="drawer-head"><h3>Runner profile</h3><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
+    <div class="drawer-body">
+      <div class="drawer-section" style="text-align:center;">
+        <div class="verif-avatar" style="width:56px;height:56px;font-size:18px;margin:0 auto 10px;">BK</div>
+        <h3 style="font-size:16px;margin:0;">Brian K.</h3>
+        <p style="font-size:12px;color:var(--green-700);font-weight:700;margin:4px 0 0;">● Verified · Level 3 — Trusted</p>
+      </div>
+      <div class="drawer-section">
+        <div class="rep-stat-list">
+          <div class="drawer-card" style="display:flex;justify-content:space-around;text-align:center;padding:16px 10px;">
+            <div><b class="num" style="display:block;font-size:18px;">137</b><span style="font-size:10px;color:var(--slate-600);">ERRANDS</span></div>
+            <div><b class="num" style="display:block;font-size:18px;">4.9</b><span style="font-size:10px;color:var(--slate-600);">RATING</span></div>
+            <div><b class="num" style="display:block;font-size:18px;">98.7%</b><span style="font-size:10px;color:var(--slate-600);">COMPLETION</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Verification</div>
+        <div class="drawer-card">
+          <div class="doc-row" style="border-top:none;"><span>National ID</span><span class="doc-status">Verified</span></div>
+          <div class="doc-row"><span>Phone number</span><span class="doc-status">Verified</span></div>
+          <div class="doc-row"><span>Selfie / liveness</span><span class="doc-status">Verified</span></div>
+          <div class="doc-row"><span>M-Pesa identity</span><span class="doc-status">Verified</span></div>
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Skills &amp; areas</div>
+        <div class="dispute-evidence" style="flex-wrap:wrap;">
+          <span class="ev-chip">Shopping</span><span class="ev-chip">Inspections</span><span class="ev-chip">Documents</span><span class="ev-chip">CBD</span><span class="ev-chip">Westlands</span><span class="ev-chip">Kilimani</span>
+        </div>
+      </div>
+      <div class="drawer-actions">
+        <button class="btn-reject" onclick="closeDrawer()">Suspend runner</button>
+        <button class="btn-approve" onclick="closeDrawer()">Message runner</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer" id="drawer-dispute">
+    <div class="drawer-head"><h3>Dispute #NT-10441</h3><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
+    <div class="drawer-body">
+      <div class="drawer-section">
+        <span class="status-tag dispute">Open</span>
+        <h3 style="font-size:16px;margin:10px 0 4px;">Wrong item purchased</h3>
+        <p style="font-size:12.5px;color:var(--slate-600);margin:0;">Customer: Samuel T. · Runner: Peter O. · Opened 2 hours ago</p>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Customer's claim</div>
+        <div class="drawer-card"><p style="margin:0;font-size:13px;">"I asked for the black size-42 shoes but received brown, size 41. The receipt shows the correct item was rung up though."</p></div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Evidence on file</div>
+        <div class="ev-thumb-grid">
+          <div class="ev-thumb">🧾</div><div class="ev-thumb">👟</div><div class="ev-thumb">👟</div><div class="ev-thumb">💬</div>
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Timeline</div>
+        <div class="drawer-card">
+          <div class="drawer-timeline">
+            <div class="dt-item">Runner purchased item<span class="dt-time">Yesterday, 4:02 PM</span></div>
+            <div class="dt-item">Delivered to customer<span class="dt-time">Yesterday, 4:41 PM</span></div>
+            <div class="dt-item">Dispute opened<span class="dt-time">Today, 12:15 PM</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="drawer-section">
+        <div class="drawer-label">Resolution</div>
+        <textarea class="search-box" style="width:100%;height:70px;" placeholder="Add a resolution note..."></textarea>
+      </div>
+      <div class="drawer-actions">
+        <button class="btn-reject" onclick="closeDrawer()">Side with runner</button>
+        <button class="btn-approve" onclick="closeDrawer()">Refund customer</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function showPanel(id, btn){
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    btn.classList.add('active');
+    closeDrawer();
+  }
+  function openDrawer(type){
+    document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('active'));
+    document.getElementById('drawer-'+type).classList.add('active');
+    document.getElementById('drawer-overlay').classList.add('active');
+  }
+  function closeDrawer(){
+    document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('active'));
+    document.getElementById('drawer-overlay').classList.remove('active');
+  }
+</script>
+</body>
+</html>
