@@ -246,6 +246,54 @@ export class PaymentsService implements OnApplicationBootstrap {
     );
   }
 
+  async settleErrand(errandId: string, actor: AuthContext): Promise<{
+    errandId: string;
+    settled: boolean;
+    released: PaymentTransaction[];
+    previousStatus: string;
+  }> {
+    const errand = await this.errands.getById(errandId);
+    if (!errand) {
+      throw new NotFoundException('Errand not found');
+    }
+    if (errand.status === ErrandStatus.SETTLED) {
+      const prior = await this.transactions.find({
+        where: { paymentId: (await this.payments.findOne({ where: { errandId } }))?.id ?? '', status: PaymentTransactionStatus.COMPLETED },
+      });
+      return { errandId, settled: true, released: prior, previousStatus: ErrandStatus.SETTLED };
+    }
+    if (errand.status === ErrandStatus.DISPUTED) {
+      throw new ConflictException('Disputed errands are locked; resolve the dispute first');
+    }
+    if (!ErrandStateMachine.canTransition(errand.status, ErrandStatus.SETTLED)) {
+      throw new ConflictException(`Cannot settle from ${errand.status}`);
+    }
+    const payment = await this.payments.findOne({ where: { errandId } });
+    if (!payment) {
+      throw new ConflictException('No payment to settle');
+    }
+    const legs = await this.transactions.find({ where: { paymentId: payment.id } });
+    const incomplete = legs.filter(
+      (t) => t.status !== PaymentTransactionStatus.COMPLETED,
+    );
+    if (incomplete.length > 0) {
+      throw new ConflictException(
+        `Cannot settle: ${incomplete.length} split-ledger leg(s) not cleared ` +
+          `(${incomplete.map((t) => `${t.paymentTypeId}:${t.status}`).join(', ')}).`,
+      );
+    }
+    const released = await this.transactions.save(
+      legs.map((l) => ({ ...l, status: PaymentTransactionStatus.COMPLETED })),
+    );
+    await this.errands.transition(
+      errandId,
+      ErrandStatus.SETTLED,
+      { type: StatusHistoryActor.SYSTEM },
+      `Settlement: split ledger released to runner (${released.length} legs).`,
+    );
+    return { errandId, settled: true, released, previousStatus: errand.status as string };
+  }
+
   async listForErrand(errandId: string, user: AuthContext): Promise<{
     payment: Payment | null;
     transactions: PaymentTransaction[];
