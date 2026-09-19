@@ -22,6 +22,7 @@ import {
   ErrandPointType,
   ErrandStatus,
   ErrandUrgency,
+  ResolveDisputeVerdict,
 } from '../../common/enums';
 
 export class ErrandLocationDto {
@@ -113,6 +114,16 @@ export class TransitionErrandDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+}
+
+export class ResolveDisputeDto {
+  @IsEnum(ResolveDisputeVerdict)
+  verdict: ResolveDisputeVerdict;
+
+  @IsString()
+  @MinLength(20)
+  @MaxLength(2000)
+  rationale: string;
 }
 
 export class ListErrandsQueryDto {

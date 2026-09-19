@@ -16,7 +16,9 @@ import {
   GeoPoint,
   StatusHistoryActor,
   AssignmentStatus,
+  UserRole,
 } from '../common/enums';
+import { AuthContext } from '../common/decorators/auth.decorators';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
 import { ErrandAssignment } from './errand-assignment.entity';
@@ -231,6 +233,52 @@ export class ErrandsService {
    * entity version column for optimistic concurrency: concurrent transitions
    * from the same version surface as a retryable conflict.
    */
+  async resolveDispute(
+    errandId: string,
+    verdict: 'runner_favourable' | 'customer_favourable',
+    rationale: string,
+    actor: AuthContext,
+  ): Promise<ErrandResult> {
+    const note = rationale.trim();
+    if (note.length < 20) {
+      throw new ConflictException(
+        'Mediation requires a written rationale of at least 20 characters (§A.6 audit).',
+      );
+    }
+    return this.dataSource.transaction((manager) =>
+      this.performDisputeResolution(manager, errandId, verdict, note, actor),
+    );
+  }
+
+  private async performDisputeResolution(
+    manager: EntityManager,
+    errandId: string,
+    verdict: 'runner_favourable' | 'customer_favourable',
+    note: string,
+    actor: AuthContext,
+  ): Promise<ErrandResult> {
+    if (actor.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only an admin may mediate a dispute');
+    }
+    const errand = await manager.getRepository(Errand).findOne({
+      where: { id: errandId },
+    });
+    if (!errand) {
+      throw new NotFoundException('Errand not found');
+    }
+    if (errand.status !== ErrandStatus.DISPUTED) {
+      throw new ConflictException(`Only DISPUTED errands can be mediated (got ${errand.status})`);
+    }
+    const to =
+      verdict === 'runner_favourable'
+        ? ErrandStatus.CONFIRMED // escrow settles → split ledger releases
+        : ErrandStatus.CANCELLED; // refund path → legs are reversed
+    return this.performTransition(manager, errandId, to, {
+      type: StatusHistoryActor.ADMIN,
+      id: actor.userId,
+    }, note, { role: actor.role, userId: actor.userId });
+  }
+
   async transition(
     errandId: string,
     to: ErrandStatus,

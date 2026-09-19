@@ -82,7 +82,6 @@ describe('ErrandStateMachine', () => {
       ErrandStatus.SETTLED,
       ErrandStatus.CANCELLED,
       ErrandStatus.FAILED,
-      ErrandStatus.DISPUTED,
       ErrandStatus.EXPIRED,
     ];
     for (const status of terminal) {

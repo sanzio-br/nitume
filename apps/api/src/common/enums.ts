@@ -187,3 +187,8 @@ export interface GeoPoint {
   type: 'Point';
   coordinates: [number, number];
 }
+
+export enum ResolveDisputeVerdict {
+  RUNNER = 'runner',
+  CUSTOMER = 'customer',
+}

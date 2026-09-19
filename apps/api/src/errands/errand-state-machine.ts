@@ -5,7 +5,11 @@ import { ErrandStatus, StatusHistoryActor } from '../common/enums';
  *
  * Reproduces the §3.3 lifecycle diagram 1:1. Every transition lists which
  * actors are allowed to trigger it. Statuses with no transitions are terminal
- * (CANCELLED, FAILED, DISPUTED, EXPIRED, SETTLED).
+ * (CANCELLED, FAILED, EXPIRED, SETTLED).
+ * DISPUTED is *suspensive*, not terminal: an ADMIN-mediated resolution is the
+ * only way out (runner-favourable -> CONFIRMED, customer-favourable -> CANCELLED),
+ * so a disputed escrow is never permanently locked. Resolution always writes a
+ * mediation note into status history (§3.3 + split-ledger release audit).
  */
 export interface ErrandTransition {
   to: ErrandStatus;
@@ -68,7 +72,14 @@ export const ERRAND_TRANSITIONS: Record<ErrandStatus, ErrandTransition[]> = {
   [ErrandStatus.SETTLED]: [],
   [ErrandStatus.CANCELLED]: [],
   [ErrandStatus.FAILED]: [],
-  [ErrandStatus.DISPUTED]: [],
+  // Dispute resolution — §3.3 mediation escape hatch (never a dead end).
+  // An ADMIN mediates and, unlike every other transition, records a binding
+  // rationale note (§A.6 audit). Runner-favourable: escrow still settles.
+  // Customer-favourable: errand is cancelled so legs are refunded.
+  [ErrandStatus.DISPUTED]: [
+    { to: ErrandStatus.CONFIRMED, allowedActors: [A] },
+    { to: ErrandStatus.CANCELLED, allowedActors: [A] },
+  ],
   [ErrandStatus.EXPIRED]: [],
 };
 

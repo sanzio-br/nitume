@@ -14,12 +14,14 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import {
   ErrandStatus,
+  ResolveDisputeVerdict,
   StatusHistoryActor,
   UserRole,
 } from '../common/enums';
 import {
   CreateErrandDto,
   ListErrandsQueryDto,
+  ResolveDisputeDto,
   TransitionErrandDto,
 } from './dto/errand.dto';
 import {
@@ -113,5 +115,32 @@ export class ErrandsController {
       default:
         return StatusHistoryActor.CUSTOMER;
     }
+  }
+
+  /**
+   * Admin-mediated dispute resolution (§3.3 mediation, §A.6 audit). ADMIN only.
+   * The verdict is written through the state machine's DISPUTED→CONFIRMED
+   * (runner-favourable, split ledger still settles) or DISPUTED→CANCELLED
+   * (customer-favourable, escrow legs reversed) transition, so this escapes the
+   * otherwise-terminal DISPUTED deadlock my settlement-guard audit flagged (§A.4).
+   */
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/resolve-dispute')
+  @HttpCode(200)
+  resolveDispute(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthContext,
+    @Body() dto: ResolveDisputeDto,
+  ): Promise<ErrandResult> {
+    const verdict: 'runner_favourable' | 'customer_favourable' =
+      dto.verdict === ResolveDisputeVerdict.RUNNER
+        ? 'runner_favourable'
+        : 'customer_favourable';
+    return this.errands.resolveDispute(
+      id,
+      verdict,
+      dto.rationale,
+      user,
+    );
   }
 }
