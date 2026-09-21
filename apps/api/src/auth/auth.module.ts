@@ -8,6 +8,7 @@ import { CustomersModule } from '../customers/customers.module';
 import { RunnersModule } from '../runners/runners.module';
 import { UsersModule } from '../users/users.module';
 import { User } from '../users/user.entity';
+import { OtpCode } from './otp-code.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
@@ -22,7 +23,7 @@ import { TokenService } from './token.service';
     UsersModule,
     CustomersModule,
     RunnersModule,
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, OtpCode]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       inject: [ConfigService],

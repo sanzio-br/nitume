@@ -1,0 +1,20 @@
+{
+  "name": "nitume",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nitume monorepo — API (NestJS) + Admin (Angular) + Website (Angular)",
+  "scripts": {
+    "dev:api": "npm --prefix apps/api run start:dev",
+    "dev:admin": "npm --prefix apps/admin run start",
+    "dev:website": "npm --prefix apps/website run start",
+    "dev": "node scripts/dev.mjs",
+    "build:api": "npm --prefix apps/api run build",
+    "build:admin": "npm --prefix apps/admin run build",
+    "build:website": "npm --prefix apps/website run build",
+    "build": "npm run build:api && npm run build:admin && npm run build:website",
+    "test:api": "npm --prefix apps/api run test",
+    "test:admin": "npm --prefix apps/admin run test",
+    "test:website": "npm --prefix apps/website run test",
+    "lint:api": "npm --prefix apps/api run lint"
+  }
+}

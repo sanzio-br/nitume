@@ -8,9 +8,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { IsNull, MoreThan, Repository } from 'typeorm';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
-import { RedisService } from '../infra/redis/redis.service';
+import { OtpChannel } from '../common/enums';
 import { MailService } from '../infra/mail/mail.service';
+import { OtpCode } from './otp-code.entity';
 import { OtpSender } from './otp-sender/otp-sender.interface';
 import { OTP_SENDER } from './otp-sender/otp-sender.provider';
 
@@ -28,21 +31,18 @@ export const normalizePhone = (phone: string): string => {
 
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
-const codeKey = (phone: string): string => `otp:code:${phone}`;
-const attemptsKey = (phone: string): string => `otp:attempts:${phone}`;
-const resendKey = (phone: string): string => `otp:resend:${phone}`;
-const rateLimitKey = (phone: string): string => `otp:rl:${phone}`;
-const emailCodeKey = (email: string): string => `otp:email:code:${email}`;
-const emailAttemptsKey = (email: string): string => `otp:email:attempts:${email}`;
-const emailResendKey = (email: string): string => `otp:email:resend:${email}`;
-const emailRateLimitKey = (email: string): string => `otp:email:rl:${email}`;
-
+/**
+ * OTP issuance + verification, fully backed by Postgres through the
+ * append-only `otp_codes` table. Every issued code is stored (hashed),
+ * disputes are bounded per-target, and codes are single-use. No Redis is
+ * involved in the OTP path.
+ */
 @Injectable()
 export class OtpService {
   private readonly logger = new Logger(OtpService.name);
 
   constructor(
-    private readonly redis: RedisService,
+    @InjectRepository(OtpCode) private readonly otpCodes: Repository<OtpCode>,
     private readonly config: ConfigService,
     private readonly mail: MailService,
     @Inject(OTP_SENDER) private readonly sender: OtpSender,
@@ -50,129 +50,175 @@ export class OtpService {
 
   async requestCode(rawPhone: string): Promise<void> {
     const phone = normalizePhone(rawPhone);
-    const { ttlSeconds, resendCooldownSeconds, rateLimitWindowSeconds, rateLimitPerPhone } =
-      this.otpConfig();
+    const cfg = this.otpConfig();
 
-    const requestsInWindow = await this.redis.incrementWithTtl(
-      rateLimitKey(phone),
-      rateLimitWindowSeconds,
-    );
-    if (requestsInWindow > rateLimitPerPhone) {
+    const requestsInWindow = await this.otpCodes.count({
+      where: {
+        channel: OtpChannel.PHONE,
+        target: phone,
+        createdAt: MoreThan(new Date(Date.now() - cfg.rateLimitWindowSeconds * 1000)),
+      },
+    });
+    if (requestsInWindow >= cfg.rateLimitPerPhone) {
       throw new HttpException(
-        `Too many OTP requests. Try again in a few minutes.`,
+        'Too many OTP requests. Try again in a few minutes.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    if (await this.redis.get(resendKey(phone))) {
+    if (await this.resendBlocked(OtpChannel.PHONE, phone, cfg.resendCooldownSeconds)) {
       throw new HttpException(
-        `Please wait ${resendCooldownSeconds}s before requesting another code.`,
+        `Please wait ${cfg.resendCooldownSeconds}s before requesting another code.`,
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
     const code = randomInt(100000, 1000000).toString();
-    await this.redis.set(codeKey(phone), this.hash(code), ttlSeconds);
-    await this.redis.set(resendKey(phone), '1', resendCooldownSeconds);
+    const now = new Date();
+    const codeRow = this.otpCodes.create({
+      channel: OtpChannel.PHONE,
+      target: phone,
+      codeHash: this.hash(code),
+      expiresAt: new Date(now.getTime() + cfg.ttlSeconds * 1000),
+      resendLockUntil: new Date(now.getTime() + cfg.resendCooldownSeconds * 1000),
+    });
+    await this.otpCodes.save(codeRow);
 
     try {
       await this.sender.send(phone, code);
     } catch (err) {
-      this.logger.error(`Failed to deliver OTP to ${phone}:`, err instanceof Error ? err.message : err);
-      // The code was issued; mark it unusable since it was never delivered.
-      await this.redis.del(codeKey(phone), resendKey(phone));
+      this.logger.error(
+        `Failed to deliver OTP to ${phone}:`,
+        err instanceof Error ? err.message : err,
+      );
+      // Mark the code unusable (expired) and clear the resend lock so the
+      // customer may immediately retry. The row still counts toward the
+      // rate-limited window (like the old Redis counter did).
+      await this.otpCodes.update(
+        { id: codeRow.id },
+        { expiresAt: new Date(0), resendLockUntil: null },
+      );
       throw new BadRequestException('Could not deliver the verification code. Try again.');
     }
   }
 
   verifyCode(rawPhone: string, code: string): Promise<void> {
-    return this.consumeCode(rawPhone, code);
+    const phone = normalizePhone(rawPhone);
+    return this.consumeCode(OtpChannel.PHONE, phone, code);
   }
 
   async requestEmailCode(rawEmail: string): Promise<void> {
     const email = normalizeEmail(rawEmail);
-    const { ttlSeconds, resendCooldownSeconds, rateLimitWindowSeconds, rateLimitPerPhone } =
-      this.otpConfig();
+    const cfg = this.otpConfig();
 
-    const requestsInWindow = await this.redis.incrementWithTtl(
-      emailRateLimitKey(email),
-      rateLimitWindowSeconds,
-    );
-    if (requestsInWindow > rateLimitPerPhone) {
+    const requestsInWindow = await this.otpCodes.count({
+      where: {
+        channel: OtpChannel.EMAIL,
+        target: email,
+        createdAt: MoreThan(new Date(Date.now() - cfg.rateLimitWindowSeconds * 1000)),
+      },
+    });
+    if (requestsInWindow >= cfg.rateLimitPerPhone) {
       throw new HttpException(
-        `Too many OTP requests. Try again in a few minutes.`,
+        'Too many OTP requests. Try again in a few minutes.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    if (await this.redis.get(emailResendKey(email))) {
+    if (await this.resendBlocked(OtpChannel.EMAIL, email, cfg.resendCooldownSeconds)) {
       throw new HttpException(
-        `Please wait ${resendCooldownSeconds}s before requesting another code.`,
+        `Please wait ${cfg.resendCooldownSeconds}s before requesting another code.`,
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
     const code = randomInt(100000, 1000000).toString();
-    await this.redis.set(emailCodeKey(email), this.hash(code), ttlSeconds);
-    await this.redis.set(emailResendKey(email), '1', resendCooldownSeconds);
+    const now = new Date();
+    const codeRow = this.otpCodes.create({
+      channel: OtpChannel.EMAIL,
+      target: email,
+      codeHash: this.hash(code),
+      expiresAt: new Date(now.getTime() + cfg.ttlSeconds * 1000),
+      resendLockUntil: new Date(now.getTime() + cfg.resendCooldownSeconds * 1000),
+    });
+    await this.otpCodes.save(codeRow);
 
     try {
       await this.mail.sendOtp(email, code);
     } catch (err) {
-      this.logger.error(`Failed to email OTP to ${email}:`, err instanceof Error ? err.message : err);
-      await this.redis.del(emailCodeKey(email), emailResendKey(email));
+      this.logger.error(
+        `Failed to email OTP to ${email}:`,
+        err instanceof Error ? err.message : err,
+      );
+      await this.otpCodes.update(
+        { id: codeRow.id },
+        { expiresAt: new Date(0), resendLockUntil: null },
+      );
       throw new BadRequestException('Could not email the verification code. Try again.');
     }
   }
 
   verifyEmailCode(rawEmail: string, code: string): Promise<void> {
-    return this.consumeEmailCode(rawEmail, code);
-  }
-
-  private async consumeEmailCode(rawEmail: string, code: string): Promise<void> {
     const email = normalizeEmail(rawEmail);
-    const { maxAttempts } = this.otpConfig();
-
-    const attempts = Number(await this.redis.get(emailAttemptsKey(email)) ?? 0);
-    if (attempts >= maxAttempts) {
-      throw new UnauthorizedException('Too many incorrect attempts. Request a new code.');
-    }
-
-    const stored = await this.redis.get(emailCodeKey(email));
-    if (!stored) {
-      throw new UnauthorizedException('No active verification code. Request a new one.');
-    }
-
-    if (!this.safeEqual(stored, this.hash(code))) {
-      await this.redis.set(emailAttemptsKey(email), (attempts + 1).toString(), this.config.get<number>('otp.ttlSeconds', 600));
-      throw new UnauthorizedException('Incorrect verification code.');
-    }
-
-    // Single-use: the code is consumed on success.
-    await this.redis.del(emailCodeKey(email), emailAttemptsKey(email), emailResendKey(email));
+    return this.consumeCode(OtpChannel.EMAIL, email, code);
   }
 
-  private async consumeCode(rawPhone: string, code: string): Promise<void> {
-    const phone = normalizePhone(rawPhone);
+  private async consumeCode(channel: OtpChannel, target: string, code: string): Promise<void> {
     const { maxAttempts } = this.otpConfig();
 
-    const attempts = Number(await this.redis.get(attemptsKey(phone)) ?? 0);
-    if (attempts >= maxAttempts) {
-      throw new UnauthorizedException('Too many incorrect attempts. Request a new code.');
-    }
+    // The active code is the most recent one that has not been consumed and
+    // has not expired.
+    const active = await this.otpCodes.findOne({
+      where: {
+        channel,
+        target,
+        consumedAt: IsNull(),
+        expiresAt: MoreThan(new Date()),
+      },
+      order: { createdAt: 'DESC' },
+    });
 
-    const stored = await this.redis.get(codeKey(phone));
-    if (!stored) {
+    if (!active) {
       throw new UnauthorizedException('No active verification code. Request a new one.');
     }
 
-    if (!this.safeEqual(stored, this.hash(code))) {
-      await this.redis.set(attemptsKey(phone), (attempts + 1).toString(), this.config.get<number>('otp.ttlSeconds', 600));
+    if (active.attempts >= maxAttempts) {
+      throw new UnauthorizedException('Too many incorrect attempts. Request a new code.');
+    }
+
+    if (!this.safeEqual(active.codeHash, this.hash(code))) {
+      await this.otpCodes.update(
+        { id: active.id },
+        { attempts: active.attempts + 1 },
+      );
       throw new UnauthorizedException('Incorrect verification code.');
     }
 
     // Single-use: the code is consumed on success.
-    await this.redis.del(codeKey(phone), attemptsKey(phone), resendKey(phone));
+    await this.otpCodes.update({ id: active.id }, { consumedAt: new Date() });
+  }
+
+  /**
+   * True when a code was issued for this target within the cooldown window
+   * and has not been consumed yet (a successful verify clears the lock,
+   * mirroring the old Redis `resend` key deletion).
+   */
+  private async resendBlocked(
+    channel: OtpChannel,
+    target: string,
+    cooldownSeconds: number,
+  ): Promise<boolean> {
+    const latest = await this.otpCodes.findOne({
+      where: {
+        channel,
+        target,
+        consumedAt: IsNull(),
+        expiresAt: MoreThan(new Date()),
+        createdAt: MoreThan(new Date(Date.now() - cooldownSeconds * 1000)),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    return latest !== null && (latest.resendLockUntil?.getTime() ?? 0) > Date.now();
   }
 
   private hash(value: string): string {

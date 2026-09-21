@@ -171,6 +171,12 @@ export enum NotificationChannel {
   SOCKET = 'socket',
 }
 
+/** Channel an OTP was issued to (phone or email address). */
+export enum OtpChannel {
+  PHONE = 'phone',
+  EMAIL = 'email',
+}
+
 export enum NotificationSendStatus {
   QUEUED = 'queued',
   SENT = 'sent',
