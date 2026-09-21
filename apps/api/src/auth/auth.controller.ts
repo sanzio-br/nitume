@@ -2,7 +2,14 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { AuthContext, Public } from '../common/decorators/auth.decorators';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
-import { OtpRequestDto, OtpVerifyDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto';
+import {
+  EmailOtpRequestDto,
+  EmailOtpVerifyDto,
+  OtpRequestDto,
+  OtpVerifyDto,
+  RefreshTokenDto,
+  RegisterDto,
+} from './dto/auth.dto';
 import { TokenPair } from './token.service';
 
 @Controller('auth')
@@ -34,6 +41,18 @@ export class AuthController {
       code: dto.code,
       role: dto.role,
     });
+  }
+
+  @Public()
+  @Post('otp/email/request')
+  requestEmailOtp(@Body() dto: EmailOtpRequestDto) {
+    return this.auth.requestEmailOtp(dto.email);
+  }
+
+  @Public()
+  @Post('otp/email/verify')
+  verifyEmailOtp(@Body() dto: EmailOtpVerifyDto) {
+    return this.auth.verifyEmailOtpAndLogin({ email: dto.email, code: dto.code });
   }
 
   @Public()

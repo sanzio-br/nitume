@@ -6,6 +6,30 @@
  * is surfaced in the UI as-is rather than fabricated.
  */
 
+// --- Matching / Assignment ---
+export interface AssignErrandDto {
+  runnerProfileId: string;
+  note?: string;
+}
+
+export interface QuoteErrandDto {
+  total: string;
+  baseFee: string;
+  distanceFee: string;
+  timeFee: string;
+  urgencyFee: string;
+  complexityFee: string;
+  premiumFee: string;
+  currency: string;
+  expiresAt: string;
+  note?: string;
+}
+
+export interface ReviewVerificationDto {
+  decision: 'approved' | 'rejected';
+  reviewerNote?: string;
+}
+
 // --- Auth ---
 export interface OtpRequestResult {
   message: string;
@@ -187,6 +211,11 @@ export interface ListRunnersResult {
   nextCursor: string | null;
 }
 
+export interface ListVerificationsResult {
+  items: RunnerVerification[];
+  nextCursor: string | null;
+}
+
 export interface RunnerVerification {
   id: string;
   runnerProfileId: string;
@@ -196,6 +225,16 @@ export interface RunnerVerification {
   submittedAt: string;
   reviewedBy?: string | null;
   reviewerNote?: string | null;
+  runnerProfile?: {
+    id: string;
+    userId: string;
+    availability?: string;
+  };
+  user?: {
+    id: string;
+    phone: string;
+    email: string | null;
+  };
 }
 
 export interface RunnerDetail {

@@ -5,24 +5,22 @@ import { catchError, of, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthStore } from './auth.store';
 import type {
-  ActingRole,
-  AuthTokens,
   OtpRequestResult,
   OtpVerifyResult,
   RefreshResult,
-  UserMe,
 } from '../api-types';
 
 /**
  * Admin OTP login module (design `nitume_admin_dashboard.html → #login-screen`):
  *
- *  1. `POST /auth/otp/request { phone }`            → dev OTP prints to API console
- *  2. `POST /auth/otp/verify  { phone, code }`      → `{ user, tokens }`, held as
- *     `admin` pair, acting-role `admin` (the committed contract header)
+ *  1. `POST /auth/otp/email/request { email }`      → emails a code to the admin
+ *  2. `POST /auth/otp/email/verify  { email, code }` → `{ user, tokens }`
  *
- * The HTTP interceptor attaches `Authorization: Bearer …` + the
- * `x-nitume-acting-role` header on every call after login, and rotates once on
- * 401 via `/auth/refresh`.
+ * Only provisioned admin accounts receive codes (the API rejects other emails),
+ * so the body carries no acting-role field — `forbidNonWhitelisted` would 400
+ * on anything outside the DTO. The HTTP interceptor attaches
+ * `Authorization: Bearer …` + the `x-nitume-acting-role` header on every call
+ * after login, and rotates once on 401 via `/auth/refresh`.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -34,26 +32,24 @@ export class AuthService {
     private readonly router: Router,
   ) {}
 
-  /** POST /auth/otp/request — starts the OTP flow for the entered phone. */
-  requestOtp(phone: string) {
+  /** POST /auth/otp/email/request — emails a code to the entered admin address. */
+  requestEmailOtp(email: string) {
     return this.http
-      .post<OtpRequestResult>(`${this.base}/auth/otp/request`, { phone })
+      .post<OtpRequestResult>(`${this.base}/auth/otp/email/request`, { email })
       .pipe(tap((r) => console.info('[nitume:admin] OTP requested', r)));
   }
 
-  /** POST /auth/otp/verify — exchanges the console-printed code for tokens. */
-  verifyOtp(phone: string, code: string) {
-    const payload: { phone: string; code: string; role?: ActingRole; actingRole?: ActingRole } = {
-      phone,
-      code,
-      actingRole: 'admin',
-    };
-    return this.http.post<OtpVerifyResult>(`${this.base}/auth/otp/verify`, payload).pipe(
-      tap(({ user, tokens }) => {
-        this.store.applyTokens(tokens);
-        this.store.setUser(user);
-      }),
-    );
+  verifyEmailOtp(email: string, code: string) {
+    return this.http
+      .post<OtpVerifyResult>(`${this.base}/auth/otp/email/verify`, { email, code })
+      .pipe(
+        tap((res) => {
+          console.log('[AuthService] verifyEmailOtp response:', res);
+          this.store.applyTokens(res.tokens);
+          this.store.setUser(res.user);
+          console.log('[AuthService] store state after apply:', this.store.state());
+        }),
+      );
   }
 
   /** POST /auth/refresh — rotate the pair (used by the interceptor on 401). */

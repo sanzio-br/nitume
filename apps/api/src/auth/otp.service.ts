@@ -10,6 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { RedisService } from '../infra/redis/redis.service';
+import { MailService } from '../infra/mail/mail.service';
 import { OtpSender } from './otp-sender/otp-sender.interface';
 import { OTP_SENDER } from './otp-sender/otp-sender.provider';
 
@@ -25,10 +26,16 @@ export const normalizePhone = (phone: string): string => {
   return `+254${match[1]}`;
 };
 
+export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
 const codeKey = (phone: string): string => `otp:code:${phone}`;
 const attemptsKey = (phone: string): string => `otp:attempts:${phone}`;
 const resendKey = (phone: string): string => `otp:resend:${phone}`;
 const rateLimitKey = (phone: string): string => `otp:rl:${phone}`;
+const emailCodeKey = (email: string): string => `otp:email:code:${email}`;
+const emailAttemptsKey = (email: string): string => `otp:email:attempts:${email}`;
+const emailResendKey = (email: string): string => `otp:email:resend:${email}`;
+const emailRateLimitKey = (email: string): string => `otp:email:rl:${email}`;
 
 @Injectable()
 export class OtpService {
@@ -37,6 +44,7 @@ export class OtpService {
   constructor(
     private readonly redis: RedisService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
     @Inject(OTP_SENDER) private readonly sender: OtpSender,
   ) {}
 
@@ -79,6 +87,69 @@ export class OtpService {
 
   verifyCode(rawPhone: string, code: string): Promise<void> {
     return this.consumeCode(rawPhone, code);
+  }
+
+  async requestEmailCode(rawEmail: string): Promise<void> {
+    const email = normalizeEmail(rawEmail);
+    const { ttlSeconds, resendCooldownSeconds, rateLimitWindowSeconds, rateLimitPerPhone } =
+      this.otpConfig();
+
+    const requestsInWindow = await this.redis.incrementWithTtl(
+      emailRateLimitKey(email),
+      rateLimitWindowSeconds,
+    );
+    if (requestsInWindow > rateLimitPerPhone) {
+      throw new HttpException(
+        `Too many OTP requests. Try again in a few minutes.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    if (await this.redis.get(emailResendKey(email))) {
+      throw new HttpException(
+        `Please wait ${resendCooldownSeconds}s before requesting another code.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const code = randomInt(100000, 1000000).toString();
+    await this.redis.set(emailCodeKey(email), this.hash(code), ttlSeconds);
+    await this.redis.set(emailResendKey(email), '1', resendCooldownSeconds);
+
+    try {
+      await this.mail.sendOtp(email, code);
+    } catch (err) {
+      this.logger.error(`Failed to email OTP to ${email}:`, err instanceof Error ? err.message : err);
+      await this.redis.del(emailCodeKey(email), emailResendKey(email));
+      throw new BadRequestException('Could not email the verification code. Try again.');
+    }
+  }
+
+  verifyEmailCode(rawEmail: string, code: string): Promise<void> {
+    return this.consumeEmailCode(rawEmail, code);
+  }
+
+  private async consumeEmailCode(rawEmail: string, code: string): Promise<void> {
+    const email = normalizeEmail(rawEmail);
+    const { maxAttempts } = this.otpConfig();
+
+    const attempts = Number(await this.redis.get(emailAttemptsKey(email)) ?? 0);
+    if (attempts >= maxAttempts) {
+      throw new UnauthorizedException('Too many incorrect attempts. Request a new code.');
+    }
+
+    const stored = await this.redis.get(emailCodeKey(email));
+    if (!stored) {
+      throw new UnauthorizedException('No active verification code. Request a new one.');
+    }
+
+    if (!this.safeEqual(stored, this.hash(code))) {
+      await this.redis.set(emailAttemptsKey(email), (attempts + 1).toString(), this.config.get<number>('otp.ttlSeconds', 600));
+      throw new UnauthorizedException('Incorrect verification code.');
+    }
+
+    // Single-use: the code is consumed on success.
+    await this.redis.del(emailCodeKey(email), emailAttemptsKey(email), emailResendKey(email));
   }
 
   private async consumeCode(rawPhone: string, code: string): Promise<void> {

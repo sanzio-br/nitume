@@ -28,6 +28,17 @@ export class OtpVerifyDto extends OtpRequestDto {
   role?: UserRole;
 }
 
+export class EmailOtpRequestDto {
+  @IsEmail({}, { message: 'Invalid email address' })
+  @MaxLength(255)
+  email: string;
+}
+
+export class EmailOtpVerifyDto extends EmailOtpRequestDto {
+  @Matches(/^\d{6}$/, { message: 'Code must be a 6-digit number' })
+  code: string;
+}
+
 export class RegisterDto {
   @Matches(/^(?:\+?254|0)([17]\d{8})$/, {
     message: 'Phone must be a valid Kenyan number (e.g. 0712345678 or +254712345678)',

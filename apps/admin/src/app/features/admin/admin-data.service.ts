@@ -1,12 +1,16 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Observable } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import type {
+  AssignErrandDto,
   Errand,
   ErrandListItem,
   ErrandStatusHistoryEntry,
+  QuoteErrandDto,
   ResolveDisputeVerdict,
+  ReviewVerificationDto,
   RunnerListItem,
+  RunnerVerification,
   UserMe,
 } from '../../core/api-types';
 
@@ -105,6 +109,7 @@ export class AdminDataService {
 
   readonly errands = signal<ErrandListItem[]>([]);
   readonly runners = signal<RunnerListItem[]>([]);
+  readonly verifications = signal<RunnerVerification[]>([]);
   readonly me = signal<UserMe | null>(null);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
@@ -293,6 +298,49 @@ export class AdminDataService {
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  async assignErrand(id: string, runnerProfileId: string, note?: string): Promise<Errand> {
+    const dto: AssignErrandDto = { runnerProfileId, note };
+    const res = await firstValueFrom(this.api.assignErrand(id, dto));
+    this.errands.update((items) =>
+      items.map((e) => (e.id === id ? { ...e, status: res.status, runnerProfileId } : e)),
+    );
+    return res;
+  }
+
+  async quoteErrand(id: string, dto: QuoteErrandDto): Promise<Errand> {
+    const res = await firstValueFrom(this.api.quoteErrand(id, dto));
+    this.errands.update((items) =>
+      items.map((e) => (e.id === id ? { ...e, status: res.status, quotedPrice: res.quotedPrice } : e)),
+    );
+    return res;
+  }
+
+  async reviewVerification(id: string, decision: 'approved' | 'rejected'): Promise<RunnerVerification> {
+    const dto: ReviewVerificationDto = { decision };
+    const res = await firstValueFrom(this.api.reviewVerification(id, dto));
+    this.verifications.update((items) =>
+      items.map((v) => (v.id === id ? res : v)),
+    );
+    return res;
+  }
+
+  listVerifications(status?: string, cursor?: string | null, limit = 50): Observable<{ items: RunnerVerification[]; nextCursor: string | null }> {
+    return new Observable((subscriber) => {
+      this.api.listVerifications(status, cursor, limit).subscribe({
+        next: (res) => {
+          if (!cursor) {
+            this.verifications.set(res.items);
+          } else {
+            this.verifications.update((v) => [...v, ...res.items]);
+          }
+          subscriber.next(res);
+          subscriber.complete();
+        },
+        error: (err) => subscriber.error(err),
+      });
+    });
   }
 }
 

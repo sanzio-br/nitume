@@ -4,6 +4,7 @@ import { AdminDataService, maskedId } from './admin-data.service';
 import { LiveMapPanelComponent } from './panels/live-map.panel';
 import { TaskQueuePanelComponent } from './panels/task-queue.panel';
 import { RunnersPanelComponent } from './panels/runners.panel';
+import { VerificationsPanelComponent } from './panels/verifications.panel';
 import { DisputesPanelComponent } from './panels/disputes.panel';
 import { ReportsPanelComponent } from './panels/reports.panel';
 import { TaskDrawerComponent } from './drawers/task-drawer';
@@ -11,7 +12,7 @@ import { RunnerDrawerComponent } from './drawers/runner-drawer';
 import { DisputeDrawerComponent } from './drawers/dispute-drawer';
 import { OpsDrawerComponent } from '../../shared/ops-drawer.component';
 
-type Panel = 'map' | 'queue' | 'runners' | 'disputes' | 'reports';
+type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'reports';
 type DrawerKind = 'task' | 'runner' | 'dispute';
 
 /**
@@ -26,6 +27,7 @@ type DrawerKind = 'task' | 'runner' | 'dispute';
     LiveMapPanelComponent,
     TaskQueuePanelComponent,
     RunnersPanelComponent,
+    VerificationsPanelComponent,
     DisputesPanelComponent,
     ReportsPanelComponent,
     TaskDrawerComponent,
@@ -76,6 +78,17 @@ type DrawerKind = 'task' | 'runner' | 'dispute';
               ></path>
             </svg>
             Runners
+          </button>
+          <button
+            class="ops-nav-item"
+            [class.active]="panel() === 'verifications'"
+            (click)="select('verifications')"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 12l2 2 4-4"></path>
+              <path d="M21 12c0 4.97-4.03 9-9 9S3 16.97 3 12S7.03 3 12 3s9 4.03 9 9"></path>
+            </svg>
+            Verifications
           </button>
           <button
             class="ops-nav-item"
@@ -139,6 +152,9 @@ type DrawerKind = 'task' | 'runner' | 'dispute';
             }
             @case ('runners') {
               <app-runners-panel (open)="openRunner($event)" />
+            }
+            @case ('verifications') {
+              <app-verifications-panel />
             }
             @case ('disputes') {
               <app-disputes-panel (open)="openDispute($event)" />

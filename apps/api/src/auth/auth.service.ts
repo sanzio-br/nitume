@@ -9,7 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { UserRole } from '../common/enums';
 import { CustomersService } from '../customers/customers.service';
 import { RunnersService } from '../runners/runners.service';
-import { PublicUser, UsersService } from '../users/users.service';
+import { PublicUser, toPublicUser, UsersService } from '../users/users.service';
 import { OtpService } from './otp.service';
 import { TokenPair, TokenService } from './token.service';
 
@@ -65,6 +65,38 @@ export class AuthService {
   async requestOtp(phone: string): Promise<{ message: string }> {
     await this.otp.requestCode(phone);
     return { message: 'Verification code sent' };
+  }
+
+  /**
+   * Email OTP — used by the admin login surface. Codes are only issued to
+   * accounts that already exist as active admins (admins are provisioned via
+   * `npm run seed:admin`, never self-registered).
+   */
+  async requestEmailOtp(email: string): Promise<{ message: string }> {
+    const user = await this.users.findByEmail(email);
+    if (!user || user.role !== UserRole.ADMIN || user.status !== 'active') {
+      throw new UnauthorizedException('No active admin account is linked to this email');
+    }
+    await this.otp.requestEmailCode(email);
+    return { message: 'Verification code sent' };
+  }
+
+  /** Verifies an emailed code for an existing active admin and issues tokens. */
+  async verifyEmailOtpAndLogin(params: {
+    email: string;
+    code: string;
+  }): Promise<{ user: PublicUser; tokens: TokenPair }> {
+    await this.otp.verifyEmailCode(params.email, params.code);
+
+    const user = await this.users.findByEmail(params.email);
+    if (!user || user.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException('No admin account is linked to this email');
+    }
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('Account is suspended or banned');
+    }
+    const tokens = await this.tokens.issueTokenPair(user);
+    return { user: toPublicUser(user), tokens };
   }
 
   /**

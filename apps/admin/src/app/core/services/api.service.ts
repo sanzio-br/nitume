@@ -2,16 +2,21 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import {
+  AssignErrandDto,
   Errand,
   ErrandStatus,
   ErrandStatusHistoryEntry,
   ListErrandsResult,
   ListRunnersResult,
+  ListVerificationsResult,
   OtpRequestResult,
   OtpVerifyResult,
+  QuoteErrandDto,
   RefreshResult,
   ResolveDisputeResult,
   ResolveDisputeVerdict,
+  ReviewVerificationDto,
+  RunnerVerification,
   UserMe,
 } from '../api-types';
 
@@ -30,17 +35,16 @@ export class ApiService {
 
   constructor(private readonly http: HttpClient) {}
 
-  /** POST /auth/otp/request — in dev the OTP prints to the API console. */
-  requestOtp(phone: string) {
-    return this.http.post<OtpRequestResult>(`${this.base}/auth/otp/request`, { phone });
+  /** POST /auth/otp/email/request — emails a code to a provisioned admin. */
+  requestEmailOtp(email: string) {
+    return this.http.post<OtpRequestResult>(`${this.base}/auth/otp/email/request`, { email });
   }
 
-  /** POST /auth/otp/verify — returns `{ user, tokens }` for an admin acting role. */
-  verifyOtp(phone: string, code: string, role: string) {
-    return this.http.post<OtpVerifyResult>(`${this.base}/auth/otp/verify`, {
-      phone,
+  /** POST /auth/otp/email/verify — returns `{ user, tokens }` for the admin. */
+  verifyEmailOtp(email: string, code: string) {
+    return this.http.post<OtpVerifyResult>(`${this.base}/auth/otp/email/verify`, {
+      email,
       code,
-      role,
     });
   }
 
@@ -79,6 +83,30 @@ export class ApiService {
       verdict,
       rationale,
     });
+  }
+
+  /** POST /errands/:id/assign — admin assigns a runner to an errand. */
+  assignErrand(id: string, dto: AssignErrandDto): import('rxjs').Observable<Errand> {
+    return this.http.post<Errand>(`${this.base}/errands/${id}/assign`, dto);
+  }
+
+  /** POST /errands/:id/quote — admin issues a quote for an errand. */
+  quoteErrand(id: string, dto: QuoteErrandDto): import('rxjs').Observable<Errand> {
+    return this.http.post<Errand>(`${this.base}/errands/${id}/quote`, dto);
+  }
+
+  /** GET /runners/verifications — admin verification inbox. */
+  listVerifications(status?: string, cursor?: string | null, limit = 50) {
+    let params = new HttpParams();
+    if (status) params = params.set('status', status);
+    if (cursor) params = params.set('cursor', cursor);
+    params = params.set('limit', String(limit));
+    return this.http.get<ListVerificationsResult>(`${this.base}/runners/verifications`, { params });
+  }
+
+  /** PATCH /runners/verifications/:id — admin reviews a verification. */
+  reviewVerification(id: string, dto: ReviewVerificationDto) {
+    return this.http.patch<RunnerVerification>(`${this.base}/runners/verifications/${id}`, dto);
   }
 
   /** GET /runners — admin runner directory (cursor-paginated). */

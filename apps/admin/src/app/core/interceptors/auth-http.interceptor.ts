@@ -12,7 +12,12 @@ import { Observable } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
 import { AuthStore } from '../auth/auth.store';
 
-const PUBLIC_SUFFIXES = ['/auth/otp/request', '/auth/otp/verify', '/auth/refresh', '/health'];
+const PUBLIC_SUFFIXES = [
+  '/auth/otp/email/request',
+  '/auth/otp/email/verify',
+  '/auth/refresh',
+  '/health',
+];
 const ACTING_ROLE_HEADER = 'x-nitume-acting-role';
 
 /**
@@ -49,7 +54,7 @@ export const authHttpInterceptor: HttpInterceptorFn = (
         switchMap(() => next(authed(store.state().tokens))),
         catchError(() => {
           store.clear();
-          void router.navigate(['/auth/login']);
+          void router.navigate(['/login']);
           return throwError(() => err);
         }),
       );
