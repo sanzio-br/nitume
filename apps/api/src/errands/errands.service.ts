@@ -375,6 +375,10 @@ export class ErrandsService {
         actor,
         note,
       );
+      const errandRepo = manager.getRepository(Errand);
+      const quotedPrice = quote.total.toFixed(2);
+      await errandRepo.update(errandId, { quotedPrice });
+      done.errand.quotedPrice = quotedPrice;
       const quoteRepo = manager.getRepository(Quote);
       const row = await quoteRepo.save(
         quoteRepo.create({
@@ -471,6 +475,11 @@ export class ErrandsService {
    */
   private mutableEntityManager(): EntityManager {
     return this.errands.manager;
+  }
+
+  /** Public lookup for cross-module access checks (e.g. evidence, ratings). */
+  async getCustomerProfileId(userId: string): Promise<string | null> {
+    return this.customerProfileIdFor(this.mutableEntityManager(), userId);
   }
 
   /**

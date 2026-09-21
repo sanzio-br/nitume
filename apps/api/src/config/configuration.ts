@@ -46,6 +46,14 @@ export interface AppConfig {
   payments: {
     mpesaTransport: string;
   };
+  evidence: {
+    storageDriver: 'console' | 'cloudinary';
+    cloudinary: {
+      cloudName: string | null;
+      apiKey: string | null;
+      apiSecret: string | null;
+    };
+  };
   atsms: {
     apiKey: string | null;
     username: string | null;
@@ -114,6 +122,19 @@ export const configuration = (): AppConfig => ({
   },
   payments: {
     mpesaTransport: process.env.PAYMENTS_MPESA_TRANSPORT ?? 'console',
+  },
+  // Evidence storage. `console` (dev default) logs uploads without storing;
+  // `cloudinary` uploads to Cloudinary (needs CLOUDINARY_CLOUD_NAME/API_KEY/
+  // API_SECRET). The transport resolves through the evidence storage provider.
+  evidence: {
+    storageDriver:
+      (process.env.EVIDENCE_STORAGE_DRIVER as AppConfig['evidence']['storageDriver']) ??
+      'console',
+    cloudinary: {
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
+      apiKey: process.env.CLOUDINARY_API_KEY ?? null,
+      apiSecret: process.env.CLOUDINARY_API_SECRET ?? null,
+    },
   },
   atsms: {
     apiKey: process.env.ATSMS_API_KEY ?? null,

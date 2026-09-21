@@ -17,6 +17,9 @@ import { MatchingModule } from './matching/matching.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RunnersModule } from './runners/runners.module';
 import { UsersModule } from './users/users.module';
+import { EvidenceModule } from './evidence/evidence.module';
+import { RatingsModule } from './ratings/ratings.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -45,6 +48,9 @@ import { UsersModule } from './users/users.module';
     ErrandsModule,
     MatchingModule,
     PaymentsModule,
+    EvidenceModule,
+    RatingsModule,
+    NotificationsModule,
   ],
   controllers: [HealthController],
   providers: [

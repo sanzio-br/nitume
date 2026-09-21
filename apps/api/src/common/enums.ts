@@ -198,3 +198,15 @@ export enum ResolveDisputeVerdict {
   RUNNER = 'runner',
   CUSTOMER = 'customer',
 }
+
+export enum PaymentMethodType {
+  MPESA = 'mpesa',
+  CARD = 'card',
+  BANK = 'bank',
+}
+
+export enum PriceChangeStatus {
+  REQUESTED = 'requested',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
