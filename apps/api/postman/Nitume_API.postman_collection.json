@@ -1,0 +1,1068 @@
+{
+  "info": {
+    "_postman_id": "2f1b9c3e-7a14-4c9d-9e6f-50b8e2c1a917",
+    "name": "Nitume API (apps/api)",
+    "description": "Manual QA collection for the Nitume errands API (NestJS, apps/api, /api/v1 prefix on port 3000).\n\nAUTH FLOW (folder 2_Auth):\n1. POST /auth/otp/request { phone } — in dev transport the OTP code is PRINTED TO THE API CONSOLE (console transport, no SMS). Read it there and paste into the nitume_dev_code variable.\n2. POST /auth/otp/verify { phone, code, role? } — response is { user, tokens }. The test script saves tokens.accessToken -> nitume_access_token and tokens.refreshToken -> nitume_refresh_token into the active environment.\n3. POST /auth/refresh { refreshToken } to rotate, POST /auth/logout { refreshToken } to revoke.\n\nACTING-ROLE HEADER:\nAn account can act in more than one capacity (customer owns errands, runner services them, admin mediates). Send x-nitume-acting-role: customer|runner|admin on OTP verify and on every request to switch the active surface. Admin-gated routes (matching assign/quote, errands resolve-dispute, runners admin list/review) require an ADMIN account.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "nitume_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "nitume_refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "nitume_dev_code",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "errand_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "runner_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "verification_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0_Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1_Auth",
+      "item": [
+        {
+          "name": "OTP Request (code -> console)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('otp request returns 201 + message', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('message');",
+                  "  if (body.devCode) pm.environment.set('nitume_dev_code', body.devCode);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0712345678\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "request"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "OTP Verify (saves tokens)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('verify returns 201 + tokens', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('user');",
+                  "  pm.expect(body).to.have.property('tokens');",
+                  "  pm.environment.set('nitume_access_token', body.tokens.accessToken);",
+                  "  pm.environment.set('nitume_refresh_token', body.tokens.refreshToken);",
+                  "  console.log('ACCESS_TOKEN=' + body.tokens.accessToken);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0712345678\",\n  \"code\": \"{{nitume_dev_code}}\",\n  \"role\": \"customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "verify"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{nitume_refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{nitume_refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2_Users",
+      "item": [
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3_Customers",
+      "item": [
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/customers/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "customers",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Patch Me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Safari\",\n  \"lastName\": \"Njoroge\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/customers/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "customers",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4_Runners",
+      "item": [
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Availability",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"available\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/availability",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "availability"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Submit verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"national_id\",\n  \"documentKey\": \"nitume/runners/id-front.jpg\",\n  \"faceSelfieKey\": \"nitume/runners/selfie.jpg\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/verifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "verifications"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "My verifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/verifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "verifications"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "My skills",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/skills",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "skills"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "My service-areas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/service-areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "service-areas"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5_Runners_Admin",
+      "item": [
+        {
+          "name": "List runners",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Review verification",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approved\",\n  \"notes\": \"ID + selfie match; KYC passed.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runners/{{runner_id}}/verifications/{{verification_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "{{runner_id}}",
+                "verifications",
+                "{{verification_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6_Errands",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": { \"lat\": -1.286389, \"lng\": 36.817223, \"label\": \"Karen\" },\n  \"destination\": { \"lat\": -1.3032, \"lng\": 36.8333, \"label\": \"Kilimani\" },\n  \"description\": \"Deliver a sealed envelope to the Kilimani office\",\n  \"budget\": 450,\n  \"deadline\": \"2026-09-20T12:00:00.000Z\",\n  \"schedule\": \"asap\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List mine",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get one",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "history"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Submit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deliveryProof\": \"nitume/errands/proof.jpg\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "submit"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Transition status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"in_progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Resolve dispute",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verdict\": \"refund_customer\",\n  \"note\": \"Runner failed to deliver within SLA; refund initiated.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/resolve-dispute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "resolve-dispute"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7_Matching",
+      "item": [
+        {
+          "name": "Admin assign",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidateRunnerIds\": [\"{{runner_id}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"runnerId\": \"{{runner_id}}\",\n  \"amount\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/quote",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "quote"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8_Payments",
+      "item": [
+        {
+          "name": "Initiate (crypto)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"mpesa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{errand_id}}/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{errand_id}}",
+                "initiate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Settle",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{errand_id}}/settle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{errand_id}}",
+                "settle"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "For errand",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{errand_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{errand_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
