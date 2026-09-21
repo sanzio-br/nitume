@@ -114,6 +114,34 @@ export class RunnersService {
       .getMany();
   }
 
+  async listVerificationsForAdmin(opts: {
+    limit?: number;
+    cursor?: string | null;
+    status?: VerificationStatus | null;
+  } = {}): Promise<{ items: RunnerVerification[]; nextCursor: string | null }> {
+    const { limit = 50, cursor, status } = opts;
+    const qb = this.verifications
+      .createQueryBuilder('v')
+      .leftJoinAndSelect('v.runnerProfile', 'p')
+      .leftJoinAndSelect('p.user', 'u')
+      .orderBy('v."createdAt"', 'DESC')
+      .limit(limit + 1);
+    if (status) {
+      qb.andWhere('v.status = :status', { status });
+    }
+    if (cursor) {
+      const [createdAt, id] = Buffer.from(cursor, 'base64').toString('utf-8').split('::');
+      qb.andWhere('(v."createdAt", v.id) < (:createdAt, :id)', { createdAt, id });
+    }
+    const rows = await qb.getMany();
+    let nextCursor: string | null = null;
+    if (rows.length > limit) {
+      const next = rows.pop()!;
+      nextCursor = Buffer.from(`${next.createdAt.toISOString()}::${next.id}`, 'utf-8').toString('base64');
+    }
+    return { items: rows, nextCursor };
+  }
+
   async setSkills(userId: string, skillNames: RunnerSkill[]): Promise<RunnerSkill[]> {
     const profile = await this.profileByUserId(userId);
     const unique = [...new Set(skillNames)];

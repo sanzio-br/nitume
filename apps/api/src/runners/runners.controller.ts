@@ -12,9 +12,10 @@ import {
 import { AuthContext, Public, Roles } from '../common/decorators/auth.decorators';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { UserRole } from '../common/enums';
+import { UserRole, VerificationStatus } from '../common/enums';
 import {
   AddVerificationDto,
+  ListVerificationsQueryDto,
   ReviewVerificationDto,
   SetAvailabilityDto,
   SetServiceAreasDto,
@@ -59,6 +60,17 @@ export class RunnersController {
       { decision: dto.decision, reviewerNote: dto.reviewerNote },
       user.userId,
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('verifications')
+  @Roles(UserRole.ADMIN)
+  listAllVerifications(@Query() query: ListVerificationsQueryDto) {
+    return this.runners.listVerificationsForAdmin({
+      limit: query.limit,
+      cursor: query.cursor,
+      status: query.status,
+    });
   }
 
   @UseGuards(JwtAuthGuard)

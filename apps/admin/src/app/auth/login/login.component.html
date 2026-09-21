@@ -1,0 +1,70 @@
+<div class="login-screen" data-nitume="auth-screen">
+  <div class="login-card">
+    <div class="login-brand"><span class="dot"></span>Nitume Ops</div>
+    <p class="login-sub">Internal access only. Sign in with your Nitume ops account.</p>
+
+    @if (error()) {
+      <div class="login-error" role="alert">{{ error() }}</div>
+    }
+
+    <label class="login-label" for="email">Work email</label>
+    <input
+      id="email"
+      class="login-input"
+      type="email"
+      [value]="email()"
+      (input)="onEmailInput($event)"
+      name="email"
+      autocomplete="email"
+      placeholder="you@nitume.co.ke"
+      required
+    />
+
+    <div class="login-label-row">
+      <label class="login-label login-label--inline" for="code">One-time code</label>
+
+      @if (emailValid() && !sent()) {
+        <button class="login-link" type="button"
+                (click)="sendCode()" [disabled]="busy() === 'sending'">
+          {{ busy() === 'sending' ? 'Sending…' : 'Send code' }}
+        </button>
+      }
+      @if (sent()) {
+        <button class="login-link" type="button"
+                (click)="sendCode()" [disabled]="busy() === 'sending'">
+          {{ busy() === 'sending' ? 'Sending…' : 'Resend code' }}
+        </button>
+      }
+    </div>
+
+    <input
+      id="code"
+      class="login-input num"
+      type="text"
+      inputmode="numeric"
+      autocomplete="one-time-code"
+      maxlength="6"
+      pattern="[0-9]{6}"
+      [value]="code()"
+      (input)="onCodeInput($event)"
+      name="code"
+      placeholder="000000"
+      required
+    />
+
+    @if (sent()) {
+      <p class="login-hint" role="status">A 6-digit code was emailed to {{ email() }}.</p>
+    }
+
+    <button
+      class="login-submit btn-primary"
+      type="button"
+      (click)="verify()"
+      [disabled]="busy() === 'verifying' || code().length !== 6"
+    >
+      {{ busy() === 'verifying' ? 'Verifying…' : 'Verify & sign in' }}
+    </button>
+
+    <p class="login-foot">Protected by two-factor authentication · Nitume internal systems</p>
+  </div>
+</div>

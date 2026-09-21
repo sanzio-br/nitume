@@ -1,0 +1,185 @@
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--nitume-blue);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--nitume-white);
+  border-radius: var(--nitume-r-l);
+  padding: 36px;
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.4);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--nitume-blue);
+  margin-bottom: 6px;
+}
+
+.login-brand .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--nitume-green);
+}
+
+.login-sub {
+  font-size: 13px;
+  color: var(--nitume-slate-600);
+  margin: 0 0 28px;
+}
+
+.login-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nitume-slate-600);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.login-email-row {
+  margin-bottom: 12px;
+}
+
+.login-input {
+  width: 100%;
+  background: var(--nitume-slate);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--nitume-blue);
+  margin-bottom: 16px;
+}
+
+.login-input:focus {
+  outline: 2px solid var(--nitume-green);
+  outline-offset: 1px;
+  border-color: var(--nitume-green);
+}
+
+.login-send {
+  width: 100%;
+  background: var(--nitume-slate);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nitume-blue);
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.login-send:hover:not(:disabled) {
+  background: var(--nitume-slate-line);
+}
+
+.login-send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.login-send--resend {
+  background: transparent;
+  border-color: var(--nitume-green);
+  color: var(--nitume-green);
+}
+
+.login-send--resend:hover:not(:disabled) {
+  background: var(--nitume-green-050);
+}
+
+.login-hint {
+  font-size: 12px;
+  color: var(--nitume-green);
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+
+.login-submit {
+  width: 100%;
+  border: none;
+  padding: 13px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 14.5px;
+  cursor: pointer;
+  margin-bottom: 14px;
+}
+
+.login-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.login-error {
+  background: var(--nitume-red-050);
+  color: var(--nitume-red);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.login-foot {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--nitume-slate-400);
+  margin: 6px 0 0;
+}
+/* Label + inline action row above the OTP input */
+.login-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.login-label--inline {
+  margin-bottom: 0;
+}
+
+/* Inline "Send code" / "Resend code" link */
+.login-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nitume-green);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.login-link:hover:not(:disabled) {
+  color: var(--nitume-blue);
+  text-decoration: underline;
+}
+
+.login-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Hint now sits under the OTP field */
+.login-hint {
+  font-size: 12px;
+  color: var(--nitume-green);
+  font-weight: 600;
+  margin: -8px 0 14px;
+}

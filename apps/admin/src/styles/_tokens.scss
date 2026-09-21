@@ -1,0 +1,38 @@
+// ============================================================
+// NITUME ADMIN — DESIGN TOKENS
+// Single source of truth. Values are VERBATIM from
+// designs/nitume_design_system.html. Do not introduce new
+// brand colors; amber/red are chip-only semantic accents.
+// ============================================================
+
+:root {
+  // --- Brand palette (exact, do not alter) ---
+  --nitume-blue: #0b2545; // text, headers, nav
+  --nitume-white: #ffffff; // canvas, primary cards
+  --nitume-slate: #f4f6f9; // outer bg, card separators
+  --nitume-green: #04af4d; // primary actions, active/success
+
+  // --- Derived tones (tints/shades of the 4 core colors only) ---
+  --nitume-blue-700: #08192f; // nav hover / pressed
+  --nitume-blue-050: #e9edf3; // faint blue chip bg
+  --nitume-slate-line: #e2e7ef; // hairline borders
+  --nitume-slate-600: #5c6b85; // muted body text
+  --nitume-slate-400: #8c97ac; // placeholder / faint labels
+  --nitume-green-050: #e3f8ea; // success chip bg
+  --nitume-green-700: #038a3d; // green hover / pressed
+
+  // --- Functional accents (chip-only, never large surfaces) ---
+  --nitume-amber: #b8860b; // pending / needs-attention
+  --nitume-amber-050: #fbf3e1;
+  --nitume-red: #c1433c; // disputes / failed
+  --nitume-red-050: #fbeae9;
+
+  // --- Radii ---
+  --nitume-r-s: 8px;
+  --nitume-r-m: 14px;
+  --nitume-r-l: 20px;
+
+  // --- Type ---
+  --nitume-font-ui: 'Fira Sans', system-ui, sans-serif;
+  --nitume-font-num: 'Fira Code', ui-monospace, monospace;
+}

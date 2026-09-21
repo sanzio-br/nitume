@@ -53,6 +53,10 @@ export class UsersService {
     return this.users.findOne({ where: { phone } });
   }
 
+  findByEmail(email: string): Promise<User | null> {
+    return this.users.findOne({ where: { email } });
+  }
+
   async getPublicProfile(userId: string): Promise<PublicUser> {
     const user = await this.findById(userId);
     if (!user) {

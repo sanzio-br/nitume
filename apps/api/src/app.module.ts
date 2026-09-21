@@ -9,6 +9,7 @@ import { CustomersModule } from './customers/customers.module';
 import { ENTITY_LIST } from './databases/entities';
 import { ErrandsModule } from './errands/errands.module';
 import { HealthController } from './health/health.controller';
+import { MailModule } from './infra/mail/mail.module';
 import { RedisModule } from './infra/redis/redis.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module';
       }),
     }),
     RedisModule,
+    MailModule,
     UsersModule,
     CustomersModule,
     RunnersModule,

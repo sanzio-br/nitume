@@ -1,4 +1,5 @@
 import { ChatMessage } from '../chat/chat-message.entity';
+import { OtpCode } from '../auth/otp-code.entity';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { DisputeEvent } from '../disputes/dispute-event.entity';
 import { Dispute } from '../disputes/dispute.entity';
@@ -47,4 +48,5 @@ export const ENTITY_LIST = [
   Rating,
   ChatMessage,
   NotificationLog,
+  OtpCode,
 ];

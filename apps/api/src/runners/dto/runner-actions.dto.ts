@@ -13,6 +13,7 @@ import {
   RunnerAvailability,
   RunnerSkill,
   RunnerVerificationType,
+  VerificationStatus,
 } from '../../common/enums';
 
 export class SetAvailabilityDto {
@@ -56,4 +57,19 @@ export class SetServiceAreasDto {
   @IsString({ each: true })
   @MaxLength(64, { each: true })
   areas: string[];
+}
+
+export class ListVerificationsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @IsOptional()
+  @IsEnum(VerificationStatus)
+  @Type(() => String)
+  status?: VerificationStatus;
 }

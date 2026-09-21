@@ -27,6 +27,15 @@ export interface AppConfig {
     rateLimitPerPhone: number;
     senderTransport: 'console' | 'africas_talking';
   };
+  mail: {
+    host: string | null;
+    port: number;
+    secure: boolean;
+    username: string | null;
+    password: string | null;
+    fromAddress: string | null;
+    fromName: string | null;
+  };
   security: {
     bcryptRounds: number;
   };
@@ -84,6 +93,17 @@ export const configuration = (): AppConfig => ({
   },
   security: {
     bcryptRounds: int(process.env.BCRYPT_ROUNDS, 12),
+  },
+  // SMTP creds for email OTP delivery. When MAIL_HOST is unset the mailer
+  // degrades to a console log so dev flows still work without a mail server.
+  mail: {
+    host: process.env.MAIL_HOST || null,
+    port: int(process.env.MAIL_PORT, 465),
+    secure: (process.env.MAIL_PORT ?? '465').trim() === '465',
+    username: process.env.MAIL_USERNAME || null,
+    password: process.env.MAIL_PASSWORD || null,
+    fromAddress: process.env.MAIL_FROM_ADDRESS || null,
+    fromName: process.env.MAIL_FROM_NAME || 'Nitume',
   },
   // PENDING OWNER DECISION: exact commission/runner-fee rates. Placeholders
   // from the business plan's indicative 20-25% range; production values must
