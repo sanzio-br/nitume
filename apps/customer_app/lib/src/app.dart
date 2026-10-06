@@ -1,6 +1,4 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 import 'screens/auth/otp_login_screen.dart';
@@ -40,20 +38,9 @@ class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
       debugShowCheckedModeBanner: false,
       theme: NitumeTheme.light(),
       home: _isSignedIn ? HomeShell() : const OtpLoginScreen(),
+      routes: {
+        '/home': (_) => const HomeShell(),
+      },
     );
   }
-}
-
-/// Authentication state enum
-enum AuthStatus {
-  unauthenticated,
-  authenticated,
-}
-
-/// Wire up auth repository and session state
-String resolveApiBaseUrl() {
-  const override = String.fromEnvironment('NITUME_API_BASE_URL');
-  if (override.isNotEmpty) return override;
-  final isAndroid = Platform.isAndroid;
-  return isAndroid ? 'http://10.0.2.2:3000/api/v1' : 'http://localhost:3000/api/v1';
 }

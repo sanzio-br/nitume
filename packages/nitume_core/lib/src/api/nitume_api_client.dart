@@ -27,15 +27,14 @@ class NitumeApiClient {
       headers: const {'Accept': 'application/json'},
     );
     _rawDio = Dio(options);
-    _dio = Dio(options)
-      ..interceptors.add(
-        AuthInterceptor(
-          dio: _dio,
-          tokenStore: tokenStore,
-          refreshTokens: refresh,
-          onUnauthenticated: onUnauthenticated,
-        ),
-      );
+    _dio = Dio(options);
+
+    final interceptor = AuthInterceptor(
+      tokenStore: tokenStore,
+      refreshTokens: refresh,
+      onUnauthenticated: onUnauthenticated,
+    );
+    _dio.interceptors.add(interceptor);
   }
 
   late final Dio _rawDio;

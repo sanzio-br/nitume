@@ -17,10 +17,6 @@ class NitumeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final border = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(NitumeRadii.medium),
-      side: const BorderSide(color: NitumeColors.slateLine),
-    );
     return Material(
       color: NitumeColors.white,
       borderRadius: BorderRadius.circular(NitumeRadii.medium),

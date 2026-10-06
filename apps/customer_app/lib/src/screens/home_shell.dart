@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:nitume_core/nitume_core.dart';
 
 /// The authenticated bottom-nav shell.
 class HomeShell extends StatelessWidget {

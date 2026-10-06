@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nitume_core/nitume_core.dart';
 
+import '../../config/api_base_url.dart';
+
 enum AuthFormStep { phone, code }
 
 class _ErrorText extends StatelessWidget {
@@ -41,7 +43,22 @@ class _OtpLoginScreenState extends State<OtpLoginScreen> {
   final _codeFocus = FocusNode();
 
   String _error = '';
+  bool _isLoading = false;
   AuthFormStep _step = AuthFormStep.phone;
+
+  // API client for auth calls
+  late final NitumeApiClient _api;
+  late final TokenStore _tokenStore;
+
+  @override
+  void initState() {
+    super.initState();
+    _tokenStore = SecureTokenStore();
+    _api = NitumeApiClient(
+      config: ApiConfig(baseUrl: resolveApiBaseUrl()),
+      tokenStore: _tokenStore,
+    );
+  }
 
   @override
   void dispose() {
@@ -60,19 +77,72 @@ class _OtpLoginScreenState extends State<OtpLoginScreen> {
     }
 
     setState(() {
-      _step = AuthFormStep.code;
+      _isLoading = true;
       _error = '';
     });
-    _codeFocus.requestFocus();
+
+    _api.post('/auth/otp/request', data: {'phone': phone}).then((_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _step = AuthFormStep.code;
+      });
+      _codeFocus.requestFocus();
+    }).onError((error, stack) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = _friendlyError(error);
+      });
+    });
   }
 
-  void _verifyCode() {
+  Future<void> _verifyCode() async {
     final code = _codeController.text.trim();
     if (RegExp(r'^\d{6}$').hasMatch(code) == false) {
       setState(() => _error = 'Enter the 6-digit code');
       return;
     }
-    Navigator.pushReplacementNamed(context, '/home');
+
+    setState(() {
+      _isLoading = true;
+      _error = '';
+    });
+
+    try {
+      // Call API: POST /auth/otp/verify
+      final result = await _api.post('/auth/otp/verify', data: {
+        'phone': _phoneController.text.trim(),
+        'code': code,
+      });
+      final tokens = result is Map ? result['tokens'] : null;
+      if (tokens is Map<String, dynamic>) {
+        await _tokenStore.write(AuthTokens.fromJson(tokens));
+      }
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      // Navigate to home on success
+      Navigator.pushReplacementNamed(context, '/home');
+    } on NitumeApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = 'Something went wrong. Please try again.';
+      });
+    }
+  }
+
+  String _friendlyError(Object? error) {
+    if (error is NitumeApiException) return error.message;
+    return 'Something went wrong. Please try again.';
   }
 
   @override
@@ -126,23 +196,24 @@ class _OtpLoginScreenState extends State<OtpLoginScreen> {
                   step: _step,
                   controller: _codeController,
                   focusNode: _codeFocus,
+                  isLoading: _isLoading,
                   onSubmit: _verifyCode,
                   onResend: _requestOtp,
                 ),
               ],
-              if (_error.isNotEmpty && !isCodeStep) ...[
+              if (_error.isNotEmpty) ...[
                 const SizedBox(height: NitumeSpacing.sm),
                 _ErrorText(_error),
               ],
-              const SizedBox(height: NitumeSpacing.lg),
-              FilledButton(
-                onPressed: _step == AuthFormStep.phone ? _requestOtp : null,
-                child: _step == AuthFormStep.phone
-                    ? const Text('Continue')
-                    : const CircularProgressIndicator(
-                        color: NitumeColors.white,
-                      ),
-              ),
+              if (!isCodeStep) ...[
+                const SizedBox(height: NitumeSpacing.lg),
+                FilledButton(
+                  onPressed: !_isLoading ? _requestOtp : null,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: NitumeColors.white)
+                      : const Text('Continue'),
+                ),
+              ],
               const SizedBox(height: NitumeSpacing.md),
               const Text(
                 'We\'ll text you a code. Standard message rates may apply.',
@@ -193,20 +264,18 @@ class _Brand extends StatelessWidget {
 
 class _CodeStep extends StatelessWidget {
   const _CodeStep({
-    required AuthFormStep step,
-    required TextEditingController controller,
-    required FocusNode focusNode,
-    required VoidCallback onSubmit,
-    required VoidCallback onResend,
-  })  : step = step,
-       controller = controller,
-       focusNode = focusNode,
-       onSubmit = onSubmit,
-       onResend = onResend;
+    required this.step,
+    required this.controller,
+    required this.focusNode,
+    required this.isLoading,
+    required this.onSubmit,
+    required this.onResend,
+  });
 
   final AuthFormStep step;
   final TextEditingController controller;
   final FocusNode focusNode;
+  final bool isLoading;
   final VoidCallback onSubmit;
   final VoidCallback onResend;
 
@@ -231,12 +300,17 @@ class _CodeStep extends StatelessWidget {
         ),
         const SizedBox(height: NitumeSpacing.md),
         FilledButton(
-          onPressed: step == AuthFormStep.code ? onSubmit : null,
-          child: step == AuthFormStep.code
-              ? const Text('Verify')
-              : const CircularProgressIndicator(
-                  color: NitumeColors.white,
-                ),
+          onPressed: step == AuthFormStep.code && !isLoading ? onSubmit : null,
+          child: step == AuthFormStep.code && isLoading
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: NitumeColors.white,
+                  ),
+                )
+              : const Text('Verify'),
         ),
         const SizedBox(height: NitumeSpacing.md),
         TextButton(
