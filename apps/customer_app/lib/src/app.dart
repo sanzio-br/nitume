@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 import 'screens/auth/otp_login_screen.dart';
@@ -14,23 +16,19 @@ class NitumeCustomerApp extends StatefulWidget {
 }
 
 class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
-  // Persistent auth state managed with local setValue
   bool _isSignedIn = false;
 
   @override
   void initState() {
     super.initState();
     // TODO: check for persisted session on launch
-    // For now, start unauthenticated so OTP screen shows first
-    setState(() => _isSignedIn = true);
+    _isSignedIn = false;
   }
 
-  // Signal sign-in from OTP screen
   void signIn() {
     setState(() => _isSignedIn = true);
   }
 
-  // Signal sign-out
   void signOut() {
     setState(() => _isSignedIn = false);
   }
@@ -44,4 +42,18 @@ class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
       home: _isSignedIn ? HomeShell() : const OtpLoginScreen(),
     );
   }
+}
+
+/// Authentication state enum
+enum AuthStatus {
+  unauthenticated,
+  authenticated,
+}
+
+/// Wire up auth repository and session state
+String resolveApiBaseUrl() {
+  const override = String.fromEnvironment('NITUME_API_BASE_URL');
+  if (override.isNotEmpty) return override;
+  final isAndroid = Platform.isAndroid;
+  return isAndroid ? 'http://10.0.2.2:3000/api/v1' : 'http://localhost:3000/api/v1';
 }
