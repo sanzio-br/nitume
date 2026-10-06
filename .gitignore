@@ -42,6 +42,7 @@ mobile/**/android/app/key.properties
 credentials.json
 service-account*.json
 secrets/
+dump.rdb
 
 # === macOS / OS ===
 .DS_Store
