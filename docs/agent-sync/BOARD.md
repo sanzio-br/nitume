@@ -33,11 +33,13 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 
 | From | To | Request | Status |
 |------|----|---------|--------|
-| design-auditor | core-ui | Build widgets C-01..C-34 (`docs/specs/customer/_shared.md`); move NitumeCard/StatusChip/statusPresentation from app to core; theme fixes (green focus ring, radii, tab bar colours, bundle Fira Sans/Code, `NitumeTypography.numeric`); data layer (repositories, models, Socket.IO client, FCM) | in progress: feat/core-customer-widgets (worktree ../nitume-core-customer-widgets) |
+| design-auditor | core-ui | Build widgets C-01..C-34 (`docs/specs/customer/_shared.md`); move NitumeCard/StatusChip/statusPresentation from app to core; theme fixes (green focus ring, radii, tab bar colours, bundle Fira Sans/Code, `NitumeTypography.numeric`); data layer (repositories, models, Socket.IO client, FCM) | done: feat/core-customer-widgets (built). All C-01..C-34 built; partial: C-25 no video playback, C-28 no unread styling, C-31 no markers/route without maps SDK |
 | design-auditor | api-contract | Endpoints/events A-1..A-17 (`docs/audits/customer-gap-report.md`): Socket.IO gateway + location:update and status/evidence/price-change events; GET /errands/:id/tracking; runner on errand; customer-readable quote; payment-flow selection + idempotency key; GET pending price-change; disputes controller; multi-status filter; errand count; evidence view URLs; FCM device registration; notification eventType enum. Schema items (names, title/reference) wait for owner | partly done: feat/api-customer-gaps (built). Added A-1..A-5, A-8..A-11, A-13, A-14 (A-2 names pending owner Q23); A-12 partial; A-17 exists; blocked A-6, A-7, A-15, A-16 |
-| api-contract | core-ui | Models: ErrandAssignmentView/RunnerPublicSummary (avgRating is a string), Quote, PriceChangeRequest, TrackingSnapshot, Dispute (+events), Device; `assignment` on Errand; repo methods for /errands/count, multi-status /errands, /errands/:id/quote, /errands/:id/tracking, GET price-change, /disputes, /users/me/devices; Socket.IO client (auth:{token}, errand:join/leave; location:update, errand:status_changed, evidence:uploaded, price_change:requested); NotificationEventType enum. Contract table in api-contract report (feat/api-customer-gaps) | open (core-ui already running; send as follow-up) |
+| api-contract | core-ui | Models: ErrandAssignmentView/RunnerPublicSummary (avgRating is a string), Quote, PriceChangeRequest, TrackingSnapshot, Dispute (+events), Device; `assignment` on Errand; repo methods for /errands/count, multi-status /errands, /errands/:id/quote, /errands/:id/tracking, GET price-change, /disputes, /users/me/devices; Socket.IO client (auth:{token}, errand:join/leave; location:update, errand:status_changed, evidence:uploaded, price_change:requested); NotificationEventType enum. Contract table in api-contract report (feat/api-customer-gaps) | done: feat/core-customer-widgets (models, repositories, RealtimeClient interface + RealtimeEvents) |
 | api-contract | flutter-customer | Register FCM token after login / delete on logout; Home/History use status lists; Profile count from /errands/count; Report a problem → POST /disputes, handle 409; keep polling GET /payments/:errandId as fallback | open |
 | api-contract | api-contract (later) | Runner `location:ping` intake (Redis GEO, currentLocation, geofencing, ETA); FCM push worker; Socket.IO Redis adapter before multi-instance; update Postman collection | open |
+| core-ui | flutter-customer | Switch to core NitumeCard/StatusChip/statusPresentation and delete apps/customer_app/lib/src/widgets/nitume_card.dart; replace all fontFamily 'FiraCode'/'FiraSans' with NitumeTypography.numeric / NumText / NitumeTextStyles; call NitumeFonts.registerLicenses() in main(); use NitumeTabBar + NitumeButton variants | open |
+| core-ui | flutter-customer | Implement RealtimeClient, PlaceSearchService and LiveTrackingMap(mapBuilder:) once owner approves packages (Q29–Q32) | blocked on owner |
 
 ## Questions for the project owner
 
@@ -71,6 +73,11 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 | 26 | api-contract (customer gaps) | BullMQ: §4.4 routes notifications through a BullMQ queue but it isn't installed; approve adding bullmq/@nestjs/bullmq for the notifications worker? | open |
 | 27 | api-contract (customer gaps) | Runner location privacy: share position only RUNNER_ASSIGNED → AWAITING_CUSTOMER. Confirm? | open |
 | 28 | api-contract (customer gaps) | Security (pre-existing): GET /errands/:id/rating has no access check. Fix in api-contract follow-up? Recommended: yes | open |
+| 29 | core-ui (customer shared) | Add socket_io_client package (Flutter) to implement RealtimeClient? Recommended: yes | open |
+| 30 | core-ui (customer shared) | Add google_maps_flutter (LiveTrackingMap) and a Google Places client (PlaceSearchService)? (third-party, needs API key) | open |
+| 31 | core-ui (customer shared) | Add firebase_messaging for FCM push tokens? (third-party) | open |
+| 32 | core-ui (customer shared) | Add a video player package for EvidenceViewer video evidence? | open |
+| 33 | core-ui (customer shared) | Accessibility: design-system chip colours fail WCAG AA at 12px (success 4.01, pending 2.95, danger 4.36); slate-400 on white 2.94; green-700 links 4.46. Keep, or set NitumeDesignChoices.chipHighContrastText = true (blue text on same tint)? | open |
 
 ## Session log
 
@@ -78,3 +85,4 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 |------|---------|---------|
 | 2026-10-07 | Customer surface spec + audit (design-auditor): 17 views specced; 8 audited-fail (7 views + shell), 10 specced/not built; 9 undrawn screens mapped; 21 owner questions | 40dbc17, 1153736, eb7853e |
 | 2026-10-07 | api-contract customer gaps (feat/api-customer-gaps, stage built): 11 A-items added, 4 blocked on owner, Socket.IO gateway added (@nestjs/websockets, @nestjs/platform-socket.io per §4.1); 58 unit + 9 e2e tests pass | c1adb4c, d61992f, f5d2a51, 5a221a0, 03225af, aa9c18a, 1d4b24b, 239e73d, 5bb5b3d, f4213f7, 288e251 |
+| 2026-10-07 | core-ui customer shared (feat/core-customer-widgets, stage built): bundled Fira fonts, theme aligned to design system, C-01..C-34 + data layer; open design Qs held as defaults in nitume_design_choices.dart; 55 tests pass | 6e571dd, d302802, ebe65a3, 25fca57, 38a6b42, 6691b4f |
