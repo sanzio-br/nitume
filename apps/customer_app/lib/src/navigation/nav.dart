@@ -35,9 +35,18 @@ class OtpArgs {
 
 /// `v-payment` arguments.
 class PaymentArgs {
-  const PaymentArgs({required this.errandId, this.route, this.method});
+  const PaymentArgs({
+    required this.errandId,
+    this.route,
+    this.method,
+    this.fromCheckout = false,
+  });
 
   final String errandId;
+
+  /// True when the customer just tapped "Confirm & pay": a new STK push may
+  /// be sent. Otherwise the screen only shows the current payment state.
+  final bool fromCheckout;
 
   /// Merchant route chosen at checkout (OA-5); `null` when unknown.
   final MerchantRoute? route;
@@ -84,7 +93,8 @@ abstract final class Nav {
     String name, [
     Object? a,
   ]) =>
-      Navigator.of(context).pushReplacementNamed<T, Object?>(name, arguments: a);
+      Navigator.of(context)
+          .pushReplacementNamed<T, Object?>(name, arguments: a);
 
   /// Pops every pushed screen back to the shell (or the signed-out root).
   static void popToRoot(BuildContext context) =>
@@ -96,8 +106,7 @@ abstract final class Nav {
     BuildContext context, {
     required String phone,
     Duration? cooldown,
-  }) =>
-      _push(context, Routes.otp, OtpArgs(phone: phone, cooldown: cooldown));
+  }) => _push(context, Routes.otp, OtpArgs(phone: phone, cooldown: cooldown));
 
   // ---- shell ----------------------------------------------------------------
 
@@ -120,8 +129,7 @@ abstract final class Nav {
   static Future<void> toNewTask(
     BuildContext context, {
     ErrandCategory? category,
-  }) =>
-      _push(context, Routes.newTask, category);
+  }) => _push(context, Routes.newTask, category);
 
   // ---- checkout -------------------------------------------------------------
 
@@ -131,40 +139,43 @@ abstract final class Nav {
   static Future<void> replaceWithAwaitingQuote(
     BuildContext context,
     String errandId,
-  ) =>
-      _replace(context, Routes.awaitingQuote, errandId);
+  ) => _replace(context, Routes.awaitingQuote, errandId);
 
-  static Future<void> toPayment(
+  /// Shows the current payment state (Home / Task detail "Pay now").
+  static Future<void> toPayment(BuildContext context, String errandId) =>
+      _push(context, Routes.payment, PaymentArgs(errandId: errandId));
+
+  /// Checkout CTA: pay with [route] and [method] (OA-5, OA-21).
+  static Future<void> toCheckoutPayment(
     BuildContext context,
     String errandId, {
     MerchantRoute? route,
     PaymentMethod? method,
-  }) =>
-      _push(
-        context,
-        Routes.payment,
-        PaymentArgs(errandId: errandId, route: route, method: method),
-      );
+  }) => _push(
+    context,
+    Routes.payment,
+    PaymentArgs(
+      errandId: errandId,
+      route: route,
+      method: method,
+      fromCheckout: true,
+    ),
+  );
 
   static Future<void> replaceWithPayment(
     BuildContext context,
     String errandId,
-  ) =>
-      _replace(context, Routes.payment, PaymentArgs(errandId: errandId));
+  ) => _replace(context, Routes.payment, PaymentArgs(errandId: errandId));
 
   static Future<void> toMerchantPayment(
     BuildContext context,
     String errandId, {
     String? approvedIncrease,
-  }) =>
-      _push(
-        context,
-        Routes.merchantPayment,
-        MerchantPaymentArgs(
-          errandId: errandId,
-          approvedIncrease: approvedIncrease,
-        ),
-      );
+  }) => _push(
+    context,
+    Routes.merchantPayment,
+    MerchantPaymentArgs(errandId: errandId, approvedIncrease: approvedIncrease),
+  );
 
   // ---- task -----------------------------------------------------------------
 
@@ -174,14 +185,12 @@ abstract final class Nav {
   static Future<void> replaceWithTaskDetail(
     BuildContext context,
     String errandId,
-  ) =>
-      _replace(context, Routes.taskDetail, errandId);
+  ) => _replace(context, Routes.taskDetail, errandId);
 
   static Future<void> toEvidenceConfirm(
     BuildContext context,
     String errandId,
-  ) =>
-      _push(context, Routes.evidenceConfirm, errandId);
+  ) => _push(context, Routes.evidenceConfirm, errandId);
 
   static Future<void> toRate(BuildContext context, String errandId) =>
       _push(context, Routes.rate, errandId);
@@ -199,10 +208,10 @@ abstract final class Nav {
 
   /// Read mode (`View your report`).
   static Future<void> toReport(BuildContext context, Errand errand) => _push(
-        context,
-        Routes.reportProblem,
-        ReportArgs(errand: errand, readMode: true),
-      );
+    context,
+    Routes.reportProblem,
+    ReportArgs(errand: errand, readMode: true),
+  );
 
   /// Opens the screen for the errand's current state (Home active card,
   /// Task detail primary action).
@@ -239,8 +248,7 @@ abstract final class Nav {
   static Future<String?> toAddressForm(
     BuildContext context, {
     SavedAddress? address,
-  }) =>
-      _push<String>(context, Routes.addressForm, address);
+  }) => _push<String>(context, Routes.addressForm, address);
 
   static Future<void> toPaymentMethods(BuildContext context) =>
       _push(context, Routes.paymentMethods, const PaymentMethodsArgs());
@@ -249,17 +257,15 @@ abstract final class Nav {
   static Future<PaymentMethod?> selectPaymentMethod(
     BuildContext context, {
     String? selectedId,
-  }) =>
-      _push<PaymentMethod>(
-        context,
-        Routes.paymentMethods,
-        PaymentMethodsArgs(selectMode: true, selectedId: selectedId),
-      );
+  }) => _push<PaymentMethod>(
+    context,
+    Routes.paymentMethods,
+    PaymentMethodsArgs(selectMode: true, selectedId: selectedId),
+  );
 
   /// Resolves with a snackbar message when something was saved or removed.
   static Future<String?> toPaymentMethodForm(
     BuildContext context, {
     PaymentMethod? method,
-  }) =>
-      _push<String>(context, Routes.paymentMethodForm, method);
+  }) => _push<String>(context, Routes.paymentMethodForm, method);
 }

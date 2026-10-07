@@ -8,8 +8,9 @@ String resolveApiBaseUrl() {
   const override = String.fromEnvironment('NITUME_API_BASE_URL');
   if (override.isNotEmpty) return override;
 
-  final fromEnv =
-      dotenv.isInitialized ? dotenv.env['NITUME_API_BASE_URL'] : null;
+  final fromEnv = dotenv.isInitialized
+      ? dotenv.env['NITUME_API_BASE_URL']
+      : null;
   if (fromEnv != null && fromEnv.isNotEmpty) return fromEnv;
 
   return 'https://cargo-horizontal-traditional-wellington.trycloudflare.com/api/v1';

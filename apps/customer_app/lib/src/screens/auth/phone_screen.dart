@@ -67,8 +67,9 @@ class _PhoneScreenState extends State<PhoneScreen> {
           setState(() => _error = rateLimitError(e.retryAfter));
         case OtpErrorKind.deliveryFailed:
           setState(
-            () => _error =
-                const InlineError("We couldn't send the code. Try again."),
+            () => _error = const InlineError(
+              "We couldn't send the code. Try again.",
+            ),
           );
         default:
           setState(() => _error = InlineError(friendlyError(e)));

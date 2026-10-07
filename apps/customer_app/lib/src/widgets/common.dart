@@ -57,9 +57,7 @@ class FixedCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -131,7 +129,10 @@ class NameAvatar extends StatelessWidget {
       child: InkResponse(
         onTap: onTap,
         radius: hit / 2,
-        child: SizedBox.square(dimension: hit, child: Center(child: glyph)),
+        child: SizedBox.square(
+          dimension: hit,
+          child: Center(child: glyph),
+        ),
       ),
     );
   }
@@ -285,3 +286,46 @@ class BodyCard extends StatelessWidget {
     );
   }
 }
+
+/// Calls [onReturn] when a pushed screen above this one is popped, so lists
+/// reload after an edit (root tabs, Addresses, Payment methods).
+mixin ReloadOnReturn<T extends StatefulWidget> on State<T>
+    implements RouteAware {
+  RouteObserver<ModalRoute<void>>? _observer;
+
+  /// The observer registered on the navigator (`AppServices.routeObserver`).
+  RouteObserver<ModalRoute<void>> get routeObserver;
+
+  void onReturn();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null && _observer == null) {
+      _observer = routeObserver..subscribe(this, route);
+    }
+  }
+
+  @override
+  void dispose() {
+    _observer?.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() => onReturn();
+
+  @override
+  void didPush() {}
+
+  @override
+  void didPop() {}
+
+  @override
+  void didPushNext() {}
+}
+
+/// True while [context]'s route is the top route (pause polling otherwise).
+bool isRouteVisible(BuildContext context) =>
+    ModalRoute.of(context)?.isCurrent ?? true;

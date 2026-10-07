@@ -39,8 +39,10 @@ void main() {
     expect(b.auth.requested, ['+254712345678']);
     expect(find.text('Enter the code'), findsOneWidget);
     expect(find.text('+254 712 345 678'), findsNothing); // inside a rich text
-    expect(find.textContaining('Resend code in', findRichText: true),
-        findsOneWidget);
+    expect(
+      find.textContaining('Resend code in', findRichText: true),
+      findsOneWidget,
+    );
   });
 
   testWidgets('rate limit shows the wait in minutes', (t) async {
@@ -52,8 +54,10 @@ void main() {
     await t.tap(find.text('Send code'));
     await t.pumpAndSettle();
     expect(
-      find.text('Too many code requests. Try again in 3 min.',
-          findRichText: true),
+      find.text(
+        'Too many code requests. Try again in 3 min.',
+        findRichText: true,
+      ),
       findsOneWidget,
     );
   });
@@ -89,8 +93,10 @@ void main() {
     b.auth.verifyError = otpError('otp_expired');
     await t.enterText(find.byType(TextField).last, '111111');
     await t.pumpAndSettle();
-    expect(find.text('This code has expired. Request a new code.'),
-        findsOneWidget);
+    expect(
+      find.text('This code has expired. Request a new code.'),
+      findsOneWidget,
+    );
     final verify = t.widget<NitumeButton>(
       find.widgetWithText(NitumeButton, 'Verify & continue'),
     );
@@ -102,8 +108,10 @@ void main() {
     await t.pumpAndSettle();
     expect(b.auth.requested.length, 2);
     expect(find.text('New code sent.'), findsOneWidget);
-    expect(find.text('This code has expired. Request a new code.'),
-        findsNothing);
+    expect(
+      find.text('This code has expired. Request a new code.'),
+      findsNothing,
+    );
   });
 
   testWidgets('first sign-in without a name asks for it', (t) async {

@@ -58,19 +58,17 @@ class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
     if (next == SessionStatus.signedOut && _session.takeExpiredFlag()) {
       _messengerKey.currentState
         ?..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Please sign in again.')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('Please sign in again.')));
     }
   }
 
   Widget _home() => switch (_status) {
-        SessionStatus.restoring => const SplashScreen(),
-        SessionStatus.restoreFailed => SplashScreen(onRetry: _session.restore),
-        SessionStatus.signedOut => const PhoneScreen(),
-        SessionStatus.needsName => const NameCaptureScreen(),
-        SessionStatus.signedIn => const HomeShell(),
-      };
+    SessionStatus.restoring => const SplashScreen(),
+    SessionStatus.restoreFailed => SplashScreen(onRetry: _session.restore),
+    SessionStatus.signedOut => const PhoneScreen(),
+    SessionStatus.needsName => const NameCaptureScreen(),
+    SessionStatus.signedIn => const HomeShell(),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +82,7 @@ class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
         scaffoldMessengerKey: _messengerKey,
         home: KeyedSubtree(key: ValueKey(_status), child: _home()),
         onGenerateRoute: onGenerateRoute,
+        navigatorObservers: [widget.services.routeObserver],
       ),
     );
   }

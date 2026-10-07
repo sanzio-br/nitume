@@ -47,11 +47,11 @@ class _HomeShellState extends State<HomeShell> {
   static const _newTaskIndex = 1;
 
   static int _indexOf(ShellTab tab) => switch (tab) {
-        ShellTab.home => 0,
-        ShellTab.track => 2,
-        ShellTab.history => 3,
-        ShellTab.profile => 4,
-      };
+    ShellTab.home => 0,
+    ShellTab.track => 2,
+    ShellTab.history => 3,
+    ShellTab.profile => 4,
+  };
 
   void _onTap(BuildContext context, int index) {
     final shell = context.services.shell;

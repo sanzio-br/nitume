@@ -16,21 +16,21 @@ final _api = NitumeApiClient(
 final _epoch = DateTime(2026, 10, 7, 10, 3);
 
 AppUser user({String? displayName = 'Achieng Otieno'}) => AppUser(
-      id: 'u1',
-      phone: '+254712345678',
-      role: UserRole.customer,
-      status: UserStatus.active,
-      displayName: displayName,
-      createdAt: DateTime(2026, 2, 1),
-    );
+  id: 'u1',
+  phone: '+254712345678',
+  role: UserRole.customer,
+  status: UserStatus.active,
+  displayName: displayName,
+  createdAt: DateTime(2026, 2, 1),
+);
 
 RunnerSummary runner({String? name = 'Brian Kamau'}) => RunnerSummary(
-      id: 'r1',
-      verificationLevel: VerificationLevel.idVerified,
-      avgRating: '4.90',
-      errandsCompleted: 137,
-      displayName: name,
-    );
+  id: 'r1',
+  verificationLevel: VerificationLevel.idVerified,
+  avgRating: '4.90',
+  errandsCompleted: 137,
+  displayName: name,
+);
 
 Errand errand({
   String id = 'e1',
@@ -43,38 +43,37 @@ Errand errand({
   bool withRunner = true,
   String? runnerNotes,
   DateTime? updatedAt,
-}) =>
-    Errand(
-      id: id,
-      customerId: 'u1',
-      category: category,
-      description: 'Check the apartment',
-      status: status,
-      urgency: ErrandUrgency.standard,
-      budget: budget,
-      quotedPrice: quotedPrice,
-      title: title,
-      reference: reference,
-      runnerNotes: runnerNotes,
-      createdAt: _epoch,
-      updatedAt: updatedAt ?? _epoch,
-      locations: const [
-        ErrandLocation(
-          pointType: ErrandPointType.taskSite,
-          lat: -4.03,
-          lng: 39.71,
-          addressText: 'Links Road Apartments, Nyali',
-        ),
-      ],
-      assignment: withRunner
-          ? ErrandAssignment(
-              id: 'a1',
-              status: AssignmentStatus.accepted,
-              assignedAt: _epoch,
-              runner: runner(),
-            )
-          : null,
-    );
+}) => Errand(
+  id: id,
+  customerId: 'u1',
+  category: category,
+  description: 'Check the apartment',
+  status: status,
+  urgency: ErrandUrgency.standard,
+  budget: budget,
+  quotedPrice: quotedPrice,
+  title: title,
+  reference: reference,
+  runnerNotes: runnerNotes,
+  createdAt: _epoch,
+  updatedAt: updatedAt ?? _epoch,
+  locations: const [
+    ErrandLocation(
+      pointType: ErrandPointType.taskSite,
+      lat: -4.03,
+      lng: 39.71,
+      addressText: 'Links Road Apartments, Nyali',
+    ),
+  ],
+  assignment: withRunner
+      ? ErrandAssignment(
+          id: 'a1',
+          status: AssignmentStatus.accepted,
+          assignedAt: _epoch,
+          runner: runner(),
+        )
+      : null,
+);
 
 class FakeAuth extends AuthRepository {
   FakeAuth() : super(api: _api, tokenStore: InMemoryTokenStore());
@@ -199,11 +198,12 @@ class FakeErrands extends ErrandRepository {
   }) async {
     final err = listError;
     if (err != null) throw err;
-    final items = byId.values
-        .where((e) => e.status != ErrandStatus.draft)
-        .where((e) => statuses == null || statuses.contains(e.status))
-        .toList()
-      ..sort((a, b) => b.updatedAt!.compareTo(a.updatedAt!));
+    final items =
+        byId.values
+            .where((e) => e.status != ErrandStatus.draft)
+            .where((e) => statuses == null || statuses.contains(e.status))
+            .toList()
+          ..sort((a, b) => b.updatedAt!.compareTo(a.updatedAt!));
     return ErrandPage(
       items: limit == null ? items : items.take(limit).toList(),
     );
@@ -265,14 +265,14 @@ class FakeErrands extends ErrandRepository {
   }
 
   ErrandTransitionResult _result(Errand e) => ErrandTransitionResult(
-        errand: e,
-        history: StatusHistoryEntry(
-          id: 'h${transitions.length}',
-          errandId: e.id,
-          toStatus: e.status,
-          actorType: StatusHistoryActor.customer,
-        ),
-      );
+    errand: e,
+    history: StatusHistoryEntry(
+      id: 'h${transitions.length}',
+      errandId: e.id,
+      toStatus: e.status,
+      actorType: StatusHistoryActor.customer,
+    ),
+  );
 }
 
 Payment payment({
@@ -280,16 +280,15 @@ Payment payment({
   PaymentStatus status = PaymentStatus.completed,
   String merchantAmount = '0.00',
   PaymentFlow flow = PaymentFlow.platformOnly,
-}) =>
-    Payment(
-      id: 'p1',
-      errandId: errandId,
-      serviceFee: '700.00',
-      runnerFee: '1500.00',
-      merchantAmount: merchantAmount,
-      paymentFlow: flow,
-      status: status,
-    );
+}) => Payment(
+  id: 'p1',
+  errandId: errandId,
+  serviceFee: '700.00',
+  runnerFee: '1500.00',
+  merchantAmount: merchantAmount,
+  paymentFlow: flow,
+  status: status,
+);
 
 class FakePayments extends PaymentsRepository {
   FakePayments() : super(_api);
@@ -343,7 +342,11 @@ class FakeRatings extends RatingsRepository {
   Object? rateError;
 
   @override
-  Future<Rating> rate(String errandId, {required int score, String? comment}) async {
+  Future<Rating> rate(
+    String errandId, {
+    required int score,
+    String? comment,
+  }) async {
     rated.add((errandId, score, comment));
     final e = rateError;
     if (e != null) throw e;
@@ -364,16 +367,15 @@ class FakeRatings extends RatingsRepository {
 PriceChangeRequest priceChange({
   String errandId = 'e1',
   PriceChangeStatus status = PriceChangeStatus.requested,
-}) =>
-    PriceChangeRequest(
-      id: 'pc1',
-      errandId: errandId,
-      requestedByUserId: 'ru1',
-      fromPrice: '40000.00',
-      toPrice: '45000.00',
-      status: status,
-      reason: 'The shop raised the price.',
-    );
+}) => PriceChangeRequest(
+  id: 'pc1',
+  errandId: errandId,
+  requestedByUserId: 'ru1',
+  fromPrice: '40000.00',
+  toPrice: '45000.00',
+  status: status,
+  reason: 'The shop raised the price.',
+);
 
 class FakePriceChanges extends PriceChangeRepository {
   FakePriceChanges() : super(_api);
@@ -423,7 +425,10 @@ class FakeDisputes extends DisputesRepository {
   Object? openError;
 
   @override
-  Future<Dispute> open({required String errandId, required String reason}) async {
+  Future<Dispute> open({
+    required String errandId,
+    required String reason,
+  }) async {
     opened.add((errandId, reason));
     final e = openError;
     if (e != null) throw e;
@@ -451,9 +456,9 @@ class FakeNotifications extends NotificationsRepository {
 
   @override
   Future<NotificationsPage> list({int? limit}) async => NotificationsPage(
-        items: items,
-        unread: items.where((n) => !n.isRead).length,
-      );
+    items: items,
+    unread: items.where((n) => !n.isRead).length,
+  );
 
   @override
   Future<int> unreadCount() async => items.where((n) => !n.isRead).length;
@@ -491,7 +496,11 @@ class FakeAccount extends CustomerAccountRepository {
     double? lon,
     bool? isDefault,
   }) async {
-    added.add({'label': label, 'addressText': addressText, 'isDefault': isDefault});
+    added.add({
+      'label': label,
+      'addressText': addressText,
+      'isDefault': isDefault,
+    });
     final a = SavedAddress(
       id: 'ad${added.length}',
       label: label,
@@ -569,6 +578,15 @@ class FakeRunners extends RunnersRepository {
   FakeRunners() : super(_api);
 }
 
+Future<void> _setUp(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(400, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  // Stops PulsingDots so pumpAndSettle can settle.
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+}
+
 /// All fakes plus the [AppServices] built from them.
 class TestBackend {
   TestBackend() {
@@ -605,16 +623,14 @@ class TestBackend {
     if (signedIn) {
       auth.stored = const AuthTokens(accessToken: 'a', refreshToken: 'r');
     }
-    await tester.binding.setSurfaceSize(const Size(400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _setUp(tester);
     await tester.pumpWidget(NitumeCustomerApp(services: services));
     await tester.pumpAndSettle();
   }
 
   /// Pumps [screen] as the only route, inside the app's scope and theme.
   Future<void> pumpScreen(WidgetTester tester, Widget screen) async {
-    await tester.binding.setSurfaceSize(const Size(400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _setUp(tester);
     await tester.pumpWidget(
       AppScope(
         services: services,
@@ -622,6 +638,7 @@ class TestBackend {
           theme: NitumeTheme.light(),
           home: screen,
           onGenerateRoute: onGenerateRoute,
+          navigatorObservers: [services.routeObserver],
         ),
       ),
     );

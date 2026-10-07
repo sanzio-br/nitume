@@ -27,8 +27,8 @@ class AppServices {
     ShellController? shell,
     PaymentAttempts? paymentAttempts,
     this.pollingEnabled = true,
-  })  : shell = shell ?? ShellController(),
-        paymentAttempts = paymentAttempts ?? PaymentAttempts();
+  }) : shell = shell ?? ShellController(),
+       paymentAttempts = paymentAttempts ?? PaymentAttempts();
 
   /// Production wiring against [baseUrl].
   factory AppServices.create({required String baseUrl}) {
@@ -83,6 +83,10 @@ class AppServices {
 
   /// Tests switch periodic polling off so `pumpAndSettle` can finish.
   final bool pollingEnabled;
+
+  /// Lets root tabs reload when a pushed screen above them closes.
+  final RouteObserver<ModalRoute<void>> routeObserver =
+      RouteObserver<ModalRoute<void>>();
 }
 
 /// One idempotency key per checkout attempt, per errand (v-payment "Safe

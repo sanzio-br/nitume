@@ -92,8 +92,9 @@ class _OtpScreenState extends State<OtpScreen> {
         if (e.statusCode == 401 && e.code == null) {
           // Uncoded 401 on verify = account suspended or banned.
           _suspended = true;
-          _otherError =
-              const InlineError("This account can't sign in. Contact support.");
+          _otherError = const InlineError(
+            "This account can't sign in. Contact support.",
+          );
         } else {
           _otherError = InlineError(friendlyError(e));
         }
@@ -129,8 +130,9 @@ class _OtpScreenState extends State<OtpScreen> {
             _rateLimited = true;
             _otherError = rateLimitError(e.retryAfter);
           case OtpErrorKind.deliveryFailed:
-            _otherError =
-                const InlineError("We couldn't send the code. Try again.");
+            _otherError = const InlineError(
+              "We couldn't send the code. Try again.",
+            );
           default:
             _otherError = InlineError(friendlyError(e));
         }

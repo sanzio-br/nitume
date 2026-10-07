@@ -42,8 +42,7 @@ String? runnerShortName(RunnerSummary? runner) =>
     shortName(runner?.displayName);
 
 /// "Verified" = `2_id_verified` or higher (v-task-detail Q4 default).
-bool isVerified(VerificationLevel level) =>
-    level != VerificationLevel.basic;
+bool isVerified(VerificationLevel level) => level != VerificationLevel.basic;
 
 /// `Verified · 4.9` (plus ` · 137 tasks` when [withCount]).
 String runnerMeta(RunnerSummary runner, {bool withCount = false}) {
@@ -102,8 +101,7 @@ String addDecimals(String a, String b) {
 }
 
 /// Difference `b - a` of two API decimal strings (price change).
-String subtractDecimals(String b, String a) =>
-    addDecimals(b, _negate(a));
+String subtractDecimals(String b, String a) => addDecimals(b, _negate(a));
 
 /// True when the decimal string is greater than zero.
 bool isPositiveAmount(String? value) =>
@@ -145,3 +143,29 @@ String friendlyError(Object error) {
 /// Status code of an API failure, if any.
 int? statusOf(Object error) =>
     error is NitumeApiException ? error.statusCode : null;
+
+/// Home active-card meta line by state (v-home, proposed copy).
+String activeCardMeta(Errand errand) {
+  final name = runnerShortName(errand.runner) ?? 'Your runner';
+  return switch (errand.status) {
+    ErrandStatus.requested => 'Waiting for your quote',
+    ErrandStatus.quoted => 'Your quote is ready',
+    ErrandStatus.accepted => 'Pay to confirm your task',
+    ErrandStatus.paymentConfirmed => 'Finding a runner',
+    ErrandStatus.runnerAssigned => '$name is assigned',
+    ErrandStatus.runnerEnRoute => '$name is en route',
+    ErrandStatus.arrived => '$name has arrived',
+    ErrandStatus.inProgress => '$name is on it',
+    ErrandStatus.awaitingCustomer => 'Ready for your review',
+    _ => statusPresentation(errand.status).label,
+  };
+}
+
+/// Home active-card button by state (v-home table).
+String activeCardAction(ErrandStatus status) => switch (status) {
+  ErrandStatus.requested => 'View request →',
+  ErrandStatus.quoted => 'Review quote →',
+  ErrandStatus.accepted => 'Pay now →',
+  ErrandStatus.awaitingCustomer => 'Review evidence →',
+  _ => 'Track live →',
+};
