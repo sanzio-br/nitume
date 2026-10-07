@@ -1,12 +1,16 @@
 import 'enums.dart';
+import 'errand_location.dart';
 import 'json_utils.dart';
 import 'runner.dart';
 
 /// An errand (`errands`). Monetary fields are kept as decimal strings exactly as
 /// the API returns them (`numeric(12,2)`), never as floating point.
 ///
-/// There is no title, human-readable reference (A-16) or runner name (A-15);
-/// both are open owner decisions, so screens derive nothing from them yet.
+/// Owner-approved optional fields ([reference], [title], [runnerNotes],
+/// [items], [locations]; Q15, Q16, Q19) are nullable: their API shape is
+/// pending api-contract, so parsing is tolerant and an absent or malformed
+/// value is `null`. Screens must not derive them client-side (e.g. never
+/// build a reference from [id]).
 class Errand {
   const Errand({
     required this.id,
@@ -22,6 +26,11 @@ class Errand {
     this.createdAt,
     this.updatedAt,
     this.assignment,
+    this.reference,
+    this.title,
+    this.runnerNotes,
+    this.items,
+    this.locations,
   });
 
   final String id;
@@ -40,12 +49,52 @@ class Errand {
   /// Agreed final price, set after payment.
   final String? finalPrice;
 
+  /// Authoritative deadline (Q19, decided). Urgency for display is derived
+  /// from it by the screen when needed; [urgency] is the API value.
   final DateTime? deadlineAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
   /// Runner currently holding the errand; `null` until assigned.
   final ErrandAssignment? assignment;
+
+  /// Backend-generated human-readable reference (Q15, decided; A-16).
+  /// API shape pending api-contract. Never derived client-side.
+  final String? reference;
+
+  /// Customer-provided task title, where one exists (Q15, decided; A-16).
+  /// API shape pending api-contract.
+  final String? title;
+
+  /// Runner-provided notes shown on evidence review (Q16, decided;
+  /// `runner_notes`). API shape pending api-contract. Separate from the
+  /// customer's [description].
+  final String? runnerNotes;
+
+  /// Structured shopping-list items (Q19, decided). API shape pending
+  /// api-contract; `null` when the response has no `items` list.
+  final List<ErrandItem>? items;
+
+  /// Errand points: pickup + drop-off for Buy For Me / Get It For Me, task
+  /// site otherwise (Q19, decided). API shape pending api-contract; `null`
+  /// when the response has no `locations` list.
+  final List<ErrandLocation>? locations;
+
+  /// First pickup point in [locations], if any.
+  ErrandLocation? get pickup => _point(ErrandPointType.pickup);
+
+  /// First drop-off point in [locations], if any.
+  ErrandLocation? get dropoff => _point(ErrandPointType.dropoff);
+
+  /// First task-site point in [locations], if any.
+  ErrandLocation? get taskSite => _point(ErrandPointType.taskSite);
+
+  ErrandLocation? _point(ErrandPointType type) {
+    for (final l in locations ?? const <ErrandLocation>[]) {
+      if (l.pointType == type) return l;
+    }
+    return null;
+  }
 
   RunnerSummary? get runner => assignment?.runner;
 
@@ -73,8 +122,58 @@ class Errand {
       assignment: json['assignment'] == null
           ? null
           : ErrandAssignment.fromJson(asJsonMap(json['assignment'])),
+      reference: parseOptionalString(json['reference']),
+      title: parseOptionalString(json['title']),
+      runnerNotes: parseOptionalString(json['runnerNotes']),
+      items: _tolerantList(json['items'], ErrandItem.fromJson),
+      locations: _tolerantList(json['locations'], ErrandLocation.fromJson),
     );
   }
+}
+
+/// One structured shopping-list line on an [Errand] (Q19, decided). Mirrors
+/// the API's `ErrandItemDto` (`name`, `quantity`, `unit`, `notes`); the read
+/// shape is pending api-contract. For `POST /errands` use `ErrandItemInput`.
+class ErrandItem {
+  const ErrandItem({
+    required this.name,
+    this.quantity,
+    this.unit,
+    this.notes,
+  });
+
+  final String name;
+
+  /// 1–999; `null` when not given.
+  final int? quantity;
+  final String? unit;
+  final String? notes;
+
+  factory ErrandItem.fromJson(Map<String, dynamic> json) => ErrandItem(
+        name: json['name'] as String,
+        quantity: (json['quantity'] as num?)?.toInt(),
+        unit: parseOptionalString(json['unit']),
+        notes: parseOptionalString(json['notes']),
+      );
+}
+
+/// Parses a list field leniently: `null` if absent or not a list; entries
+/// that fail to parse are skipped.
+List<T>? _tolerantList<T>(
+  Object? value,
+  T Function(Map<String, dynamic>) parse,
+) {
+  if (value is! List) return null;
+  final out = <T>[];
+  for (final entry in value) {
+    if (entry is! Map) continue;
+    try {
+      out.add(parse(entry.cast<String, dynamic>()));
+    } on Object {
+      // Shape pending api-contract: ignore entries we cannot read.
+    }
+  }
+  return out;
 }
 
 double? _toDouble(Object? value) {

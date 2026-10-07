@@ -416,6 +416,88 @@ void main() {
     });
   });
 
+  group('Owner-approved optional fields (pending api-contract)', () {
+    test('absent fields parse as null', () {
+      final e = Errand.fromJson(Map<String, dynamic>.from(_errand));
+      expect(e.reference, isNull);
+      expect(e.title, isNull);
+      expect(e.runnerNotes, isNull);
+      expect(e.items, isNull);
+      expect(e.locations, isNull);
+      expect(e.pickup, isNull);
+      expect(e.runner?.displayName, isNull);
+      final u = AppUser.fromJson({
+        'id': 'u1',
+        'phone': '+254712345678',
+        'role': 'customer',
+        'status': 'active',
+      });
+      expect(u.displayName, isNull);
+    });
+
+    test('present fields parse; malformed entries are skipped', () {
+      final e = Errand.fromJson({
+        ..._errand,
+        'reference': 'NT-10482',
+        'title': 'Apartment check — Nyali',
+        'runnerNotes': 'Caretaker says water is on Tuesdays.',
+        'items': [
+          {'name': 'Milk', 'quantity': 2, 'notes': 'Brookside'},
+          {'quantity': 3},
+          'bad',
+        ],
+        'locations': [
+          {
+            'pointType': 'pickup',
+            'lat': -1.29,
+            'lng': 36.82,
+            'addressText': 'Naivas Westlands',
+          },
+          {
+            'pointType': 'dropoff',
+            'lat': -1.3,
+            'lng': 36.8,
+            'addressText': 'Kilimani',
+          },
+          {'pointType': 'nowhere'},
+        ],
+        'assignment': {
+          ...(_errand['assignment']! as Map<String, Object?>),
+          'runner': {
+            'id': 'r1',
+            'verificationLevel': '2_id_verified',
+            'avgRating': '4.90',
+            'errandsCompleted': 137,
+            'displayName': 'Brian K.',
+          },
+        },
+      });
+      expect(e.reference, 'NT-10482');
+      expect(e.title, 'Apartment check — Nyali');
+      expect(e.runnerNotes, 'Caretaker says water is on Tuesdays.');
+      expect(e.items!.single.name, 'Milk');
+      expect(e.items!.single.quantity, 2);
+      expect(e.items!.single.notes, 'Brookside');
+      expect(e.locations, hasLength(2));
+      expect(e.pickup?.addressText, 'Naivas Westlands');
+      expect(e.dropoff?.addressText, 'Kilimani');
+      expect(e.taskSite, isNull);
+      expect(e.runner?.displayName, 'Brian K.');
+    });
+
+    test('blank strings and non-list values are null', () {
+      final e = Errand.fromJson({
+        ..._errand,
+        'reference': '  ',
+        'items': 'Milk, bread',
+        'locations': {'pointType': 'pickup'},
+      });
+      expect(e.reference, isNull);
+      expect(e.items, isNull);
+      expect(e.locations, isNull);
+    });
+  });
+
   group('Evidence and realtime payloads', () {
     test('evidence url may be null', () {
       final e = Evidence.fromJson({

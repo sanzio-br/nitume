@@ -99,7 +99,9 @@ class ErrandItemInput {
 /// Body of `POST /errands` (`CreateErrandDto`). The errand is created as
 /// DRAFT; call `ErrandRepository.submit` to move it to REQUESTED.
 ///
-/// There is no title or reference field (A-16, owner decision).
+/// No `title` field yet: the owner approved it (Q15) but the API does not
+/// accept it, so it is not sent until api-contract adds it. `reference` is
+/// backend-generated and never sent.
 class CreateErrandRequest {
   const CreateErrandRequest({
     required this.category,

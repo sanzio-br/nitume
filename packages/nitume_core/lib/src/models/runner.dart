@@ -4,14 +4,14 @@ import 'json_utils.dart';
 /// Customer-facing runner summary (`RunnerPublicSummary`), embedded in
 /// `Errand.assignment.runner` and the tracking snapshot.
 ///
-/// There is no name field (A-15 / Q-NAME, owner decision); screens must not
-/// invent one.
+/// [displayName] is optional: show it when present, never invent one.
 class RunnerSummary {
   const RunnerSummary({
     required this.id,
     required this.verificationLevel,
     required this.avgRating,
     required this.errandsCompleted,
+    this.displayName,
   });
 
   /// Runner profile id (use with `GET /runners/:id/profile`).
@@ -22,12 +22,17 @@ class RunnerSummary {
   final String avgRating;
   final int errandsCompleted;
 
+  /// Runner display name (Q2, decided). API shape pending api-contract
+  /// (`display_name`, A-15); `null` when absent.
+  final String? displayName;
+
   factory RunnerSummary.fromJson(Map<String, dynamic> json) => RunnerSummary(
         id: json['id'] as String,
         verificationLevel:
             VerificationLevel.fromWire(json['verificationLevel'] as String),
         avgRating: parseDecimal(json['avgRating']) ?? '0.00',
         errandsCompleted: (json['errandsCompleted'] as num?)?.toInt() ?? 0,
+        displayName: parseOptionalString(json['displayName']),
       );
 }
 
@@ -38,6 +43,7 @@ class RunnerPublicProfile extends RunnerSummary {
     required super.verificationLevel,
     required super.avgRating,
     required super.errandsCompleted,
+    super.displayName,
     required this.availability,
     required this.skills,
     required this.serviceAreas,
@@ -54,6 +60,7 @@ class RunnerPublicProfile extends RunnerSummary {
       verificationLevel: base.verificationLevel,
       avgRating: base.avgRating,
       errandsCompleted: base.errandsCompleted,
+      displayName: base.displayName,
       availability:
           RunnerAvailability.fromWire(json['availability'] as String),
       skills: [
