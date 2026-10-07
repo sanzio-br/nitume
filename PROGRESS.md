@@ -99,7 +99,9 @@ and merge order: see the reviewer summary on `BOARD.md` (session log, 2026-10-07
     with error codes; state-machine changes (rows 8, 10, 35–37); payment idempotency
     key, merchant route and STK status; M-Pesa-only payment methods; refund reviews
     (admin sets the amount up to a full refund; payout manual); price change on the
-    item amount; escrow wording removed. 4 migrations.
+    item amount; escrow wording removed. Review fixes: refund review opened in the
+    cancelling transaction, atomic OTP attempts, locked price-change approve, one active
+    main payment per errand. 5 migrations, all reversible.
 - **Shared Flutter core** (`feat/core-customer-widgets`, `feat/core-owner-decisions`,
   `feat/core-spec-widgets`): bundled Fira Sans/Fira Code, theme aligned to the design
   system, widgets C-01–C-40, data models and repositories for every customer endpoint,
@@ -109,9 +111,9 @@ and merge order: see the reviewer summary on `BOARD.md` (session log, 2026-10-07
   (retry-safe, TIMEOUT = still checking), tracking by polling, blocking price-change
   modal with route choice, evidence confirm ("Confirm completion"), report a problem,
   rating, history, notifications, addresses, M-Pesa payment methods, profile.
-- Verified: analyze/typecheck clean and unit/widget tests pass on every branch (API
-  110 + 58 unit; core 106; app 51). Read-only reviewer pass done; review fixes are in
-  progress (see BOARD).
+- Verified: analyze/typecheck clean and unit/widget tests pass on every branch head
+  and every new commit (API 126 + 58 unit; core 124; app 60). Design audit PASS on all
+  27 screens (3 rounds). Reviewer: all branches READY (stage `reviewed`).
 
 **Deferred (pending owner decisions on BOARD)**
 
@@ -128,6 +130,7 @@ and merge order: see the reviewer summary on `BOARD.md` (session log, 2026-10-07
 - url_launcher for Terms/Privacy/Support links (row 39); video evidence playback (row 32).
 - Evidence links are permanent public Cloudinary URLs (row 25).
 - Runner app work (runner notes, location pings) and admin refund screens (web-parity).
-- API e2e suite was not re-run after the review; it must use a throwaway database
+- After merging, run `migration:run` on local DBs (1790100100000 was edited in place;
+  1790100400000 is new). API e2e suite was not re-run after the review; it must use a throwaway database
   (row 57). Note: per the migrations section above, `.env` targets `nitume`, the
   near-empty DB, while dev data lives in `nitume_dev`.
