@@ -130,7 +130,7 @@ describe('OtpService policy (owner Q17)', () => {
     const err = await errorOf(service.requestCode(PHONE));
     expect(err.code).toBe(OtpErrorCode.RESEND_COOLDOWN);
     expect(err.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
-    expect(err.getResponse()).toMatchObject({ secondsRemaining: 45 });
+    expect(err.getResponse()).toMatchObject({ secondsRemaining: 45, retryAfterSeconds: 45 });
     advance(45);
     await expect(service.requestCode(PHONE)).resolves.toBeUndefined();
   });

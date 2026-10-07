@@ -324,6 +324,7 @@ describe('Owner decisions (e2e)', () => {
       expect(again.body.code).toBe('otp_resend_cooldown');
       expect(again.body.secondsRemaining).toBeGreaterThan(0);
       expect(again.body.secondsRemaining).toBeLessThanOrEqual(60);
+      expect(again.body.retryAfterSeconds).toBe(again.body.secondsRemaining);
 
       const ds = app.get(DataSource);
       const [row] = await ds.query(

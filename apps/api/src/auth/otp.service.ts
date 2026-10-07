@@ -38,7 +38,7 @@ export enum OtpErrorCode {
   ATTEMPTS_EXHAUSTED = 'otp_attempts_exhausted',
   /** 401. No unused code exists for this phone/email. */
   NOT_REQUESTED = 'otp_not_requested',
-  /** 429. Resend cooldown; body has `secondsRemaining`. */
+  /** 429. Resend cooldown; body has `secondsRemaining` (= `retryAfterSeconds`). */
   RESEND_COOLDOWN = 'otp_resend_cooldown',
   /** 429. Too many codes in the window; body has `retryAfterSeconds`. */
   RATE_LIMITED = 'otp_rate_limited',
@@ -106,7 +106,7 @@ export class OtpService {
         HttpStatus.TOO_MANY_REQUESTS,
         OtpErrorCode.RESEND_COOLDOWN,
         `Please wait ${cooldownLeft}s before requesting another code.`,
-        { secondsRemaining: cooldownLeft },
+        { secondsRemaining: cooldownLeft, retryAfterSeconds: cooldownLeft },
       );
     }
 
