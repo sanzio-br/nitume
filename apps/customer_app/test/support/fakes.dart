@@ -382,12 +382,21 @@ class FakePriceChanges extends PriceChangeRepository {
 
   PriceChangeRequest? pendingValue;
   final approved = <String>[];
+  final approvedRoutes = <MerchantRoute?>[];
+
+  /// Answer MERCHANT_ROUTE_REQUIRED while no route is sent.
+  bool requireRoute = false;
+  Object? pendingError;
   final rejected = <String>[];
   Object? decisionError;
   PriceChangeDifference? difference;
 
   @override
-  Future<PriceChangeRequest?> pending(String errandId) async => pendingValue;
+  Future<PriceChangeRequest?> pending(String errandId) async {
+    final e = pendingError;
+    if (e != null) throw e;
+    return pendingValue;
+  }
 
   @override
   Future<PriceChangeDecision> approve(
@@ -395,7 +404,15 @@ class FakePriceChanges extends PriceChangeRepository {
     String requestId, {
     MerchantRoute? merchantRoute,
   }) async {
+    if (requireRoute && merchantRoute == null) {
+      throw const NitumeApiException(
+        message: 'route',
+        statusCode: 400,
+        code: ApiErrorCodes.merchantRouteRequired,
+      );
+    }
     approved.add(requestId);
+    approvedRoutes.add(merchantRoute);
     final e = decisionError;
     if (e != null) throw e;
     pendingValue = null;

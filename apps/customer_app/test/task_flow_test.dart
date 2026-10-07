@@ -101,6 +101,53 @@ void main() {
       expect(find.text('Price change'), findsNothing);
     });
 
+    testWidgets('route required: customer must choose before approve',
+        (t) async {
+      final b = TestBackend();
+      b.priceChanges.pendingValue = priceChange();
+      b.priceChanges.requireRoute = true;
+      await b.pumpScreen(t, _Host(errand: errand()));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Approve KSh 5,000 increase'));
+      await t.pumpAndSettle();
+
+      expect(b.priceChanges.approved, isEmpty);
+      expect(find.text('Send purchase amount to runner'), findsOneWidget);
+      final approve = find.widgetWithText(
+        NitumeButton,
+        'Approve KSh 5,000 increase',
+      );
+      expect(t.widget<NitumeButton>(approve).onPressed, isNull);
+      final direct = t.widget<NitumeRadioRow>(
+        find.widgetWithText(
+          NitumeRadioRow,
+          'Pay merchant directly (recommended)',
+        ),
+      );
+      expect(direct.onSelected, isNull);
+
+      await t.tap(find.text('Send purchase amount to runner'));
+      await t.pumpAndSettle();
+      await t.tap(approve);
+      await t.pumpAndSettle();
+      expect(b.priceChanges.approvedRoutes, [MerchantRoute.sendToRunner]);
+    });
+
+    testWidgets('load failure offers a retry', (t) async {
+      final b = TestBackend();
+      b.priceChanges.pendingError = const NitumeApiException(message: 'x');
+      await b.pumpScreen(t, _Host(errand: errand()));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      expect(find.text("Couldn't load this price change."), findsOneWidget);
+      b.priceChanges.pendingError = null;
+      b.priceChanges.pendingValue = priceChange();
+      await t.tap(find.text('Try again'));
+      await t.pumpAndSettle();
+      expect(find.text('+ KSh 5,000 additional'), findsOneWidget);
+    });
+
     testWidgets('already answered', (t) async {
       final b = TestBackend();
       await b.pumpScreen(t, _Host(errand: errand()));

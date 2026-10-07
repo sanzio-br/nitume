@@ -5,6 +5,7 @@ import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
 import '../../util/display.dart';
 import '../../widgets/common.dart';
+import '../../widgets/task_widgets.dart';
 
 /// What happened in the price-change modal.
 enum PriceChangeOutcome { approved, rejected, dismissed }
@@ -67,6 +68,12 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
   bool _answered = false;
   _Busy _busy = _Busy.none;
   String? _error;
+  bool _loadFailed = false;
+
+  /// Set when the API answered MERCHANT_ROUTE_REQUIRED: the customer must
+  /// choose the item-amount route here (v-price-auth Q2 build default).
+  bool _needsRoute = false;
+  MerchantRoute? _route;
 
   @override
   void initState() {
@@ -81,6 +88,10 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _loadFailed = false;
+    });
     try {
       final r = await _services.priceChanges.pending(widget.errand.id);
       if (!mounted) return;
@@ -93,7 +104,7 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = "Couldn't send your answer. Try again.";
+        _loadFailed = true;
       });
     }
   }
@@ -105,26 +116,25 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
       _error = null;
     });
     try {
-      PriceChangeDecision decision;
-      try {
-        decision = await _services.priceChanges.approve(widget.errand.id, r.id);
-      } on NitumeApiException catch (e) {
-        if (e.code != ApiErrorCodes.merchantRouteRequired) rethrow;
-        // The task had no item amount and the fees are paid: the only
-        // customer route available today is send-to-runner (merchant
-        // details never exist yet, SQ-6; runner advance is not a customer
-        // option, OA-5).
-        decision = await _services.priceChanges.approve(
-          widget.errand.id,
-          r.id,
-          merchantRoute: MerchantRoute.sendToRunner,
-        );
-      }
+      // The route is only sent once the customer chose it (OA-5); the app
+      // never picks one for them.
+      final decision = await _services.priceChanges.approve(
+        widget.errand.id,
+        r.id,
+        merchantRoute: _route,
+      );
       if (mounted) {
         Navigator.of(context)
             .pop(_Result(PriceChangeOutcome.approved, decision));
       }
     } on NitumeApiException catch (e) {
+      if (e.code == ApiErrorCodes.merchantRouteRequired && mounted) {
+        setState(() {
+          _busy = _Busy.none;
+          _needsRoute = true;
+        });
+        return;
+      }
       _failed(e);
     }
   }
@@ -174,6 +184,21 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loadFailed) {
+      return NitumeDialog(
+        title: 'Price change',
+        body: "Couldn't load this price change.",
+        actions: [
+          NitumeButton.primary(label: 'Try again', onPressed: _load),
+          NitumeButton.outline(
+            label: 'Close',
+            onPressed: () =>
+                Navigator.of(context)
+                    .pop(const _Result(PriceChangeOutcome.dismissed)),
+          ),
+        ],
+      );
+    }
     if (_loading) {
       return const NitumeDialog(
         title: 'Price change',
@@ -187,7 +212,7 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
     if (_answered || r == null) {
       return NitumeDialog(
         title: 'Price change',
-        body: _error ?? 'This price change was already answered.',
+        body: 'This price change was already answered.',
         actions: [
           NitumeButton.primary(
             label: 'OK',
@@ -228,13 +253,27 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
               color: NitumeDesignChoices.priceChangeAmount,
             ),
           ),
+          if (_needsRoute) ...[
+            const SizedBox(height: 16),
+            Text(
+              'How should this be paid?'.toUpperCase(),
+              style: NitumeTextStyles.cardLabel,
+            ),
+            const SizedBox(height: 8),
+            MerchantRouteRows(
+              selected: _route,
+              enabled: !busy,
+              onSelected: (r) => setState(() => _route = r),
+            ),
+          ],
         ],
       ),
       actions: [
         NitumeButton.primary(
+          // TODO(core-ui CC-2): render the amount as a Fira Code span.
           label: 'Approve ${formatKes(diff)} increase',
           loading: _busy == _Busy.approve,
-          onPressed: busy ? null : _approve,
+          onPressed: busy || (_needsRoute && _route == null) ? null : _approve,
         ),
         NitumeButton.outline(
           label: 'Reject & cancel task',
