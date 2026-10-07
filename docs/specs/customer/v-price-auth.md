@@ -1,74 +1,88 @@
-# v-price-auth — Price-change authorization
+# v-price-auth — Price-change authorization (modal)
 
-- Mockup: `docs/design/nitume_customer_app.html` lines 423–441 (`#v-price-auth`, overlay)
-- Shared conventions: `_shared.md`
+- Mockup: `docs/design/nitume_customer_app.html` lines 423–441 (`#v-price-auth`, drawn as an overlay screen)
+- Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: none
 - Status: missing
 
 ## Purpose
-The runner found the item priced higher than quoted. The customer approves the difference or rejects it.
+The runner found the item priced higher than the agreed item amount. The customer approves the new amount (and pays the difference) or rejects it, which cancels the task (OA-8).
+
+## Presentation (OA-8)
+A **blocking modal** (C-35 `NitumeDialog`, `barrierDismissible: false`) over whatever screen is open, not a pushed screen. System back does nothing while it is open. The mockup's pushed header is replaced by the dialog title.
 
 ## Entry / exit
-- Entry: "⚠️ Price change" on `v-track`; notification row "Price change requested"; push notification deep link; socket event while the app is open — §4.4 says "Push + Socket (blocking modal)".
-- Approve → pop back to the previous screen (Track) with a confirmation.
-- Reject → pop (mockup). See Q2 for what reject actually does.
-- Back → pop without deciding (request stays pending). If presented as a blocking modal, back must not dismiss it (Q1).
+- Entry:
+  - Live: price-change-requested socket event for any of the customer's errands while the app is in the foreground (app-level listener; event name pending row 23).
+  - "Price change" on `v-track`; notification row "Price change requested"; push deep link (opens Track for that errand, then the modal).
+  - On app resume, if a request is pending for an active errand.
+- Approve success → close the modal; snackbar `Price change approved.`; then, if the route is `merchant_direct` or `customer_to_runner`, push `x-merchant-payment` showing the new amount due.
+- Reject → second confirm (C-35) → on success close both; the errand moves to CANCELLED (backend) and Track shows the cancelled card.
+- `Not now` is **not** offered: the runner is waiting.
 
 ## Task states
-Runner-side states where a price change can be requested: the API allows it in its `PRICE_CHANGEABLE` set (`apps/api/src/matching/price-change.service.ts:21`: QUOTED, ACCEPTED, PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS). For the mockup scenario (item found in store) the errand is IN_PROGRESS. The errand state does not change on approve.
+Requests can arrive in the API's price-changeable states (`apps/api/src/matching/price-change.service.ts`: QUOTED, ACCEPTED, PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS); the mockup case is IN_PROGRESS. Approve does not change the errand state. Reject → CANCELLED (OA-8; the transition from the active state must be added by api-contract; refunds and the exact set of states pending row 37).
 
-## Layout (top to bottom)
-1. Pushed header (C-10) title `Price change`.
-2. Price card (C-07, margin 20, r 16, padding 20):
-   1. Explanation 13.5 slate-600, margin `0 0 4`.
-   2. Compare row: top and bottom hairlines, padding 16 0, margin 14 0. Two centred columns ("Original", "New price") with label 11 slate-600 and value Fira Code 19; an arrow `→` slate-400 between them.
-   3. Difference line centred, Fira Code 13/600.
-3. Button stack (padding 0 20, gap 10): primary approve, outline reject.
-
-Mockup colours the new price and the difference in amber text. Design system: amber only as a chip accent. Recommended: new price in blue, difference rendered as a chip-pending (C-05) `+ KSh 5,000 additional` (Q3).
+## Layout (modal card, top to bottom)
+Dialog: white, r-l 20, padding 20, max width 335, centred, scrim per SQ-1.
+1. Title 17/600 blue, margin-bottom 8.
+2. Explanation 13.5 slate-600, margin-bottom 4. If the request has a `reason`, show it below in 13 blue, wrapped in quotes, margin-top 6.
+3. Compare row: top and bottom slate-line hairlines, padding 16 0, margin 14 0. Two centred columns, an arrow `→` slate-400 between them:
+   - `Original`: label 11 slate-600; value Fira Code 19 **blue**.
+   - `New price`: label 11 slate-600; value Fira Code 19 **amber** (OA-13).
+4. Difference line centred, Fira Code 13/600 **amber** (OA-13), margin-bottom 16.
+5. Button stack, gap 10, full width: primary approve (C-01); outline reject (C-03, red text: destructive per OA-13).
 
 ## Components
 | Element | Component | Status |
 |---|---|---|
-| Card | C-07 | app-only |
-| Price compare | screen-local composition (two `NumText` columns) | NEW (C-32) |
-| Difference chip | C-05 pending | app-only |
-| Approve / reject | C-01 / C-03 | core |
-| Blocking-modal presentation | NEW route type (full-screen dialog, non-dismissible) | NEW |
+| Modal | C-35 | **NEW** |
+| Price compare | screen-local composition of two `NumText` columns | built (C-32) |
+| Approve / reject | C-01 / C-03 | built |
 
-## Copy (exact)
-- Header: `Price change`
-- Explanation: `Brian K. found the item priced higher than quoted. Approve the difference to continue?` (runner name, Q-NAME; reason text from the request's `reason` should be shown when present, Q4)
+## Copy (exact from the mockup unless marked)
+- Title: `Price change`
+- Explanation: `Brian K. found the item priced higher than quoted. Approve the difference to continue?` (runner short name, OA-2)
 - Labels: `Original`, `New price`
-- Values: `40,000` → `45,000` (no currency prefix in the mockup)
+- Values: `40,000` → `45,000` (no currency prefix, as drawn)
 - Difference: `+ KSh 5,000 additional`
 - Approve: `Approve KSh 5,000 increase`
 - Reject: `Reject & cancel task`
 
-Implied states:
-- Loading the request: skeleton card.
-- Already decided / expired: `This price change was already answered.` + back.
-- Approve/Reject in flight: buttons disabled, spinner in the pressed button.
-- Error: snackbar `Couldn't send your answer. Try again.`
+Reject confirm dialog (proposed):
+- Title: `Reject and cancel this task?`
+- Body: `The runner will stop work on this task.` + second line **pending row 37** (refund rules): until answered show `We'll update you about anything you've already paid.`
+- Buttons: `Reject & cancel` (outline, red text), `Go back` (C-01).
+
+States (proposed):
+- Loading the request: skeleton inside the dialog.
+- Already answered or withdrawn (API 409 / not `requested`): dialog body `This price change was already answered.` + single button `OK`.
+- Approve/Reject in flight: both buttons disabled, spinner in the pressed button.
+- Error: inline red 12.5 under the buttons `Couldn't send your answer. Try again.`
 
 ## Numeric fields (Fira Code)
-- Original and new price, difference, amount in the approve button.
+- Original and new price, the difference, the amount inside the approve button.
 
 ## Data
-- Read: the customer needs the pending request (`fromPrice`, `toPrice`, `reason`, `requestedByUserId`, `createdAt`). No GET endpoint exists for price-change requests → needs: api-contract (`GET /errands/:errandId/price-change?status=requested`).
-- Approve: `POST /api/v1/errands/:errandId/price-change/:requestId/approve` (exists). §3.2 names this `POST /payments/:id/authorize-change` — the API uses a different path (record, not a blocker).
-- Reject: `POST /api/v1/errands/:errandId/price-change/:requestId/reject` (exists).
-- Socket: price-change-requested event on `errand:{id}` (name undefined, needs: api-contract); push (§4.4).
+- Read: `GET /api/v1/errands/:errandId/price-change?status=requested` (exists on `feat/api-customer-gaps`) → `fromPrice`, `toPrice`, `reason`, `createdAt`.
+- needs: api-contract — price change applies to the **item/merchant amount** (OA-8). Today the API updates `quoted_price` / `final_price` (the service price); it must instead update the item amount and the amount due shown on `x-merchant-payment`.
+- Approve: `POST /api/v1/errands/:errandId/price-change/:requestId/approve` (exists; §3.2 calls it `POST /payments/:id/authorize-change`).
+- Reject: `POST /api/v1/errands/:errandId/price-change/:requestId/reject` (exists). needs: api-contract — reject must move the errand to CANCELLED in the same transaction (OA-8), from any state where a request can exist (exact set pending row 37).
+- Live: price-change-requested on `errand:{id}` (name pending row 23); push (§4.4).
 
 ## Accessibility and mobile
-- If shown as a blocking modal, focus moves to the card heading and system back is consumed.
-- Buttons full width, 48dp+.
+- Focus moves to the dialog title on open; the dialog is announced as a modal; back is consumed.
+- Buttons full width, ≥ 48dp.
+- Amber text (`#B8860B` on white ≈ 3.4:1) is below AA for normal text: the 19px value is large-text-adjacent; the 13/600 difference line fails AA. Same contrast family as pending row 33; follow its outcome.
 
-## Questions for owner
-- Q1: Pushed screen (mockup) or blocking modal (§4.4)? Recommended: full-screen non-dismissible route when it arrives live; same layout.
-- Q2 (state machine): "Reject & cancel task" — §3.3 only allows CANCELLED from REQUESTED, QUOTED, ACCEPTED, RUNNER_ASSIGNED. A runner who is IN_PROGRESS cannot be cancelled. What happens on reject: task continues at the original price, task goes to DISPUTED, or a new transition is needed? The API's reject only marks the request rejected.
-- Q3: Amber text for the new price and difference is outside the chip-only rule. Recommended: blue value + chip-pending difference.
-- Q4 (payments): Which amount changes? The mockup (40,000 → 45,000 item price) is the merchant amount. The API price-change updates `quoted_price` / `final_price` (the service price). How is the extra KSh 5,000 paid — new STK push, merchant directly, or runner advance — keeping the three flows separate?
+## Resolved by owner answers
+- Modal vs pushed: modal (OA-8, was Q1).
+- Reject semantics: reject → CANCELLED (OA-8, was Q2); refunds pending row 37.
+- Amber price text: allowed (OA-13, was Q3).
+- Which amount changes and how it is paid: the item/merchant amount; the customer pays the difference (OA-8, was Q4).
+
+## Open questions for the owner
+- Q1 (payments): "pays the difference" — through the same route chosen at checkout (merchant-direct: pays the merchant more; send-to-runner: SQ-5), or by a new STK push to Nitume? Default: same route, shown on `x-merchant-payment`.
 
 ## Current vs design
 Not built. `track_tab.dart:263` has a "⚠️ Price change" button with a TODO.

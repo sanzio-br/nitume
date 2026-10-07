@@ -1,72 +1,86 @@
 # v-task-detail — Task detail
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 482–506 (`#v-task-detail`, overlay)
-- Shared conventions: `_shared.md`
+- Shared conventions: `_shared.md` (OA-n §0, fees §8)
 - Implementation: none
 - Status: missing
 
 ## Purpose
-Read-only record of one task: status, reference and time, runner, evidence, payment breakdown, and a way to report a problem.
+Record of one task in any state: status, reference and time, runner, evidence, payment breakdown, the next action, and a way to report a problem.
 
 ## Entry / exit
-- Entry: Home "Recent" row; History card; (implied) notification deep links for finished tasks.
+- Entry: Home "Recent" row; History card (all cards, including Cancelled); notification deep links for finished tasks; Track status card "View task".
 - Back → previous screen.
-- "Report a problem with this task" → dispute flow (not drawn; implied view `x-report-problem`).
-- Evidence thumb → full-screen viewer (implied).
+- Primary action (by state, below) → its screen.
+- "Report a problem with this task" → push `x-report-problem` (write mode). DISPUTED → `View your report` → `x-report-problem` (read mode).
+- Evidence thumb → push `x-evidence-viewer`.
+- Payment section `View payment details` → push `x-merchant-payment` (while an item amount is due).
 
 ## Task states
-Any. The mockup draws a COMPLETED task. For active states, recommended: show a `Track live` primary button that opens `v-track` (Q2).
+Any. Primary action button (C-01, full width, margin `0 20 14`, under the summary card) by state:
+
+| State | Button | Target |
+|---|---|---|
+| REQUESTED | `View request` | `x-awaiting-quote` |
+| QUOTED | `Review quote` | `x-awaiting-quote` |
+| ACCEPTED | `Pay now` | `v-payment` |
+| PAYMENT_CONFIRMED … IN_PROGRESS | `Track live` | `v-track` |
+| AWAITING_CUSTOMER | `Review evidence` | `v-evidence-confirm` |
+| COMPLETED (no rating yet) | `Rate this task` | `v-rate` |
+| others | none | — |
+
+Report row visible in IN_PROGRESS, AWAITING_CUSTOMER and COMPLETED (§3.3 + OA-9). Hidden in all other states (including CONFIRMED/SETTLED, pending row 35). DISPUTED shows `View your report`.
 
 ## Layout (top to bottom)
 1. Pushed header (C-10) `Task detail`.
 2. Scrollable body:
-   1. Summary card (C-07): status chip (C-05), title 16/700 (margin `10 0 4`), meta Fira Code 12 slate-600.
-   2. Section label `Runner`; card with C-21 (avatar 36, name 13.5/600, meta Fira Code 11 `Verified · 4.9 · 137 tasks`).
-   3. Section label `Evidence`; evidence grid (C-25).
-   4. Section label `Payment`; receipt card (C-18, dashed).
-   5. Destructive menu row (C-24 danger), margin-top 4.
+   1. Summary card (C-07): status chip (C-05), title 16/700 (margin `10 0 4`), meta Fira Code 12 slate-600 (`#NT-10482 · Today, 10:03 AM`).
+   2. Primary action (table above).
+   3. Section label `Runner`; card with C-21 (avatar 36, name 13.5/600, meta Fira Code 11 `Verified · 4.9 · 137 tasks`). Hidden when no runner was assigned.
+   4. Section label `Evidence`; evidence grid (C-25). Hidden when there is no evidence.
+   5. Section label `Payment`; receipt card (C-18, dashed): `Service fee`, `Runner fee`, total `Total paid`; separate group for `Item amount` + route line (§8) and, while due, link `View payment details` (C-04).
+   6. Destructive menu row (C-24: red text, slate-400 chevron, OA-13), margin-top 4.
 
 ## Components
-C-10, C-07, C-05, C-08, C-21, C-25, C-18, C-24. NEW except C-05/C-07 (app-only).
+C-10, C-07, C-05, C-01, C-08, C-21, C-25, C-18, C-04, C-24. All built (C-18 separate group, C-24 red text: changes listed in `_shared.md`).
 
-## Copy (exact)
+## Copy (exact from the mockup unless marked)
 - Header: `Task detail`
-- Chip: `Completed`
+- Chip: `Completed` (labels per `_shared.md` §6)
 - Title: `Apartment check — Nyali`
-- Meta: `#NT-10482 · Today, 10:03 AM` (reference format differs from Home `#10482`; `v-home.md` Q7)
+- Meta: `#NT-10482 · Today, 10:03 AM` (reference from the API, OA-15)
 - Sections: `Runner`, `Evidence`, `Payment`
 - Runner: `Brian K.`, `Verified · 4.9 · 137 tasks`
-- Payment: `Service fee` `KSh 700`; `Runner fee` `KSh 1,500`; `Total paid` `KSh 2,200`
-- Row: `Report a problem with this task`
+- Payment: `Service fee` `KSh 700`; `Runner fee` `KSh 1,500`; `Total paid` `KSh 2,200`; `Item amount` (proposed)
+- Row: `Report a problem with this task`; DISPUTED: `View your report` (proposed)
+- Action buttons: see the table (proposed)
 
-Implied states:
-- Loading: skeleton cards.
-- Error: `Couldn't load this task.` + `Try again`.
-- No runner (CANCELLED before assignment, EXPIRED): hide the Runner section.
-- No evidence: hide the Evidence section or show `No evidence for this task.`
-- Not paid: Payment section shows `Not paid` (info chip) or is hidden.
-- DISPUTED: chip danger `Disputed`; the report row becomes `View dispute` (Q3).
+States (proposed):
+- Loading: skeleton cards. Error: C-33 `Couldn't load this task.` + `Try again`.
+- Not paid (before PAYMENT_CONFIRMED): Payment section shows the 13 slate-600 line `Not paid yet.` instead of the receipt.
+- Cancelled after payment: receipt as paid; refund lines **pending row 37** (show nothing about refunds until decided).
 
 ## Numeric fields (Fira Code)
-- Reference `#NT-10482`, timestamp, rating `4.9`, task count `137`, all amounts.
+- Reference, timestamp, rating `4.9`, task count `137`, all amounts.
 
 ## Data
-- `GET /api/v1/errands/:id` (exists) — needs runner summary/assignment (needs: api-contract).
+- `GET /api/v1/errands/:id` (exists; assignment + runner summary on `feat/api-customer-gaps`). needs: api-contract — `reference`, `title` (OA-15), runner `displayName` (OA-2), dispute id when DISPUTED.
 - `GET /api/v1/runners/:id/profile` (exists; `avgRating`, `errandsCompleted`, `verificationLevel`).
-- `GET /api/v1/errands/:errandId/evidence` (exists).
-- `GET /api/v1/payments/:errandId` (exists).
-- Report a problem: `POST /disputes` (§3.2) — **no disputes controller in `apps/api`** (needs: api-contract). Fallback `PATCH /errands/:id/status {to:'DISPUTED'}` exists but carries no reason/evidence.
-- "Verified" label derived from `verificationLevel` ≥ `2_id_verified` (Q4).
+- `GET /api/v1/errands/:errandId/evidence` (exists; URLs pending row 25).
+- `GET /api/v1/payments/:errandId` (exists). Fee mapping TODO pending row 34.
+- `GET /api/v1/errands/:errandId/rating` to decide whether to show `Rate this task`.
+- "Verified" = `verificationLevel` ≥ `2_id_verified` (Q4 default).
 
 ## Accessibility and mobile
-- Report row: red text is outside the chip rule (Q-RED); keep 48dp height.
+- Report row 48dp; red text on white (`#C1433C` ≈ 4.4:1) is just under AA for 13.5px; same family as pending row 33.
 
-## Questions for owner
-- Q1: Q-NAME, Q-RED, `v-home.md` Q6/Q7 (title and reference number).
-- Q2: Should active tasks open this screen or Track? Recommended: History/Recent rows open this screen for any state; active tasks show a `Track live` button.
-- Q3: Dispute flow screens (reason, description, attach photos, status) are not in the mockup. Need design/copy.
-- Q4: Which verification level counts as "Verified" for customers?
-- Q5 (state machine): Disputes are allowed from IN_PROGRESS and COMPLETED only (§3.3). The row should be hidden or disabled in other states — confirm (e.g. after CONFIRMED/SETTLED, is reporting still possible?).
+## Resolved by owner answers
+- Names, red destructive row, title and reference: OA-2, OA-13, OA-15 (was Q1).
+- Report states: AWAITING_CUSTOMER added by OA-9 (was Q5); dispute screens specced in `x-report-problem` (was Q3).
+
+## Open questions (non-blocking; build default given)
+- Q2: Active tasks open this screen with a `Track live` button (default, as the table above).
+- Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
 
 ## Current vs design
 Not built. Home recent rows and History cards have `// TODO: Navigate to task detail`.
