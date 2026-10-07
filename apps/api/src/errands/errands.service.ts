@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   DataSource,
   EntityManager,
+  In,
   Repository,
 } from 'typeorm';
 import {
@@ -21,6 +22,10 @@ import {
 import { AuthContext } from '../common/decorators/auth.decorators';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
+import {
+  RunnerPublicSummary,
+  RunnersService,
+} from '../runners/runners.service';
 import { ErrandAssignment } from './errand-assignment.entity';
 import { ErrandItem } from './errand-item.entity';
 import { ErrandLocation } from './errand-location.entity';
@@ -66,6 +71,29 @@ export interface ListErrandsResponse {
   nextCursor: string | null;
 }
 
+/** Assignment states that mean "this runner holds the errand". */
+export const ACTIVE_ASSIGNMENT_STATUSES: AssignmentStatus[] = [
+  AssignmentStatus.ASSIGNED,
+  AssignmentStatus.ACCEPTED,
+];
+
+/** Customer-facing view of the runner currently holding an errand. */
+export interface ErrandAssignmentView {
+  id: string;
+  status: AssignmentStatus;
+  /** When the assignment was decided (falls back to creation time). */
+  assignedAt: Date;
+  runner: RunnerPublicSummary | null;
+}
+
+/** Errand row plus its current assignment (null until a runner is assigned). */
+export type ErrandView = Errand & { assignment: ErrandAssignmentView | null };
+
+export interface ListErrandViewsResponse {
+  items: ErrandView[];
+  nextCursor: string | null;
+}
+
 const pointToGeo = (loc: ErrandLocationDto): GeoPoint => ({
   type: 'Point',
   coordinates: [loc.lon, loc.lat],
@@ -90,6 +118,7 @@ export class ErrandsService {
     @InjectRepository(RunnerProfile)
     private readonly runnerProfiles: Repository<RunnerProfile>,
     private readonly events: EventEmitter2,
+    private readonly runners: RunnersService,
   ) {}
 
   async createDraft(
@@ -163,6 +192,71 @@ export class ErrandsService {
       throw new ForbiddenException('You do not have access to this errand');
     }
     return errand;
+  }
+
+  /** `getById` plus the current assignment and public runner summary. */
+  async getDetail(errandId: string, viewer: ViewerContext): Promise<ErrandView> {
+    const errand = await this.getById(errandId, viewer);
+    const [view] = await this.withAssignments([errand]);
+    return view;
+  }
+
+  /** `listFor` with each item carrying its current assignment (batched). */
+  async listViewsFor(
+    viewer: ViewerContext,
+    opts: { status?: ErrandStatus; limit?: number; cursor?: string | null },
+  ): Promise<ListErrandViewsResponse> {
+    const page = await this.listFor(viewer, opts);
+    return {
+      items: await this.withAssignments(page.items),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  /**
+   * Current (assigned/accepted) assignment for an errand, or null. Public so
+   * other modules (location, realtime) go through this service instead of
+   * reading `errand_assignments` themselves.
+   */
+  async activeAssignmentFor(errandId: string): Promise<ErrandAssignment | null> {
+    return this.assignments.findOne({
+      where: { errandId, status: In(ACTIVE_ASSIGNMENT_STATUSES) },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  private async withAssignments(errands: Errand[]): Promise<ErrandView[]> {
+    if (errands.length === 0) {
+      return [];
+    }
+    const rows = await this.assignments.find({
+      where: {
+        errandId: In(errands.map((e) => e.id)),
+        status: In(ACTIVE_ASSIGNMENT_STATUSES),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    const latest = new Map<string, ErrandAssignment>();
+    for (const row of rows) {
+      if (!latest.has(row.errandId)) {
+        latest.set(row.errandId, row);
+      }
+    }
+    const summaries = await this.runners.publicSummaries(
+      [...latest.values()].map((a) => a.runnerProfileId),
+    );
+    return errands.map((errand) => {
+      const a = latest.get(errand.id);
+      const assignment: ErrandAssignmentView | null = a
+        ? {
+            id: a.id,
+            status: a.status,
+            assignedAt: a.decidedAt ?? a.createdAt,
+            runner: summaries.get(a.runnerProfileId) ?? null,
+          }
+        : null;
+      return Object.assign(errand, { assignment });
+    });
   }
 
   async listFor(
