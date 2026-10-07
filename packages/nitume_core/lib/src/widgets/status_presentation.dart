@@ -11,6 +11,9 @@ typedef ErrandStatusPresentation = ({String label, StatusTone tone});
 /// owner made authoritative (Q20 / Q-LABELS, decided): do not add alternate
 /// customer-facing labels. Tones follow §6 with the Q13 decisions applied:
 /// En route amber, Cancelled red (see [NitumeDesignChoices]).
+///
+/// CONFIRMED and SETTLED are system-only states (owner row 35): the customer
+/// never sees them by name, so both display as `Completed`.
 ErrandStatusPresentation statusPresentation(ErrandStatus status) {
   return switch (status) {
     ErrandStatus.draft => (label: 'Draft', tone: StatusTone.info),
@@ -28,7 +31,7 @@ ErrandStatusPresentation statusPresentation(ErrandStatus status) {
     ErrandStatus.awaitingCustomer =>
       (label: 'Needs your review', tone: StatusTone.pending),
     ErrandStatus.completed => (label: 'Completed', tone: StatusTone.success),
-    ErrandStatus.confirmed => (label: 'Confirmed', tone: StatusTone.success),
+    ErrandStatus.confirmed => (label: 'Completed', tone: StatusTone.success),
     ErrandStatus.settled => (label: 'Completed', tone: StatusTone.success),
     ErrandStatus.cancelled =>
       (label: 'Cancelled', tone: NitumeDesignChoices.cancelledTone),

@@ -35,6 +35,8 @@ class NitumeField extends StatelessWidget {
     this.autofillHints,
     this.inputFormatters,
     this.maxLength,
+    this.textCapitalization = TextCapitalization.none,
+    this.persistentPrefix = false,
   });
 
   /// Multi-line description field (3 rows by default).
@@ -51,6 +53,7 @@ class NitumeField extends StatelessWidget {
     this.enabled = true,
     this.autofocus = false,
     this.maxLength,
+    this.textCapitalization = TextCapitalization.none,
   })  : keyboardType = TextInputType.multiline,
         textInputAction = TextInputAction.newline,
         numeric = false,
@@ -61,9 +64,11 @@ class NitumeField extends StatelessWidget {
         onTap = null,
         readOnly = false,
         autofillHints = null,
-        inputFormatters = null;
+        inputFormatters = null,
+        persistentPrefix = false;
 
-  /// Whole-shilling amount, Fira Code, `KSh ` prefix.
+  /// Whole-shilling amount, Fira Code, `KSh ` prefix that stays visible
+  /// while the field is empty and unfocused (so a `0` hint reads `KSh 0`).
   NitumeField.money({
     super.key,
     this.label,
@@ -87,7 +92,9 @@ class NitumeField extends StatelessWidget {
         readOnly = false,
         autofillHints = null,
         inputFormatters = [FilteringTextInputFormatter.digitsOnly],
-        maxLength = null;
+        maxLength = null,
+        textCapitalization = TextCapitalization.none,
+        persistentPrefix = true;
 
   /// Phone number, Fira Code, phone keyboard.
   NitumeField.phone({
@@ -115,7 +122,9 @@ class NitumeField extends StatelessWidget {
         inputFormatters = [
           FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')),
         ],
-        maxLength = null;
+        maxLength = null,
+        textCapitalization = TextCapitalization.none,
+        persistentPrefix = false;
 
   final String? label;
   final String? hint;
@@ -142,11 +151,21 @@ class NitumeField extends StatelessWidget {
   final List<TextInputFormatter>? inputFormatters;
   final int? maxLength;
 
+  /// Keyboard capitalisation (e.g. [TextCapitalization.words] for names).
+  final TextCapitalization textCapitalization;
+
+  /// Shows [prefixText] even while the field is empty and unfocused.
+  /// Material hides `prefixText` in that state; [NitumeField.money] sets
+  /// this so the `KSh` prefix is always visible.
+  final bool persistentPrefix;
+
   @override
   Widget build(BuildContext context) {
     final inputStyle = numeric
         ? NitumeTypography.numeric(fontSize: 14.5, fontWeight: FontWeight.w400)
         : NitumeTextStyles.fieldInput;
+    final showPersistentPrefix =
+        persistentPrefix && prefixText != null && prefixIcon == null;
     final field = TextField(
       controller: controller,
       focusNode: focusNode,
@@ -155,6 +174,7 @@ class NitumeField extends StatelessWidget {
       minLines: minLines,
       maxLines: maxLines,
       maxLength: maxLength,
+      textCapitalization: textCapitalization,
       style: inputStyle,
       readOnly: readOnly,
       enabled: enabled,
@@ -169,9 +189,18 @@ class NitumeField extends StatelessWidget {
         hintStyle: inputStyle.copyWith(
           color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
         ),
-        prefixText: prefixText,
+        prefixText: showPersistentPrefix ? null : prefixText,
         prefixStyle: inputStyle,
-        prefixIcon: prefixIcon,
+        prefixIcon: showPersistentPrefix
+            ? Padding(
+                key: const ValueKey('nitume-field-prefix'),
+                padding: const EdgeInsetsDirectional.only(start: 14),
+                child: Text(prefixText!, style: inputStyle),
+              )
+            : prefixIcon,
+        prefixIconConstraints: showPersistentPrefix
+            ? const BoxConstraints(minWidth: 0, minHeight: 0)
+            : null,
         suffixIcon: suffixIcon,
         errorText: errorText,
         errorMaxLines: 3,
