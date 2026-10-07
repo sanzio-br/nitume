@@ -12,6 +12,9 @@ Color? _labelColor(WidgetTester tester, String label) {
   return text.text.style?.color;
 }
 
+Color? _boxColor(WidgetTester tester, Finder f) =>
+    (tester.widget<Container>(f).decoration as BoxDecoration?)?.color;
+
 void main() {
   group('NitumeButton destructive', () {
     testWidgets('outline and text variants use red labels', (tester) async {
@@ -350,6 +353,55 @@ void main() {
       final item = tester.getRect(find.text('KSh 40,000'));
       expect(total.bottom, lessThanOrEqualTo(captionRect.top));
       expect(captionRect.bottom, lessThanOrEqualTo(item.top));
+    });
+  });
+
+  group('NotificationRow (C-28)', () {
+    testWidgets('unread: 700 title and red dot under the time',
+        (tester) async {
+      await pumpThemed(
+        tester,
+        const Column(
+          children: [
+            NotificationRow(
+              icon: Icons.place_outlined,
+              title: 'Brian K. is en route',
+              body: 'Apartment check — Nyali · ETA 12 min',
+              time: '2m',
+              unread: true,
+            ),
+            NotificationRow(
+              icon: Icons.check,
+              title: 'Task completed',
+              time: 'Yesterday',
+            ),
+          ],
+        ),
+      );
+      expect(
+        tester.widget<Text>(find.text('Brian K. is en route')).style?.fontWeight,
+        FontWeight.w700,
+      );
+      expect(
+        tester.widget<Text>(find.text('Task completed')).style?.fontWeight,
+        FontWeight.w600,
+      );
+      final dot = find.byKey(const ValueKey('notification-unread-dot'));
+      expect(dot, findsOneWidget);
+      expect(_boxColor(tester, dot), NitumeColors.red);
+      final dotBox = find.descendant(
+        of: dot,
+        matching: find.byType(DecoratedBox),
+      );
+      expect(tester.getSize(dotBox), const Size(7, 7));
+      expect(
+        tester.getRect(dotBox).top - tester.getRect(find.text('2m')).bottom,
+        6,
+      );
+      expect(
+        tester.getSemantics(find.byType(NotificationRow).first).label,
+        startsWith('Unread, '),
+      );
     });
   });
 }
