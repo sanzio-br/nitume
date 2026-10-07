@@ -477,6 +477,14 @@ class _TrackBody extends StatelessWidget {
   }
 }
 
+/// History rows the customer never sees: DRAFT, and the system-only
+/// payout states CONFIRMED and SETTLED (owner row 35).
+const _hiddenInTimeline = {
+  ErrandStatus.draft,
+  ErrandStatus.confirmed,
+  ErrandStatus.settled,
+};
+
 /// Status history with `_shared.md` §6 labels, evidence uploads, and the
 /// next expected state as pending (v-track Q1 default).
 List<TimelineStep> timelineSteps(
@@ -487,7 +495,7 @@ List<TimelineStep> timelineSteps(
   final done =
       <(DateTime?, TimelineStep)>[
         for (final h in history)
-          if (h.toStatus != ErrandStatus.draft)
+          if (!_hiddenInTimeline.contains(h.toStatus))
             (
               h.createdAt,
               TimelineStep(

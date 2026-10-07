@@ -3,6 +3,7 @@ import 'package:customer_app/src/screens/task/evidence_confirm_screen.dart';
 import 'package:customer_app/src/screens/task/rate_screen.dart';
 import 'package:customer_app/src/screens/task/report_problem_screen.dart';
 import 'package:customer_app/src/screens/task/task_detail_screen.dart';
+import 'package:customer_app/src/screens/shell/track_tab.dart';
 import 'package:customer_app/src/services/shell_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -217,6 +218,21 @@ void main() {
     });
   });
 
+  test('timeline never shows CONFIRMED or SETTLED (row 35)', () {
+    final steps = timelineSteps(
+      [
+        _h('h1', ErrandStatus.draft, 1),
+        _h('h2', ErrandStatus.awaitingCustomer, 2),
+        _h('h3', ErrandStatus.completed, 3),
+        _h('h4', ErrandStatus.confirmed, 4),
+        _h('h5', ErrandStatus.settled, 5),
+      ],
+      const [],
+      ErrandStatus.settled,
+    );
+    expect(steps.map((s) => s.title), ['Needs your review', 'Completed']);
+  });
+
   group('v-task-detail', () {
     testWidgets('completed: rate, receipt, report row', (t) async {
       final b = TestBackend();
@@ -352,3 +368,12 @@ void main() {
     });
   });
 }
+
+StatusHistoryEntry _h(String id, ErrandStatus to, int minute) =>
+    StatusHistoryEntry(
+      id: id,
+      errandId: 'e1',
+      toStatus: to,
+      actorType: StatusHistoryActor.system,
+      createdAt: DateTime(2026, 10, 7, 10, minute),
+    );
