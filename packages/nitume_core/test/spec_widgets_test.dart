@@ -492,4 +492,76 @@ void main() {
       expect(find.text('caption 2'), findsOneWidget);
     });
   });
+
+  group('NitumeCheckbox (C-36)', () {
+    BoxDecoration boxOf(WidgetTester tester) => tester
+        .widget<DecoratedBox>(
+          find.descendant(
+            of: find.byType(NitumeCheckbox),
+            matching: find.byType(DecoratedBox),
+          ),
+        )
+        .decoration as BoxDecoration;
+
+    testWidgets('unchecked slate-line box, checked green with white check',
+        (tester) async {
+      var value = false;
+      await pumpThemed(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) => NitumeCheckbox(
+            value: value,
+            label: 'Set as default',
+            onChanged: (v) => setState(() => value = v),
+          ),
+        ),
+      );
+      var box = boxOf(tester);
+      expect(box.color, NitumeColors.white);
+      expect((box.border! as Border).top.color, NitumeColors.slateLine);
+      expect((box.border! as Border).top.width, 2);
+      expect(box.borderRadius, BorderRadius.circular(6));
+      expect(find.byIcon(Icons.check_rounded), findsNothing);
+      expect(
+        tester.getSize(
+          find.descendant(
+            of: find.byType(NitumeCheckbox),
+            matching: find.byType(DecoratedBox),
+          ),
+        ),
+        const Size.square(22),
+      );
+      expect(
+        tester.getSize(find.byType(NitumeCheckbox)).height,
+        greaterThanOrEqualTo(48),
+      );
+
+      await tester.tap(find.text('Set as default'));
+      await tester.pump();
+      expect(value, isTrue);
+      box = boxOf(tester);
+      expect(box.color, NitumeColors.green);
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.check_rounded)).color,
+        NitumeColors.white,
+      );
+      expect(
+        tester.widget<Text>(find.text('Set as default')).style?.fontSize,
+        13.5,
+      );
+    });
+
+    testWidgets('disabled ignores taps', (tester) async {
+      await pumpThemed(
+        tester,
+        const NitumeCheckbox(
+          value: true,
+          label: 'Set as default',
+          onChanged: null,
+        ),
+      );
+      await tester.tap(find.text('Set as default'));
+      expect(boxOf(tester).color, NitumeColors.green);
+    });
+  });
 }
