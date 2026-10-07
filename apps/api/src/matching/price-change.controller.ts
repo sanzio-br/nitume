@@ -4,8 +4,9 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { UserRole } from '../common/enums';
 import { PriceChangeRequest } from './price-change-request.entity';
-import { PriceChangeService } from './price-change.service';
+import { PriceChangeDecision, PriceChangeService } from './price-change.service';
 import {
+  ApprovePriceChangeDto,
   ErrandIdParamsDto,
   ListPriceChangesQueryDto,
   PriceChangeRequestParamsDto,
@@ -49,11 +50,14 @@ export class PriceChangeController {
   approve(
     @Param() params: PriceChangeRequestParamsDto,
     @CurrentUser() user: AuthContext,
-  ): Promise<PriceChangeRequest> {
-    return this.priceChange.approve(params.errandId, params.requestId, {
-      userId: user.userId,
-      role: user.role,
-    });
+    @Body() dto: ApprovePriceChangeDto,
+  ): Promise<PriceChangeDecision> {
+    return this.priceChange.approve(
+      params.errandId,
+      params.requestId,
+      { userId: user.userId, role: user.role },
+      dto.merchantRoute,
+    );
   }
 
   @Post(':requestId/reject')
@@ -61,7 +65,7 @@ export class PriceChangeController {
   reject(
     @Param() params: PriceChangeRequestParamsDto,
     @CurrentUser() user: AuthContext,
-  ): Promise<PriceChangeRequest> {
+  ): Promise<PriceChangeDecision> {
     return this.priceChange.reject(params.errandId, params.requestId, {
       userId: user.userId,
       role: user.role,

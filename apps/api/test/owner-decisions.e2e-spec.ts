@@ -496,4 +496,110 @@ describe('Owner decisions (e2e)', () => {
         .expect(201);
     });
   });
+
+  describe('price change and refunds', () => {
+    it('approve records the difference; reject cancels and opens a refund review', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const runner = await makeUser(UserRole.RUNNER);
+      const errand = await createErrand(customer, {
+        category: 'buy_for_me',
+        budget: 500,
+        locations: [
+          { pointType: 'dropoff', lat: -4.04, lon: 39.7, addressText: 'Links Road, Nyali' },
+        ],
+      });
+      await driveTo({ customer, admin, runner }, errand.id, 'IN_PROGRESS', {
+        merchantRoute: 'send_to_runner',
+      });
+      const base = `/api/v1/errands/${errand.id}/price-change`;
+
+      const up = await http().post(base).set(bearer(runner.token)).send({ toPrice: 650 }).expect(201);
+      expect(up.body.fromPrice).toBe('500.00');
+      const approved = await http()
+        .post(`${base}/${up.body.id}/approve`)
+        .set(bearer(customer.token))
+        .send({})
+        .expect(201);
+      expect(approved.body.status).toBe('approved');
+      expect(approved.body.differencePayment.merchantPayment).toEqual({
+        route: 'send_to_runner',
+        amount: '150.00',
+      });
+      expect(approved.body.differencePayment.payment.priceChangeRequestId).toBe(up.body.id);
+      const afterApprove = await http()
+        .get(`/api/v1/errands/${errand.id}`)
+        .set(bearer(customer.token))
+        .expect(200);
+      expect(afterApprove.body.budget).toBe('650.00');
+      expect(afterApprove.body.quotedPrice).toBe('1000.00');
+
+      const second = await http().post(base).set(bearer(runner.token)).send({ toPrice: 900 }).expect(201);
+      expect(second.body.fromPrice).toBe('650.00');
+      const rejected = await http()
+        .post(`${base}/${second.body.id}/reject`)
+        .set(bearer(customer.token))
+        .send({})
+        .expect(201);
+      expect(rejected.body.status).toBe('rejected');
+      const cancelled = await http()
+        .get(`/api/v1/errands/${errand.id}`)
+        .set(bearer(customer.token))
+        .expect(200);
+      expect(cancelled.body.status).toBe('CANCELLED');
+
+      // The refund review is opened from the status event (async).
+      let review: Record<string, any> | undefined;
+      for (let i = 0; i < 20 && !review; i++) {
+        const list = await http()
+          .get('/api/v1/refunds?status=pending_review&limit=100')
+          .set(bearer(admin.token))
+          .expect(200);
+        review = list.body.items.find((r: { errandId: string }) => r.errandId === errand.id);
+        if (!review) await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(review).toMatchObject({
+        trigger: 'price_change_rejected',
+        amountPaid: '500.00',
+        status: 'pending_review',
+      });
+      await http().get('/api/v1/refunds').set(bearer(customer.token)).expect(403);
+
+      const tooMuch = await http()
+        .patch(`/api/v1/refunds/${review!.id}/decision`)
+        .set(bearer(admin.token))
+        .send({ refundAmount: 501 })
+        .expect(400);
+      expect(tooMuch.body.code).toBe('refund_exceeds_amount_paid');
+      const decided = await http()
+        .patch(`/api/v1/refunds/${review!.id}/decision`)
+        .set(bearer(admin.token))
+        .send({ refundAmount: 300, note: 'Runner fee kept for time spent' })
+        .expect(200);
+      expect(decided.body).toMatchObject({ status: 'approved', refundAmount: '300.00' });
+      const paid = await http()
+        .post(`/api/v1/refunds/${review!.id}/mark-paid`)
+        .set(bearer(admin.token))
+        .send({ payoutReference: 'QJK12AB34C' })
+        .expect(200);
+      expect(paid.body.status).toBe('refunded');
+    });
+
+    it('refuses reject-and-cancel while the runner is en route', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const runner = await makeUser(UserRole.RUNNER);
+      const errand = await createErrand(customer);
+      await driveTo({ customer, admin, runner }, errand.id, 'RUNNER_ASSIGNED');
+      await setStatus(runner, errand.id, 'RUNNER_EN_ROUTE');
+      const base = `/api/v1/errands/${errand.id}/price-change`;
+      const req = await http().post(base).set(bearer(runner.token)).send({ toPrice: 100 }).expect(201);
+      const res = await http()
+        .post(`${base}/${req.body.id}/reject`)
+        .set(bearer(customer.token))
+        .send({})
+        .expect(409);
+      expect(res.body.code).toBe('price_change_reject_not_cancellable');
+    });
+  });
 });

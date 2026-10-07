@@ -13,6 +13,7 @@ const build = (getById: () => Promise<unknown>) => {
     {} as never,
     errandService as never,
     { emit: vi.fn() } as never,
+    {} as never,
   );
   return { service, requests, errandService };
 };
@@ -64,7 +65,7 @@ describe('PriceChangeService.request domain event (A-2)', () => {
     };
     const errands = {
       findOne: vi.fn(() =>
-        Promise.resolve({ id: 'e-1', status: 'IN_PROGRESS', quotedPrice: '500.00' }),
+        Promise.resolve({ id: 'e-1', status: 'IN_PROGRESS', quotedPrice: '900.00', budget: '500.00' }),
       ),
     };
     const service = new PriceChangeService(
@@ -74,6 +75,7 @@ describe('PriceChangeService.request domain event (A-2)', () => {
       {} as never,
       {} as never,
       { emit } as never,
+      {} as never,
     );
 
     await service.request('e-1', { toPrice: 650, reason: 'Price went up' }, {
@@ -90,5 +92,87 @@ describe('PriceChangeService.request domain event (A-2)', () => {
       reason: 'Price went up',
       createdAt: '2026-10-07T09:00:00.000Z',
     });
+  });
+});
+
+describe('PriceChangeService decisions (owner Q8)', () => {
+  const customerActor = { userId: 'user-1', role: UserRole.CUSTOMER };
+  const pending = {
+    id: 'pc-1',
+    errandId: 'e-1',
+    fromPrice: '500.00',
+    toPrice: '650.00',
+    status: PriceChangeStatus.REQUESTED,
+  };
+
+  const setup = (status: string) => {
+    const requests = {
+      findOne: vi.fn(() => Promise.resolve({ ...pending })),
+      save: vi.fn((r: object) => Promise.resolve(r)),
+    };
+    const errands = {
+      findOne: vi.fn(() => Promise.resolve({ id: 'e-1', customerId: 'cust-1', status })),
+      update: vi.fn(() => Promise.resolve({})),
+    };
+    const errandService = {
+      getCustomerProfileId: vi.fn(() => Promise.resolve('cust-1')),
+      transitionWith: vi.fn(
+        (_id: string, _to: string, _a: unknown, _n: string, _s: unknown, within: (m: unknown) => Promise<unknown>) =>
+          within({ getRepository: () => requests }).then((extra) => ({ extra })),
+      ),
+    };
+    const payments = {
+      recordPriceDifference: vi.fn(() =>
+        Promise.resolve({ payment: { id: 'p-diff' }, merchantPayment: { route: 'send_to_runner', amount: '150.00' } }),
+      ),
+    };
+    const service = new PriceChangeService(
+      requests as never,
+      errands as never,
+      {} as never,
+      {} as never,
+      errandService as never,
+      { emit: vi.fn() } as never,
+      payments as never,
+    );
+    return { service, errands, errandService, payments };
+  };
+
+  it('approval moves the merchant amount and records the paid difference', async () => {
+    const { service, errands, payments } = setup('IN_PROGRESS');
+    const res = await service.approve('e-1', 'pc-1', customerActor);
+    expect(errands.update).toHaveBeenCalledWith('e-1', { budget: '650.00' });
+    expect(payments.recordPriceDifference).toHaveBeenCalledWith('e-1', 'pc-1', 150, undefined);
+    expect(res.status).toBe(PriceChangeStatus.APPROVED);
+    expect(res.differencePayment?.payment).toEqual({ id: 'p-diff' });
+  });
+
+  it('approval before payment only moves the merchant amount', async () => {
+    const { service, payments } = setup('QUOTED');
+    const res = await service.approve('e-1', 'pc-1', customerActor);
+    expect(payments.recordPriceDifference).not.toHaveBeenCalled();
+    expect(res.differencePayment).toBeNull();
+  });
+
+  it('customer rejection in IN_PROGRESS cancels through the guarded transition', async () => {
+    const { service, errandService } = setup('IN_PROGRESS');
+    const res = await service.reject('e-1', 'pc-1', customerActor);
+    expect(errandService.transitionWith).toHaveBeenCalledWith(
+      'e-1',
+      'CANCELLED',
+      { type: 'customer', id: 'user-1' },
+      expect.stringContaining('Price change rejected'),
+      { role: UserRole.CUSTOMER, userId: 'user-1' },
+      expect.any(Function),
+      'price_change_rejection',
+    );
+    expect(res.status).toBe(PriceChangeStatus.REJECTED);
+  });
+
+  it('refuses customer rejection where the task cannot be cancelled', async () => {
+    const { service, errandService } = setup('RUNNER_EN_ROUTE');
+    const err = await service.reject('e-1', 'pc-1', customerActor).catch((e: unknown) => e);
+    expect((err as { code?: string }).code).toBe('price_change_reject_not_cancellable');
+    expect(errandService.transitionWith).not.toHaveBeenCalled();
   });
 });

@@ -49,6 +49,15 @@ export class Payment {
   @Column({ type: 'varchar', length: 128, nullable: true })
   idempotencyKey: string | null;
 
+  /**
+   * Set on the record of a merchant/item price difference approved through
+   * a price-change request (no service or runner fee). Null for the main
+   * service + runner fee payment.
+   */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  priceChangeRequestId: string | null;
+
   @Index(['status', 'createdAt'])
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

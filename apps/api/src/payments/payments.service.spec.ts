@@ -63,6 +63,7 @@ const build = (opts: {
     stk as never,
     config as never,
     accounts as never,
+    {} as never,
   );
   return { service, payments, stk };
 };

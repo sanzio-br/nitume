@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import {
   PaymentFlow,
   PaymentMethodType,
@@ -34,6 +34,8 @@ import { StkGateway } from './stk-gateway/stk-gateway.interface';
 import { MpesaCallbackDto } from './dto/payment.dto';
 import { ApiError } from '../common/api-error';
 import { CustomerAccountsService } from '../customers/customer-accounts.service';
+import { RefundTrigger } from './refund-review.entity';
+import { RefundsService } from './refunds.service';
 import {
   MerchantDetails,
   MerchantPaymentView,
@@ -97,6 +99,7 @@ export class PaymentsService implements OnApplicationBootstrap {
     private readonly stk: StkGateway,
     private readonly config: ConfigService,
     private readonly accounts: CustomerAccountsService,
+    private readonly refunds: RefundsService,
   ) {}
 
   /** Lazy, idempotent upsert of the payment_type reference table. */
@@ -266,9 +269,42 @@ export class PaymentsService implements OnApplicationBootstrap {
   /** The errand's main (service + runner fee) payment, newest first. */
   private primaryPayment(errandId: string): Promise<Payment | null> {
     return this.payments.findOne({
-      where: { errandId },
+      where: { errandId, priceChangeRequestId: IsNull() },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  /**
+   * Records the merchant/item price difference of an approved price change
+   * (no service or runner fee) on the same merchant route as the original
+   * merchant amount, and tells the customer how to pay it. No STK push: the
+   * merchant amount never goes through Nitume's charge (owner question on
+   * how the difference is collected). Errands without a merchant amount so
+   * far need `route` (merchant_route_required).
+   */
+  async recordPriceDifference(
+    errandId: string,
+    priceChangeRequestId: string,
+    difference: number,
+    route?: MerchantRoute,
+  ): Promise<{ payment: Payment; merchantPayment: MerchantPaymentView | null }> {
+    const primary = await this.primaryPayment(errandId);
+    const primaryRoute = primary ? routeOf(primary.paymentFlow) : null;
+    const flow = primaryRoute
+      ? ROUTE_TO_FLOW[primaryRoute]
+      : await this.flowFor(errandId, difference, route);
+    const payment = await this.payments.save(
+      this.payments.create({
+        errandId,
+        priceChangeRequestId,
+        serviceFee: '0.00',
+        runnerFee: '0.00',
+        merchantAmount: difference.toFixed(2),
+        paymentFlow: flow,
+        status: PaymentStatus.PENDING,
+      }),
+    );
+    return { payment, merchantPayment: await this.merchantPaymentFor(payment) };
   }
 
   private stkStatus(payment: Payment): StkStatus {
@@ -412,10 +448,14 @@ export class PaymentsService implements OnApplicationBootstrap {
 
   private async confirmErrandAfterPayment(errandId: string): Promise<void> {
     const errand = await this.errands.getById(errandId);
-    if (!errand || !ErrandStateMachine.canTransition(errand.status, ErrandStatus.PAYMENT_CONFIRMED)) {
+    if (errand.status === ErrandStatus.CANCELLED) {
+      // Paid after the task was cancelled: goes to admin refund review.
+      await this.refunds.openIfPaid(errandId, RefundTrigger.CANCELLED_AFTER_PAYMENT);
+      return;
+    }
+    if (!ErrandStateMachine.canTransition(errand.status, ErrandStatus.PAYMENT_CONFIRMED)) {
       this.logger.warn(
-        `Payment confirmed but errand ${errandId} is ${errand?.status} — ` +
-          `no transition (handled by support/refund flow).`,
+        `Payment confirmed but errand ${errandId} is ${errand.status}; no transition.`,
       );
       return;
     }

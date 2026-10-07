@@ -8,6 +8,9 @@ import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { RefundReview } from './refund-review.entity';
+import { RefundsController } from './refunds.controller';
+import { RefundsService } from './refunds.service';
 import { ConsoleStkGateway } from './stk-gateway/console-stk-gateway';
 import { stkGatewayProvider } from './stk-gateway/stk-gateway.provider';
 
@@ -15,9 +18,16 @@ import { stkGatewayProvider } from './stk-gateway/stk-gateway.provider';
   imports: [
     ErrandsModule,
     CustomersModule,
-    TypeOrmModule.forFeature([Payment, PaymentTransaction, PaymentType, CustomerProfile]),
+    TypeOrmModule.forFeature([
+      Payment,
+      PaymentTransaction,
+      PaymentType,
+      CustomerProfile,
+      RefundReview,
+    ]),
   ],
-  controllers: [PaymentsController],
-  providers: [PaymentsService, ConsoleStkGateway, stkGatewayProvider],
+  controllers: [PaymentsController, RefundsController],
+  providers: [PaymentsService, RefundsService, ConsoleStkGateway, stkGatewayProvider],
+  exports: [PaymentsService],
 })
 export class PaymentsModule {}

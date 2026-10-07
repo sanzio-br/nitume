@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ErrandsModule } from '../errands/errands.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { Errand } from '../errands/errand.entity';
 import { ErrandAssignment } from '../errands/errand-assignment.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
@@ -12,6 +13,7 @@ import { PriceChangeService } from './price-change.service';
 @Module({
   imports: [
     ErrandsModule,
+    PaymentsModule,
     TypeOrmModule.forFeature([
       PriceChangeRequest,
       Errand,
