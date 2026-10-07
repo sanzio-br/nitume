@@ -106,19 +106,39 @@ describe('PriceChangeService decisions (owner Q8)', () => {
   };
 
   const setup = (status: string) => {
+    // Stateful request row; findOne returns a copy like a fresh DB read.
+    const row = { ...pending } as Record<string, unknown>;
     const requests = {
-      findOne: vi.fn(() => Promise.resolve({ ...pending })),
-      save: vi.fn((r: object) => Promise.resolve(r)),
+      findOne: vi.fn(() => Promise.resolve({ ...row })),
+      save: vi.fn((r: Record<string, unknown>) => {
+        Object.assign(row, r);
+        return Promise.resolve(r);
+      }),
+      manager: {} as { transaction: (fn: (m: unknown) => Promise<unknown>) => Promise<unknown> },
     };
     const errands = {
       findOne: vi.fn(() => Promise.resolve({ id: 'e-1', customerId: 'cust-1', status })),
       update: vi.fn(() => Promise.resolve({})),
     };
+    const manager = {
+      getRepository: (entity: { name: string }) =>
+        entity.name === 'Errand' ? errands : requests,
+    };
+    // Serialises transactions the way the row locks do.
+    let lock: Promise<unknown> = Promise.resolve();
+    requests.manager.transaction = vi.fn((fn) => {
+      const run = lock.then(async () => {
+        await new Promise((r) => setImmediate(r));
+        return fn(manager);
+      });
+      lock = run.catch(() => undefined);
+      return run;
+    });
     const errandService = {
       getCustomerProfileId: vi.fn(() => Promise.resolve('cust-1')),
       transitionWith: vi.fn(
         (_id: string, _to: string, _a: unknown, _n: string, _s: unknown, within: (m: unknown) => Promise<unknown>) =>
-          within({ getRepository: () => requests }).then((extra) => ({ extra })),
+          within(manager).then((extra) => ({ extra })),
       ),
     };
     const payments = {
@@ -135,14 +155,54 @@ describe('PriceChangeService decisions (owner Q8)', () => {
       { emit: vi.fn() } as never,
       payments as never,
     );
-    return { service, errands, errandService, payments };
+    return { service, requests, errands, errandService, payments, manager };
   };
+
+  it('approves in one transaction with the request and errand rows locked', async () => {
+    const { service, requests, errands, payments, manager } = setup('IN_PROGRESS');
+    await service.approve('e-1', 'pc-1', customerActor);
+    expect(requests.manager.transaction).toHaveBeenCalledTimes(1);
+    expect(requests.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+    expect(errands.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+    expect(payments.recordPriceDifference).toHaveBeenCalledWith('e-1', 'pc-1', 150, undefined, manager);
+  });
+
+  it('answers a second concurrent approve with 409 price_change_already_decided', async () => {
+    const { service, payments, errands } = setup('IN_PROGRESS');
+    const [first, second] = await Promise.allSettled([
+      service.approve('e-1', 'pc-1', customerActor),
+      service.approve('e-1', 'pc-1', customerActor),
+    ]);
+    expect(first.status).toBe('fulfilled');
+    expect(second.status).toBe('rejected');
+    const err = (second as PromiseRejectedResult).reason as { code?: string; getStatus?: () => number };
+    expect(err.code).toBe('price_change_already_decided');
+    expect(err.getStatus?.()).toBe(409);
+    expect(payments.recordPriceDifference).toHaveBeenCalledTimes(1);
+    expect(errands.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a reject that races an approve on the same request', async () => {
+    const { service } = setup('QUOTED');
+    const outcomes = await Promise.allSettled([
+      service.approve('e-1', 'pc-1', customerActor),
+      service.reject('e-1', 'pc-1', { userId: 'admin-1', role: UserRole.ADMIN }),
+    ]);
+    // Whichever takes the lock first wins; the other sees the decision.
+    expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
+    const lost = outcomes.find((o) => o.status === 'rejected') as PromiseRejectedResult;
+    expect((lost.reason as { code?: string }).code).toBe('price_change_already_decided');
+  });
 
   it('approval moves the merchant amount and records the paid difference', async () => {
     const { service, errands, payments } = setup('IN_PROGRESS');
     const res = await service.approve('e-1', 'pc-1', customerActor);
     expect(errands.update).toHaveBeenCalledWith('e-1', { budget: '650.00' });
-    expect(payments.recordPriceDifference).toHaveBeenCalledWith('e-1', 'pc-1', 150, undefined);
+    expect(payments.recordPriceDifference).toHaveBeenCalledWith('e-1', 'pc-1', 150, undefined, expect.anything());
     expect(res.status).toBe(PriceChangeStatus.APPROVED);
     expect(res.differencePayment?.payment).toEqual({ id: 'p-diff' });
   });

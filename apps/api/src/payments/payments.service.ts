@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
+import { EntityManager, IsNull, Not, Repository } from 'typeorm';
 import {
   PaymentFlow,
   PaymentMethodType,
@@ -310,21 +310,27 @@ export class PaymentsService implements OnApplicationBootstrap {
    * merchant amount, and tells the customer how to pay it. No STK push: the
    * merchant amount never goes through Nitume's charge (owner question on
    * how the difference is collected). Errands without a merchant amount so
-   * far need `route` (merchant_route_required).
+   * far need `route` (merchant_route_required). Pass `manager` to write the
+   * record inside the caller's transaction (price-change approval).
    */
   async recordPriceDifference(
     errandId: string,
     priceChangeRequestId: string,
     difference: number,
     route?: MerchantRoute,
+    manager?: EntityManager,
   ): Promise<{ payment: Payment; merchantPayment: MerchantPaymentView | null }> {
-    const primary = await this.primaryPayment(errandId);
+    const repo = manager ? manager.getRepository(Payment) : this.payments;
+    const primary = await repo.findOne({
+      where: { errandId, priceChangeRequestId: IsNull() },
+      order: { createdAt: 'DESC' },
+    });
     const primaryRoute = primary ? routeOf(primary.paymentFlow) : null;
     const flow = primaryRoute
       ? ROUTE_TO_FLOW[primaryRoute]
       : await this.flowFor(errandId, difference, route);
-    const payment = await this.payments.save(
-      this.payments.create({
+    const payment = await repo.save(
+      repo.create({
         errandId,
         priceChangeRequestId,
         serviceFee: '0.00',

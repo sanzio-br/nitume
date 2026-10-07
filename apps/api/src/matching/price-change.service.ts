@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   ErrandStatus,
   PriceChangeStatus,
@@ -140,31 +140,40 @@ export class PriceChangeService {
     actor: { userId: string; role: UserRole },
     route?: MerchantRoute,
   ): Promise<PriceChangeDecision> {
-    const req = await this.pendingOwnedRequest(errandId, requestId, actor);
+    await this.pendingOwnedRequest(errandId, requestId, actor);
     await this.assertCustomer(errandId, actor);
-    const errand = await this.errands.findOne({ where: { id: errandId } });
-    if (!errand || !PRICE_CHANGEABLE.has(errand.status)) {
-      throw new ConflictException(
-        `Price changes cannot be approved in status ${errand?.status ?? 'unknown'}`,
-      );
-    }
-    const difference = round2(Number(req.toPrice) - Number(req.fromPrice));
-    let differencePayment: PriceChangeDecision['differencePayment'] = null;
-    if (difference > 0 && POST_PAYMENT.has(errand.status)) {
-      // Validates the route before anything is written.
-      differencePayment = await this.payments.recordPriceDifference(
-        errandId,
-        req.id,
-        difference,
-        route,
-      );
-    }
-    await this.errands.update(errandId, { budget: req.toPrice });
-    req.status = PriceChangeStatus.APPROVED;
-    req.decidedByUserId = actor.userId;
-    req.decidedAt = new Date();
-    const saved = await this.requests.save(req);
-    return Object.assign(saved, { differencePayment });
+    // One transaction: status check, difference record, budget and request.
+    // Lock order errand -> request matches reject (transition, then request).
+    return this.requests.manager.transaction(async (manager) => {
+      const errand = await manager.getRepository(Errand).findOne({
+        where: { id: errandId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const req = await this.lockPending(manager, errandId, requestId);
+      if (!errand || !PRICE_CHANGEABLE.has(errand.status)) {
+        throw new ConflictException(
+          `Price changes cannot be approved in status ${errand?.status ?? 'unknown'}`,
+        );
+      }
+      const difference = round2(Number(req.toPrice) - Number(req.fromPrice));
+      let differencePayment: PriceChangeDecision['differencePayment'] = null;
+      if (difference > 0 && POST_PAYMENT.has(errand.status)) {
+        // Validates the route before anything is written.
+        differencePayment = await this.payments.recordPriceDifference(
+          errandId,
+          req.id,
+          difference,
+          route,
+          manager,
+        );
+      }
+      await manager.getRepository(Errand).update(errandId, { budget: req.toPrice });
+      req.status = PriceChangeStatus.APPROVED;
+      req.decidedByUserId = actor.userId;
+      req.decidedAt = new Date();
+      const saved = await manager.getRepository(PriceChangeRequest).save(req);
+      return Object.assign(saved, { differencePayment });
+    });
   }
 
   /**
@@ -180,14 +189,17 @@ export class PriceChangeService {
   ): Promise<PriceChangeDecision> {
     const req = await this.pendingOwnedRequest(errandId, requestId, actor);
     await this.assertCustomer(errandId, actor);
-    const markRejected = (row: PriceChangeRequest) => {
+    // Re-read under a row lock so a concurrent approve/reject cannot also
+    // decide the same request.
+    const rejectWithin = async (manager: EntityManager) => {
+      const row = await this.lockPending(manager, errandId, requestId);
       row.status = PriceChangeStatus.REJECTED;
       row.decidedByUserId = actor.userId;
       row.decidedAt = new Date();
-      return row;
+      return manager.getRepository(PriceChangeRequest).save(row);
     };
     if (actor.role === UserRole.ADMIN) {
-      const saved = await this.requests.save(markRejected(req));
+      const saved = await this.requests.manager.transaction(rejectWithin);
       return Object.assign(saved, { differencePayment: null });
     }
     const errand = await this.errands.findOne({ where: { id: errandId } });
@@ -210,7 +222,7 @@ export class PriceChangeService {
       { type: StatusHistoryActor.CUSTOMER, id: actor.userId },
       `Price change rejected (${req.fromPrice} -> ${req.toPrice}); task cancelled`,
       { role: actor.role, userId: actor.userId },
-      (manager) => manager.getRepository(PriceChangeRequest).save(markRejected(req)),
+      rejectWithin,
       guard,
     );
     return Object.assign(extra, { differencePayment: null });
@@ -236,6 +248,32 @@ export class PriceChangeService {
     return this.requests.findOne({
       where: { errandId, status: PriceChangeStatus.REQUESTED },
     });
+  }
+
+  /**
+   * The request row under SELECT ... FOR UPDATE. A request decided by a
+   * concurrent call (seen once its lock is released) is a 409.
+   */
+  private async lockPending(
+    manager: EntityManager,
+    errandId: string,
+    requestId: string,
+  ): Promise<PriceChangeRequest> {
+    const row = await manager.getRepository(PriceChangeRequest).findOne({
+      where: { id: requestId, errandId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!row) {
+      throw new NotFoundException('Pending price change request not found');
+    }
+    if (row.status !== PriceChangeStatus.REQUESTED) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'price_change_already_decided',
+        `This price change request is already ${row.status}`,
+      );
+    }
+    return row;
   }
 
   private async pendingOwnedRequest(
