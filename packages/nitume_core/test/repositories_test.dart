@@ -65,6 +65,46 @@ const _errand = {
 };
 
 void main() {
+  group('NitumeApiException', () {
+    test('keeps the API code and extra fields; coded 401 is not a session '
+        'failure', () async {
+      final adapter = _FakeAdapter({
+        'POST /auth/otp/verify': (401, {
+          'statusCode': 401,
+          'code': 'otp_incorrect',
+          'message': 'Incorrect verification code.',
+          'attemptsRemaining': 3,
+        }),
+        'POST /auth/otp/request': (429, {
+          'statusCode': 429,
+          'code': 'otp_resend_cooldown',
+          'message': 'Please wait 42s before requesting another code.',
+          'secondsRemaining': 42,
+          'retryAfterSeconds': 42,
+        }),
+      });
+      final api = _client(adapter);
+      try {
+        await api.post('/auth/otp/verify', data: const {});
+        fail('expected an error');
+      } on NitumeApiException catch (e) {
+        expect(e.code, 'otp_incorrect');
+        expect(e.message, 'Incorrect verification code.');
+        expect(e.isUnauthorized, isFalse);
+        expect(e.intDetail('attemptsRemaining'), 3);
+        expect(OtpErrorKind.fromApiException(e), OtpErrorKind.incorrect);
+      }
+      try {
+        await api.post('/auth/otp/request', data: const {});
+        fail('expected an error');
+      } on NitumeApiException catch (e) {
+        expect(e.code, 'otp_resend_cooldown');
+        expect(e.retryAfter, const Duration(seconds: 42));
+        expect(OtpErrorKind.fromApiException(e), OtpErrorKind.resendTooSoon);
+      }
+    });
+  });
+
   group('ErrandRepository', () {
     test('list sends a comma-joined status filter and parses assignment',
         () async {

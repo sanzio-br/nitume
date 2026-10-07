@@ -247,6 +247,29 @@ void main() {
       expect(OtpErrorKind.expired.requiresNewCode, isTrue);
       expect(OtpErrorKind.attemptsExhausted.requiresNewCode, isTrue);
       expect(OtpErrorKind.incorrect.requiresNewCode, isFalse);
+      expect(OtpErrorKind.notRequested.requiresNewCode, isTrue);
+    });
+
+    test('OtpErrorKind prefers the API code over the message', () {
+      OtpErrorKind? kind(String code, {int status = 401}) =>
+          OtpErrorKind.fromApiException(
+            NitumeApiException(
+              message: 'Please wait',
+              statusCode: status,
+              code: code,
+            ),
+          );
+      expect(kind('otp_incorrect'), OtpErrorKind.incorrect);
+      expect(kind('otp_expired'), OtpErrorKind.expired);
+      expect(kind('otp_attempts_exhausted'), OtpErrorKind.attemptsExhausted);
+      expect(kind('otp_not_requested'), OtpErrorKind.notRequested);
+      expect(kind('otp_resend_cooldown', status: 429),
+          OtpErrorKind.resendTooSoon);
+      expect(kind('otp_rate_limited', status: 429),
+          OtpErrorKind.requestLimitReached);
+      expect(kind('otp_delivery_failed', status: 400),
+          OtpErrorKind.deliveryFailed);
+      expect(kind('idempotency_key_reused', status: 409), isNull);
     });
   });
 
