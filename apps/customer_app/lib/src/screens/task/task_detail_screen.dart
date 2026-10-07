@@ -1,0 +1,247 @@
+import 'package:flutter/material.dart';
+import 'package:nitume_core/nitume_core.dart';
+
+import '../../navigation/nav.dart';
+import '../../services/app_services.dart';
+import '../../util/display.dart';
+import '../../widgets/common.dart';
+import '../../widgets/evidence.dart';
+import '../../widgets/task_widgets.dart';
+
+class _TaskData {
+  const _TaskData({
+    required this.errand,
+    required this.payment,
+    required this.evidence,
+    required this.rated,
+  });
+
+  final Errand errand;
+  final PaymentSummary? payment;
+  final List<Evidence> evidence;
+  final bool rated;
+}
+
+/// States before the fees are paid ("Not paid yet.").
+const _unpaid = {
+  ErrandStatus.draft,
+  ErrandStatus.requested,
+  ErrandStatus.quoted,
+  ErrandStatus.accepted,
+};
+
+/// `v-task-detail`: one task in any state.
+class TaskDetailScreen extends StatefulWidget {
+  const TaskDetailScreen({super.key, required this.errandId});
+
+  final String errandId;
+
+  @override
+  State<TaskDetailScreen> createState() => _TaskDetailScreenState();
+}
+
+class _TaskDetailScreenState extends State<TaskDetailScreen>
+    with ReloadOnReturn<TaskDetailScreen> {
+  late final AppServices _services = context.services;
+  Future<_TaskData>? _future;
+
+  @override
+  RouteObserver<ModalRoute<void>> get routeObserver => _services.routeObserver;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  @override
+  void onReturn() => _reload();
+
+  void _reload() {
+    final f = _load();
+    setState(() {
+      _future = f;
+    });
+  }
+
+  Future<_TaskData> _load() async {
+    final id = widget.errandId;
+    final errand = await _services.errands.get(id);
+    final results = await Future.wait<Object?>([
+      _services.payments
+          .forErrand(id)
+          .then<Object?>((v) => v, onError: (_) => null),
+      _services.evidence
+          .list(id)
+          .then<Object?>((v) => v, onError: (_) => <Evidence>[]),
+      if (errand.status == ErrandStatus.completed)
+        _services.ratings
+            .get(id)
+            .then<Object?>((v) => v != null, onError: (_) => true)
+      else
+        Future<Object?>.value(true),
+    ]);
+    return _TaskData(
+      errand: errand,
+      payment: results[0] as PaymentSummary?,
+      evidence: results[1]! as List<Evidence>,
+      rated: results[2]! as bool,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PushedScaffold(
+      title: 'Task detail',
+      body: AsyncBody<_TaskData>(
+        future: _future,
+        errorMessage: "Couldn't load this task.",
+        onRetry: _reload,
+        builder: (context, d) => _Body(data: d, onReported: _reload),
+      ),
+    );
+  }
+}
+
+class _Body extends StatelessWidget {
+  const _Body({required this.data, required this.onReported});
+
+  final _TaskData data;
+  final VoidCallback onReported;
+
+  ({String label, VoidCallback action})? _primary(BuildContext context) {
+    final e = data.errand;
+    return switch (e.status) {
+      ErrandStatus.requested => (
+        label: 'View request',
+        action: () => Nav.toAwaitingQuote(context, e.id),
+      ),
+      ErrandStatus.quoted => (
+        label: 'Review quote',
+        action: () => Nav.toAwaitingQuote(context, e.id),
+      ),
+      ErrandStatus.accepted => (
+        label: 'Pay now',
+        action: () => Nav.toPayment(context, e.id),
+      ),
+      ErrandStatus.paymentConfirmed ||
+      ErrandStatus.runnerAssigned ||
+      ErrandStatus.runnerEnRoute ||
+      ErrandStatus.arrived ||
+      ErrandStatus.inProgress => (
+        label: 'Track live',
+        action: () => Nav.resetToTrack(context, e.id),
+      ),
+      ErrandStatus.awaitingCustomer => (
+        label: 'Review evidence',
+        action: () => Nav.toEvidenceConfirm(context, e.id),
+      ),
+      ErrandStatus.completed when !data.rated => (
+        label: 'Rate this task',
+        action: () => Nav.toRate(context, e.id),
+      ),
+      _ => null,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final e = data.errand;
+    final primary = _primary(context);
+    final r = e.runner;
+    final payment = data.payment?.payment;
+    final mp = data.payment?.merchantPayment;
+    final paid = !_unpaid.contains(e.status) && payment != null;
+    final canReport =
+        e.status == ErrandStatus.inProgress ||
+        e.status == ErrandStatus.awaitingCustomer ||
+        e.status == ErrandStatus.completed;
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        TaskSummaryCard(
+          errand: e,
+          titleStyle: NitumeTextStyles.cardTitle.copyWith(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (primary != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+            child: NitumeButton.primary(
+              label: primary.label,
+              expand: true,
+              onPressed: primary.action,
+            ),
+          ),
+        if (r != null) ...[
+          const SectionLabel('Runner'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+            child: NitumeCard(
+              child: RunnerSummaryTile(
+                name: runnerShortName(r) ?? 'Your runner',
+                meta: runnerMeta(r, withCount: true),
+              ),
+            ),
+          ),
+        ],
+        if (data.evidence.isNotEmpty) ...[
+          const SectionLabel('Evidence'),
+          EvidenceGrid(
+            items: evidenceThumbnails(data.evidence),
+            onTap: (i) => openEvidenceViewer(context, data.evidence, i),
+          ),
+        ],
+        const SectionLabel('Payment'),
+        if (!paid)
+          const MutedLine('Not paid yet.')
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ReceiptCard(
+                  rows: paidFeeRows(payment),
+                  separate: itemAmountGroup(payment),
+                ),
+                if (mp != null &&
+                    isPositiveAmount(mp.amount) &&
+                    ErrandRepository.activeStatuses.contains(e.status))
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: NitumeButton.link(
+                      label: 'View payment details',
+                      onPressed: () => Nav.toMerchantPayment(context, e.id),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        if (e.status == ErrandStatus.disputed)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: MenuRow(
+              label: 'View your report',
+              onTap: () => Nav.toReport(context, e),
+            ),
+          )
+        else if (canReport)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: MenuRow(
+              label: 'Report a problem with this task',
+              destructive: true,
+              onTap: () async {
+                final sent = await Nav.toReportProblem(context, e);
+                if (sent == true) onReported();
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}

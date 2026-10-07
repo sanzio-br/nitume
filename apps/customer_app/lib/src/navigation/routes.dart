@@ -5,6 +5,10 @@ import '../screens/auth/otp_screen.dart';
 import '../screens/checkout/awaiting_quote_screen.dart';
 import '../screens/checkout/merchant_payment_screen.dart';
 import '../screens/checkout/payment_screen.dart';
+import '../screens/task/evidence_confirm_screen.dart';
+import '../screens/task/rate_screen.dart';
+import '../screens/task/report_problem_screen.dart';
+import '../screens/task/task_detail_screen.dart';
 import '../screens/wizard/category_screen.dart';
 import 'nav.dart';
 
@@ -25,6 +29,15 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
         errandId: a.errandId,
         approvedIncrease: a.approvedIncrease,
       );
+    }(),
+    Routes.taskDetail => TaskDetailScreen(errandId: args! as String),
+    Routes.evidenceConfirm => EvidenceConfirmScreen(errandId: args! as String),
+    Routes.rate => RateScreen(errandId: args! as String),
+    Routes.reportProblem => () {
+      final a = args! as ReportArgs;
+      return a.readMode
+          ? ReportProblemScreen.read(errand: a.errand)
+          : ReportProblemScreen.write(errand: a.errand);
     }(),
     _ => null,
   };

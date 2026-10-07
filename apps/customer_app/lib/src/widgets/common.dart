@@ -329,3 +329,13 @@ mixin ReloadOnReturn<T extends StatefulWidget> on State<T>
 /// True while [context]'s route is the top route (pause polling otherwise).
 bool isRouteVisible(BuildContext context) =>
     ModalRoute.of(context)?.isCurrent ?? true;
+
+/// Hard length limit without the Material counter (screens draw their own
+/// Fira Code counter).
+void clampText(TextEditingController c, int max) {
+  if (c.text.length <= max) return;
+  c.value = TextEditingValue(
+    text: c.text.substring(0, max),
+    selection: TextSelection.collapsed(offset: max),
+  );
+}

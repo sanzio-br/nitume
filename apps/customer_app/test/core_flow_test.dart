@@ -86,8 +86,11 @@ void main() {
       expect(find.text('Choose a location.'), findsOneWidget);
 
       await t.enterText(
-        find.widgetWithText(TextField, 'e.g. Check the apartment in Nyali — '
-            'video the compound, both bedrooms and bathroom.'),
+        find.widgetWithText(
+          TextField,
+          'e.g. Check the apartment in Nyali — '
+          'video the compound, both bedrooms and bathroom.',
+        ),
         'Check the flat and film it',
       );
       await t.tap(find.text('Search for a place'));
@@ -181,7 +184,10 @@ void main() {
       expect(find.text('Item amount'), findsOneWidget);
       expect(find.text('Let runner advance the purchase'), findsNothing);
       final direct = t.widget<NitumeRadioRow>(
-        find.widgetWithText(NitumeRadioRow, 'Pay merchant directly (recommended)'),
+        find.widgetWithText(
+          NitumeRadioRow,
+          'Pay merchant directly (recommended)',
+        ),
       );
       expect(direct.onSelected, isNull);
 
@@ -268,8 +274,7 @@ void main() {
       expect(b.payments.initiations[0].$2, b.payments.initiations[1].$2);
     });
 
-    testWidgets('reopening an existing payment sends no new prompt',
-        (t) async {
+    testWidgets('reopening an existing payment sends no new prompt', (t) async {
       final b = TestBackend();
       b.errands.put(errand(status: ErrandStatus.accepted, withRunner: false));
       b.payments.summary = PaymentSummary(
@@ -298,7 +303,9 @@ void main() {
       expect(find.text('Pay your runner'), findsOneWidget);
       expect(find.text('KSh 40,000'), findsOneWidget);
       expect(
-        find.text("We'll show you how to send this amount to your runner here."),
+        find.text(
+          "We'll show you how to send this amount to your runner here.",
+        ),
         findsOneWidget,
       );
     });
@@ -315,7 +322,10 @@ void main() {
       );
       await b.pumpScreen(
         t,
-        const MerchantPaymentScreen(errandId: 'e1', approvedIncrease: '5000.00'),
+        const MerchantPaymentScreen(
+          errandId: 'e1',
+          approvedIncrease: '5000.00',
+        ),
       );
       expect(find.text('Till number (Buy Goods)'), findsOneWidget);
       expect(find.text('123456'), findsOneWidget);

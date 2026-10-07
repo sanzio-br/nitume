@@ -4,6 +4,7 @@ import 'package:nitume_core/nitume_core.dart';
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
 import '../../services/shell_controller.dart';
+import '../checkout/price_change_dialog.dart';
 import 'history_tab.dart';
 import 'home_tab.dart';
 import 'profile_tab.dart';
@@ -43,8 +44,59 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   static const _newTaskIndex = 1;
+
+  /// States in which the API accepts a price-change request.
+  static const _priceChangeable = {
+    ErrandStatus.paymentConfirmed,
+    ErrandStatus.runnerAssigned,
+    ErrandStatus.runnerEnRoute,
+    ErrandStatus.arrived,
+    ErrandStatus.inProgress,
+  };
+
+  bool _checkingPriceChange = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkPendingPriceChange();
+  }
+
+  /// On resume, open the blocking price-change modal for any active errand
+  /// with a pending request (v-price-auth entry; the live socket event is
+  /// pending row 29).
+  Future<void> _checkPendingPriceChange() async {
+    if (_checkingPriceChange) return;
+    _checkingPriceChange = true;
+    final services = context.services;
+    try {
+      final page = await services.errands.list(statuses: _priceChangeable);
+      for (final e in page.items) {
+        final pending = await services.priceChanges.pending(e.id);
+        if (pending != null && mounted) {
+          await showPriceChangeDialog(context, errand: e, request: pending);
+          break;
+        }
+      }
+    } on Object {
+      // Best effort; Track also shows the request.
+    } finally {
+      _checkingPriceChange = false;
+    }
+  }
 
   static int _indexOf(ShellTab tab) => switch (tab) {
     ShellTab.home => 0,

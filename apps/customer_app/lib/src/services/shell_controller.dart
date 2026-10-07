@@ -32,6 +32,14 @@ class ShellController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Returns the requested Track errand once and forgets it, so a later
+  /// manual selection on Track is not overridden.
+  String? takeTrackErrandId() {
+    final id = _trackErrandId;
+    _trackErrandId = null;
+    return id;
+  }
+
   /// Switches to [tab] and asks the root tabs to reload.
   void reset(ShellTab tab) {
     _tab = tab;
