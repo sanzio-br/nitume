@@ -564,4 +564,78 @@ void main() {
       expect(boxOf(tester).color, NitumeColors.green);
     });
   });
+
+  group('ShoppingListEditor (C-37)', () {
+    testWidgets('add, edit, step quantity and remove rows', (tester) async {
+      List<ShoppingListItem>? last;
+      await pumpThemed(
+        tester,
+        SingleChildScrollView(
+          child: ShoppingListEditor(onChanged: (items) => last = items),
+        ),
+        surfaceSize: const Size(390, 800),
+      );
+      // One empty row; no remove button while it is the only row.
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byTooltip('Remove item'), findsNothing);
+      expect(find.text('Item, e.g. 2kg sugar'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '2kg sugar');
+      expect(last, [const ShoppingListItem(name: '2kg sugar')]);
+
+      // Minimum 1: decrease is disabled at 1.
+      await tester.tap(find.byTooltip('Decrease quantity'));
+      expect(last!.single.quantity, 1);
+      await tester.tap(find.byTooltip('Increase quantity'));
+      await tester.pump();
+      expect(last!.single.quantity, 2);
+      final qty = tester.widget<Text>(find.text('2'));
+      expect(qty.style?.fontFamily, NitumeTypography.numericFamily);
+      expect(qty.style?.fontSize, 13);
+      expect(qty.style?.fontWeight, FontWeight.w600);
+
+      await tester.tap(find.text('+ Add item'));
+      await tester.pump();
+      expect(find.byType(TextField), findsNWidgets(2));
+      expect(find.byTooltip('Remove item'), findsNWidgets(2));
+      expect(last, [
+        const ShoppingListItem(name: '2kg sugar', quantity: 2),
+        const ShoppingListItem(),
+      ]);
+
+      await tester.tap(find.byTooltip('Remove item').first);
+      await tester.pump();
+      expect(find.byType(TextField), findsOneWidget);
+      expect(last, [const ShoppingListItem()]);
+    });
+
+    testWidgets('caps quantity at 99, names at 80, rows at 30; shows error',
+        (tester) async {
+      List<ShoppingListItem>? last;
+      await pumpThemed(
+        tester,
+        SingleChildScrollView(
+          child: ShoppingListEditor(
+            initialItems: [
+              for (var i = 0; i < 30; i++)
+                ShoppingListItem(name: 'item $i', quantity: i == 0 ? 120 : 1),
+            ],
+            errorText: 'Add at least one item.',
+            onChanged: (items) => last = items,
+          ),
+        ),
+        surfaceSize: const Size(390, 800),
+      );
+      expect(find.text('+ Add item'), findsNothing);
+      expect(find.text('99'), findsOneWidget);
+      await tester.tap(find.byTooltip('Increase quantity').first);
+      expect(last, isNull);
+
+      await tester.enterText(find.byType(TextField).first, 'x' * 100);
+      expect(last!.first.name.length, ShoppingListEditor.maxNameLength);
+
+      final error = tester.widget<Text>(find.text('Add at least one item.'));
+      expect(error.style?.color, NitumeColors.red);
+    });
+  });
 }

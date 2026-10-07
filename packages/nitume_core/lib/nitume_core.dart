@@ -61,6 +61,7 @@ export 'src/widgets/receipt_card.dart';
 export 'src/widgets/runner_summary_tile.dart';
 export 'src/widgets/search_entry_row.dart';
 export 'src/widgets/section_label.dart';
+export 'src/widgets/shopping_list_editor.dart';
 export 'src/widgets/star_rating_input.dart';
 export 'src/widgets/state_views.dart';
 export 'src/widgets/status_chip.dart';
