@@ -19,24 +19,24 @@ class _Host extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: TextButton(
-            onPressed: () async {
-              final o = await showPriceChangeDialog(context, errand: errand);
-              onOutcome?.call(o);
-            },
-            child: const Text('open'),
-          ),
-        ),
-      );
+    body: Center(
+      child: TextButton(
+        onPressed: () async {
+          final o = await showPriceChangeDialog(context, errand: errand);
+          onOutcome?.call(o);
+        },
+        child: const Text('open'),
+      ),
+    ),
+  );
 }
 
 Evidence photo(String id) => Evidence(
-      id: id,
-      errandId: 'e1',
-      type: EvidenceType.photo,
-      capturedAt: DateTime(2026, 10, 7, 10, 41),
-    );
+  id: id,
+  errandId: 'e1',
+  type: EvidenceType.photo,
+  capturedAt: DateTime(2026, 10, 7, 10, 41),
+);
 
 void main() {
   group('v-price-auth', () {
@@ -106,8 +106,10 @@ void main() {
       await b.pumpScreen(t, _Host(errand: errand()));
       await t.tap(find.text('open'));
       await t.pumpAndSettle();
-      expect(find.text('This price change was already answered.'),
-          findsOneWidget);
+      expect(
+        find.text('This price change was already answered.'),
+        findsOneWidget,
+      );
       await t.tap(find.text('OK'));
       await t.pumpAndSettle();
       expect(find.text('Price change'), findsNothing);
@@ -217,8 +219,10 @@ void main() {
       await b.pumpScreen(t, const EvidenceConfirmScreen(errandId: 'e1'));
 
       expect(find.text('PHOTOS & VIDEO (2)'), findsOneWidget);
-      expect(find.text('"Water leak reported to the landlord."'),
-          findsOneWidget);
+      expect(
+        find.text('"Water leak reported to the landlord."'),
+        findsOneWidget,
+      );
       expect(find.textContaining('release'), findsNothing);
       await t.tap(find.text('Confirm completion'));
       await t.pumpAndSettle();
@@ -231,8 +235,10 @@ void main() {
       final b = TestBackend();
       b.errands.put(errand(status: ErrandStatus.awaitingCustomer));
       await b.pumpScreen(t, const EvidenceConfirmScreen(errandId: 'e1'));
-      expect(find.text("The runner hasn't uploaded evidence yet."),
-          findsOneWidget);
+      expect(
+        find.text("The runner hasn't uploaded evidence yet."),
+        findsOneWidget,
+      );
       final cta = t.widget<NitumeButton>(
         find.widgetWithText(NitumeButton, 'Confirm completion'),
       );
@@ -245,12 +251,16 @@ void main() {
       final b = TestBackend();
       await b.pumpScreen(
         t,
-        ReportProblemScreen.write(errand: errand(status: ErrandStatus.completed)),
+        ReportProblemScreen.write(
+          errand: errand(status: ErrandStatus.completed),
+        ),
       );
       await t.tap(find.text('Send report'));
       await t.pumpAndSettle();
-      expect(find.text('Tell us a bit more (at least 5 characters).'),
-          findsOneWidget);
+      expect(
+        find.text('Tell us a bit more (at least 5 characters).'),
+        findsOneWidget,
+      );
       await t.enterText(find.byType(TextField), 'Wrong item delivered');
       await t.pumpAndSettle();
       expect(find.text('20/500'), findsOneWidget);

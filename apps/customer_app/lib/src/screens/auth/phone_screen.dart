@@ -163,7 +163,10 @@ class _LegalLineState extends State<_LegalLine> {
     return TextSpan(
       text: text,
       recognizer: r,
-      style: const TextStyle(color: NitumeColors.green700),
+      style: NitumeTextStyles.muted.copyWith(
+        fontSize: 12.5,
+        color: NitumeColors.green700,
+      ),
     );
   }
 

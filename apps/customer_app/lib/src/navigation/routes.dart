@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:nitume_core/nitume_core.dart';
 
+import '../screens/account/address_form_screen.dart';
+import '../screens/account/addresses_screen.dart';
+import '../screens/account/notifications_screen.dart';
+import '../screens/account/payment_method_form_screen.dart';
+import '../screens/account/payment_methods_screen.dart';
 import '../screens/auth/otp_screen.dart';
 import '../screens/checkout/awaiting_quote_screen.dart';
 import '../screens/checkout/merchant_payment_screen.dart';
@@ -39,6 +44,19 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
           ? ReportProblemScreen.read(errand: a.errand)
           : ReportProblemScreen.write(errand: a.errand);
     }(),
+    Routes.notifications => const NotificationsScreen(),
+    Routes.addresses => const AddressesScreen(),
+    Routes.addressForm => AddressFormScreen(address: args as SavedAddress?),
+    Routes.paymentMethods => () {
+      final a = args as PaymentMethodsArgs? ?? const PaymentMethodsArgs();
+      return PaymentMethodsScreen(
+        selectMode: a.selectMode,
+        selectedId: a.selectedId,
+      );
+    }(),
+    Routes.paymentMethodForm => PaymentMethodFormScreen(
+      method: args as PaymentMethod?,
+    ),
     _ => null,
   };
   if (screen == null) return null;

@@ -284,8 +284,13 @@ class _Compare extends StatelessWidget {
       child: Row(
         children: [
           column('Original', from, NitumeColors.blue),
-          const ExcludeSemantics(
-            child: Text('→', style: TextStyle(color: NitumeColors.slate400)),
+          ExcludeSemantics(
+            child: Text(
+              '→',
+              style: NitumeTextStyles.body.copyWith(
+                color: NitumeColors.slate400,
+              ),
+            ),
           ),
           column('New price', to, NitumeDesignChoices.priceChangeAmount),
         ],
