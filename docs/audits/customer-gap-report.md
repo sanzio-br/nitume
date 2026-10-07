@@ -384,3 +384,40 @@ Mockup-level conflicts with the design system (not code bugs; for the owner): `#
 
 21. **Payment UX** — After payment go to Track (mockup intent) or Home (mockup JS)? STK timeout/retry policy; pay from default M-Pesa method vs login phone.  
     **Answer:** After successful payment, go to Track. Handle STK as `PENDING`, `SUCCESS`, `FAILED`, or `TIMEOUT`; timeout must not automatically be treated as payment failure without provider confirmation. Allow safe retries without duplicate charges. Pay using the customer's selected/default M-Pesa payment method; use the login phone only when no separate payment method exists.
+
+## Spec updates after owner answers (2026-10-07)
+
+All customer specs (`docs/specs/customer/*.md`) now cite the answers above as `OA-1`..`OA-21` (index in `_shared.md` §0) and reference still-open BOARD rows 1 and 23–37 as "pending row N". Nine undrawn screens are now specced (`x-name-capture`, `x-awaiting-quote`, `x-merchant-payment`, `x-report-problem`, `x-evidence-viewer`, `x-address-form`, `x-payment-method-form`, `x-support`, `x-legal`); `x-recurring-tasks` is dropped (OA-18). The findings above are a pre-build baseline and are not re-audited here.
+
+### New or changed needs for api-contract
+
+| # | Need | From | Spec |
+|---|---|---|---|
+| A-15 | `display_name` on users (customers + runners); `PATCH /users/me { displayName }`; returned on `/users/me` and runner summaries | OA-2 (now approved) | x-name-capture, v-home, v-profile |
+| A-16 | Backend-generated `reference`; optional `title` on create and read | OA-15 (now approved) | v-new-details, v-home, v-task-detail |
+| A-18 | Synchronous quote preview (proposed `POST /errands/quote-preview`), writes nothing | OA-3 | v-new-review |
+| A-19 | OTP config to OA-17 (TTL 300 s; 5 requests per 3600 s) + error codes `OTP_INCORRECT`, `OTP_ATTEMPTS_EXCEEDED`, `OTP_EXPIRED`, `OTP_RATE_LIMITED`, `OTP_COOLDOWN` with `retryAfterSeconds` | OA-17 | v-auth-phone, v-auth-otp |
+| A-20 | Customer-facing `serviceFee`, `runnerFee`, `itemAmount`, `total`, `expiresAt` on `GET /errands/:id/quote` (component mapping pending row 34) | OA-4 | x-awaiting-quote |
+| A-6 | Initiate body `{ flow, paymentMethodId?, previousCheckoutRequestId? }`; customers may send only `merchant_direct`, `customer_to_runner`, `platform_only` (never `runner_advance`) | OA-5, OA-21 | v-payment |
+| A-7 | Idempotency key (mechanism pending row 24) | OA-21 | v-payment |
+| A-21 | STK attempt status `PENDING` / `SUCCESS` / `FAILED` / `TIMEOUT` on `GET /payments/:errandId`, provider-confirmed | OA-21 | v-payment |
+| A-22 | Merchant details (`merchantName`, Till or Paybill + account) and `merchantAmountDue` on errand/payment | OA-5 (source pending SQ-6) | x-merchant-payment |
+| A-23 | Price change edits the item/merchant amount, not `quoted_price`; reject moves the errand to CANCELLED in the same transaction | OA-8 (states/refunds pending row 37) | v-price-auth |
+| A-24 | `runner_notes` on the errand | OA-16 | v-evidence-confirm |
+| A-25 | Derive `urgency` from `deadlineAt`; validate two points for `buy_for_me` / `pickup_delivery` and ≥ 1 item for `buy_for_me` | OA-19 | v-new-details |
+| A-26 | Notification event types: price change requested, payment confirmed/failed, rating reminder, merchant details added, dispute resolved | §4.4 | v-notifications |
+| A-27 | Find the dispute from the errand (`disputeId` on errand or `GET /disputes?errandId=`) | — | x-report-problem |
+| A-28 | Reject `card` / `bank` payment methods at MVP | OA-10 | v-payment-methods |
+| A-29 | Remove DISPUTED → CONFIRMED and the "escrow" wording in API comments (`errands.controller.ts` resolve-dispute) | OA-6, OA-9 (target state pending row 36) | — |
+
+### New or changed needs for core-ui
+
+- Flip `NitumeDesignChoices` per OA-11..OA-14: En route (only) → pending tone; Cancelled → danger; destructive row text → red; unread dot → red; price-change new price and difference → amber text.
+- C-15: five MVP categories (`ErrandCategory.customerMvp`), 3 + 2 grid with an empty cell.
+- C-18: estimate caption slot and a separate "paid separately" group.
+- C-28: unread styling (700 title + red dot). C-30: drop the card badge.
+- NEW: C-16 radio-row variant, C-35 `NitumeDialog` (+ scrim token, SQ-1), C-36 checkbox, C-37 shopping-list editor, C-38 resend countdown, C-39 copyable value row, C-40 inline notice; `shortName()` helper; `AppConfig` support/terms/privacy URIs; `url_launcher` once approved (SQ-2).
+
+### New questions for the owner (not yet on the board)
+
+SQ-1 modal scrim colour; SQ-2 `url_launcher`; SQ-3 runner short names from API or client; SQ-4 fallback task title; SQ-5 send-to-runner mechanics; SQ-6 source and timing of merchant Till/Paybill details (all in `_shared.md` §9). Screen-level: quote expiry with no §3.3 transition (`x-awaiting-quote` Q1); how the price-change difference is paid (`v-price-auth` Q1); customer confirmation of merchant payment (`x-merchant-payment` Q1); M-Pesa number verification (`x-payment-method-form` Q1); dispute photos (`x-report-problem` Q1); budget visibility per category (`v-new-details` Q1); Terms/Privacy URLs (`x-legal` Q1); Support target value (`x-support` Q1).
