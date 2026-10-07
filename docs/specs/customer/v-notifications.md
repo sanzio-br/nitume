@@ -1,70 +1,77 @@
 # v-notifications — Notifications
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 529–539 (`#v-notifications`, overlay)
-- Shared conventions: `_shared.md`
-- Implementation: `apps/customer_app/lib/src/screens/notifications_screen.dart` (placeholder text only, not reachable from any navigation)
+- Shared conventions: `_shared.md` (OA-n §0)
+- Implementation: `apps/customer_app/lib/src/screens/notifications_screen.dart` (placeholder text only, unreachable)
 - Status: missing
 
 ## Purpose
-In-app feed of task events (runner en route, price change, completion, payment, rating reminders).
+In-app feed of task events (quote ready, runner en route, price change, completion, payment, rating reminders).
 
 ## Entry / exit
 - Entry: bell on `v-home` and `v-track`; "Notifications" row on `v-profile`.
 - Back → previous screen.
-- Row tap (implied; no onclick in mockup) → deep link by event type:
-  - runner en route / arrived → `v-track`
-  - price change requested → `v-price-auth`
-  - task completed / evidence uploaded → `v-evidence-confirm` (if AWAITING_CUSTOMER) else `v-task-detail`
-  - payment confirmed / failed → `v-task-detail` (or `v-payment` retry)
-  - rate your last task → `v-rate`
+- Row tap (Q1 default: tappable) → marks read, then deep link by `eventType`:
+
+| eventType | Target |
+|---|---|
+| `errand.QUOTED` | `x-awaiting-quote` |
+| `errand.RUNNER_ASSIGNED`, `errand.RUNNER_EN_ROUTE`, `errand.ARRIVED`, `errand.IN_PROGRESS` | `v-track` for the errand |
+| `errand.AWAITING_CUSTOMER` | `v-evidence-confirm` if still AWAITING_CUSTOMER, else `v-task-detail` |
+| `errand.COMPLETED`, `errand.CONFIRMED`, `errand.SETTLED`, `errand.CANCELLED`, `errand.FAILED`, `errand.DISPUTED` | `v-task-detail` |
+| price change requested (type missing) | Track + `v-price-auth` modal if still pending |
+| payment confirmed / failed (types missing) | `v-task-detail` / `v-payment` |
+| rate your last task (type missing) | `v-rate` if not yet rated |
+| unknown type | `v-task-detail` when `errandId` is set; otherwise no navigation |
 
 ## Task states
 Any (feed).
 
 ## Layout (top to bottom)
-1. Pushed header (C-10) `Notifications`.
-2. Full-bleed list (body padding 0) of notification rows (C-28): white bg, padding 14 20, bottom hairline, gap 12, aligned top.
-   - Icon box 34px green-050 r 9 with an event icon.
-   - Body: title 13/600 (margin-bottom 2), subtitle 11.5 slate-600.
-   - Time right-aligned Fira Code 10.5 slate-400, no wrap.
+1. Pushed header (C-10) `Notifications`. Trailing text button (C-04) `Mark all read` when there are unread rows (proposed).
+2. Full-bleed list of notification rows (C-28): white bg, padding 14 20, bottom hairline, gap 12, top aligned.
+   - Icon box 34px green-050 r-s 8 (mockup 9) with an event icon (blue glyph).
+   - Body: title 13/600 (unread: 700), margin-bottom 2; subtitle 11.5 slate-600.
+   - Right column: time Fira Code 10.5 slate-400, no wrap; unread rows add a 7px **red** dot (OA-13) under the time, right-aligned, margin-top 6.
 
 ## Components
-C-10, C-28, C-33. All NEW.
+C-10, C-28 (unread change), C-04, C-33. Built except the unread styling change.
 
-## Copy (exact, mockup sample)
+## Copy (exact, mockup sample; emoji replaced by icons)
 | Icon | Title | Subtitle | Time |
 |---|---|---|---|
-| 📍 | `Brian K. is en route` | `Apartment check — Nyali · ETA 12 min` | `2m` |
-| ⚠️ | `Price change requested` | `Approve an extra KSh 5,000 for the item` | `1h` |
-| ✅ | `Task completed` | `Buy shoes — Sarit Centre` | `Yesterday` |
-| 💳 | `Payment confirmed` | `KSh 1,000 for Sarit Centre task` | `Yesterday` |
-| ⭐ | `Rate your last task` | `How was Peter O.?` | `Mon` |
+| pin | `Brian K. is en route` | `Apartment check — Nyali · ETA 12 min` | `2m` |
+| alert | `Price change requested` | `Approve an extra KSh 5,000 for the item` | `1h` |
+| check | `Task completed` | `Buy shoes — Sarit Centre` | `Yesterday` |
+| card | `Payment confirmed` | `KSh 1,000 for Sarit Centre task` | `Yesterday` |
+| star | `Rate your last task` | `How was Peter O.?` | `Mon` |
 
-Implied states (recommended):
+Title and body come from the API (`title`, `body`); the app does not compose them.
+
+States (proposed):
 - Empty: `You're all caught up.`
-- Loading: skeleton rows.
-- Error: `Couldn't load notifications.` + `Try again`.
-- Unread vs read: not drawn. Recommended: unread rows keep white bg with a 7px dot before the time; read rows unchanged (Q2).
-- Opening the screen or tapping a row marks as read.
+- Loading: skeleton rows. Error: `Couldn't load notifications.` + `Try again`.
+- Opening the screen does **not** mark everything read; tapping a row or `Mark all read` does.
 
 ## Numeric fields (Fira Code)
 - Relative time (`2m`, `1h`, `Yesterday`, `Mon`).
-- Numbers inside subtitles (`ETA 12 min`, `KSh 5,000`) — render the numeric spans in Fira Code (rich text), or the whole subtitle per the `.li-meta` rule (Q3).
+- Subtitles stay Fira Sans as one string (Q3 default); numbers inside sentences are not split into spans.
 
 ## Data
-- `GET /api/v1/notifications?limit=` → `{ items, unread }` (exists; not in §3.2 table but present in API). Core model `AppNotification` exists (`eventType`, `title`, `body`, `errandId`, `readAt`, `createdAt`).
-- `PATCH /api/v1/notifications/:id/read`, `PATCH /api/v1/notifications/read-all`, `GET /api/v1/notifications/unread-count` (exist).
-- Icon + deep link chosen from `eventType` — the list of event types must be shared with the API (needs: api-contract to publish the enum).
-- Push: FCM, deep-link into the relevant errand screen (§7.2). Device registration endpoint for FCM tokens (`DEVICES` table) — no endpoint found in `apps/api` (needs: api-contract).
+- `GET /api/v1/notifications?limit=` → `{ items, unread }`; `PATCH /notifications/:id/read`; `PATCH /notifications/read-all`; `GET /notifications/unread-count` (exist). Core `AppNotification`.
+- `NotificationEventType` (published on `feat/api-customer-gaps`) has only `errand.*` status types. needs: api-contract — add price change requested, payment confirmed / failed, rating reminder, merchant details added, dispute resolved.
+- Push: FCM deep links (§7.2); registration `POST /users/me/devices` exists on `feat/api-customer-gaps`; client package pending row 31. Delivery queue pending row 26 (no UI change).
 
 ## Accessibility and mobile
-- Each row is a button; label = title + subtitle + time.
-- Emoji icons → recommended icon set (consistency).
+- Each row is a button: "Unread. Brian K. is en route. Apartment check, Nyali, ETA 12 minutes. 2 minutes ago."
+- Icons, not emoji (consistent rendering).
 
-## Questions for owner
-- Q1: Should rows be tappable (mockup has no onclick)? Recommended: yes, with the deep links above.
-- Q2: Unread styling is not designed.
-- Q3: Fira Code for numbers inside sentence subtitles.
+## Resolved by owner answers
+- Unread styling: red dot allowed (OA-13, was Q2).
+
+## Open questions (non-blocking; build default given)
+- Q1: Rows tappable? Default: yes, table above.
+- Q3: Fira Code inside sentence subtitles. Default: no (whole subtitle Fira Sans).
 
 ## Current vs design
-`notifications_screen.dart` shows `Notification feed pending — backend events wire up in next phase.` and is not wired to the bell (`home_tab.dart:72`, `track_tab.dart:61` are TODOs) or the Profile row.
+`notifications_screen.dart` shows `Notification feed pending — backend events wire up in next phase.` and is not wired to the bell or the Profile row.

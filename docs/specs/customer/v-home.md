@@ -1,101 +1,113 @@
 # v-home — Home
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 225–253 (`#v-home`, root tab view)
-- Shared conventions: `_shared.md`
+- Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/home_tab.dart` (inside `home_shell.dart`)
 - Status: partial
 
 ## Purpose
-Landing screen after sign-in: greet the customer, start a new task by category, jump to the active task, and reopen recent tasks.
+Landing screen after sign-in: greet the customer by name, start a new task by category, jump to the active task, and reopen recent tasks.
 
 ## Entry / exit
-- Entry: after OTP verify; tab bar "Home"; every `jump(…, true)` reset (submit rating, OTP verify).
+- Entry: after OTP verify / name capture; tab bar "Home"; every stack reset (rating submitted, task cancelled).
 - Exits:
   - Bell → push `v-notifications`.
-  - Avatar → switch to `v-profile` tab (root view, not a push).
-  - Search row → not interactive in the mockup (see Q2).
-  - Any category tile → push `v-new-category` (recommended: with that category preselected, Q3).
-  - "Track live →" → switch to `v-track` tab for that errand.
-  - Recent row → push `v-task-detail` for that errand.
+  - Avatar → switch to the `v-profile` tab (root view, not a push).
+  - Search row → push `v-new-category` with nothing selected (Q2 default).
+  - Category tile → push `v-new-category` with that category preselected (Q3 default).
+  - Active card button → target by state (table below).
+  - Recent row → push `v-task-detail`.
 
 ## Task states
-- "In progress" card: the customer's most recent errand in an active state (PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER). Also show for REQUESTED / QUOTED / ACCEPTED with a different action (Q4).
-- "Recent": last 2 errands in COMPLETED, CONFIRMED, SETTLED, CANCELLED, FAILED, EXPIRED, DISPUTED.
+"In progress" card: the customer's most recently updated errand in the **active** set (`_shared.md` §6). Button by state:
+
+| State | Button | Target |
+|---|---|---|
+| REQUESTED | `View request →` | `x-awaiting-quote` |
+| QUOTED | `Review quote →` | `x-awaiting-quote` |
+| ACCEPTED | `Pay now →` | `v-payment` |
+| PAYMENT_CONFIRMED … IN_PROGRESS | `Track live →` (mockup) | `v-track` tab for that errand |
+| AWAITING_CUSTOMER | `Review evidence →` | `v-evidence-confirm` |
+
+If more than one errand is active, a 12.5/700 green-700 link under the card `+N more in progress` (N Fira Code) switches to the Track tab (Q8 default).
+"Recent": last 2 errands in the **finished** set.
 
 ## Layout (top to bottom)
 1. Top bar (C-09), padding `8 20 14`, slate bg:
-   - Left: greeting 12 slate-600 (margin-bottom 2), name 21/700.
-   - Right (gap 10): bell (C-11) and 36px initials avatar (C-12).
-2. Search entry row (C-34), margin `4 20 18`, padding `13 16`, r 12, icon 15 + placeholder 13.5 slate-400.
-3. Section label (C-08) "Categories".
-4. Category grid (C-15): 3 columns, gap 10, padding `0 20 20`. Six tiles, in this order: Buy For Me, Get It For Me, Check It For Me, Go There For Me, Wait For Me, Business Tasks.
-5. Section label "In progress".
-6. Active task card (C-20), margin `0 20 14`, blue fill r 16 padding 18:
-   - Tag pill: category + task number. Mockup colours are off-palette (`rgba(4,175,77,.2)` bg, `#5FE092` text) → use blue-050 bg + blue text (C-05 info), 11/700 (Q5).
+   - Left: greeting 12 slate-600 (margin-bottom 2), first name 21/700.
+   - Right (gap 10): bell (C-11, red unread dot OA-13) and 36px initials avatar (C-12).
+2. Search entry row (C-34), margin `4 20 18`, padding `13 16`, r-m 14 (mockup 12), icon 15 + placeholder 13.5 slate-400.
+3. Section label (C-08) `Categories`.
+4. Category grid (C-15): 3 columns, gap 10, padding `0 20 20`, **five tiles** (OA-1, OA-18): row 1 Buy For Me, Get It For Me, Check It For Me; row 2 Go There For Me, Wait For Me, empty third cell. Tile spec as in `v-new-category.md` (no selected state here).
+5. Section label `In progress` (hidden with the card when there is no active errand).
+6. Active task card (C-20), margin `0 20 14`, blue fill r 16 (mockup), padding 18:
+   - Tag pill 11/700: chip-info (blue-050 bg, blue text) replacing the mockup's green tint + `#5FE092` (OA-14). Text: category display name + ` · ` + reference.
    - Title 15.5/600 white, margin `0 0 4`.
-   - Meta Fira Code 12, margin-bottom 14. Mockup colour `#AEB9CC` is off-palette → slate-400 `#8C97AC` (Q5).
-   - Button `.track-btn`: green fill, white 12.5/700, padding `9 16`, r 10 (pill per Q-RADIUS), **intrinsic width, left aligned** (not full width).
-7. Section label "Recent".
-8. Two compact task rows (C-22), margin `0 20 10`, chip success "Completed".
+   - Meta Fira Code 12, slate-400 `#8C97AC` (replaces `#AEB9CC`, OA-14), margin-bottom 14.
+   - Button: green fill, white 12.5/700, padding `9 16`, **pill** (OA-11), intrinsic width, left aligned.
+7. Section label `Recent`.
+8. Up to two compact task rows (C-22), margin `0 20 10`, trailing chip per §6.
 9. Bottom padding so the last row clears the tab bar.
 
 ## Components
 | Element | Component | Status |
 |---|---|---|
-| Top bar with greeting | C-09 | NEW |
-| Bell | C-11 | NEW |
-| Avatar | C-12 | NEW |
-| Search row | C-34 | NEW |
-| Section labels | C-08 | NEW |
-| Category grid/tile | C-15 | NEW |
-| Active task card | C-20 | NEW |
-| Recent rows | C-22 + C-05 | NEW / app-only |
-| Tab bar | C-13 | NEW |
-| Empty/loading/error | C-33 | NEW |
+| Top bar with greeting | C-09 | built |
+| Bell | C-11 | built (unread dot → red) |
+| Avatar | C-12 | built |
+| Search row | C-34 | built |
+| Section labels | C-08 | built |
+| Category grid | C-15 | built (five-tile change) |
+| Active task card | C-20 | built |
+| Recent rows | C-22 + C-05 | built |
+| Tab bar | C-13 | built |
+| Empty / loading / error | C-33 | built |
 
-## Copy (exact)
-- Greeting: `Good afternoon` (time-based: `Good morning` before 12:00, `Good afternoon` 12:00–17:59, `Good evening` after — implied).
-- Name: customer first name (`Achieng`) — no data source, Q-NAME.
+## Copy (exact from the mockup unless marked)
+- Greeting: `Good morning` before 12:00, `Good afternoon` 12:00–17:59, `Good evening` from 18:00 (device local time).
+- Name: first word of `displayName` (`Achieng`, OA-2). No name (should not happen after `x-name-capture`): greeting line only, name line hidden.
 - Search placeholder: `What do you need done?`
 - Section labels: `Categories`, `In progress`, `Recent`.
-- Active card sample: tag `Inspection · #10482` (should read `Check It For Me · #10482`, Q-CAT), title `Apartment check — Nyali`, meta `Brian K. is en route · ETA 12 min`, button `Track live →`.
+- Active card sample: tag `Check It For Me · #NT-10482` (mockup `Inspection · #10482`; OA-1 and OA-15), title `Apartment check — Nyali`, meta `Brian K. is en route · ETA 12 min`, button `Track live →`.
+- Meta by state (proposed): REQUESTED `Waiting for your quote`; QUOTED `Your quote is ready`; ACCEPTED `Pay to confirm your task`; PAYMENT_CONFIRMED `Finding a runner`; RUNNER_ASSIGNED `Brian K. is assigned`; RUNNER_EN_ROUTE mockup; ARRIVED `Brian K. has arrived`; IN_PROGRESS `Brian K. is on it`; AWAITING_CUSTOMER `Ready for your review`.
 - Recent sample rows: `Buy shoes — Sarit Centre` / `Yesterday, 4:12 PM` / `Completed`; `Collect documents — CBD` / `Mon, 10:03 AM` / `Completed`.
 
-Implied states (recommended copy):
+States (proposed):
 - No active task: hide the "In progress" label and card.
-- No history: hide "Recent", or show muted `Your finished tasks will show here.`
+- No finished tasks: hide "Recent".
 - Loading: skeleton for the card and two rows (C-33).
-- Error: inline `Couldn't load your tasks.` + `Try again` outline button; categories stay usable.
+- Error: inline `Couldn't load your tasks.` + outline `Try again`; categories stay usable.
 
 ## Numeric fields (Fira Code)
-- Task number in the tag (`#10482`).
-- Active card meta line (`… · ETA 12 min`).
-- Recent row timestamps (`Yesterday, 4:12 PM`).
+- Reference in the tag (`#NT-10482`).
+- Active card meta line (whole line, `.li-meta` rule).
+- Recent row timestamps.
+- `+N more` count.
 
 ## Data
-- Customer name / initials: `GET /users/me`, `GET /customers/me` — no name field exists (Q-NAME).
-- Active + recent: `GET /api/v1/errands?status=…&limit=…` (exists; cursor pagination). The API filters by a single `status`; Home needs "any active" and "any finished" → needs a multi-status or `group=active|history` filter (needs: api-contract).
-- Title: errands have only `description`; mockup titles (`Apartment check — Nyali`) look like a short title + area. No `title` field in the ERD → Q6.
-- Task number `#10482`: errand `id` is a UUID; no human-readable number in the ERD → Q7.
-- Runner name + ETA on the active card: needs the assignment + runner summary on the errand (not returned today) and ETA from `location:update` (§4.2).
-- Unread dot on bell: `GET /notifications/unread-count` (exists).
-- Socket: join `errand:{id}` for the active errand; `location:update` `{lat, lng, eta}` updates ETA; status-change event (name undefined in §4, needs: api-contract) refreshes the card.
+- Name and initials: `GET /users/me` `displayName` (needs: api-contract, A-15 approved by OA-2).
+- Active: `GET /api/v1/errands?status=<active set>&limit=5`; recent: `GET /api/v1/errands?status=<finished set>&limit=2` (multi-status filter on `feat/api-customer-gaps`).
+- Title and reference: `title`, `reference` on the errand (needs: api-contract, OA-15); title fallback per `_shared.md` §7.
+- Runner name + ETA: assignment + runner summary on the errand (`feat/api-customer-gaps`), ETA from `location:update` (§4.2).
+- Unread dot: `GET /notifications/unread-count` (exists).
+- Live: join `errand:{id}` for the active errand; `location:update` updates ETA; status events refresh the card (names pending row 23; socket client pending row 29, else refresh on resume and every 30 s while visible).
 
 ## Accessibility and mobile
-- Bell: semantic label "Notifications, N unread"; 48dp hit area.
-- Avatar: "Profile".
-- Category tiles: button semantics with the full category name.
-- Active card button contrast: white on green passes; meta slate-400 on blue ≈ 5:1.
+- Bell: "Notifications, N unread"; 48dp hit area. Avatar: "Profile".
+- Category tiles: button semantics with the full name.
+- Active card: white on blue and white on green pass; slate-400 meta on blue ≈ 5:1.
 
-## Questions for owner
-- Q1: Q-CAT (category labels), Q-NAME (customer and runner names).
-- Q2: What does the search row do? It is static in the mockup. Recommended: tapping opens `v-new-category`, or hide it until search exists.
-- Q3: Should tapping a Home category tile preselect it in the wizard? The mockup always opens the wizard with "Inspect" selected. Recommended: preselect the tapped category.
-- Q4: Which states show in the "In progress" card, and what is its button for REQUESTED/QUOTED/ACCEPTED (no runner yet)? Recommended: `View quote` / `Pay now` actions for those.
-- Q5: Off-palette colours in the active card (`#5FE092`, `#AEB9CC`, green 20% tint). Recommended replacements: chip-info tag, slate-400 meta.
-- Q6 (schema): Mockup shows a short task title; ERD has only `description`. Recommended: derive the title client-side from category + location area, or add `title` (schema change).
-- Q7 (schema): Human-readable task numbers (`#10482`, `#NT-10482`) are not in the ERD. Recommended: add a sequential `reference` column, or show a short id.
-- Q8: Should there be more than one active card if the customer has several active errands? Recommended: horizontal list or "+N more" link to History.
+## Resolved by owner answers
+- Category labels and Business Tasks: OA-1, OA-18 (was Q1).
+- Names: OA-2 (was Q1).
+- Off-palette active-card colours: OA-14 (was Q5).
+- Title and reference: OA-15 (was Q6, Q7).
+
+## Open questions (non-blocking; build default given)
+- Q2: Search row has no behaviour in the mockup. Default: opens the wizard.
+- Q3: Tile tap preselects the category. Default: yes.
+- Q4: Button per state for REQUESTED / QUOTED / ACCEPTED. Default: the table above.
+- Q8: Several active errands. Default: one card + `+N more in progress`.
 
 ## Current vs design
-See gap report. Summary: all content is hard-coded; categories are a horizontal scroll of 56px icon squares (not the 3-column tile grid) with short labels; top bar is a `SliverAppBar`; active-card tag uses green 20% tint + green text; track button is full width; recent chip colour is `green` at 10% alpha; meta lines use an unregistered `'FiraCode'` family; no navigation is wired (TODOs).
+See gap report. Summary: all content hard-coded; categories are a horizontal scroll of 56px squares with short labels (including Business); `SliverAppBar`; active-card tag uses green 20% tint + green text; full-width track button; chip colours via alpha; unregistered `'FiraCode'`; no navigation.
