@@ -307,7 +307,7 @@ void main() {
   });
 
   group('CategoryGrid', () {
-    testWidgets('shows the six display names and reports selection',
+    testWidgets('shows the five MVP display names and reports selection',
         (tester) async {
       ErrandCategory? picked;
       await pumpThemed(
@@ -317,11 +317,27 @@ void main() {
           onSelected: (c) => picked = c,
         ),
       );
-      for (final c in ErrandCategory.values) {
+      for (final c in mvpCustomerCategories) {
         expect(find.text(c.label), findsOneWidget);
       }
+      expect(find.text('Business Tasks'), findsNothing);
       await tester.tap(find.text('Wait For Me'));
       expect(picked, ErrandCategory.waitForMe);
+    });
+
+    test('full display names; Business Tasks kept but not in MVP list', () {
+      expect(ErrandCategory.values.map((c) => c.label), [
+        'Buy For Me',
+        'Get It For Me',
+        'Check It For Me',
+        'Go There For Me',
+        'Wait For Me',
+        'Business Tasks',
+      ]);
+      expect(mvpCustomerCategories, hasLength(5));
+      expect(mvpCustomerCategories,
+          isNot(contains(ErrandCategory.businessTasks)));
+      expect(ErrandCategory.fromWire('business'), ErrandCategory.businessTasks);
     });
   });
 
