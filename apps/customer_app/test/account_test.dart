@@ -185,6 +185,7 @@ void main() {
         find.text(
           "No M-Pesa numbers saved. We'll charge your sign-in number, "
           '+254 712 ••• 678.',
+          findRichText: true,
         ),
         findsOneWidget,
       );

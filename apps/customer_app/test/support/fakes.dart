@@ -614,9 +614,13 @@ Future<void> _setUp(WidgetTester tester) async {
 
 /// All fakes plus the [AppServices] built from them.
 class TestBackend {
-  TestBackend({PlaceSearchService? placeSearch}) {
+  TestBackend({
+    PlaceSearchService? placeSearch,
+    AppConfig appConfig = const AppConfig(),
+  }) {
     services = AppServices(
       placeSearch: placeSearch,
+      appConfig: appConfig,
       session: SessionController(auth: auth),
       auth: auth,
       errands: errands,

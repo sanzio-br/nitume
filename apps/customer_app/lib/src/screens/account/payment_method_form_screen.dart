@@ -112,7 +112,7 @@ class _PaymentMethodFormScreenState extends State<PaymentMethodFormScreen> {
     } on Object {
       if (!mounted) return;
       setState(() => _saving = false);
-      showSnack(context, "Couldn't save. Try again.");
+      showSnack(context, "Couldn't remove this number. Try again.");
     }
   }
 

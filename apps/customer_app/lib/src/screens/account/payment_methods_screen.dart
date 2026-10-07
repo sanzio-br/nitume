@@ -54,11 +54,32 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         builder: (context, methods) => ListView(
           children: [
             if (methods.isEmpty)
-              MutedLine(
-                phone == null
-                    ? 'No M-Pesa numbers saved.'
-                    : "No M-Pesa numbers saved. We'll charge your sign-in "
-                          'number, ${maskPhone(phone)}.',
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                child: phone == null
+                    ? Text(
+                        'No M-Pesa numbers saved.',
+                        style: NitumeTextStyles.muted,
+                      )
+                    : Text.rich(
+                        TextSpan(
+                          text:
+                              "No M-Pesa numbers saved. We'll charge your "
+                              'sign-in number, ',
+                          children: [
+                            TextSpan(
+                              text: maskPhone(phone),
+                              style: NitumeTypography.numeric(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w400,
+                                color: NitumeColors.slate600,
+                              ),
+                            ),
+                            const TextSpan(text: '.'),
+                          ],
+                        ),
+                        style: NitumeTextStyles.muted,
+                      ),
               ),
             for (final m in methods)
               Padding(

@@ -30,6 +30,14 @@ const _unpaid = {
   ErrandStatus.accepted,
 };
 
+/// States that offer `Rate this task` when unrated (CONFIRMED and SETTLED
+/// are system-only, row 35, but may still come back from the API).
+const _rateable = {
+  ErrandStatus.completed,
+  ErrandStatus.confirmed,
+  ErrandStatus.settled,
+};
+
 /// `v-task-detail`: one task in any state.
 class TaskDetailScreen extends StatefulWidget {
   const TaskDetailScreen({super.key, required this.errandId});
@@ -74,7 +82,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen>
       _services.evidence
           .list(id)
           .then<Object?>((v) => v, onError: (_) => <Evidence>[]),
-      if (errand.status == ErrandStatus.completed)
+      if (_rateable.contains(errand.status))
         _services.ratings
             .get(id)
             .then<Object?>((v) => v != null, onError: (_) => true)
@@ -136,10 +144,9 @@ class _Body extends StatelessWidget {
         label: 'Review evidence',
         action: () => Nav.toEvidenceConfirm(context, e.id),
       ),
-      ErrandStatus.completed when !data.rated => (
-        label: 'Rate this task',
-        action: () => Nav.toRate(context, e.id),
-      ),
+      ErrandStatus.completed || ErrandStatus.confirmed || ErrandStatus.settled
+          when !data.rated =>
+        (label: 'Rate this task', action: () => Nav.toRate(context, e.id)),
       _ => null,
     };
   }
