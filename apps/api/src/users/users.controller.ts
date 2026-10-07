@@ -36,7 +36,10 @@ export class UsersController {
     @CurrentUser() user: AuthContext,
     @Body() dto: UpdateProfileDto,
   ): Promise<PublicUser> {
-    return this.users.updateProfile(user.userId, { email: dto.email });
+    return this.users.updateProfile(user.userId, {
+      email: dto.email,
+      displayName: dto.displayName,
+    });
   }
 
   /** Register or refresh this install's FCM push token (idempotent upsert). */

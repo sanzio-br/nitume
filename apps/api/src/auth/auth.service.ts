@@ -56,10 +56,7 @@ export class AuthService {
     } else {
       await this.customers.createForUser(user.id);
     }
-    return { user: {
-      id: user.id, phone: user.phone, email: user.email,
-      role: user.role, status: user.status, createdAt: user.createdAt,
-    } };
+    return { user: toPublicUser(user) };
   }
 
   async requestOtp(phone: string): Promise<{ message: string }> {
@@ -126,13 +123,7 @@ export class AuthService {
       throw new UnauthorizedException('Account is suspended or banned');
     }
     const tokens = await this.tokens.issueTokenPair(user);
-    return {
-      user: {
-        id: user.id, phone: user.phone, email: user.email,
-        role: user.role, status: user.status, createdAt: user.createdAt,
-      },
-      tokens,
-    };
+    return { user: toPublicUser(user), tokens };
   }
 
   async refresh(refreshToken: string): Promise<TokenPair> {

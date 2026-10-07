@@ -11,6 +11,7 @@ import {
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification } from './runner-verification.entity';
+import { UsersService } from '../users/users.service';
 
 /**
  * Lightweight public runner card embedded on errand responses (no PII: no
@@ -18,6 +19,8 @@ import { RunnerVerification } from './runner-verification.entity';
  */
 export interface RunnerPublicSummary {
   id: string;
+  /** Runner's chosen display name; null until set. */
+  displayName: string | null;
   verificationLevel: VerificationLevel;
   avgRating: string;
   errandsCompleted: number;
@@ -25,6 +28,7 @@ export interface RunnerPublicSummary {
 
 export interface PublicRunnerProfile {
   id: string;
+  displayName: string | null;
   verificationLevel: VerificationLevel;
   avgRating: string;
   errandsCompleted: number;
@@ -44,6 +48,7 @@ export class RunnersService {
     private readonly skills: Repository<RunnerSkillEntity>,
     @InjectRepository(RunnerServiceArea)
     private readonly serviceAreas: Repository<RunnerServiceArea>,
+    private readonly users: UsersService,
   ) {}
 
   async createForUser(
@@ -81,12 +86,14 @@ export class RunnersService {
 
   async publicProfile(id: string): Promise<PublicRunnerProfile> {
     const profile = await this.profileById(id);
-    const [skills, serviceAreas] = await Promise.all([
+    const [skills, serviceAreas, names] = await Promise.all([
       this.skills.find({ where: { runnerProfileId: profile.id } }),
       this.serviceAreas.find({ where: { runnerProfileId: profile.id } }),
+      this.users.displayNames([profile.userId]),
     ]);
     return {
       id: profile.id,
+      displayName: names.get(profile.userId) ?? null,
       verificationLevel: profile.verificationLevel,
       avgRating: profile.avgRating,
       errandsCompleted: profile.errandsCompleted,
@@ -103,11 +110,13 @@ export class RunnersService {
       return new Map();
     }
     const rows = await this.profiles.find({ where: { id: In(unique) } });
+    const names = await this.users.displayNames(rows.map((p) => p.userId));
     return new Map(
       rows.map((p) => [
         p.id,
         {
           id: p.id,
+          displayName: names.get(p.userId) ?? null,
           verificationLevel: p.verificationLevel,
           avgRating: p.avgRating,
           errandsCompleted: p.errandsCompleted,

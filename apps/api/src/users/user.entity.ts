@@ -24,6 +24,10 @@ export class User {
   @Column({ type: 'varchar', length: 255, nullable: true })
   passwordHash: string | null;
 
+  /** Name shown to the other party (customers and runners). Set after first sign-in. */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  displayName: string | null;
+
   @Column({ type: 'enum', enum: UserRole, enumName: 'user_role_enum', default: UserRole.CUSTOMER })
   role: UserRole;
 
