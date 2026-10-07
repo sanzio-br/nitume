@@ -34,7 +34,7 @@ const build = (status: ErrandStatus) => {
     {} as never,
     {} as never,
   );
-  return { service, errand };
+  return { service, errand, emit, dataSource };
 };
 
 const customer = { type: StatusHistoryActor.CUSTOMER, id: 'user-1' };
@@ -136,5 +136,35 @@ describe('ErrandsService.confirmPastDisputeWindow', () => {
     expect(qb.andWhere).toHaveBeenCalledWith(expect.any(String), {
       cutoff: new Date('2026-10-05T12:00:00Z'),
     });
+  });
+});
+
+describe('ErrandsService status events', () => {
+  const tick = () => new Promise((r) => setImmediate(r));
+
+  it('emits errand.status_changed only after the transaction commits', async () => {
+    const { service, emit } = build(ErrandStatus.AWAITING_CUSTOMER);
+    await service.transition('e-1', ErrandStatus.COMPLETED, customer, undefined, subject);
+    await tick();
+    expect(emit).toHaveBeenCalledWith('errand.status_changed', {
+      errandId: 'e-1',
+      status: ErrandStatus.COMPLETED,
+      from: ErrandStatus.AWAITING_CUSTOMER,
+      actor: StatusHistoryActor.CUSTOMER,
+    });
+  });
+
+  it('drops the event when the transaction rolls back', async () => {
+    const { service, emit, dataSource } = build(ErrandStatus.AWAITING_CUSTOMER);
+    const inner = dataSource.transaction.getMockImplementation()!;
+    dataSource.transaction.mockImplementationOnce(async (cb: (m: unknown) => unknown) => {
+      await inner(cb);
+      throw new Error('rollback');
+    });
+    await expect(
+      service.transition('e-1', ErrandStatus.COMPLETED, customer, undefined, subject),
+    ).rejects.toThrow('rollback');
+    await tick();
+    expect(emit).not.toHaveBeenCalled();
   });
 });

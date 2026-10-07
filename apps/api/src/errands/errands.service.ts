@@ -158,8 +158,17 @@ const pointToGeo = (loc: ErrandLocationDto): GeoPoint => ({
   coordinates: [loc.lon, loc.lat],
 });
 
+interface StatusChangedEvent {
+  errandId: string;
+  status: ErrandStatus;
+  from: ErrandStatus;
+  actor: StatusHistoryActor;
+}
+
 @Injectable()
 export class ErrandsService {
+  private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
+
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(Errand)
@@ -201,7 +210,7 @@ export class ErrandsService {
       dto.category,
       dto.locations.map((l) => l.pointType),
     );
-    return this.dataSource.transaction(async (manager) => {
+    return this.inTx(async (manager) => {
       const profile = await manager
         .getRepository(CustomerProfile)
         .findOne({ where: { userId: customerUserId } });
@@ -537,7 +546,7 @@ export class ErrandsService {
         'Mediation requires a written rationale of at least 20 characters (§A.6 audit).',
       );
     }
-    return this.dataSource.transaction((manager) =>
+    return this.inTx((manager) =>
       this.performDisputeResolution(manager, errandId, verdict, note, actor),
     );
   }
@@ -586,7 +595,7 @@ export class ErrandsService {
     subject?: ViewerContext,
     guard?: TransitionGuard,
   ): Promise<ErrandResult> {
-    return this.dataSource.transaction((manager) =>
+    return this.inTx((manager) =>
       this.performTransition(manager, errandId, to, actor, note, subject, guard),
     );
   }
@@ -606,7 +615,7 @@ export class ErrandsService {
     within: (manager: EntityManager, result: ErrandResult) => Promise<T>,
     guard?: TransitionGuard,
   ): Promise<ErrandResult & { extra: T }> {
-    return this.dataSource.transaction(async (manager) => {
+    return this.inTx(async (manager) => {
       const result = await this.performTransition(
         manager,
         errandId,
@@ -676,16 +685,34 @@ export class ErrandsService {
       note: note ?? null,
     });
 
-    setImmediate(() => {
-      this.events.emit('errand.status_changed', {
-        errandId,
-        status: to,
-        from: fromStatus,
-        actor: actor.type,
-      });
-    });
+    // Emitted only after the surrounding transaction commits (see inTx), so
+    // listeners never read the pre-transition row.
+    const queued = this.afterCommit.get(manager) ?? [];
+    queued.push({ errandId, status: to, from: fromStatus, actor: actor.type });
+    this.afterCommit.set(manager, queued);
 
     return { errand, history };
+  }
+
+  /**
+   * Runs `fn` in a transaction and, once it has committed, emits the
+   * `errand.status_changed` events queued by `performTransition`. A rollback
+   * drops them.
+   */
+  private async inTx<T>(fn: (manager: EntityManager) => Promise<T>): Promise<T> {
+    let used: EntityManager | undefined;
+    const result = await this.dataSource.transaction((manager) => {
+      used = manager;
+      return fn(manager);
+    });
+    const queued = used ? (this.afterCommit.get(used) ?? []) : [];
+    if (used) {
+      this.afterCommit.delete(used);
+    }
+    for (const event of queued) {
+      setImmediate(() => this.events.emit('errand.status_changed', event));
+    }
+    return result;
   }
 
   /**
@@ -745,7 +772,7 @@ export class ErrandsService {
     actor: ActorReference,
     note?: string,
   ): Promise<{ errand: Errand; history: ErrandStatusHistory; quote: Quote }> {
-    return this.dataSource.transaction(async (manager) => {
+    return this.inTx(async (manager) => {
       const done = await this.performTransition(
         manager,
         errandId,
@@ -787,7 +814,7 @@ export class ErrandsService {
     actor: ActorReference,
     note?: string,
   ): Promise<{ errand: Errand; history: ErrandStatusHistory; assignment: ErrandAssignment }> {
-    return this.dataSource.transaction(async (manager) => {
+    return this.inTx(async (manager) => {
       const runner = await manager
         .getRepository(RunnerProfile)
         .findOne({ where: { id: runnerProfileId } });
