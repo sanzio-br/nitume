@@ -11,6 +11,7 @@ import {
   EntityManager,
   In,
   Repository,
+  SelectQueryBuilder,
 } from 'typeorm';
 import {
   ErrandStatus,
@@ -204,7 +205,7 @@ export class ErrandsService {
   /** `listFor` with each item carrying its current assignment (batched). */
   async listViewsFor(
     viewer: ViewerContext,
-    opts: { status?: ErrandStatus; limit?: number; cursor?: string | null },
+    opts: { status?: ErrandStatus | ErrandStatus[]; limit?: number; cursor?: string | null },
   ): Promise<ListErrandViewsResponse> {
     const page = await this.listFor(viewer, opts);
     return {
@@ -261,44 +262,10 @@ export class ErrandsService {
 
   async listFor(
     viewer: ViewerContext,
-    opts: { status?: ErrandStatus; limit?: number; cursor?: string | null },
+    opts: { status?: ErrandStatus | ErrandStatus[]; limit?: number; cursor?: string | null },
   ): Promise<ListErrandsResponse> {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
-    const qb = this.errands.createQueryBuilder('e');
-
-    if (viewer.role === 'admin') {
-      if (opts.status) {
-        qb.where('e.status = :status', { status: opts.status });
-      }
-    } else if (viewer.role === 'runner') {
-      const runnerProfile = await this.runnerProfiles.findOne({
-        where: { userId: viewer.userId },
-      });
-      if (!runnerProfile) {
-        throw new ForbiddenException('Runner profile not found');
-      }
-      qb.innerJoin(
-        ErrandAssignment,
-        'a',
-        'a."errandId" = e.id AND a."runnerProfileId" = :runnerProfileId',
-        { runnerProfileId: runnerProfile.id },
-      );
-      if (opts.status) {
-        qb.andWhere('e.status = :status', { status: opts.status });
-      }
-    } else {
-      const profile = await this.customerProfiles.findOne({
-        where: { userId: viewer.userId },
-      });
-      if (!profile) {
-        throw new ForbiddenException('Customer profile not found');
-      }
-      qb.where('e."customerId" = :profileId', { profileId: profile.id });
-      if (opts.status) {
-        qb.andWhere('e.status = :status', { status: opts.status });
-      }
-      qb.andWhere('e.status != :draft', { draft: ErrandStatus.DRAFT });
-    }
+    const qb = await this.scopedQuery(viewer, opts.status);
 
     qb.orderBy('e."createdAt"', 'DESC').addOrderBy('e.id', 'DESC').limit(limit + 1);
 
@@ -319,6 +286,58 @@ export class ErrandsService {
       items: page,
       nextCursor: hasMore && last ? encodeCursor(last) : null,
     };
+  }
+
+  /**
+   * Number of errands visible to the viewer, with the same scoping and status
+   * filter as `listFor` (customers never see their DRAFTs).
+   */
+  async countFor(
+    viewer: ViewerContext,
+    status?: ErrandStatus | ErrandStatus[],
+  ): Promise<{ count: number }> {
+    const qb = await this.scopedQuery(viewer, status);
+    return { count: await qb.getCount() };
+  }
+
+  /** Viewer-scoped errand query with an optional one-or-many status filter. */
+  private async scopedQuery(
+    viewer: ViewerContext,
+    status?: ErrandStatus | ErrandStatus[],
+  ): Promise<SelectQueryBuilder<Errand>> {
+    const statuses = normalizeStatuses(status);
+    const qb = this.errands.createQueryBuilder('e');
+
+    if (viewer.role === 'runner') {
+      const runnerProfile = await this.runnerProfiles.findOne({
+        where: { userId: viewer.userId },
+      });
+      if (!runnerProfile) {
+        throw new ForbiddenException('Runner profile not found');
+      }
+      qb.innerJoin(
+        ErrandAssignment,
+        'a',
+        'a."errandId" = e.id AND a."runnerProfileId" = :runnerProfileId',
+        { runnerProfileId: runnerProfile.id },
+      );
+    } else if (viewer.role !== 'admin') {
+      const profile = await this.customerProfiles.findOne({
+        where: { userId: viewer.userId },
+      });
+      if (!profile) {
+        throw new ForbiddenException('Customer profile not found');
+      }
+      qb.where('e."customerId" = :profileId', { profileId: profile.id });
+      qb.andWhere('e.status != :draft', { draft: ErrandStatus.DRAFT });
+    }
+
+    if (statuses.length === 1) {
+      qb.andWhere('e.status = :status', { status: statuses[0] });
+    } else if (statuses.length > 1) {
+      qb.andWhere('e.status IN (:...statuses)', { statuses });
+    }
+    return qb;
   }
 
   /**
@@ -647,6 +666,15 @@ export class ErrandsService {
     return repo.save(row);
   }
 }
+
+const normalizeStatuses = (
+  status: ErrandStatus | ErrandStatus[] | undefined,
+): ErrandStatus[] => {
+  if (!status) {
+    return [];
+  }
+  return [...new Set(Array.isArray(status) ? status : [status])];
+};
 
 const encodeCursor = (errand: Errand): string =>
   Buffer.from(

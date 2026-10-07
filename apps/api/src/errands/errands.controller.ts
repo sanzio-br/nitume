@@ -20,6 +20,7 @@ import {
 } from '../common/enums';
 import {
   CreateErrandDto,
+  ErrandStatusFilterDto,
   ListErrandsQueryDto,
   ResolveDisputeDto,
   TransitionErrandDto,
@@ -56,6 +57,18 @@ export class ErrandsController {
     return this.errands.listViewsFor(
       { role: user.role, userId: user.userId },
       { status: query.status, limit: query.limit, cursor: query.cursor },
+    );
+  }
+
+  /** Count of errands visible to the caller (e.g. customer profile "Tasks"). */
+  @Get('count')
+  count(
+    @CurrentUser() user: AuthContext,
+    @Query() query: ErrandStatusFilterDto,
+  ): Promise<{ count: number }> {
+    return this.errands.countFor(
+      { role: user.role, userId: user.userId },
+      query.status,
     );
   }
 
