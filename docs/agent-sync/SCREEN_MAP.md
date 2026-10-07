@@ -20,7 +20,7 @@ Status values: `missing` · `partial` · `built` · `matches-design` (only after
 
 ## Customer app — `docs/design/nitume_customer_app.html` → `apps/customer_app`
 
-Pre-build baseline: `docs/audits/customer-gap-report.md`. Post-build re-audit 2026-10-07 of `feat/customer-screens` @ `4312f49`: `docs/audits/customer-reaudit-2026-10-07.md` — round 1: 24 PASS, 3 FAIL (v-price-auth, x-awaiting-quote, x-address-form); round 2 @ `ba45633`: those 3 PASS. All 27 `matches-design`; open minors (incl. core CC-1..CC-3) listed in the report. Implementation paths below exist on `feat/customer-screens` only (not yet on `main`).
+Pre-build baseline: `docs/audits/customer-gap-report.md`. Post-build re-audit 2026-10-07 of `feat/customer-screens` @ `4312f49`: `docs/audits/customer-reaudit-2026-10-07.md` — round 1: 24 PASS, 3 FAIL (v-price-auth, x-awaiting-quote, x-address-form); round 2 @ `ba45633`: those 3 PASS; round 3 spot-check @ `08f9b26` (2026-10-08): 14 changed screens PASS, CC-1..CC-3 closed. All 27 `matches-design`; remaining minors listed in the report. Implementation paths below exist on `feat/customer-screens` only (not yet on `main`).
 
 | View id | Purpose | Spec | Implementation file | Status |
 |---------|---------|------|---------------------|--------|

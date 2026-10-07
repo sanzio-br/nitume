@@ -378,3 +378,57 @@ All 27 customer screens are now `matches-design`. The open minors from round 1 t
 - x-payment-method-form: remove failure `Couldn't remove this number. Try again.` (minor 1 fixed). Still PASS.
 - x-legal and x-evidence-viewer: the missing tests are now in `test/legal_viewer_test.dart` (minor fixed). Still PASS.
 - No new colour, font-name or hex use in the four commits (`git show` diffs reviewed).
+
+---
+
+# Addendum — round 3 spot-check (2026-10-08)
+
+- Code audited: `feat/customer-screens` @ `08f9b26`, changes since `ba45633`: `af73137`, `1173df5`, `0154b25`, `900d442`, `395309b`, `9ffe990` (owner merge of the core fixes), `fe4e282`, `b012e33`, `5c87670`, `c28487e`, `08f9b26`.
+- Build health: apps/customer_app `flutter analyze` no issues, `flutter test` 60 passed; packages/nitume_core `flutter analyze` no issues, `flutter test` 124 passed (incl. a `numeric_spans` golden). Token scan of `apps/customer_app/lib` (`Color(0x`, Material `Colors.`, `fontFamily`, hex): 0 hits.
+
+## Cross-cutting items — closed
+
+| Item | Fix | Status |
+|---|---|---|
+| CC-1 CONFIRMED label | `status_presentation.dart`: CONFIRMED → `Completed` (success), like SETTLED; v-track timeline also hides DRAFT / CONFIRMED / SETTLED history rows (`track_tab.dart` `_hiddenInTimeline`) | **Closed**. Labels changed only for the two system-only states (row 35); every other §6 label is unchanged |
+| CC-2 numeric spans | Core `NumSpan`, `NitumeButton.richLabel`, `NitumeNotice.richMessage`, `SectionLabel.numericSuffix`; used at all call sites: v-home `+N`, v-track item amount, v-price-auth Approve amount, v-evidence-confirm `(4)`, x-awaiting-quote CTA amount. Plain `label`/`message` kept for semantics | **Closed** |
+| CC-3 avatar fallback | Core `InitialsAvatar.fromName` shows the person glyph for a blank name; app `NameAvatar` deleted; v-home, v-profile, v-rate use the core widget | **Closed** |
+
+Core needs from round 1 also closed: `NitumeField.textCapitalization` (x-name-capture), money prefix always visible (v-new-details 2), `PlaceAutocompleteField.initialValue` (v-new-details 1, x-address-form note).
+
+## Results
+
+| Screen | Verdict | What was checked |
+|---|---|---|
+| v-track | PASS | CC-2 notice amount in Fira Code; timeline hides DRAFT/CONFIRMED/SETTLED; rest unchanged |
+| v-home | PASS | CC-2 `+N`; CC-3 avatar; no-name case now shows the greeting line. Minor 1 below |
+| v-new-review | PASS | Notice now inside the `Estimated price` form card (round-1 minor fixed) |
+| v-new-details | PASS | Chosen place shown as the field value (`initialValue`), hint `Search for a place`; money prefix visible (round-1 minors fixed) |
+| v-task-detail | PASS | `View your report` when a dispute exists in DISPUTED, COMPLETED or CANCELLED (row 36 targets; round-1 minor fixed); rate in CONFIRMED/SETTLED kept |
+| x-merchant-payment | PASS | Closes itself when nothing is due: judged below. Minor 2 below |
+| v-price-auth | PASS | CC-2 Approve amount; 409 `price_change_already_decided` → spec's already-answered state `This price change was already answered.`; route choice and load-failure state unchanged |
+| v-evidence-confirm | PASS | CC-2 count via `numericSuffix` |
+| x-awaiting-quote | PASS | CC-2 CTA amount (`Confirm & pay KSh 2,200 →`, amount in Fira Code); total-only row unchanged |
+| v-profile | PASS | CC-3 core avatar (70) |
+| v-rate | PASS | CC-3 core avatar (60) |
+| x-name-capture | PASS | `TextCapitalization.words` (round-1 minor fixed) |
+| x-address-form | PASS | Saved address shown as the read-only field value (no Places) or the Places field's initial value; save/coordinate rules from round 2 unchanged |
+| v-history | PASS | Status chips from core labels: CONFIRMED now `Completed` (CC-1) |
+
+## Judgement: x-merchant-payment closing itself when nothing is due
+
+`merchant_payment_screen.dart:58-63`: when the payment summary has no merchant payment, or its amount is zero, the screen pops itself after the first frame (blank body meanwhile).
+
+- The spec never draws a "nothing due" state. All its normal entries (Track notice, Task-detail link, price-change approval) open the screen only while an amount is due, so this state is only reached through a stale entry such as an old notification.
+- In round 1 I offered "pop" as one acceptable fix (minor x-merchant-payment 1), and the spec's own close rule (close when CANCELLED) is the same pattern.
+- The merchant-direct "details not available yet" notice is still shown when a merchant payment exists without details, as specced.
+
+Verdict: **matches the spec's intent; accepted**. Recorded in `x-merchant-payment.md` States.
+
+## Remaining minors (non-blocking)
+
+1. v-home — `home_tab.dart:156-158` passes `title: ''` when there is no name; `NitumeTopBar` still renders an empty 21/700 line (blank space and an empty header in semantics). Fix: core-ui skips the title `Text` when it is empty, or the top bar gets a greeting-only mode. Rare (name capture runs first).
+2. x-merchant-payment — the self-close gives no feedback. Proposed: snackbar `Nothing to pay right now.` (added to the spec as a proposed follow-up).
+3. `price_change_dialog.dart:10-12` defines the API code `price_change_already_decided` locally with a TODO; core-ui should move it into `ApiErrorCodes`. Code hygiene only.
+
+Still open from earlier rounds (unchanged, minor): v-auth-phone legal link hit areas (inactive until SQ-2); v-payment provider failure reason; v-history per-card payment calls (api-contract); v-notifications `Mark all read` placement (header trailing slot). Owner rows 30, 34, 60, SQ-5, SQ-6 and v-price-auth Q2 stay open.

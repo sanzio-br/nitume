@@ -56,6 +56,7 @@ Layout (top to bottom):
 - How-to (Till): `On M-Pesa, choose Lipa na M-PESA → Buy Goods and Services, enter the Till number and amount.` (Paybill): `On M-Pesa, choose Lipa na M-PESA → Pay Bill, enter the Paybill number, account number and amount.`
 - CTA: `Done`
 - Loading: skeleton card. Error: C-33 `Couldn't load the payment details.` + `Try again`.
+- Nothing due (no merchant payment on the errand, or amount 0, on any route): the screen closes itself and returns to the previous screen (builder behaviour, accepted in re-audit round 3; normal entries only open this screen while an amount is due). Proposed follow-up: snackbar `Nothing to pay right now.` so the close is explained.
 - Details not yet available (merchant-direct chosen but no details on the errand): C-40 `The merchant's details aren't available yet. We'll notify you when they are.`
 - Banned here: "release", "hold", "escrow", "wallet", "balance" (OA-6).
 
@@ -78,4 +79,4 @@ Layout (top to bottom):
 - Pending row 37: refunds if the task is cancelled after the merchant was paid; this screen shows no refund copy.
 
 ## Current vs design
-Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (send-to-runner variant built as the SQ-5 fallback). Minor: with no amount due on the send-to-runner route the merchant-details notice is shown.
+Re-audit round 3 (2026-10-08, `feat/customer-screens` @ `08f9b26`): PASS. Closes itself when nothing is due (accepted, see States). Earlier rounds: `docs/audits/customer-reaudit-2026-10-07.md`.
