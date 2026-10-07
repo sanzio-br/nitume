@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import {
   PaymentFlow,
   PaymentMethodType,
@@ -183,32 +183,6 @@ export class PaymentsService implements OnApplicationBootstrap {
 
     const reference = `NTM-${Date.now().toString(36).toUpperCase()}`;
 
-    let payment: Payment;
-    try {
-      payment = await this.payments.save(
-        this.payments.create({
-          errandId,
-          serviceFee: serviceFee.toFixed(2),
-          runnerFee: runnerFee.toFixed(2),
-          merchantAmount: merchantAmount.toFixed(2),
-          paymentFlow: flow,
-          status: PaymentStatus.PENDING,
-          idempotencyKey: opts.idempotencyKey ?? null,
-        }),
-      );
-    } catch (err) {
-      // Concurrent retry with the same key: return the row that won.
-      if (opts.idempotencyKey && isUniqueViolation(err)) {
-        const winner = await this.payments.findOne({
-          where: { idempotencyKey: opts.idempotencyKey },
-        });
-        if (winner && winner.errandId === errandId) {
-          return this.resultFor(winner);
-        }
-      }
-      throw err;
-    }
-
     const [serviceFeeType, runnerFeeType] = await Promise.all([
       this.paymentTypes.findOne({ where: { code: PaymentTypeCode.SERVICE_FEE } }),
       this.paymentTypes.findOne({ where: { code: PaymentTypeCode.RUNNER_FEE } }),
@@ -217,22 +191,71 @@ export class PaymentsService implements OnApplicationBootstrap {
       throw new Error('payment_type reference data is not seeded');
     }
 
-    const txRows = await this.transactions.save([
-      this.transactions.create({
-        paymentId: payment.id,
-        paymentTypeId: serviceFeeType.id,
-        mpesaReference: reference,
-        amount: serviceFee.toFixed(2),
-        status: PaymentTransactionStatus.INITIATED,
-      }),
-      this.transactions.create({
-        paymentId: payment.id,
-        paymentTypeId: runnerFeeType.id,
-        mpesaReference: reference,
-        amount: runnerFee.toFixed(2),
-        status: PaymentTransactionStatus.INITIATED,
-      }),
-    ]);
+    // The payment row and its two legs are written together, so a
+    // concurrent initiate that loses on a unique index (same key, or the
+    // one-active-primary-payment-per-errand index) waits for this commit and
+    // then returns a complete payment instead of pushing STK a second time.
+    let payment: Payment;
+    let txRows: PaymentTransaction[];
+    try {
+      ({ payment, txRows } = await this.payments.manager.transaction(async (manager) => {
+        const paymentRepo = manager.getRepository(Payment);
+        const txRepo = manager.getRepository(PaymentTransaction);
+        const saved = await paymentRepo.save(
+          paymentRepo.create({
+            errandId,
+            serviceFee: serviceFee.toFixed(2),
+            runnerFee: runnerFee.toFixed(2),
+            merchantAmount: merchantAmount.toFixed(2),
+            paymentFlow: flow,
+            status: PaymentStatus.PENDING,
+            idempotencyKey: opts.idempotencyKey ?? null,
+          }),
+        );
+        const legs = await txRepo.save([
+          txRepo.create({
+            paymentId: saved.id,
+            paymentTypeId: serviceFeeType.id,
+            mpesaReference: reference,
+            amount: serviceFee.toFixed(2),
+            status: PaymentTransactionStatus.INITIATED,
+          }),
+          txRepo.create({
+            paymentId: saved.id,
+            paymentTypeId: runnerFeeType.id,
+            mpesaReference: reference,
+            amount: runnerFee.toFixed(2),
+            status: PaymentTransactionStatus.INITIATED,
+          }),
+        ]);
+        return { payment: saved, txRows: legs };
+      }));
+    } catch (err) {
+      if (!isUniqueViolation(err)) {
+        throw err;
+      }
+      // Concurrent initiate for this errand: return the payment that won.
+      if (opts.idempotencyKey) {
+        const keyed = await this.payments.findOne({
+          where: { idempotencyKey: opts.idempotencyKey },
+        });
+        if (keyed) {
+          if (keyed.errandId !== errandId) {
+            throw new ApiError(
+              HttpStatus.CONFLICT,
+              'idempotency_key_reused',
+              'This Idempotency-Key was already used for another payment',
+            );
+          }
+          return this.resultFor(keyed);
+        }
+      }
+      const active = await this.activePrimaryPayment(errandId);
+      if (active) {
+        return this.resultFor(active);
+      }
+      throw err;
+    }
 
     const push = await this.stk.push({
       phone,
@@ -264,6 +287,13 @@ export class PaymentsService implements OnApplicationBootstrap {
       stkStatus,
       merchantPayment: await this.merchantPaymentFor(payment),
     };
+  }
+
+  /** The errand's main payment that has not failed (at most one, by index). */
+  private activePrimaryPayment(errandId: string): Promise<Payment | null> {
+    return this.payments.findOne({
+      where: { errandId, priceChangeRequestId: IsNull(), status: Not(PaymentStatus.FAILED) },
+    });
   }
 
   /** The errand's main (service + runner fee) payment, newest first. */

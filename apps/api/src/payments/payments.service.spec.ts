@@ -17,22 +17,40 @@ const build = (opts: {
   budget?: string;
   keyed?: object | null;
   existing?: object | null;
+  /** Row returned for the active-primary lookup after a unique violation. */
+  active?: object | null;
+  /** Make the payment insert fail with a unique violation (lost a race). */
+  conflict?: boolean;
   methods?: object[];
 } = {}) => {
   const payments = {
     findOne: vi.fn(({ where }: { where: Record<string, unknown> }) =>
-      Promise.resolve('idempotencyKey' in where ? (opts.keyed ?? null) : (opts.existing ?? null)),
+      Promise.resolve(
+        'idempotencyKey' in where
+          ? (opts.keyed ?? null)
+          : 'status' in where
+            ? (opts.active ?? null)
+            : (opts.existing ?? null),
+      ),
     ),
     create: vi.fn((row: object) => row),
     save: vi.fn((row: object) =>
-      Promise.resolve({ id: 'p-new', createdAt: new Date(), ...row }),
+      opts.conflict
+        ? Promise.reject(Object.assign(new Error('duplicate key'), { code: '23505' }))
+        : Promise.resolve({ id: 'p-new', createdAt: new Date(), ...row }),
     ),
+    manager: {} as { transaction: (fn: (m: unknown) => Promise<unknown>) => Promise<unknown> },
   };
   const transactions = {
     find: vi.fn(() => Promise.resolve([{ mpesaReference: 'NTM-OLD' }])),
     create: vi.fn((row: object) => row),
     save: vi.fn((rows: object[]) => Promise.resolve(rows)),
   };
+  const manager = {
+    getRepository: (entity: { name: string }) =>
+      entity.name === 'Payment' ? payments : transactions,
+  };
+  payments.manager.transaction = vi.fn((fn) => fn(manager));
   const paymentTypes = {
     findOne: vi.fn(({ where }: { where: { code: PaymentTypeCode } }) =>
       Promise.resolve({ id: `type-${where.code}` }),
@@ -65,7 +83,7 @@ const build = (opts: {
     accounts as never,
     {} as never,
   );
-  return { service, payments, stk };
+  return { service, payments, transactions, stk };
 };
 
 const codeOf = async (p: Promise<unknown>) =>
@@ -137,6 +155,53 @@ describe('PaymentsService.initiate', () => {
       expect.objectContaining({ idempotencyKey: 'retry-key-01', paymentFlow: PaymentFlow.PLATFORM_ONLY }),
     );
     expect(res.merchantPayment).toBeNull();
+  });
+
+  it('returns the winning payment when a concurrent keyless initiate loses the race', async () => {
+    const active = {
+      id: 'p-won',
+      errandId: 'e-1',
+      status: PaymentStatus.PENDING,
+      createdAt: new Date(),
+      paymentFlow: PaymentFlow.PLATFORM_ONLY,
+    };
+    const { service, stk, payments } = build({ conflict: true, active });
+    const res = await service.initiate('e-1', user);
+    expect(payments.manager.transaction).toHaveBeenCalledTimes(1);
+    expect(res.payment).toBe(active);
+    expect(stk.push).not.toHaveBeenCalled();
+  });
+
+  it('returns the winning payment when a concurrent initiate used a different key', async () => {
+    const active = {
+      id: 'p-won',
+      errandId: 'e-1',
+      status: PaymentStatus.PENDING,
+      createdAt: new Date(),
+      paymentFlow: PaymentFlow.PLATFORM_ONLY,
+    };
+    // Our key is unused (keyed: null), the errand's active-payment index fired.
+    const { service, stk } = build({ conflict: true, active, keyed: null });
+    const res = await service.initiate('e-1', user, { idempotencyKey: 'other-key-002' });
+    expect(res.payment).toBe(active);
+    expect(stk.push).not.toHaveBeenCalled();
+  });
+
+  it('rethrows a unique violation when no winning payment is found', async () => {
+    const { service, stk } = build({ conflict: true });
+    expect(await codeOf(service.initiate('e-1', user))).toMatch(/duplicate key/);
+    expect(stk.push).not.toHaveBeenCalled();
+  });
+
+  it('writes the payment and its two legs in one transaction before pushing', async () => {
+    const { service, payments, transactions, stk } = build();
+    await service.initiate('e-1', user);
+    expect(payments.manager.transaction).toHaveBeenCalledTimes(1);
+    expect(transactions.save).toHaveBeenCalledWith([
+      expect.objectContaining({ paymentId: 'p-new', paymentTypeId: 'type-service_fee' }),
+      expect.objectContaining({ paymentId: 'p-new', paymentTypeId: 'type-runner_fee' }),
+    ]);
+    expect(stk.push).toHaveBeenCalledTimes(1);
   });
 
   it('requires a merchant route when there is a merchant amount', async () => {

@@ -9,6 +9,11 @@ import {
 import { PaymentFlow, PaymentStatus } from '../common/enums';
 
 @Entity('payments')
+// One non-failed main payment per errand (concurrent initiate guard).
+@Index('IDX_payments_errand_active_primary', ['errandId'], {
+  unique: true,
+  where: `"status" <> 'failed' AND "priceChangeRequestId" IS NULL`,
+})
 export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
