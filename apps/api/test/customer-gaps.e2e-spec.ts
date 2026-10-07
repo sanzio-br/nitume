@@ -18,6 +18,7 @@ import { UsersService } from '../src/users/users.service';
  */
 describe('Customer gap endpoints (e2e)', () => {
   let app: INestApplication<App>;
+  let baseUrl: string;
   let token: string;
   let userId: string;
   const unknownId = randomUUID();
@@ -30,6 +31,10 @@ describe('Customer gap endpoints (e2e)', () => {
       new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
     );
     await app.init();
+    // Bind explicitly: an implicit ephemeral listen can collide with other
+    // local servers on another address family and route requests elsewhere.
+    await app.listen(0, '127.0.0.1');
+    baseUrl = await app.getUrl();
 
     const phone = `+2547${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
     const user = await app.get(UsersService).create({ phone, role: UserRole.CUSTOMER });
@@ -52,7 +57,7 @@ describe('Customer gap endpoints (e2e)', () => {
   });
 
   const auth = () => ({ Authorization: `Bearer ${token}` });
-  const http = () => request(app.getHttpServer());
+  const http = () => request(baseUrl);
 
   it('requires auth on every new route', async () => {
     await http().get('/api/v1/errands/count').expect(401);

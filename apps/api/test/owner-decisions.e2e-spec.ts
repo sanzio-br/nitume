@@ -19,6 +19,7 @@ import { UsersService } from '../src/users/users.service';
  */
 describe('Owner decisions (e2e)', () => {
   let app: INestApplication<App>;
+  let baseUrl: string;
   const userIds: string[] = [];
   const errandIds: string[] = [];
   const otpPhones: string[] = [];
@@ -57,6 +58,10 @@ describe('Owner decisions (e2e)', () => {
       new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
     );
     await app.init();
+    // Bind explicitly: an implicit ephemeral listen can collide with other
+    // local servers on another address family and route requests elsewhere.
+    await app.listen(0, '127.0.0.1');
+    baseUrl = await app.getUrl();
   });
 
   afterAll(async () => {
@@ -94,7 +99,7 @@ describe('Owner decisions (e2e)', () => {
     await app.close();
   });
 
-  const http = () => request(app.getHttpServer());
+  const http = () => request(baseUrl);
   const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
   type Actor = { id: string; token: string; profileId: string | null };
