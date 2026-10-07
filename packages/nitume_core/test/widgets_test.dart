@@ -29,6 +29,16 @@ void main() {
           StatusTone.success);
     });
 
+    test('shows system-only CONFIRMED and SETTLED as Completed (row 35)', () {
+      for (final s in [ErrandStatus.confirmed, ErrandStatus.settled]) {
+        expect(statusPresentation(s),
+            (label: 'Completed', tone: StatusTone.success));
+      }
+      for (final s in ErrandStatus.values) {
+        expect(statusPresentation(s).label, isNot('Confirmed'));
+      }
+    });
+
     test('applies the owner Q13 tones', () {
       expect(statusPresentation(ErrandStatus.runnerEnRoute),
           (label: 'En route', tone: StatusTone.pending));
