@@ -499,7 +499,7 @@ export class PaymentsService implements OnApplicationBootstrap {
     );
     if (incomplete.length > 0) {
       throw new ConflictException(
-        `Cannot settle: ${incomplete.length} split-ledger leg(s) not cleared ` +
+        `Cannot settle: ${incomplete.length} payment leg(s) not completed ` +
           `(${incomplete.map((t) => `${t.paymentTypeId}:${t.status}`).join(', ')}).`,
       );
     }
@@ -510,7 +510,7 @@ export class PaymentsService implements OnApplicationBootstrap {
       errandId,
       ErrandStatus.SETTLED,
       { type: StatusHistoryActor.SYSTEM },
-      `Settlement: split ledger released to runner (${released.length} legs).`,
+      `Settled: runner earnings recorded for payout (${released.length} legs).`,
     );
     return { errandId, settled: true, released, previousStatus: errand.status as string };
   }
