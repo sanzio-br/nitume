@@ -33,6 +33,7 @@ const build = () => {
     { findOne: vi.fn(() => Promise.resolve({ id: 'runner-1' })) } as never,
     { emit: vi.fn() } as never,
     {} as never,
+    {} as never,
   );
   return { service, qb };
 };

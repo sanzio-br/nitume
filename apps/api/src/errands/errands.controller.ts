@@ -31,6 +31,7 @@ import {
   ErrandsService,
   ListErrandViewsResponse,
 } from './errands.service';
+import { Quote } from './quote.entity';
 
 @Controller('errands')
 @UseGuards(JwtAuthGuard)
@@ -78,6 +79,12 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
   ): Promise<ErrandView> {
     return this.errands.getDetail(id, { role: user.role, userId: user.userId });
+  }
+
+  /** Customer-readable quote breakdown (latest `quotes` row). */
+  @Get(':id/quote')
+  quote(@Param('id') id: string, @CurrentUser() user: AuthContext): Promise<Quote> {
+    return this.errands.latestQuoteFor(id, { role: user.role, userId: user.userId });
   }
 
   @Get(':id/history')

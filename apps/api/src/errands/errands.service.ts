@@ -120,6 +120,8 @@ export class ErrandsService {
     private readonly runnerProfiles: Repository<RunnerProfile>,
     private readonly events: EventEmitter2,
     private readonly runners: RunnersService,
+    @InjectRepository(Quote)
+    private readonly quotes: Repository<Quote>,
   ) {}
 
   async createDraft(
@@ -193,6 +195,22 @@ export class ErrandsService {
       throw new ForbiddenException('You do not have access to this errand');
     }
     return errand;
+  }
+
+  /**
+   * Latest quote breakdown for an errand, readable by anyone who can view the
+   * errand (owner customer, assigned runner, admin). 404 until quoted.
+   */
+  async latestQuoteFor(errandId: string, viewer: ViewerContext): Promise<Quote> {
+    await this.getById(errandId, viewer);
+    const quote = await this.quotes.findOne({
+      where: { errandId },
+      order: { createdAt: 'DESC' },
+    });
+    if (!quote) {
+      throw new NotFoundException('Errand has not been quoted yet');
+    }
+    return quote;
   }
 
   /** `getById` plus the current assignment and public runner summary. */

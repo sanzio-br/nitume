@@ -68,6 +68,7 @@ const build = (opts: {
     {} as never,
     { emit: vi.fn() } as never,
     runners as never,
+    {} as never,
   );
   return { service, assignmentsRepo, runners };
 };

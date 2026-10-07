@@ -10,6 +10,7 @@ import { ErrandStatusHistory } from './errand-status-history.entity';
 import { Errand } from './errand.entity';
 import { ErrandsController } from './errands.controller';
 import { ErrandsService } from './errands.service';
+import { Quote } from './quote.entity';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ErrandsService } from './errands.service';
       ErrandItem,
       ErrandStatusHistory,
       ErrandAssignment,
+      Quote,
       CustomerProfile,
       RunnerProfile,
     ]),
