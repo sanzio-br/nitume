@@ -92,6 +92,11 @@ describe('Owner decisions (e2e)', () => {
     }
     if (userIds.length > 0) {
       await ds.query('DELETE FROM "notifications" WHERE "userId" = ANY($1)', [userIds]);
+      await ds.query(
+        `DELETE FROM "payment_methods" WHERE "customerProfileId" IN
+           (SELECT id FROM "customer_profiles" WHERE "userId" = ANY($1))`,
+        [userIds],
+      );
       await ds.query('DELETE FROM "runner_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "customer_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "users" WHERE "id" = ANY($1)', [userIds]);
@@ -472,6 +477,23 @@ describe('Owner decisions (e2e)', () => {
         .expect(201);
       expect(ok.body.payment.paymentFlow).toBe('customer_to_runner');
       expect(ok.body.merchantPayment).toEqual({ route: 'send_to_runner', amount: '2500.00' });
+    });
+  });
+
+  describe('payment methods', () => {
+    it('accepts only M-Pesa methods', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const body = { label: 'Visa', detail: '•••• 4242' };
+      await http()
+        .post('/api/v1/customers/me/payment-methods')
+        .set(bearer(customer.token))
+        .send({ ...body, type: 'card' })
+        .expect(400);
+      await http()
+        .post('/api/v1/customers/me/payment-methods')
+        .set(bearer(customer.token))
+        .send({ label: 'M-Pesa', detail: '+2547•• •••••887', type: 'mpesa', phoneNumber: '+254712345887' })
+        .expect(201);
     });
   });
 });
