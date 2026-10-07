@@ -12,10 +12,16 @@ export class AddErrandReferenceTitleRunnerNotes1790100100000 implements Migratio
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE SEQUENCE "errand_reference_seq" START WITH 10001`);
     await queryRunner.query(`ALTER TABLE "errands" ADD "reference" character varying(16)`);
+    // Number existing rows explicitly: nextval() inside an UPDATE ... FROM
+    // runs in join order, not the subquery's ORDER BY.
     await queryRunner.query(
-      `UPDATE "errands" e SET "reference" = 'NT-' || nextval('errand_reference_seq')
-         FROM (SELECT id FROM "errands" ORDER BY "createdAt", id) o
+      `UPDATE "errands" e SET "reference" = 'NT-' || (o.rn + 10000)
+         FROM (SELECT id, row_number() OVER (ORDER BY "createdAt", id) AS rn FROM "errands") o
         WHERE e.id = o.id`,
+    );
+    // Continue after the backfilled numbers (NT-10001 when the table is empty).
+    await queryRunner.query(
+      `SELECT setval('errand_reference_seq', 10000 + (SELECT count(*) FROM "errands"), true)`,
     );
     await queryRunner.query(
       `ALTER TABLE "errands" ALTER COLUMN "reference" SET DEFAULT ('NT-' || nextval('errand_reference_seq'))`,
