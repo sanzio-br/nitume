@@ -322,25 +322,65 @@ Mockup-level conflicts with the design system (not code bugs; for the owner): `#
 6. Card payments (Visa) shown in the mockup; system design is M-Pesa only.
 
 ## Questions for the owner (consolidated)
+1. **Q-CAT** — Category tile labels: six full display names, or approve short labels (and their mapping, esp. Visit and Submit)?  
+   **Answer:** Full category display names. No shortened labels.
 
-1. **Q-CAT** — Category tile labels: six full display names, or approve short labels (and their mapping, esp. Visit and Submit)?
-2. **Q-NAME (schema)** — No name field for customers or runners in ERD/API, but every screen shows names. Add `display_name` (and collect it after first sign-in)?
-3. **Quote flow (state machine)** — Wizard shows an instant quote; §3.3/API require submit → admin quote → accept. Wait-for-quote state, or synchronous auto-quote?
-4. **Fee breakdown (payments)** — Base / Report & evidence / Transport vs Service fee / Runner fee vs API 20%/30% split. Which is shown, and what are the split rules?
-5. **Merchant payment flow choice (payments)** — Does the customer choose among merchant-direct / send-to-runner / runner-advance? Advance limits? How is "send purchase amount to runner" paid? Where are merchant Till/Paybill details shown?
-6. **Q-RELEASE (no escrow)** — Replace "Confirm completion & release payment"? What does confirming trigger for runner payout?
-7. **Confirm transitions (state machine)** — Does "Confirm completion" fire AWAITING_CUSTOMER → COMPLETED only, or also COMPLETED → CONFIRMED? What triggers CONFIRMED?
-8. **Price change (payments + state machine)** — Which amount changes (merchant item price vs service price)? How is the increase paid? What does "Reject & cancel task" do when CANCELLED is not reachable from IN_PROGRESS? Modal vs pushed screen?
-9. **API state-machine deviations** — Approve or revert DRAFT → CANCELLED, AWAITING_CUSTOMER → DISPUTED, DISPUTED → CONFIRMED/CANCELLED?
-10. **Card payments (scope / third-party / security)** — Visa in MVP? Which provider?
-11. **Q-RADIUS (design system)** — Pill buttons (design system) or 14px CTAs (mockup)?
-12. **Q-FIELD (design system)** — White 8px field with green focus (design system) or slate 10px field (mockup)?
-13. **Q-RED / Q-ENROUTE (design system)** — Red for unread dot, destructive rows, inline errors, Cancelled chip; amber vs blue for "En route"; amber price text on price change.
-14. **Off-palette mockup colours** — Approve replacements for `#5FE092`, `#AEB9CC`, `#EAEEF4`, green 20% tint (chip-info tag, slate-400 meta, real map).
-15. **Schema: task title and reference number** — Add `title` / sequential `reference`, or derive client-side?
-16. **Schema: runner notes** — "Caretaker notes" on evidence review have no field.
-17. **Security: OTP policy** — Expiry, attempts, resend cooldown, request rate limits.
-18. **Scope** — Recurring tasks row, Support target (WhatsApp/phone/chat/web), Business Tasks tile for regular customers, in-task chat on Track.
-19. **Locations per category** — Pickup + drop-off for Get It For Me / Buy For Me; deadline chip → `deadline_at`/`urgency` mapping; budget visibility per category; shopping-list items.
-20. **Q-LABELS** — Confirm the state → customer label table (`_shared.md` §6).
-21. **Payment UX** — After payment go to Track (mockup intent) or Home (mockup JS)? STK timeout/retry policy; pay from default M-Pesa method vs login phone.
+2. **Q-NAME (schema)** — No name field for customers or runners in ERD/API, but every screen shows names. Add `display_name` (and collect it after first sign-in)?  
+   **Answer:** Add `display_name` for customers and runners. Collect it after first sign-in/onboarding and expose it consistently in API + UI.
+
+3. **Quote flow (state machine)** — Wizard shows an instant quote; §3.3/API require submit → admin quote → accept. Wait-for-quote state, or synchronous auto-quote?  
+   **Answer:** Synchronous auto-quote for the wizard preview, but authoritative backend flow remains `PENDING_QUOTE → QUOTED → ACCEPTED`. Preview ≠ final quote.
+
+4. **Fee breakdown (payments)** — Base / Report & evidence / Transport vs Service fee / Runner fee vs API 20%/30% split. Which is shown, and what are the split rules?  
+   **Answer:** Show customer-facing Service fee + Runner fee + Merchant/item amount. Keep internal/API commission split separate. API commission should not be presented as an additional customer fee.
+
+5. **Merchant payment flow choice (payments)** — Does the customer choose among merchant-direct / send-to-runner / runner-advance? Advance limits? How is "send purchase amount to runner" paid? Where are merchant Till/Paybill details shown?  
+   **Answer:** Customer chooses the supported payment method during checkout. For MVP, support merchant-direct payment where merchant details are available and send purchase amount to runner where applicable. Runner advance should be treated as an explicit runner-side capability, not a customer-selected payment method. Merchant Till/Paybill details appear only when that payment route is selected.
+
+6. **Q-RELEASE (no escrow)** — Replace "Confirm completion & release payment"? What does confirming trigger for runner payout?  
+   **Answer:** Remove escrow language. Replace with “Confirm completion”. Confirmation marks the task complete and makes the runner's earned amount eligible for payout/settlement according to the normal payout process. Do not call it “release payment.”
+
+7. **Confirm transitions (state machine)** — Does "Confirm completion" fire AWAITING_CUSTOMER → COMPLETED only, or also COMPLETED → CONFIRMED? What triggers CONFIRMED?  
+   **Answer:** AWAITING_CUSTOMER → COMPLETED on customer confirmation. Do not add COMPLETED → CONFIRMED unless there is a real business event requiring it. COMPLETED is the terminal customer-task state.
+
+8. **Price change (payments + state machine)** — Which amount changes (merchant item price vs service price)? How is the increase paid? What does "Reject & cancel task" do when CANCELLED is not reachable from IN_PROGRESS? Modal vs pushed screen?  
+   **Answer:** Price change refers primarily to the merchant/item purchase amount, not arbitrary service-fee changes. Customer sees the new amount and must approve/pay the difference. Reject & cancel task transitions the task to CANCELLED; fix the state machine to make that transition reachable from the relevant active state. Use a modal confirmation rather than a separate pushed screen.
+
+9. **API state-machine deviations** — Approve or revert DRAFT → CANCELLED, AWAITING_CUSTOMER → DISPUTED, DISPUTED → CONFIRMED/CANCELLED?  
+   **Answer:** Approve, but normalize them deliberately: DRAFT → CANCELLED is valid; AWAITING_CUSTOMER → DISPUTED is valid; DISPUTED → CONFIRMED should not exist — resolve dispute back into an appropriate operational state or CANCELLED.
+
+10. **Card payments (scope / third-party / security)** — Visa in MVP? Which provider?  
+    **Answer:** Card payments are out of MVP. Do not add Visa or a card-payment provider/SDK.
+
+11. **Q-RADIUS (design system)** — Pill buttons (design system) or 14px CTAs (mockup)?  
+    **Answer:** Use pill buttons from the design system.
+
+12. **Q-FIELD (design system)** — White 8px field with green focus (design system) or slate 10px field (mockup)?  
+    **Answer:** Use the white 8px field with green focus from the design system.
+
+13. **Q-RED / Q-ENROUTE (design system)** — Red for unread dot, destructive rows, inline errors, Cancelled chip; amber vs blue for "En route"; amber price text on price change.  
+    **Answer:** Use red for unread dots, destructive rows, inline errors, and Cancelled chips. Use amber for “En route”. Use amber price text for price changes.
+
+14. **Off-palette mockup colours** — Approve replacements for `#5FE092`, `#AEB9CC`, `#EAEEF4`, green 20% tint (chip-info tag, slate-400 meta, real map).  
+    **Answer:** Replace these with the nearest approved design-system tokens. Do not introduce new arbitrary colours.
+
+15. **Schema: task title and reference number** — Add `title` / sequential `reference`, or derive client-side?  
+    **Answer:** Add a backend-generated `reference`. Do not derive it client-side. Add `title` where the customer actually provides/edits a task title.
+
+16. **Schema: runner notes** — "Caretaker notes" on evidence review have no field.  
+    **Answer:** Add a dedicated `runner_notes` field for runner-provided notes. Do not overload customer notes or other fields.
+
+17. **Security: OTP policy** — Expiry, attempts, resend cooldown, request rate limits.  
+    **Answer:** OTP expires after 5 minutes, maximum 5 verification attempts, 60-second resend cooldown, and maximum 5 OTP requests per hour per phone/account. Also apply IP/device throttling where appropriate and invalidate the previous OTP when a new one is issued.
+
+18. **Scope** — Recurring tasks row, Support target (WhatsApp/phone/chat/web), Business Tasks tile for regular customers, in-task chat on Track.  
+    **Answer:** Recurring tasks are out of MVP. Provide a simple configurable Support entry point rather than implementing separate WhatsApp/phone/chat/web systems. Business Tasks are out of MVP. In-task chat is out of MVP.
+
+19. **Locations per category** — Pickup + drop-off for Get It For Me / Buy For Me; deadline chip → `deadline_at`/`urgency` mapping; budget visibility per category; shopping-list items.  
+    **Answer:** Support pickup + drop-off for Get It For Me / Buy For Me where applicable. Use `deadline_at` as the authoritative deadline and derive urgency from it. Budget visibility follows the category requirements. Shopping-list items should be structured rather than stored as one unstructured text value.
+
+20. **Q-LABELS** — Confirm the state → customer label table (`_shared.md` §6).  
+    **Answer:** Use the state → customer label mapping in `_shared.md` §6 as authoritative. Do not invent alternate customer-facing state labels.
+
+21. **Payment UX** — After payment go to Track (mockup intent) or Home (mockup JS)? STK timeout/retry policy; pay from default M-Pesa method vs login phone.  
+    **Answer:** After successful payment, go to Track. Handle STK as `PENDING`, `SUCCESS`, `FAILED`, or `TIMEOUT`; timeout must not automatically be treated as payment failure without provider confirmation. Allow safe retries without duplicate charges. Pay using the customer's selected/default M-Pesa payment method; use the login phone only when no separate payment method exists.
