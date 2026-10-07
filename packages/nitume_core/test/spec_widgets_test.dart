@@ -638,4 +638,18 @@ void main() {
       expect(error.style?.color, NitumeColors.red);
     });
   });
+
+  group('OtpResendLine (C-38)', () {
+    testWidgets('cooldown copy matches v-auth-otp', (tester) async {
+      await pumpThemed(
+        tester,
+        OtpResendLine(secondsRemaining: 59, onResend: () {}),
+      );
+      final line = tester.widget<Text>(
+        find.byKey(const ValueKey('otp-resend-countdown')),
+      );
+      expect(line.textSpan!.toPlainText(), "Didn't get it? Resend code in 0:59");
+      expect(find.byType(TextButton), findsNothing);
+    });
+  });
 }
