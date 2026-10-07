@@ -383,10 +383,20 @@ describe('Owner decisions (e2e)', () => {
       const errand = await createErrand(customer);
       await driveTo({ customer, admin, runner }, errand.id, 'AWAITING_CUSTOMER');
       await http()
+        .get(`/api/v1/errands/${errand.id}/dispute`)
+        .set(bearer(customer.token))
+        .expect(404);
+      const opened = await http()
         .post('/api/v1/disputes')
         .set(bearer(customer.token))
         .send({ errandId: errand.id, reason: 'Photos do not show the bathroom' })
         .expect(201);
+      const found = await http()
+        .get(`/api/v1/errands/${errand.id}/dispute`)
+        .set(bearer(customer.token))
+        .expect(200);
+      expect(found.body.id).toBe(opened.body.id);
+      expect(found.body.events[0].eventType).toBe('opened');
       const res = await http()
         .patch(`/api/v1/errands/${errand.id}/resolve-dispute`)
         .set(bearer(admin.token))

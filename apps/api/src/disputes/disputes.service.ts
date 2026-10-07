@@ -77,6 +77,20 @@ export class DisputesService {
     return extra;
   }
 
+  /** The errand's dispute (one per errand) with its event log; 404 when none. */
+  async getForErrand(errandId: string, viewer: Actor): Promise<DisputeView> {
+    await this.errands.getById(errandId, viewer);
+    const dispute = await this.disputes.findOne({ where: { errandId } });
+    if (!dispute) {
+      throw new NotFoundException('No dispute for this task');
+    }
+    const events = await this.events.find({
+      where: { disputeId: dispute.id },
+      order: { createdAt: 'ASC' },
+    });
+    return Object.assign(dispute, { events });
+  }
+
   /** Dispute with its event log, for anyone who can view the errand. */
   async get(id: string, viewer: Actor): Promise<DisputeView> {
     const dispute = await this.disputes.findOne({ where: { id } });

@@ -115,3 +115,18 @@ describe('DisputesService.get (A-9)', () => {
     await expect(service.get('d-1', customer)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+describe('DisputesService.getForErrand', () => {
+  it('returns the errand dispute with events after the access check', async () => {
+    const { service, errands, disputes } = build({ existing: { id: 'd-1', errandId: 'e-1' } as never });
+    const view = await service.getForErrand('e-1', customer);
+    expect(errands.getById).toHaveBeenCalledWith('e-1', customer);
+    expect(disputes.findOne).toHaveBeenCalledWith({ where: { errandId: 'e-1' } });
+    expect(view.events).toEqual([{ id: 'ev-1' }]);
+  });
+
+  it('404s when the errand has no dispute', async () => {
+    const { service } = build();
+    await expect(service.getForErrand('e-1', customer)).rejects.toThrow('No dispute for this task');
+  });
+});
