@@ -21,6 +21,7 @@ describe('Owner decisions (e2e)', () => {
   let app: INestApplication<App>;
   const userIds: string[] = [];
   const errandIds: string[] = [];
+  const otpPhones: string[] = [];
 
   const randomPhone = (): string =>
     `+2547${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
@@ -80,6 +81,9 @@ describe('Owner decisions (e2e)', () => {
         await ds.query(`DELETE FROM "${table_name}" WHERE "errandId" = ANY($1)`, [errandIds]);
       }
       await ds.query('DELETE FROM "errands" WHERE id = ANY($1)', [errandIds]);
+    }
+    if (otpPhones.length > 0) {
+      await ds.query('DELETE FROM "otp_codes" WHERE target = ANY($1)', [otpPhones]);
     }
     if (userIds.length > 0) {
       await ds.query('DELETE FROM "notifications" WHERE "userId" = ANY($1)', [userIds]);
@@ -306,6 +310,36 @@ describe('Owner decisions (e2e)', () => {
         .expect(200);
       expect(detail.body.runnerNotes).toBe('Leak reported to the landlord.');
       expect(detail.body.assignment.runner).toHaveProperty('displayName');
+    });
+  });
+
+  describe('OTP policy', () => {
+    it('returns machine-readable codes for cooldown and wrong codes', async () => {
+      const phone = randomPhone();
+      otpPhones.push(phone);
+      await http().post('/api/v1/auth/otp/verify').send({ phone, code: '123456' }).expect(401)
+        .then((res) => expect(res.body.code).toBe('otp_not_requested'));
+      await http().post('/api/v1/auth/otp/request').send({ phone }).expect(201);
+      const again = await http().post('/api/v1/auth/otp/request').send({ phone }).expect(429);
+      expect(again.body.code).toBe('otp_resend_cooldown');
+      expect(again.body.secondsRemaining).toBeGreaterThan(0);
+      expect(again.body.secondsRemaining).toBeLessThanOrEqual(60);
+
+      const ds = app.get(DataSource);
+      const [row] = await ds.query(
+        `SELECT EXTRACT(EPOCH FROM ("expiresAt" - "createdAt"))::float AS ttl
+           FROM "otp_codes" WHERE target = $1`,
+        [phone],
+      );
+      expect(Math.round(row.ttl)).toBe(300);
+
+      // Pick a code that cannot be the issued one by flipping a stored hash check:
+      // two different wrong guesses can't both be right.
+      const first = await http().post('/api/v1/auth/otp/verify').send({ phone, code: '000000' });
+      const second = await http().post('/api/v1/auth/otp/verify').send({ phone, code: '999999' });
+      const wrong = [first, second].find((r) => r.status === 401);
+      expect(wrong?.body.code).toBe('otp_incorrect');
+      expect(typeof wrong?.body.attemptsRemaining).toBe('number');
     });
   });
 });

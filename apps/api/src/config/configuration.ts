@@ -94,10 +94,10 @@ export const configuration = (): AppConfig => ({
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
   },
   otp: {
-    ttlSeconds: int(process.env.OTP_TTL_SECONDS, 600),
+    ttlSeconds: int(process.env.OTP_TTL_SECONDS, 300),
     maxAttempts: int(process.env.OTP_MAX_ATTEMPTS, 5),
     resendCooldownSeconds: int(process.env.OTP_RESEND_COOLDOWN_SECONDS, 60),
-    rateLimitWindowSeconds: int(process.env.OTP_RATE_LIMIT_WINDOW_SECONDS, 900),
+    rateLimitWindowSeconds: int(process.env.OTP_RATE_LIMIT_WINDOW_SECONDS, 3600),
     rateLimitPerPhone: int(process.env.OTP_RATE_LIMIT_PER_PHONE, 5),
     senderTransport:
       (process.env.OTP_SENDER_TRANSPORT as AppConfig['otp']['senderTransport']) ??
