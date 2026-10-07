@@ -64,6 +64,10 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | flutter-customer | api-contract | serviceFee/runnerFee/itemAmount on quote (after row 34); merchant details on errand (after row 43); fee total on errand list items; `account_suspended` code (also from core-ui) | open |
 | design-auditor | core-ui | Re-audit cross-cutting minors: CC-1 CONFIRMED label → "Completed" (status_presentation.dart:31); CC-2 numeric spans inside string-only widgets (link label, NitumeNotice, button label, SectionLabel); CC-3 avatar no-name glyph in InitialsAvatar; textCapitalization on NitumeField; money-field prefix always visible | open |
 | design-auditor | api-contract | Provider failure reason on the payment summary | open |
+| reviewer | api-contract | (feat/api-owner-decisions) 5.1 open refund review inside the CANCELLED transaction; 5.2 atomic OTP attempts increment; 5.3 transactional price-change approve; 5.4 guard concurrent keyless initiate; 5.5 reference backfill order; 5.6 lint warnings | in progress (worktree ../nitume-api-review-fixes) |
+| reviewer | core-ui | (feat/core-spec-widgets) 8.1 CONFIRMED label → "Completed" (+ optional CC-2, CC-3 and other re-audit minors) | in progress (worktree ../nitume-core-review-fixes) |
+| reviewer | flutter-customer | (feat/customer-screens) 9.1 hide CONFIRMED/SETTLED rows in the timeline (+ remaining re-audit minors) | in progress |
+| reviewer | orchestrator | PROGRESS.md customer entry (DoD §6) | done |
 
 ## Questions for the project owner
 
@@ -130,6 +134,10 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 59 | flutter-customer | `.env` is a pubspec asset, so `flutter test` fails on a fresh checkout without an empty .env. Drop the asset, or commit a .env.example plus a setup step? | open |
 | 60 | flutter-customer | Row 30 (Places) effectively blocks creating tasks: the API needs lat/lon and only saved addresses with coordinates can be used. Addresses typed manually have no coordinates. Priority? | open |
 | 61 | design-auditor (re-audit) | v-price-auth Q2 (payments): when approving a price change returns MERCHANT_ROUTE_REQUIRED, should the customer pick the route inside the modal (build default), or should the API refuse the request? Related rows 44, 48, 42 | open |
+| 62 | reviewer | Schema not explicitly approved (§3): api-contract added a `refund_reviews` table and `payments.priceChangeRequestId` to implement rows 37/48. Approve, or change? | open |
+| 63 | reviewer | Placeholders in code: 24h dispute window (row 50), 4h/72h urgency (row 51), 120s STK timeout (row 52), modal scrim #0B2545 at 50% (row 38). Confirm or give values | open |
+| 64 | reviewer | Git housekeeping before merging: your local `main` is 4 commits ahead of origin (541a695, 7378a41, 8896891, f3717cc). Push or PR them first. origin/HEAD still points at feat/admin-dashboard-angular (already merged via PR #2), so open PRs against `main`. Use merge commits, not squash, for the stack | open |
+| 65 | reviewer | Runner access: a runner who was unassigned can still read the errand and tracking (canView accepts any past assignment). Restrict to the current assignment? (links to row 27) | open |
 
 ## Session log
 
@@ -146,3 +154,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-07 | design-auditor re-audit of 27 customer screens: 24 PASS, 3 FAIL (x-awaiting-quote, v-price-auth, x-address-form) | 9f1ed41, 8825cf5, 50c1765 |
 | 2026-10-07 | flutter-customer fixed re-audit FAIL #1 (x-awaiting-quote, v-price-auth, x-address-form) + minors (v-task-detail rate in CONFIRMED/SETTLED, v-payment-methods, x-payment-method-form, tests for x-legal/x-evidence-viewer); 51 app tests pass | 6e4387b, 8ebe0d8, ac79f79, ba45633 |
 | 2026-10-07 | design-auditor re-audit #2: x-awaiting-quote, v-price-auth, x-address-form PASS. All 27 customer screens audited-pass (matches-design); sent to reviewer | 58435a0 |
+| 2026-10-07 | reviewer (read-only): CHANGES-NEEDED on feat/api-owner-decisions (refund review durability, OTP attempt race, price-change approve transaction, concurrent initiate, backfill order), feat/core-spec-widgets (CONFIRMED label), feat/customer-screens (timeline filter), PROGRESS note. READY: chore/claude-agent-team, docs/customer-spec-answers, docs/customer-reaudit, feat/api-customer-gaps, feat/core-customer-widgets, feat/core-owner-decisions. Merge order: chore/claude-agent-team → docs/customer-spec-audit → docs/customer-spec-answers → docs/customer-reaudit → feat/api-customer-gaps → feat/api-owner-decisions → feat/core-customer-widgets → feat/core-owner-decisions → feat/core-spec-widgets → feat/customer-screens (merge commits, PRs against main). Fixes dispatched | — |
