@@ -454,4 +454,42 @@ void main() {
       expect(picked, ErrandCategory.waitForMe);
     });
   });
+
+  group('EvidenceViewer (C-25)', () {
+    testWidgets('close on the left, Fira Code counter on the right, caption',
+        (tester) async {
+      await pumpThemed(
+        tester,
+        EvidenceViewer(
+          items: const [
+            EvidenceThumbnail(),
+            EvidenceThumbnail(),
+            EvidenceThumbnail(isVideo: true),
+            EvidenceThumbnail(),
+          ],
+          initialIndex: 1,
+          captionBuilder: (context, i) => Text('caption $i'),
+        ),
+        surfaceSize: const Size(390, 800),
+      );
+      final counter = find.byKey(const ValueKey('evidence-viewer-counter'));
+      final style = tester.widget<Text>(counter).style!;
+      expect(tester.widget<Text>(counter).data, '2/4');
+      expect(style.fontFamily, NitumeTypography.numericFamily);
+      expect(style.color, NitumeColors.white);
+      expect(style.fontSize, 12.5);
+
+      final close = find.byTooltip('Close');
+      expect(close, findsOneWidget);
+      expect(tester.getCenter(close).dx, lessThan(195));
+      expect(tester.getCenter(counter).dx, greaterThan(195));
+      expect(tester.getSize(close).width, greaterThanOrEqualTo(48));
+      expect(find.text('caption 1'), findsOneWidget);
+
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(counter).data, '3/4');
+      expect(find.text('caption 2'), findsOneWidget);
+    });
+  });
 }
