@@ -56,10 +56,11 @@ class _MerchantPaymentScreenState extends State<MerchantPaymentScreen> {
             onRetry: _retry,
           );
         } else if (mp == null || !isPositiveAmount(mp.amount)) {
-          body = const _Notice(
-            "The merchant's details aren't available yet. We'll notify you "
-            'when they are.',
-          );
+          // Nothing to pay on any route: leave the screen.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) Navigator.of(context).maybePop();
+          });
+          body = const SizedBox.shrink();
         } else if (runnerRoute) {
           body = _SendToRunner(amount: mp.amount);
         } else if (!mp.hasMerchantDetails) {

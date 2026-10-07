@@ -14,9 +14,13 @@ class _TaskData {
     required this.payment,
     required this.evidence,
     required this.rated,
+    required this.hasReport,
   });
 
   final Errand errand;
+
+  /// A dispute exists (DISPUTED, or resolved to COMPLETED / CANCELLED).
+  final bool hasReport;
   final PaymentSummary? payment;
   final List<Evidence> evidence;
   final bool rated;
@@ -36,6 +40,13 @@ const _rateable = {
   ErrandStatus.completed,
   ErrandStatus.confirmed,
   ErrandStatus.settled,
+};
+
+/// States a dispute can resolve to (row 36), plus DISPUTED itself.
+const _maybeReported = {
+  ErrandStatus.disputed,
+  ErrandStatus.completed,
+  ErrandStatus.cancelled,
 };
 
 /// `v-task-detail`: one task in any state.
@@ -88,8 +99,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen>
             .then<Object?>((v) => v != null, onError: (_) => true)
       else
         Future<Object?>.value(true),
+      if (_maybeReported.contains(errand.status))
+        _services.disputes
+            .forErrand(id)
+            .then<Object?>((d) => d != null, onError: (_) => false)
+      else
+        Future<Object?>.value(false),
     ]);
     return _TaskData(
+      hasReport:
+          errand.status == ErrandStatus.disputed || results[3]! as bool,
       errand: errand,
       payment: results[0] as PaymentSummary?,
       evidence: results[1]! as List<Evidence>,
@@ -228,7 +247,7 @@ class _Body extends StatelessWidget {
               ],
             ),
           ),
-        if (e.status == ErrandStatus.disputed)
+        if (data.hasReport)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
             child: MenuRow(

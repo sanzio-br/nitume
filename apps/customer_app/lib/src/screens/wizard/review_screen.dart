@@ -80,10 +80,13 @@ class _ReviewScreenState extends State<ReviewScreen> {
             const StepProgressBar(total: 3, completed: 3),
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
-              child: NitumeNotice(
-                message:
-                    "We couldn't estimate the price right now. You can "
-                    "still submit; we'll send you the final quote.",
+              child: NitumeFormCard(
+                label: 'Estimated price',
+                child: NitumeNotice(
+                  message:
+                      "We couldn't estimate the price right now. You can "
+                      "still submit; we'll send you the final quote.",
+                ),
               ),
             ),
             if (budget > 0)

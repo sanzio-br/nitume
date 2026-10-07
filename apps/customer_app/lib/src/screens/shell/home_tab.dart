@@ -153,8 +153,9 @@ class _TopBar extends StatelessWidget {
     final greeting = greetingFor(DateTime.now());
     final name = firstName(displayName);
     return NitumeTopBar(
-      title: name ?? greeting,
-      greeting: name == null ? null : greeting,
+      // No name (rare after x-name-capture): greeting line only.
+      title: name ?? '',
+      greeting: greeting,
       actions: [
         NotificationBell(
           unreadCount: unread,
