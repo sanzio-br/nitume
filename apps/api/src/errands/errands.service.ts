@@ -165,9 +165,24 @@ interface StatusChangedEvent {
   actor: StatusHistoryActor;
 }
 
+/** A CANCELLED transition about to commit (see `onCancelled`). */
+export interface CancellationInTx {
+  errandId: string;
+  from: ErrandStatus;
+  actor: StatusHistoryActor;
+  guard?: TransitionGuard;
+}
+
+/**
+ * Runs inside the transaction that moves an errand to CANCELLED. Throwing
+ * rolls the cancellation back, so work done here is never lost after commit.
+ */
+export type CancellationHook = (manager: EntityManager, change: CancellationInTx) => Promise<void>;
+
 @Injectable()
 export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
+  private readonly cancellationHooks: CancellationHook[] = [];
 
   constructor(
     private readonly dataSource: DataSource,
@@ -581,6 +596,17 @@ export class ErrandsService {
   }
 
   /**
+   * Registers work that must commit atomically with every CANCELLED
+   * transition, whichever flow cancels (customer cancel, admin cancel,
+   * price-change rejection, customer-favourable dispute resolution). Used by
+   * the payments module to open refund reviews without errands depending on
+   * payments.
+   */
+  onCancelled(hook: CancellationHook): void {
+    this.cancellationHooks.push(hook);
+  }
+
+  /**
    * Transitions an errand to a target status, validating against the strict
    * state machine and recording a history row (append-only). Uses the entity
    * version column for optimistic concurrency: concurrent transitions from
@@ -684,6 +710,12 @@ export class ErrandsService {
       actor: { type: actor.type, id: actor.id ?? null },
       note: note ?? null,
     });
+
+    if (to === ErrandStatus.CANCELLED) {
+      for (const hook of this.cancellationHooks) {
+        await hook(manager, { errandId, from: fromStatus, actor: actor.type, guard });
+      }
+    }
 
     // Emitted only after the surrounding transaction commits (see inTx), so
     // listeners never read the pre-transition row.

@@ -34,7 +34,7 @@ const build = (status: ErrandStatus) => {
     {} as never,
     {} as never,
   );
-  return { service, errand, emit, dataSource };
+  return { service, errand, emit, dataSource, manager };
 };
 
 const customer = { type: StatusHistoryActor.CUSTOMER, id: 'user-1' };
@@ -165,6 +165,68 @@ describe('ErrandsService status events', () => {
       service.transition('e-1', ErrandStatus.COMPLETED, customer, undefined, subject),
     ).rejects.toThrow('rollback');
     await tick();
+    expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('ErrandsService cancellation hooks', () => {
+  const admin = { userId: 'admin-1', role: UserRole.ADMIN, phone: '+254700000000' };
+  const rationale = 'Evidence shows the customer was not served.';
+
+  it('runs on every CANCELLED transition with the transaction manager', async () => {
+    const dispute = build(ErrandStatus.DISPUTED);
+    const hook = vi.fn(() => Promise.resolve());
+    dispute.service.onCancelled(hook);
+    await dispute.service.resolveDispute('e-1', 'customer_favourable', rationale, admin as never);
+    expect(hook).toHaveBeenCalledWith(dispute.manager, {
+      errandId: 'e-1',
+      from: ErrandStatus.DISPUTED,
+      actor: StatusHistoryActor.ADMIN,
+      guard: undefined,
+    });
+
+    const priceChange = build(ErrandStatus.IN_PROGRESS);
+    const pcHook = vi.fn(() => Promise.resolve());
+    priceChange.service.onCancelled(pcHook);
+    await priceChange.service.transitionWith(
+      'e-1',
+      ErrandStatus.CANCELLED,
+      customer,
+      'Price change rejected',
+      subject,
+      () => Promise.resolve(null),
+      TransitionGuard.PRICE_CHANGE_REJECTION,
+    );
+    expect(pcHook).toHaveBeenCalledWith(priceChange.manager, expect.objectContaining({
+      from: ErrandStatus.IN_PROGRESS,
+      guard: TransitionGuard.PRICE_CHANGE_REJECTION,
+    }));
+
+    const adminCancel = build(ErrandStatus.RUNNER_ASSIGNED);
+    const acHook = vi.fn(() => Promise.resolve());
+    adminCancel.service.onCancelled(acHook);
+    await adminCancel.service.transition('e-1', ErrandStatus.CANCELLED, {
+      type: StatusHistoryActor.ADMIN,
+      id: 'admin-1',
+    });
+    expect(acHook).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run for other transitions', async () => {
+    const { service } = build(ErrandStatus.DISPUTED);
+    const hook = vi.fn(() => Promise.resolve());
+    service.onCancelled(hook);
+    await service.resolveDispute('e-1', 'runner_favourable', rationale, admin as never);
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('fails the cancellation (no event) when a hook throws', async () => {
+    const { service, emit } = build(ErrandStatus.DISPUTED);
+    service.onCancelled(() => Promise.reject(new Error('refund review failed')));
+    await expect(
+      service.resolveDispute('e-1', 'customer_favourable', rationale, admin as never),
+    ).rejects.toThrow('refund review failed');
+    await new Promise((r) => setImmediate(r));
     expect(emit).not.toHaveBeenCalled();
   });
 });
