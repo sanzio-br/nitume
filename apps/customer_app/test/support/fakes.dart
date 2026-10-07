@@ -516,6 +516,8 @@ class FakeAccount extends CustomerAccountRepository {
     added.add({
       'label': label,
       'addressText': addressText,
+      'lat': lat,
+      'lon': lon,
       'isDefault': isDefault,
     });
     final a = SavedAddress(
@@ -536,7 +538,13 @@ class FakeAccount extends CustomerAccountRepository {
     double? lat,
     double? lon,
   }) async {
-    added.add({'id': id, 'label': label, 'addressText': addressText});
+    added.add({
+      'id': id,
+      'label': label,
+      'addressText': addressText,
+      'lat': lat,
+      'lon': lon,
+    });
     return addressList.firstWhere((a) => a.id == id);
   }
 
@@ -606,8 +614,9 @@ Future<void> _setUp(WidgetTester tester) async {
 
 /// All fakes plus the [AppServices] built from them.
 class TestBackend {
-  TestBackend() {
+  TestBackend({PlaceSearchService? placeSearch}) {
     services = AppServices(
+      placeSearch: placeSearch,
       session: SessionController(auth: auth),
       auth: auth,
       errands: errands,
@@ -661,4 +670,30 @@ class TestBackend {
     );
     await tester.pumpAndSettle();
   }
+}
+
+/// Places stand-in returning one fixed place.
+class FakePlaces implements PlaceSearchService {
+  @override
+  Future<List<PlaceSuggestion>> autocomplete(
+    String query, {
+    required String sessionToken,
+  }) async => const [
+    PlaceSuggestion(
+      placeId: 'g1',
+      primaryText: 'Upper Hill',
+      secondaryText: 'Nairobi',
+    ),
+  ];
+
+  @override
+  Future<PlaceDetails> details(
+    String placeId, {
+    required String sessionToken,
+  }) async => const PlaceDetails(
+    placeId: 'g1',
+    addressText: 'Upper Hill, Nairobi',
+    lat: -1.3,
+    lng: 36.81,
+  );
 }

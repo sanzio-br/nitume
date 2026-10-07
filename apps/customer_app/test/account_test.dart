@@ -104,26 +104,69 @@ void main() {
       expect(find.text('Default'), findsOneWidget);
     });
 
-    testWidgets('add form: manual address, validation', (t) async {
+    testWidgets('without Places: notice and Save disabled', (t) async {
       final b = TestBackend();
       await b.pumpScreen(t, const AddressFormScreen());
+      expect(find.text("Place search isn't available yet."), findsOneWidget);
+      expect(find.text('Enter an address.'), findsNothing);
+      await t.tap(find.text('Office'));
+      await t.pumpAndSettle();
+      final save = find.widgetWithText(NitumeButton, 'Save address');
+      expect(t.widget<NitumeButton>(save).onPressed, isNull);
+    });
+
+    testWidgets('without Places, edit saves the name only', (t) async {
+      final b = TestBackend();
+      b.account.addressList = const [
+        SavedAddress(
+          id: 'ad1',
+          label: 'Home',
+          addressText: 'Kilimani Rd, Nairobi',
+          isDefault: false,
+          lat: -1.29,
+          lon: 36.78,
+        ),
+      ];
+      await b.pumpScreen(
+        t,
+        AddressFormScreen(address: b.account.addressList.single),
+      );
+      await t.enterText(find.byType(TextField).first, 'Home 2');
       await t.tap(find.text('Save address'));
       await t.pumpAndSettle();
-      expect(find.text('Give this place a name.'), findsOneWidget);
-      expect(find.text('Enter an address.'), findsOneWidget);
+      expect(b.account.added.single, {
+        'id': 'ad1',
+        'label': 'Home 2',
+        'addressText': null,
+        'lat': null,
+        'lon': null,
+      });
+    });
+
+    testWidgets('with Places: Save needs a picked place, sends coords',
+        (t) async {
+      final b = TestBackend(placeSearch: FakePlaces());
+      await b.pumpScreen(t, const AddressFormScreen());
+      final save = find.widgetWithText(NitumeButton, 'Save address');
+      expect(t.widget<NitumeButton>(save).onPressed, isNull);
 
       await t.tap(find.text('Office'));
       await t.enterText(
-        find.widgetWithText(TextField, 'e.g. Kilimani Rd, Nairobi'),
-        'Upper Hill, Nairobi',
+        find.widgetWithText(TextField, 'Search for a place'),
+        'Upper',
       );
-      await t.tap(find.text('Set as default'));
-      await t.tap(find.text('Save address'));
+      await t.pump(const Duration(milliseconds: 400));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Upper Hill'));
+      await t.pumpAndSettle();
+      await t.tap(save);
       await t.pumpAndSettle();
       expect(b.account.added.single, {
         'label': 'Office',
         'addressText': 'Upper Hill, Nairobi',
-        'isDefault': true,
+        'lat': -1.3,
+        'lon': 36.81,
+        'isDefault': false,
       });
     });
   });

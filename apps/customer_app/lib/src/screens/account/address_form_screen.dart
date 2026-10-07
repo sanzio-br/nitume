@@ -7,9 +7,11 @@ import '../../widgets/common.dart';
 
 /// `x-address-form`: add or edit a saved place.
 ///
-/// No Places client is approved (row 30), so the address is typed by hand
-/// and saved without coordinates (`lat`/`lon` are optional on the API).
-/// Such addresses cannot be used as errand locations until Places exists.
+/// The address text is only ever saved together with the coordinates of a
+/// place picked from the suggestions, so text and coordinates never drift
+/// apart. Without a Places client (row 30) no place can be picked: the
+/// field is read-only, Save stays disabled in add mode, and edit mode only
+/// changes the name and the default (spec fallback; owner row 60).
 class AddressFormScreen extends StatefulWidget {
   const AddressFormScreen({super.key, this.address});
 
@@ -24,62 +26,56 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   static const _maxName = 40;
   late final AppServices _services = context.services;
   late final _name = TextEditingController(text: widget.address?.label);
-  late final _address = TextEditingController(
-    text: widget.address?.addressText,
-  );
   late bool _default = widget.address?.isDefault ?? false;
   PlaceDetails? _place;
   String? _nameError;
-  String? _addressError;
   bool _saving = false;
 
   bool get _edit => widget.address != null;
+
+  /// Add mode needs a picked place (with coordinates); edit mode can save
+  /// a name / default change without one.
+  bool get _canSave => _edit || _place != null;
   bool get _wasDefault => widget.address?.isDefault ?? false;
 
   bool get _dirty =>
       _name.text != (widget.address?.label ?? '') ||
-      _address.text != (widget.address?.addressText ?? '') ||
       _place != null ||
       _default != _wasDefault;
 
   @override
   void dispose() {
     _name.dispose();
-    _address.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    final text = (_place?.addressText ?? _address.text).trim();
-    setState(() {
-      _nameError = name.isEmpty ? 'Give this place a name.' : null;
-      _addressError = text.isEmpty
-          ? (_services.placeSearch == null
-                ? 'Enter an address.'
-                : 'Choose an address from the list.')
-          : null;
-    });
-    if (_nameError != null || _addressError != null) return;
+    final place = _place;
+    setState(
+      () => _nameError = name.isEmpty ? 'Give this place a name.' : null,
+    );
+    if (_nameError != null || !_canSave) return;
     setState(() => _saving = true);
     final account = _services.account;
     try {
       if (_edit) {
         final id = widget.address!.id;
+        // Text and coordinates change together or not at all.
         await account.updateAddress(
           id,
           label: name,
-          addressText: text,
-          lat: _place?.lat,
-          lon: _place?.lng,
+          addressText: place?.addressText,
+          lat: place?.lat,
+          lon: place?.lng,
         );
         if (_default && !_wasDefault) await account.setDefaultAddress(id);
       } else {
         await account.addAddress(
           label: name,
-          addressText: text,
-          lat: _place?.lat,
-          lon: _place?.lng,
+          addressText: place!.addressText,
+          lat: place.lat,
+          lon: place.lng,
           isDefault: _default,
         );
       }
@@ -108,7 +104,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     } on Object {
       if (!mounted) return;
       setState(() => _saving = false);
-      showSnack(context, "Couldn't save the address. Try again.");
+      showSnack(context, "Couldn't delete the address. Try again.");
     }
   }
 
@@ -171,10 +167,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                       PlaceAutocompleteField(
                         service: search,
                         label: 'Address',
-                        hint: _address.text.isEmpty
-                            ? 'Search for a place'
-                            : _address.text,
-                        errorText: _addressError,
+                        hint:
+                            _place?.addressText ??
+                            widget.address?.addressText ??
+                            'Search for a place',
                         onPlaceSelected: (p) => setState(
                           () => _place = SavedPlaceSearch.isSavedId(p.placeId)
                               ? null
@@ -183,16 +179,25 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                       )
                     else
                       NitumeField(
+                        key: const ValueKey('address-readonly'),
                         label: 'Address',
-                        hint: 'e.g. Kilimani Rd, Nairobi',
-                        controller: _address,
-                        errorText: _addressError,
-                        onChanged: (_) => setState(() {}),
+                        hint:
+                            widget.address?.addressText ?? 'Search for a place',
+                        readOnly: true,
+                        enabled: false,
                       ),
                   ],
                 ),
               ),
             ),
+            if (search == null)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
+                // Pending row 30 (Places client).
+                child: NitumeNotice(
+                  message: "Place search isn't available yet.",
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
               child: Column(
@@ -231,7 +236,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             label: 'Save address',
             expand: true,
             loading: _saving,
-            onPressed: _save,
+            onPressed: _canSave ? _save : null,
           ),
         ),
       ),
