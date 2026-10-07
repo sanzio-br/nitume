@@ -46,25 +46,48 @@ class TaskSummaryCard extends StatelessWidget {
   }
 }
 
-/// Quote rows as the API returns them (`GET /errands/:id/quote`).
-///
-/// TODO(pending row 34): which components make up "Service fee" and
-/// "Runner fee" is not decided, so the components are listed by name and the
-/// client never groups or computes them. Zero components are skipped.
-List<ReceiptRow> quoteRows(Quote quote) {
-  final parts = <(String, String)>[
-    ('Base fee', quote.baseFee),
-    ('Distance fee', quote.distanceFee),
-    ('Time fee', quote.timeFee),
-    ('Urgency fee', quote.urgencyFee),
-    ('Complexity fee', quote.complexityFee),
-    ('Premium fee', quote.premiumFee),
-  ];
-  return [
-    for (final (label, amount) in parts)
-      if (isPositiveAmount(amount)) ReceiptRow(label: label, amount: amount),
-    ReceiptRow(label: 'Total', amount: quote.total, isTotal: true),
-  ];
+/// Label of the fee total on every quote / checkout card (mockup copy).
+const kFeeTotalLabel = 'Total (service + runner fee)';
+
+/// Merchant route rows (C-16 radio-row variant) shared by the checkout and
+/// the price-change modal (OA-5). Merchant-direct stays disabled until the
+/// errand has merchant details (SQ-6); runner advance is never offered.
+class MerchantRouteRows extends StatelessWidget {
+  const MerchantRouteRows({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+    this.enabled = true,
+  });
+
+  final MerchantRoute? selected;
+  final ValueChanged<MerchantRoute> onSelected;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Merchant details never reach the errand yet (SQ-6).
+        const NitumeRadioRow(
+          label: 'Pay merchant directly (recommended)',
+          subtitle: "Available once the merchant's details are added.",
+          selected: false,
+          onSelected: null,
+        ),
+        const SizedBox(height: 8),
+        NitumeRadioRow(
+          label: 'Send purchase amount to runner',
+          subtitle: "You'll get instructions after paying the fees.",
+          selected: selected == MerchantRoute.sendToRunner,
+          onSelected: enabled
+              ? () => onSelected(MerchantRoute.sendToRunner)
+              : null,
+        ),
+      ],
+    );
+  }
 }
 
 /// Fee rows for a recorded payment: `Service fee`, `Runner fee` and the

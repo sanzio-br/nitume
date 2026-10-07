@@ -147,6 +147,13 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     }
   }
 
+  static String _ctaLabel(_QuoteData d) {
+    final total = d.quote?.total ?? d.errand.quotedPrice;
+    return total == null
+        ? 'Confirm & pay →'
+        : 'Confirm & pay ${formatKes(total)} →';
+  }
+
   bool _expired(Quote? q) =>
       q?.expiresAt != null && q!.expiresAt!.isBefore(DateTime.now());
 
@@ -244,9 +251,9 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
             ? const NitumeNotice(message: 'This quote has expired.')
             : null,
         child: NitumeButton.primary(
-          // The fee total is known only once the API records the payment
-          // (fee mapping pending row 34), so the CTA carries no amount.
-          label: 'Confirm & pay →',
+          // quote.total is the service + runner total the STK push charges.
+          // TODO(core-ui CC-2): render the amount as a Fira Code span.
+          label: _ctaLabel(data),
           expand: true,
           loading: _accepting,
           onPressed: expired || _cancelling ? null : _accept,
@@ -359,14 +366,14 @@ class _Checkout extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (quote != null)
-                ...quoteRows(quote)
-              else
-                ReceiptRow(
-                  label: 'Total',
-                  amount: errand.quotedPrice,
-                  isTotal: true,
-                ),
+              // OA-4: only Service fee + Runner fee + their total are shown.
+              // The API returns neither fee yet (row 34), so only the
+              // total row is rendered; internal quote parts never are.
+              ReceiptRow(
+                label: kFeeTotalLabel,
+                amount: quote?.total ?? errand.quotedPrice,
+                isTotal: true,
+              ),
               if (quote?.expiresAt != null)
                 ReceiptCaption(
                   'Valid until ',
@@ -384,21 +391,7 @@ class _Checkout extends StatelessWidget {
                 ReceiptRow(label: 'Item amount', amount: errand.budget),
                 const Divider(height: 1, color: NitumeColors.slateLine),
                 const SizedBox(height: 10),
-                // Merchant details never exist on the errand yet (SQ-6), so
-                // merchant-direct is shown disabled with the reason.
-                const NitumeRadioRow(
-                  label: 'Pay merchant directly (recommended)',
-                  subtitle: "Available once the merchant's details are added.",
-                  selected: false,
-                  onSelected: null,
-                ),
-                const SizedBox(height: 8),
-                NitumeRadioRow(
-                  label: 'Send purchase amount to runner',
-                  subtitle: "You'll get instructions after paying the fees.",
-                  selected: route == MerchantRoute.sendToRunner,
-                  onSelected: () => onRoute(MerchantRoute.sendToRunner),
-                ),
+                MerchantRouteRows(selected: route, onSelected: onRoute),
               ],
             ),
           ),

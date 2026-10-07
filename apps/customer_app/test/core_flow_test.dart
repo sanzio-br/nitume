@@ -177,10 +177,12 @@ void main() {
       await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
 
       expect(find.text('Quote ready'), findsOneWidget);
-      expect(find.text('Base fee'), findsOneWidget);
-      expect(find.text('Distance fee'), findsOneWidget);
-      expect(find.text('Time fee'), findsNothing);
+      // OA-4: no internal quote parts, only the fee total.
+      expect(find.text('Base fee'), findsNothing);
+      expect(find.text('Distance fee'), findsNothing);
+      expect(find.text('Total (service + runner fee)'), findsOneWidget);
       expect(find.text('KSh 2,200'), findsOneWidget);
+      expect(find.text('Confirm & pay KSh 2,200 →'), findsOneWidget);
       expect(find.text('Item amount'), findsOneWidget);
       expect(find.text('Let runner advance the purchase'), findsNothing);
       final direct = t.widget<NitumeRadioRow>(
@@ -191,13 +193,33 @@ void main() {
       );
       expect(direct.onSelected, isNull);
 
-      await t.tap(find.text('Confirm & pay →'));
+      await t.tap(find.text('Confirm & pay KSh 2,200 →'));
       await t.pumpAndSettle();
       expect(b.errands.transitions.single, ('e1', ErrandStatus.accepted));
       final init = b.payments.initiations.single;
       expect(init.$3, MerchantRoute.sendToRunner);
       expect(find.text('Check your phone'), findsOneWidget);
     });
+  });
+
+  testWidgets('x-awaiting-quote: ACCEPTED shows checkout, no accept call',
+      (t) async {
+    final b = TestBackend();
+    b.errands.put(
+      errand(
+        status: ErrandStatus.accepted,
+        budget: '40000.00',
+        quotedPrice: '2200.00',
+        withRunner: false,
+      ),
+    );
+    await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
+    expect(find.text('Awaiting payment'), findsOneWidget);
+    expect(find.text('Send purchase amount to runner'), findsOneWidget);
+    await t.tap(find.text('Confirm & pay KSh 2,200 →'));
+    await t.pumpAndSettle();
+    expect(b.errands.transitions, isEmpty);
+    expect(b.payments.initiations.single.$3, MerchantRoute.sendToRunner);
   });
 
   group('v-payment', () {
