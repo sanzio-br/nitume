@@ -28,6 +28,27 @@ void main() {
       expect(statusPresentation(ErrandStatus.completed).tone,
           StatusTone.success);
     });
+
+    test('applies the owner Q13 tones', () {
+      expect(statusPresentation(ErrandStatus.runnerEnRoute),
+          (label: 'En route', tone: StatusTone.pending));
+      expect(statusPresentation(ErrandStatus.cancelled),
+          (label: 'Cancelled', tone: StatusTone.danger));
+      expect(statusPresentation(ErrandStatus.runnerAssigned).tone,
+          StatusTone.info);
+      expect(statusPresentation(ErrandStatus.arrived).tone, StatusTone.info);
+      expect(statusPresentation(ErrandStatus.inProgress).tone, StatusTone.info);
+    });
+
+    test('red and amber accents follow the owner decisions', () {
+      expect(NitumeDesignChoices.unreadDot, NitumeColors.red);
+      expect(NitumeDesignChoices.destructiveText, NitumeColors.red);
+      expect(NitumeDesignChoices.fieldError, NitumeColors.red);
+      expect(NitumeDesignChoices.priceChangeAmount, NitumeColors.amber);
+      expect(NitumeDesignChoices.buttonRadius, NitumeRadii.pill);
+      expect(NitumeDesignChoices.fieldFill, NitumeColors.white);
+      expect(NitumeDesignChoices.fieldRadius, NitumeRadii.small);
+    });
   });
 
   group('StatusChip', () {
@@ -275,6 +296,10 @@ void main() {
         NotificationBell(unreadCount: 2, onPressed: () {}),
       );
       expect(find.byKey(const ValueKey('bell-unread-dot')), findsOneWidget);
+      expect(
+        _boxColor(tester, find.byKey(const ValueKey('bell-unread-dot'))),
+        NitumeColors.red,
+      );
       expect(find.bySemanticsLabel('Notifications, 2 unread'), findsOneWidget);
       expect(tester.getSize(find.byType(NotificationBell)),
           const Size(48, 48));
