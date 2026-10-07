@@ -20,7 +20,7 @@ Status values: `missing` · `partial` · `built` · `matches-design` (only after
 
 ## Customer app — `docs/design/nitume_customer_app.html` → `apps/customer_app`
 
-Pre-build baseline: `docs/audits/customer-gap-report.md`. Post-build re-audit 2026-10-07 of `feat/customer-screens` @ `4312f49`: `docs/audits/customer-reaudit-2026-10-07.md` — 24 PASS (`matches-design`, open minors listed there), 3 FAIL (`built`): v-price-auth, x-awaiting-quote, x-address-form. Implementation paths below exist on `feat/customer-screens` only (not yet on `main`).
+Pre-build baseline: `docs/audits/customer-gap-report.md`. Post-build re-audit 2026-10-07 of `feat/customer-screens` @ `4312f49`: `docs/audits/customer-reaudit-2026-10-07.md` — round 1: 24 PASS, 3 FAIL (v-price-auth, x-awaiting-quote, x-address-form); round 2 @ `ba45633`: those 3 PASS. All 27 `matches-design`; open minors (incl. core CC-1..CC-3) listed in the report. Implementation paths below exist on `feat/customer-screens` only (not yet on `main`).
 
 | View id | Purpose | Spec | Implementation file | Status |
 |---------|---------|------|---------------------|--------|
@@ -30,7 +30,7 @@ Pre-build baseline: `docs/audits/customer-gap-report.md`. Post-build re-audit 20
 | v-new-category | New task: category (5 MVP tiles) | `docs/specs/customer/v-new-category.md` | `apps/customer_app/lib/src/screens/wizard/category_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | v-new-details | New task: details | `docs/specs/customer/v-new-details.md` | `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | v-new-review | New task: estimate + submit (OA-3) | `docs/specs/customer/v-new-review.md` | `apps/customer_app/lib/src/screens/wizard/review_screen.dart` (branch `feat/customer-screens`) | matches-design |
-| v-price-auth | Price-change authorization (modal, OA-8) | `docs/specs/customer/v-price-auth.md` | `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` (branch `feat/customer-screens`) | built |
+| v-price-auth | Price-change authorization (modal, OA-8) | `docs/specs/customer/v-price-auth.md` | `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` (branch `feat/customer-screens`) | matches-design |
 | v-payment | Payment (M-Pesa STK) | `docs/specs/customer/v-payment.md` | `apps/customer_app/lib/src/screens/checkout/payment_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | v-payment-methods | Payment methods (M-Pesa only, OA-10) | `docs/specs/customer/v-payment-methods.md` | `apps/customer_app/lib/src/screens/account/payment_methods_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | v-track | Live tracking | `docs/specs/customer/v-track.md` | `apps/customer_app/lib/src/screens/shell/track_tab.dart` (branch `feat/customer-screens`) | matches-design |
@@ -50,11 +50,11 @@ Screens not drawn in the mockup. Specced 2026-10-07 from design-system patterns 
 | Id (auditor-assigned) | Purpose | Referenced from | Spec | Implementation file | Status |
 |---|---|---|---|---|---|
 | x-name-capture | Display name after first sign-in (OA-2) | `v-auth-otp` | `docs/specs/customer/x-name-capture.md` | `apps/customer_app/lib/src/screens/auth/name_capture_screen.dart` (branch `feat/customer-screens`) | matches-design |
-| x-awaiting-quote | Waiting for quote (REQUESTED) + accept quote / checkout (QUOTED) (OA-3, OA-5) | `v-new-review`, `v-home`, `v-task-detail` | `docs/specs/customer/x-awaiting-quote.md` | `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` (branch `feat/customer-screens`) | built |
+| x-awaiting-quote | Waiting for quote (REQUESTED) + accept quote / checkout (QUOTED) (OA-3, OA-5) | `v-new-review`, `v-home`, `v-task-detail` | `docs/specs/customer/x-awaiting-quote.md` | `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | x-merchant-payment | Item amount: merchant Till/Paybill (merchant-direct) or send-to-runner (blocked on SQ-5) | §6 payments sequence, `v-track`, `v-price-auth` | `docs/specs/customer/x-merchant-payment.md` | `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | x-report-problem | Report a problem / dispute (write + read) | `v-task-detail`, `v-evidence-confirm`, §3.2 `POST /disputes` | `docs/specs/customer/x-report-problem.md` | `apps/customer_app/lib/src/screens/task/report_problem_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | x-evidence-viewer | Full-screen photo/video viewer | `v-evidence-confirm`, `v-task-detail` thumbs | `docs/specs/customer/x-evidence-viewer.md` | `apps/customer_app/lib/src/widgets/evidence.dart` (`openEvidenceViewer`) + core `EvidenceViewer` (branch `feat/customer-screens`) | matches-design |
-| x-address-form | Add / edit saved address | `v-addresses` | `docs/specs/customer/x-address-form.md` | `apps/customer_app/lib/src/screens/account/address_form_screen.dart` (branch `feat/customer-screens`) | built |
+| x-address-form | Add / edit saved address | `v-addresses` | `docs/specs/customer/x-address-form.md` | `apps/customer_app/lib/src/screens/account/address_form_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | x-payment-method-form | Add / edit M-Pesa number (no cards, OA-10) | `v-payment-methods` | `docs/specs/customer/x-payment-method-form.md` | `apps/customer_app/lib/src/screens/account/payment_method_form_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | x-support | Support row → one configurable external target (OA-18) | `v-profile`, `v-auth-otp` | `docs/specs/customer/x-support.md` | `apps/customer_app/lib/src/screens/shell/profile_tab.dart` (Support row) + `screens/auth/otp_screen.dart` (branch `feat/customer-screens`) | matches-design |
 | x-legal | Terms & Privacy Policy links (external) | `v-auth-phone` legal line | `docs/specs/customer/x-legal.md` | `apps/customer_app/lib/src/screens/auth/phone_screen.dart` (`_LegalLine`) (branch `feat/customer-screens`) | matches-design |

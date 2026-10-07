@@ -3,7 +3,7 @@
 - Mockup: **not drawn.** Required by OA-3 (authoritative REQUESTED → QUOTED → ACCEPTED flow after the wizard preview) and OA-5 (merchant payment route chosen at checkout). Built from design-system patterns and existing mockup components (`.stk-wrap`, `.form-card`, `.receipt-row`, `.chip` column, `.pm-card`, `.cta-fixed`). Copy is **(proposed)** unless marked "mockup".
 - Shared conventions: `_shared.md` (OA-n §0, fees and routes §8)
 - Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-screens`
-- Status: built
+- Status: matches-design
 
 ## Purpose
 One screen per errand with two states:
@@ -103,4 +103,4 @@ States:
 - Q2: Should the checkout allow changing the route after payment (e.g. merchant details arrive later)? Default: no; route is fixed once the fees are paid.
 
 ## Current vs design
-Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). FAIL. Blocker: the Final quote card lists the internal quote components (`Base fee`, `Distance fee`, `Time fee`, `Urgency fee`, `Complexity fee`, `Premium fee`) instead of the OA-4 lines. See the re-audit for the full list.
+Round 2 (2026-10-07, `feat/customer-screens` @ `ba45633`): PASS. Final quote shows only `Total (service + runner fee)` from `quote.total`; CTA `Confirm & pay KSh … →` (amount still Fira Sans, core CC-2); ACCEPTED shows checkout again. Round 1 FAIL details: `docs/audits/customer-reaudit-2026-10-07.md`.

@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 423–441 (`#v-price-auth`, drawn as an overlay screen)
 - Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` (opened from `home_shell.dart` on resume and `track_tab.dart`) on branch `feat/customer-screens`
-- Status: built
+- Status: matches-design
 
 ## Purpose
 The runner found the item priced higher than the agreed item amount. The customer approves the new amount (and pays the difference) or rejects it, which cancels the task (OA-8).
@@ -86,4 +86,4 @@ States (proposed):
 - Q1 (payments): "pays the difference" — through the same route chosen at checkout (merchant-direct: pays the merchant more; send-to-runner: SQ-5), or by a new STK push to Nitume? Default: same route, shown on `x-merchant-payment`.
 
 ## Current vs design
-Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). FAIL. Blocker: on `MERCHANT_ROUTE_REQUIRED` the approve call is silently retried with `send-to-runner`, choosing a payment route for the customer. See the re-audit.
+Round 2 (2026-10-07, `feat/customer-screens` @ `ba45633`): PASS. On `MERCHANT_ROUTE_REQUIRED` the modal shows the route rows and keeps Approve disabled until one is chosen (Q2 build default); load failure shows `Couldn't load this price change.` with `Try again` / `Close`. Approve amount still Fira Sans (core CC-2). Round 1 FAIL details: `docs/audits/customer-reaudit-2026-10-07.md`.

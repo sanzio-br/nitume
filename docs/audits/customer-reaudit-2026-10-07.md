@@ -335,3 +335,46 @@ The row and link are hidden while unconfigured or no opener exists (SQ-2 fallbac
 
 - **v-price-auth Q2 (payments)**: a price-change request on an errand with no item amount gets `MERCHANT_ROUTE_REQUIRED`. Should the customer pick the route in the modal (build default), or should the API refuse such requests? Related open rows 44, 48 and SQ-5.
 - BOARD row 60 already covers typed addresses without coordinates; this re-audit adds the edit-mode coordinate issue (x-address-form 2) for the owner's context.
+
+---
+
+# Addendum — round 2 (2026-10-07)
+
+- Code audited: `feat/customer-screens` @ `ba45633` (fix commits `6e4387b`, `8ebe0d8`, `ac79f79`, `ba45633`).
+- Build health: `flutter analyze` (apps/customer_app) no issues; `flutter test` 51 passed (was 41; new tests for checkout re-entry, the price-change route choice and load failure, address-form fallback, x-legal, x-evidence-viewer, SETTLED rating).
+
+| Screen | Round 1 | Round 2 | SCREEN_MAP |
+|---|---|---|---|
+| x-awaiting-quote | FAIL | **PASS** | matches-design |
+| v-price-auth | FAIL | **PASS** | matches-design |
+| x-address-form | FAIL | **PASS** | matches-design |
+
+All 27 customer screens are now `matches-design`. The open minors from round 1 that were not fixed stay open (list above), together with core items CC-1..CC-3.
+
+## x-awaiting-quote — PASS
+
+1. Round-1 blocker 1 fixed (`6e4387b`): `quoteRows` is deleted; the Final quote card renders one row `Total (service + runner fee)` (`kFeeTotalLabel`) from `quote.total`, falling back to `errand.quotedPrice`. No internal quote components reach the customer (OA-4).
+2. Minor 2 fixed: label `Total (service + runner fee)`.
+3. Minor 3 fixed: CTA `Confirm & pay KSh 2,200 →` from the same total. The amount is still Fira Sans inside the button label: CC-2 (core-ui), not counted.
+4. The route rows moved into the shared app widget `MerchantRouteRows` (`widgets/task_widgets.dart`), reused by the price-change modal. Merchant-direct stays disabled (SQ-6 fallback, note). The ACCEPTED re-entry matches the amended spec and has a test.
+
+## v-price-auth — PASS
+
+1. Round-1 blocker 1 fixed (`8ebe0d8`): no silent retry. Approve sends the route only when the customer chose one; on `MERCHANT_ROUTE_REQUIRED` the modal shows `HOW SHOULD THIS BE PAID?` with `MerchantRouteRows` (nothing preselected, merchant-direct disabled per SQ-6) and `Approve` stays disabled until a route is selected. Matches the v-price-auth Q2 build default. Q2 itself remains an owner question.
+2. Minor 3 fixed: load failure shows `Couldn't load this price change.` with `Try again` (reload) and `Close`; the already-answered state no longer reuses the error copy.
+3. Minor 2 (Approve amount in Fira Sans) remains: CC-2, not counted.
+
+## x-address-form — PASS
+
+1. Round-1 blocker 1 fixed (`ac79f79`): without a Places client the `Address` field is read-only and disabled, the C-40 notice `Place search isn't available yet.` shows under the form card, and `Save address` is disabled in add mode. Edit mode saves only name and default. Spec updated with the notice copy.
+2. Round-1 blocker 2 fixed: `addressText`, `lat` and `lon` are sent only together from a picked place (`place?.addressText`, `place?.lat`, `place?.lng`); text and coordinates cannot drift.
+3. Minor 3 fixed: `Couldn't delete the address. Try again.`. `Enter an address.` is gone.
+4. Note (minor, unchanged, core need already filed): the current or picked address is shown as the field hint (placeholder style) rather than a value, the same `PlaceAutocompleteField` initial-value need as v-new-details 1.
+
+## Spot-check of `ba45633` on passing screens
+
+- v-task-detail: `Rate this task` and the rating lookup now cover COMPLETED, CONFIRMED and SETTLED (minor 1 fixed; test added). Report row and other states unchanged. Still PASS. Minor 2 (`View your report` after resolution) remains open.
+- v-payment-methods: empty line now `Text.rich` with the masked number in Fira Code 13 slate-600; padding and copy unchanged (minor 1 fixed). Still PASS.
+- x-payment-method-form: remove failure `Couldn't remove this number. Try again.` (minor 1 fixed). Still PASS.
+- x-legal and x-evidence-viewer: the missing tests are now in `test/legal_viewer_test.dart` (minor fixed). Still PASS.
+- No new colour, font-name or hex use in the four commits (`git show` diffs reviewed).

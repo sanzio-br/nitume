@@ -3,7 +3,7 @@
 - Mockup: **not drawn.** Referenced by `v-addresses` "+ Add new address" and card taps. Built from design-system form patterns (field, `.check`, buttons) and the mockup's `.form-card` / `.cta-fixed`; copy is **(proposed)**.
 - Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/account/address_form_screen.dart` on branch `feat/customer-screens`
-- Status: built
+- Status: matches-design
 
 ## Purpose
 Create, edit, set as default, or delete a saved place used as a shortcut in the task wizard.
@@ -37,6 +37,7 @@ C-10, C-17, C-16, `PlaceAutocompleteField`, C-36, C-04, C-35, C-01. NEW: C-35, C
 - Delete: `Delete address`; dialog title `Delete "Office"?`, body `You can add it again later.`, buttons `Delete` (outline, red text) / `Keep` (C-01)
 - Validation: empty name `Give this place a name.`; no place chosen from the suggestions `Choose an address from the list.`
 - Discard dialog (back with changes): title `Discard your changes?`, buttons `Discard` (outline, red text) / `Keep editing` (C-01) (builder copy, accepted in the 2026-10-07 re-audit).
+- No Places client (pending row 30): address field read-only and C-40 notice `Place search isn't available yet.` under the form card; `Save address` disabled in add mode; edit mode saves only name and default (re-audit round 2).
 - Delete error (proposed, re-audit): `Couldn't delete the address. Try again.`
 - Errors: save `Couldn't save the address. Try again.`; Places offline `Couldn't search places. Check your connection.`
 
@@ -58,4 +59,4 @@ None.
 - BOARD row 60 (flutter-customer): saving typed addresses without coordinates. Until the owner answers, the spec stays as written: no coordinates → Save disabled. If the owner approves manual addresses, this spec gains: a typed address field, edits of the text clear the stored coordinates, and `v-addresses` marks addresses without a map location (they cannot be used in the wizard).
 
 ## Current vs design
-Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). FAIL. Blockers: without Places the address is typed and saved without coordinates (spec: Save disabled until row 30); editing the text keeps the old coordinates. See the re-audit.
+Round 2 (2026-10-07, `feat/customer-screens` @ `ba45633`): PASS. Without Places the address field is read-only with the notice `Place search isn't available yet.`, Save is disabled in add mode, edit mode changes only name and default; address text is only sent with a picked place's coordinates. Round 1 FAIL details: `docs/audits/customer-reaudit-2026-10-07.md`.
