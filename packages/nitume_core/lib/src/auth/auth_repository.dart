@@ -14,8 +14,7 @@ class AuthResult {
 
 /// Phone/email OTP authentication against `apps/api/src/auth`.
 class AuthRepository {
-  AuthRepository({required this._api, required TokenStore tokenStore})
-    : _tokenStore = tokenStore;
+  AuthRepository({required this._api, required this._tokenStore});
 
   final NitumeApiClient _api;
   final TokenStore _tokenStore;
