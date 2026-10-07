@@ -25,6 +25,9 @@ import {
   ResolveDisputeVerdict,
 } from '../../common/enums';
 
+const trimString = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string' ? value.trim() : value;
+
 export class ErrandLocationDto {
   @IsEnum(ErrandPointType)
   pointType: ErrandPointType;
@@ -73,6 +76,14 @@ export class CreateErrandDto {
   @IsEnum(ErrandCategory)
   category: ErrandCategory;
 
+  /** Optional short title shown on task cards (customer-provided). */
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(120)
+  title?: string;
+
   @IsString()
   @MinLength(5)
   @MaxLength(4000)
@@ -87,6 +98,10 @@ export class CreateErrandDto {
   @IsISO8601({ strict: true })
   deadlineAt?: string;
 
+  /**
+   * Deprecated and ignored: urgency is derived from `deadlineAt` on the
+   * server. Still accepted so older clients do not get a 400.
+   */
   @IsOptional()
   @IsEnum(ErrandUrgency)
   urgency?: ErrandUrgency;
@@ -104,6 +119,25 @@ export class CreateErrandDto {
   @ValidateNested({ each: true })
   @Type(() => ErrandItemDto)
   items?: ErrandItemDto[];
+}
+
+export class UpdateErrandDto {
+  /** New title; `null` clears it. */
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(120)
+  title?: string | null;
+}
+
+export class RunnerNotesDto {
+  /** Runner's notes for the customer's evidence review; `null` clears them. */
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MaxLength(2000)
+  runnerNotes: string | null;
 }
 
 export class TransitionErrandDto {

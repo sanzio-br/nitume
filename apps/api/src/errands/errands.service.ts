@@ -1,9 +1,11 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -39,6 +41,12 @@ import {
   ErrandItemDto,
   ErrandLocationDto,
 } from './dto/errand.dto';
+import {
+  assertDeadlineInFuture,
+  assertLocationsFit,
+  deriveUrgency,
+} from './errand-rules';
+import { ApiError } from '../common/api-error';
 
 export interface ActorReference {
   type: StatusHistoryActor;
@@ -87,8 +95,58 @@ export interface ErrandAssignmentView {
   runner: RunnerPublicSummary | null;
 }
 
-/** Errand row plus its current assignment (null until a runner is assigned). */
-export type ErrandView = Errand & { assignment: ErrandAssignmentView | null };
+/** Errand point as returned to clients (`lat`/`lng`, not GeoJSON). */
+export interface ErrandLocationView {
+  id: string;
+  pointType: ErrandLocation['pointType'];
+  lat: number;
+  lng: number;
+  addressText: string;
+  placeId: string | null;
+}
+
+/** Structured shopping-list line. */
+export interface ErrandItemView {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string | null;
+  notes: string | null;
+}
+
+/**
+ * Errand row plus its locations, shopping-list items and current assignment
+ * (null until a runner is assigned).
+ */
+export type ErrandView = Errand & {
+  assignment: ErrandAssignmentView | null;
+  locations: ErrandLocationView[];
+  items: ErrandItemView[];
+};
+
+/** States in which the assigned runner may write `runnerNotes`. */
+export const RUNNER_NOTES_STATES = new Set<ErrandStatus>([
+  ErrandStatus.ARRIVED,
+  ErrandStatus.IN_PROGRESS,
+  ErrandStatus.AWAITING_CUSTOMER,
+]);
+
+export const toLocationView = (row: ErrandLocation): ErrandLocationView => ({
+  id: row.id,
+  pointType: row.pointType,
+  lat: row.coordinates.coordinates[1],
+  lng: row.coordinates.coordinates[0],
+  addressText: row.addressText,
+  placeId: row.placeId,
+});
+
+export const toItemView = (row: ErrandItem): ErrandItemView => ({
+  id: row.id,
+  name: row.name,
+  quantity: row.quantity,
+  unit: row.unit,
+  notes: row.notes,
+});
 
 export interface ListErrandViewsResponse {
   items: ErrandView[];
@@ -122,13 +180,27 @@ export class ErrandsService {
     private readonly runners: RunnersService,
     @InjectRepository(Quote)
     private readonly quotes: Repository<Quote>,
+    private readonly config?: ConfigService,
   ) {}
+
+  private urgencyThresholds() {
+    return {
+      urgentWithinHours: this.config?.get<number>('errands.urgentWithinHours', 4) ?? 4,
+      scheduledAfterHours: this.config?.get<number>('errands.scheduledAfterHours', 72) ?? 72,
+    };
+  }
 
   async createDraft(
     customerUserId: string,
     dto: CreateErrandDto,
     actor: ActorReference,
-  ): Promise<ErrandResult> {
+  ): Promise<{ errand: ErrandView; history: ErrandStatusHistory }> {
+    const deadlineAt = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
+    assertDeadlineInFuture(deadlineAt);
+    assertLocationsFit(
+      dto.category,
+      dto.locations.map((l) => l.pointType),
+    );
     return this.dataSource.transaction(async (manager) => {
       const profile = await manager
         .getRepository(CustomerProfile)
@@ -140,10 +212,12 @@ export class ErrandsService {
       const errand = manager.getRepository(Errand).create({
         customerId: profile.id,
         category: dto.category,
+        title: dto.title ?? null,
         description: dto.description,
         budget: dto.budget.toString(),
-        deadlineAt: dto.deadlineAt ? new Date(dto.deadlineAt) : null,
-        urgency: dto.urgency,
+        deadlineAt,
+        // Client-sent `urgency` is ignored: deadline_at is authoritative.
+        urgency: deriveUrgency(deadlineAt, this.urgencyThresholds()),
         status: ErrandStatus.DRAFT,
       });
       const saved = await manager.getRepository(Errand).save(errand);
@@ -157,8 +231,9 @@ export class ErrandsService {
           placeId: loc.placeId ?? null,
         }),
       );
-      await manager.getRepository(ErrandLocation).save(locationRows);
+      const savedLocations = await manager.getRepository(ErrandLocation).save(locationRows);
 
+      let savedItems: ErrandItem[] = [];
       if (dto.items && dto.items.length > 0) {
         const itemRows = dto.items.map((item: ErrandItemDto) =>
           manager.getRepository(ErrandItem).create({
@@ -169,7 +244,7 @@ export class ErrandsService {
             notes: item.notes ?? null,
           }),
         );
-        await manager.getRepository(ErrandItem).save(itemRows);
+        savedItems = await manager.getRepository(ErrandItem).save(itemRows);
       }
 
       const history = await this.appendHistory(manager, saved.id, {
@@ -179,7 +254,12 @@ export class ErrandsService {
         note: 'Errand created as draft',
       });
 
-      return { errand: saved, history };
+      const view: ErrandView = Object.assign(saved, {
+        assignment: null,
+        locations: savedLocations.map(toLocationView),
+        items: savedItems.map(toItemView),
+      });
+      return { errand: view, history };
     });
   }
 
@@ -253,13 +333,20 @@ export class ErrandsService {
     if (errands.length === 0) {
       return [];
     }
-    const rows = await this.assignments.find({
-      where: {
-        errandId: In(errands.map((e) => e.id)),
-        status: In(ACTIVE_ASSIGNMENT_STATUSES),
-      },
-      order: { createdAt: 'DESC' },
-    });
+    const ids = errands.map((e) => e.id);
+    const [rows, locationRows, itemRows] = await Promise.all([
+      this.assignments.find({
+        where: {
+          errandId: In(ids),
+          status: In(ACTIVE_ASSIGNMENT_STATUSES),
+        },
+        order: { createdAt: 'DESC' },
+      }),
+      this.locations.find({ where: { errandId: In(ids) } }),
+      this.items.find({ where: { errandId: In(ids) } }),
+    ]);
+    const locationsBy = groupBy(locationRows, (l) => l.errandId);
+    const itemsBy = groupBy(itemRows, (i) => i.errandId);
     const latest = new Map<string, ErrandAssignment>();
     for (const row of rows) {
       if (!latest.has(row.errandId)) {
@@ -279,8 +366,78 @@ export class ErrandsService {
             runner: summaries.get(a.runnerProfileId) ?? null,
           }
         : null;
-      return Object.assign(errand, { assignment });
+      return Object.assign(errand, {
+        assignment,
+        locations: (locationsBy.get(errand.id) ?? []).map(toLocationView),
+        items: (itemsBy.get(errand.id) ?? []).map(toItemView),
+      });
     });
+  }
+
+  /**
+   * Owner customer edits the optional title. Not allowed once the errand is
+   * in a terminal state.
+   */
+  async updateTitle(
+    errandId: string,
+    title: string | null,
+    viewer: ViewerContext,
+  ): Promise<ErrandView> {
+    const errand = await this.getById(errandId, viewer);
+    if (viewer.role !== UserRole.CUSTOMER && viewer.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only the task owner can edit the title');
+    }
+    if (ErrandStateMachine.isTerminal(errand.status)) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'errand_closed',
+        `The task is ${errand.status} and can no longer be edited`,
+      );
+    }
+    await this.errands.update(errandId, { title: title && title.length > 0 ? title : null });
+    return this.getDetail(errandId, viewer);
+  }
+
+  /**
+   * Assigned runner writes the notes the customer reads on evidence review
+   * (ARRIVED, IN_PROGRESS or AWAITING_CUSTOMER).
+   */
+  async setRunnerNotes(
+    errandId: string,
+    runnerNotes: string | null,
+    viewer: ViewerContext,
+  ): Promise<ErrandView> {
+    const errand = await this.getById(errandId, viewer);
+    const active = await this.isActiveRunner(errandId, viewer.userId);
+    if (!active) {
+      throw new ForbiddenException('Only the assigned runner can write runner notes');
+    }
+    if (!RUNNER_NOTES_STATES.has(errand.status)) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'runner_notes_not_allowed',
+        `Runner notes cannot be changed while the task is ${errand.status}`,
+      );
+    }
+    await this.errands.update(errandId, {
+      runnerNotes: runnerNotes && runnerNotes.length > 0 ? runnerNotes : null,
+    });
+    return this.getDetail(errandId, viewer);
+  }
+
+  private async isActiveRunner(errandId: string, userId: string): Promise<boolean> {
+    const runnerProfile = await this.runnerProfiles.findOne({ where: { userId } });
+    if (!runnerProfile) {
+      return false;
+    }
+    const row = await this.assignments.findOne({
+      where: {
+        errandId,
+        runnerProfileId: runnerProfile.id,
+        status: In(ACTIVE_ASSIGNMENT_STATUSES),
+      },
+    });
+    return row !== null;
   }
 
   async listFor(
@@ -710,6 +867,20 @@ export class ErrandsService {
     return repo.save(row);
   }
 }
+
+const groupBy = <T>(rows: T[], key: (row: T) => string): Map<string, T[]> => {
+  const out = new Map<string, T[]>();
+  for (const row of rows) {
+    const k = key(row);
+    const list = out.get(k);
+    if (list) {
+      list.push(row);
+    } else {
+      out.set(k, [row]);
+    }
+  }
+  return out;
+};
 
 const normalizeStatuses = (
   status: ErrandStatus | ErrandStatus[] | undefined,

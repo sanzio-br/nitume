@@ -30,7 +30,11 @@ const assignment = (over: Partial<ErrandAssignment>): ErrandAssignment =>
 const build = (opts: {
   errands?: Errand[];
   assignments?: ErrandAssignment[];
+  locations?: object[];
+  items?: object[];
 }) => {
+  const locationsRepo = { find: vi.fn(() => Promise.resolve(opts.locations ?? [])) };
+  const itemsRepo = { find: vi.fn(() => Promise.resolve(opts.items ?? [])) };
   const errandsRepo = {
     findOne: vi.fn(({ where }: { where: { id: string } }) =>
       Promise.resolve(opts.errands?.find((e) => e.id === where.id) ?? null),
@@ -60,8 +64,8 @@ const build = (opts: {
   const service = new ErrandsService(
     {} as never,
     errandsRepo as never,
-    {} as never,
-    {} as never,
+    locationsRepo as never,
+    itemsRepo as never,
     {} as never,
     assignmentsRepo as never,
     {} as never,
@@ -138,5 +142,48 @@ describe('ErrandsService errand views (A-4)', () => {
     expect(page.items[0].assignment?.id).toBe('asg-new');
     expect(page.items[0].assignment?.runner?.id).toBe('runner-2');
     expect(page.items[1].assignment).toBeNull();
+  });
+
+  it('embeds locations as lat/lng and structured items, grouped per errand', async () => {
+    const { service } = build({
+      errands: [errand('e-1')],
+      locations: [
+        {
+          id: 'l-1',
+          errandId: 'e-1',
+          pointType: 'pickup',
+          coordinates: { type: 'Point', coordinates: [39.7, -4.04] },
+          addressText: 'Nyali Centre',
+          placeId: 'abc',
+        },
+        {
+          id: 'l-x',
+          errandId: 'e-other',
+          pointType: 'dropoff',
+          coordinates: { type: 'Point', coordinates: [1, 2] },
+          addressText: 'Elsewhere',
+          placeId: null,
+        },
+      ],
+      items: [
+        { id: 'i-1', errandId: 'e-1', name: 'Milk', quantity: 2, unit: 'l', notes: null },
+      ],
+    });
+
+    const view = await service.getDetail('e-1', admin);
+
+    expect(view.locations).toEqual([
+      {
+        id: 'l-1',
+        pointType: 'pickup',
+        lat: -4.04,
+        lng: 39.7,
+        addressText: 'Nyali Centre',
+        placeId: 'abc',
+      },
+    ]);
+    expect(view.items).toEqual([
+      { id: 'i-1', name: 'Milk', quantity: 2, unit: 'l', notes: null },
+    ]);
   });
 });

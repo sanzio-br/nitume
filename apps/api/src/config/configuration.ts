@@ -43,6 +43,10 @@ export interface AppConfig {
     serviceFeeRate: number;
     runnerFeeRate: number;
   };
+  errands: {
+    urgentWithinHours: number;
+    scheduledAfterHours: number;
+  };
   payments: {
     mpesaTransport: string;
   };
@@ -122,6 +126,12 @@ export const configuration = (): AppConfig => ({
   },
   payments: {
     mpesaTransport: process.env.PAYMENTS_MPESA_TRANSPORT ?? 'console',
+  },
+  // TODO(owner): urgency thresholds are placeholders. Urgency is derived from
+  // deadlineAt (owner decision Q19) but no thresholds are defined anywhere.
+  errands: {
+    urgentWithinHours: Number.parseFloat(process.env.ERRANDS_URGENT_WITHIN_HOURS ?? '4'),
+    scheduledAfterHours: Number.parseFloat(process.env.ERRANDS_SCHEDULED_AFTER_HOURS ?? '72'),
   },
   // Evidence storage. `console` (dev default) logs uploads without storing;
   // `cloudinary` uploads to Cloudinary (needs CLOUDINARY_CLOUD_NAME/API_KEY/
