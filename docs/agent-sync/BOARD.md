@@ -53,6 +53,11 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | core-ui | api-contract | camelCase displayName/reference/title/runnerNotes/items[{name,quantity,unit,notes}]/locations[{pointType,lat,lng,addressText,placeId}]; accept title on POST /errands; validation-only rejection of non-mpesa methods; machine-readable OTP error codes | relayed to running api-contract (feat/api-owner-decisions) |
 | design-auditor | core-ui | (from updated specs) C-35..C-40 new (incl. dialog C-35), C-16 radio-row variant, C-18 estimate caption + separate group, C-28 unread styling, C-15 five-tile grid, EvidenceViewer counter, shortName(), AppConfig termsUri/privacyUri/supportUri. Full list `_shared.md` §4 | open |
 | design-auditor | api-contract | A-18..A-29 (gap report final section): quote preview, OTP config 300s + 5/3600s + retryAfterSeconds, fee fields + expiresAt, route + payer, STK states, merchant details, price-change item amount, runner_notes, urgency, event types, dispute from errand, reject card/bank, remove DISPUTED→CONFIRMED + escrow comments | mostly in progress on feat/api-owner-decisions |
+| api-contract | core-ui | (feat/api-owner-decisions) drop errand.CONFIRMED/SETTLED from NotificationEventType; locations[].lng; Payment.stkStatus/merchantPayment; initiateWith with Idempotency-Key + merchantRoute; price-change differencePayment; OTP error codes; error `code` field | relayed to running core-ui (feat/core-spec-widgets) |
+| api-contract | flutter-customer | Send Idempotency-Key on initiate and reuse it on retry; send merchantRoute when budget > 0; TIMEOUT = still waiting; Reject & cancel = single reject call; collect displayName after first sign-in | open |
+| api-contract | flutter-runner | Write runner notes via PATCH /errands/:id/runner-notes | open |
+| api-contract | web-parity | Admin refund review screens (/refunds list, decision, mark-paid); resolve-dispute runner verdict now → COMPLETED | open |
+| api-contract | api-contract (later) | Scheduler job calling ErrandsService.confirmPastDisputeWindow() (blocked on row 26 BullMQ) | blocked |
 
 ## Questions for the project owner
 
@@ -104,6 +109,17 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 44 | design-auditor (spec answers) | Price-change difference: paid via a new STK to the same route as the original merchant payment? (v-price-auth Q1) | open |
 | 45 | design-auditor (spec answers) | Budget visibility per category: which categories show the budget field? (v-new-details Q1) | open |
 | 46 | design-auditor (spec answers) | Quote expiry: §3.3 has no QUOTED→EXPIRED; what happens when a quote expires? (x-awaiting-quote Q1) | open |
+| 47 | api-contract (owner decisions) | Quote preview: the API has no pricing engine (admins type quotes by hand). Which rules should the preview use (base, distance, urgency, complexity rates)? Not built | open |
+| 48 | api-contract (owner decisions) | Price-change difference: charge it by STK to Nitume, or pay it by the same route as the original merchant amount (§2.2 says Nitume doesn't hold purchase money)? Currently recorded, not charged. And how is a decrease handled? | open |
+| 49 | api-contract (owner decisions) | Price-change reject from PAYMENT_CONFIRMED..ARRIVED returns 409. Allow the guarded cancel there too, or limit price-change requests to IN_PROGRESS? | open |
+| 50 | api-contract (owner decisions) | Dispute window length (placeholder 24h). Does it restart after a dispute resolves back to COMPLETED? | open |
+| 51 | api-contract (owner decisions) | Urgency thresholds from deadlineAt (placeholders: ≤4h urgent, >72h scheduled) | open |
+| 52 | api-contract (owner decisions) | STK timeout: no Daraja STK Query yet, so an unconfirmed payment stays TIMEOUT and blocks a new push. Add the Daraja STK Query API (§6), or have an admin resolve it? The 120s threshold is a placeholder | open |
+| 53 | api-contract (owner decisions) | Per-IP OTP throttling: approve @nestjs/throttler with Redis storage (§10), and what limits? | open |
+| 54 | api-contract (owner decisions) | Refund payout is manual and only recorded. Add M-Pesa B2C/reversal later? Should customers see their refund status? | open |
+| 55 | api-contract (owner decisions) | Admin rejecting a price change only rejects it (the task continues). Correct? | open |
+| 56 | api-contract (owner decisions) | Update Nitume_System_Design.md §3.3 to match decisions: COMPLETED→CONFIRMED system-only; DISPUTED→COMPLETED/CANCELLED (admin); IN_PROGRESS→CANCELLED (customer, price-change reject); DRAFT→CANCELLED, AWAITING_CUSTOMER→DISPUTED, ACCEPTED→CANCELLED; actors per transition | open |
+| 57 | api-contract (owner decisions) | Local DB incident (FYI): api-contract's e2e cleanup reverted AddCustomerAppModules on the shared local `nitume` DB; re-applied, but any earlier local rows in notifications, saved_addresses, payment_methods, price_change_requests were lost. Run migration:run to apply the 4 new migrations | open |
 
 ## Session log
 
@@ -114,3 +130,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-07 | core-ui customer shared (feat/core-customer-widgets, stage built): bundled Fira fonts, theme aligned to design system, C-01..C-34 + data layer; open design Qs held as defaults in nitume_design_choices.dart; 55 tests pass | 6e571dd, d302802, ebe65a3, 25fca57, 38a6b42, 6691b4f |
 | 2026-10-07 | core-ui owner decisions (feat/core-owner-decisions, built): Q11–Q14 colours/radius/fields, 5 MVP categories, M-Pesa only, StkPaymentState, OTP policy/cooldown/errors, optional model fields; 73 tests pass. Timeline keeps no amber step (answer covered the chip only) | b3af34d, ca99b55, 3d7b171, b790157, 9e3640a, 90dac2e |
 | 2026-10-07 | design-auditor folded owner answers into all customer specs + 9 new x- specs (docs/customer-spec-answers, 13 commits); api-contract hit usage limit after 4 commits, resumed | 35a8ef9, 2030f2f, 4b57b32, 22f5bbf, 0f4d8ee, c66da84, f458eb5, 7b3ce36, 370da3a, 55e4ee0, 644f1b8, a07812a, 856166f; api: 015d9c5, dcc80f4, 39505f1, 053e8b0 |
+| 2026-10-07 | api-contract owner decisions (feat/api-owner-decisions, built): display names, reference/title/runner notes, OTP policy + codes, state machine, idempotency, merchant route, STK status, refunds, price-change, dispute lookup; quote preview not built (no pricing engine); 110 unit + 23 e2e pass. Local DB incident recorded (row 57) | 015d9c5, dcc80f4, 39505f1, 053e8b0, 3b01dcc, 285ded5, 50615eb, fedf028, 4df318a, 975b584, 05bbc93, 9461e8b |
