@@ -34,7 +34,10 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 | From | To | Request | Status |
 |------|----|---------|--------|
 | design-auditor | core-ui | Build widgets C-01..C-34 (`docs/specs/customer/_shared.md`); move NitumeCard/StatusChip/statusPresentation from app to core; theme fixes (green focus ring, radii, tab bar colours, bundle Fira Sans/Code, `NitumeTypography.numeric`); data layer (repositories, models, Socket.IO client, FCM) | in progress: feat/core-customer-widgets (worktree ../nitume-core-customer-widgets) |
-| design-auditor | api-contract | Endpoints/events A-1..A-17 (`docs/audits/customer-gap-report.md`): Socket.IO gateway + location:update and status/evidence/price-change events; GET /errands/:id/tracking; runner on errand; customer-readable quote; payment-flow selection + idempotency key; GET pending price-change; disputes controller; multi-status filter; errand count; evidence view URLs; FCM device registration; notification eventType enum. Schema items (names, title/reference) wait for owner | in progress: feat/api-customer-gaps (worktree ../nitume-api-customer-gaps) |
+| design-auditor | api-contract | Endpoints/events A-1..A-17 (`docs/audits/customer-gap-report.md`): Socket.IO gateway + location:update and status/evidence/price-change events; GET /errands/:id/tracking; runner on errand; customer-readable quote; payment-flow selection + idempotency key; GET pending price-change; disputes controller; multi-status filter; errand count; evidence view URLs; FCM device registration; notification eventType enum. Schema items (names, title/reference) wait for owner | partly done: feat/api-customer-gaps (built). Added A-1..A-5, A-8..A-11, A-13, A-14 (A-2 names pending owner Q23); A-12 partial; A-17 exists; blocked A-6, A-7, A-15, A-16 |
+| api-contract | core-ui | Models: ErrandAssignmentView/RunnerPublicSummary (avgRating is a string), Quote, PriceChangeRequest, TrackingSnapshot, Dispute (+events), Device; `assignment` on Errand; repo methods for /errands/count, multi-status /errands, /errands/:id/quote, /errands/:id/tracking, GET price-change, /disputes, /users/me/devices; Socket.IO client (auth:{token}, errand:join/leave; location:update, errand:status_changed, evidence:uploaded, price_change:requested); NotificationEventType enum. Contract table in api-contract report (feat/api-customer-gaps) | open (core-ui already running; send as follow-up) |
+| api-contract | flutter-customer | Register FCM token after login / delete on logout; Home/History use status lists; Profile count from /errands/count; Report a problem → POST /disputes, handle 409; keep polling GET /payments/:errandId as fallback | open |
+| api-contract | api-contract (later) | Runner `location:ping` intake (Redis GEO, currentLocation, geofencing, ETA); FCM push worker; Socket.IO Redis adapter before multi-instance; update Postman collection | open |
 
 ## Questions for the project owner
 
@@ -62,9 +65,16 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 | 20 | design-auditor (customer, gap report Q19) | Locations per category: pickup + drop-off, deadline chip → deadline_at/urgency, budget visibility, shopping-list items | open |
 | 21 | design-auditor (customer, gap report Q20) | Q-LABELS: confirm state → customer label table (`docs/specs/customer/_shared.md` §6) | open |
 | 22 | design-auditor (customer, gap report Q21) | Payment UX: after payment go to Track or Home? STK timeout/retry; default M-Pesa method vs login phone | open |
+| 23 | api-contract (customer gaps) | Socket event names (A-2): approve errand:join, errand:leave, errand:status_changed, evidence:uploaded, price_change:requested, or name them. (location:update + errand:{id} rooms follow §4.2) | open |
+| 24 | api-contract (customer gaps) | Idempotency key (A-7, payments + schema): recommended nullable unique `payments.idempotency_key` column + `Idempotency-Key` header. Redis alternative conflicts with §1 (Redis never source of truth for money) | open |
+| 25 | api-contract (customer gaps) | Evidence links (A-12, security): Cloudinary URLs are permanent and public. Recommended: authenticated delivery with short-lived signed URLs (TTL?) or S3 presigned GETs per §3.1. Also: §3.2 signed upload vs current base64 upload | open |
+| 26 | api-contract (customer gaps) | BullMQ: §4.4 routes notifications through a BullMQ queue but it isn't installed; approve adding bullmq/@nestjs/bullmq for the notifications worker? | open |
+| 27 | api-contract (customer gaps) | Runner location privacy: share position only RUNNER_ASSIGNED → AWAITING_CUSTOMER. Confirm? | open |
+| 28 | api-contract (customer gaps) | Security (pre-existing): GET /errands/:id/rating has no access check. Fix in api-contract follow-up? Recommended: yes | open |
 
 ## Session log
 
 | Date | Summary | Commits |
 |------|---------|---------|
 | 2026-10-07 | Customer surface spec + audit (design-auditor): 17 views specced; 8 audited-fail (7 views + shell), 10 specced/not built; 9 undrawn screens mapped; 21 owner questions | 40dbc17, 1153736, eb7853e |
+| 2026-10-07 | api-contract customer gaps (feat/api-customer-gaps, stage built): 11 A-items added, 4 blocked on owner, Socket.IO gateway added (@nestjs/websockets, @nestjs/platform-socket.io per §4.1); 58 unit + 9 e2e tests pass | c1adb4c, d61992f, f5d2a51, 5a221a0, 03225af, aa9c18a, 1d4b24b, 239e73d, 5bb5b3d, f4213f7, 288e251 |
