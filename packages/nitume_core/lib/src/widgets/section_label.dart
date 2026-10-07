@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/nitume_typography.dart';
+import 'num_text.dart';
 
 /// C-08. Upper-case section label (`.sec-label`): 11.5/700 slate-600,
 /// letter-spacing .05em, padding `6 20 10`.
@@ -8,10 +9,15 @@ class SectionLabel extends StatelessWidget {
   const SectionLabel(
     this.text, {
     super.key,
+    this.numericSuffix,
     this.padding = const EdgeInsets.fromLTRB(20, 6, 20, 10),
   });
 
   final String text;
+
+  /// Optional count rendered in Fira Code after [text] and a space, e.g.
+  /// `(4)` in `Photos & video (4)`.
+  final String? numericSuffix;
   final EdgeInsetsGeometry padding;
 
   @override
@@ -20,9 +26,17 @@ class SectionLabel extends StatelessWidget {
       padding: padding,
       child: Semantics(
         header: true,
-        label: text,
+        label: numericSuffix == null ? text : '$text $numericSuffix',
         excludeSemantics: true,
-        child: Text(text.toUpperCase(), style: NitumeTextStyles.sectionLabel),
+        child: numericSuffix == null
+            ? Text(text.toUpperCase(), style: NitumeTextStyles.sectionLabel)
+            : Text.rich(
+                TextSpan(
+                  text: '${text.toUpperCase()} ',
+                  children: [NumSpan(numericSuffix!)],
+                ),
+                style: NitumeTextStyles.sectionLabel,
+              ),
       ),
     );
   }

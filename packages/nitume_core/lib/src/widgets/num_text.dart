@@ -61,3 +61,35 @@ class NumText extends StatelessWidget {
     );
   }
 }
+
+/// C-32 inside mixed text: a [TextSpan] that renders [text] in Fira Code and
+/// inherits size, weight and colour from its parent.
+///
+/// Use it to build the rich labels of [NitumeButton.richLabel] and
+/// [NitumeNotice.richMessage], so a screen never picks Fira Code by hand:
+///
+/// ```dart
+/// NitumeButton.primary(
+///   label: 'Approve KSh 5,000 increase',
+///   richLabel: TextSpan(children: [
+///     const TextSpan(text: 'Approve '),
+///     NumSpan.kes(5000),
+///     const TextSpan(text: ' increase'),
+///   ]),
+///   onPressed: approve,
+/// )
+/// ```
+class NumSpan extends TextSpan {
+  const NumSpan(String text)
+    : super(
+        text: text,
+        style: const TextStyle(
+          fontFamily: NitumeTypography.numericFamily,
+          letterSpacing: 0,
+        ),
+      );
+
+  /// A Kenyan-shilling amount formatted by [formatKes] (`KSh 2,200`).
+  NumSpan.kes(Object amount, {bool signed = false})
+    : this(formatKes(amount, signed: signed));
+}

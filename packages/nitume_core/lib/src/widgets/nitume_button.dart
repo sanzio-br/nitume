@@ -4,6 +4,7 @@ import '../theme/nitume_colors.dart';
 import '../theme/nitume_design_choices.dart';
 import '../theme/nitume_theme.dart';
 import '../theme/nitume_typography.dart';
+import 'num_text.dart';
 
 /// Design-system button variants.
 enum NitumeButtonVariant {
@@ -38,6 +39,7 @@ class NitumeButton extends StatelessWidget {
   const NitumeButton({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.variant = NitumeButtonVariant.primary,
     this.size = NitumeButtonSize.regular,
@@ -50,6 +52,7 @@ class NitumeButton extends StatelessWidget {
   const NitumeButton.primary({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.size = NitumeButtonSize.regular,
     this.icon,
@@ -61,6 +64,7 @@ class NitumeButton extends StatelessWidget {
   const NitumeButton.secondary({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.size = NitumeButtonSize.regular,
     this.icon,
@@ -72,6 +76,7 @@ class NitumeButton extends StatelessWidget {
   const NitumeButton.outline({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.size = NitumeButtonSize.regular,
     this.icon,
@@ -83,6 +88,7 @@ class NitumeButton extends StatelessWidget {
   const NitumeButton.text({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.size = NitumeButtonSize.regular,
     this.icon,
@@ -94,6 +100,7 @@ class NitumeButton extends StatelessWidget {
   const NitumeButton.link({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.icon,
   })  : variant = NitumeButtonVariant.link,
@@ -102,7 +109,14 @@ class NitumeButton extends StatelessWidget {
         loading = false,
         destructive = false;
 
+  /// Plain-text label. Also the accessible label when [richLabel] is set,
+  /// so keep the two identical in wording.
   final String label;
+
+  /// Optional rich version of [label], drawn instead of it. Build numeric
+  /// parts with [NumSpan] so amounts and counts render in Fira Code
+  /// (`Approve KSh 5,000 increase`, `+3 more in progress`).
+  final InlineSpan? richLabel;
 
   /// `null` disables the button.
   final VoidCallback? onPressed;
@@ -177,7 +191,13 @@ class NitumeButton extends StatelessWidget {
               color: spinnerColor,
             ),
           )
-        : Text(label, textAlign: TextAlign.center);
+        : richLabel == null
+        ? Text(label, textAlign: TextAlign.center)
+        : Text.rich(
+            richLabel!,
+            textAlign: TextAlign.center,
+            semanticsLabel: label,
+          );
     final iconWidget = icon == null || loading
         ? null
         : Icon(icon, size: size == NitumeButtonSize.small ? 16 : 18);
