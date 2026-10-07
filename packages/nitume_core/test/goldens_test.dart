@@ -195,4 +195,65 @@ void main() {
       matchesGoldenFile('goldens/spec_widgets.png'),
     );
   });
+
+  testWidgets('numeric spans, glyph avatar, money prefix', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            NitumeButton.primary(
+              label: 'Approve KSh 5,000 increase',
+              richLabel: TextSpan(children: [
+                const TextSpan(text: 'Approve '),
+                NumSpan.kes(5000),
+                const TextSpan(text: ' increase'),
+              ]),
+              onPressed: () {},
+            ),
+            NitumeButton.link(
+              label: '+3 more in progress',
+              richLabel: const TextSpan(children: [
+                TextSpan(text: '+'),
+                NumSpan('3'),
+                TextSpan(text: ' more in progress'),
+              ]),
+              onPressed: () {},
+            ),
+            const SectionLabel(
+              'Photos & video',
+              numericSuffix: '(4)',
+              padding: EdgeInsets.symmetric(vertical: 8),
+            ),
+            NitumeNotice(
+              message: 'Pay the item amount: KSh 40,000',
+              richMessage: TextSpan(children: [
+                const TextSpan(text: 'Pay the item amount: '),
+                NumSpan.kes(40000),
+              ]),
+            ),
+            const SizedBox(height: 10),
+            const Row(
+              children: [
+                InitialsAvatar(initials: ''),
+                SizedBox(width: 8),
+                InitialsAvatar(initials: '', size: InitialsAvatarSize.medium),
+                SizedBox(width: 8),
+                InitialsAvatar(initials: 'BK', size: InitialsAvatarSize.medium),
+              ],
+            ),
+            const SizedBox(height: 10),
+            NitumeField.money(label: 'Budget', hint: '0'),
+          ],
+        ),
+      ),
+      surfaceSize: const Size(390, 440),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/numeric_spans.png'),
+    );
+  });
 }
