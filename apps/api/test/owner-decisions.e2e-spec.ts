@@ -342,4 +342,46 @@ describe('Owner decisions (e2e)', () => {
       expect(typeof wrong?.body.attemptsRemaining).toBe('number');
     });
   });
+
+  describe('state machine', () => {
+    it('confirm = AWAITING_CUSTOMER -> COMPLETED; CONFIRMED is not a customer step', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const runner = await makeUser(UserRole.RUNNER);
+      const errand = await createErrand(customer);
+      await driveTo({ customer, admin, runner }, errand.id, 'AWAITING_CUSTOMER');
+      await setStatus(customer, errand.id, 'COMPLETED');
+      await setStatus(customer, errand.id, 'CONFIRMED', 403);
+      await setStatus(admin, errand.id, 'CONFIRMED', 403);
+    });
+
+    it('IN_PROGRESS -> CANCELLED is refused outside the price-change rejection', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const runner = await makeUser(UserRole.RUNNER);
+      const errand = await createErrand(customer);
+      await driveTo({ customer, admin, runner }, errand.id, 'IN_PROGRESS');
+      const res = await setStatus(customer, errand.id, 'CANCELLED', 409);
+      expect(res.body.code).toBe('transition_requires_price_change_rejection');
+    });
+
+    it('resolve-dispute runner verdict returns the task to COMPLETED', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const runner = await makeUser(UserRole.RUNNER);
+      const errand = await createErrand(customer);
+      await driveTo({ customer, admin, runner }, errand.id, 'AWAITING_CUSTOMER');
+      await http()
+        .post('/api/v1/disputes')
+        .set(bearer(customer.token))
+        .send({ errandId: errand.id, reason: 'Photos do not show the bathroom' })
+        .expect(201);
+      const res = await http()
+        .patch(`/api/v1/errands/${errand.id}/resolve-dispute`)
+        .set(bearer(admin.token))
+        .send({ verdict: 'runner', rationale: 'Bathroom video was uploaded as evidence.' })
+        .expect(200);
+      expect(res.body.errand.status).toBe('COMPLETED');
+    });
+  });
 });

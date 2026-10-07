@@ -32,7 +32,7 @@ import {
 import { ErrandAssignment } from './errand-assignment.entity';
 import { ErrandItem } from './errand-item.entity';
 import { ErrandLocation } from './errand-location.entity';
-import { ErrandStateMachine } from './errand-state-machine';
+import { ErrandStateMachine, TransitionGuard } from './errand-state-machine';
 import { ErrandStatusHistory } from './errand-status-history.entity';
 import { Errand } from './errand.entity';
 import { Quote } from './quote.entity';
@@ -521,10 +521,9 @@ export class ErrandsService {
   }
 
   /**
-   * Transitions an errand to a target status, validating against the strict
-   * §3.3 state machine and recording a history row (append-only). Uses the
-   * entity version column for optimistic concurrency: concurrent transitions
-   * from the same version surface as a retryable conflict.
+   * Admin dispute resolution. Runner-favourable returns the errand to
+   * COMPLETED (normal payout process); customer-favourable cancels it, which
+   * opens a refund review in the payments module when the customer had paid.
    */
   async resolveDispute(
     errandId: string,
@@ -564,23 +563,31 @@ export class ErrandsService {
     }
     const to =
       verdict === 'runner_favourable'
-        ? ErrandStatus.CONFIRMED // escrow settles → split ledger releases
-        : ErrandStatus.CANCELLED; // refund path → legs are reversed
+        ? ErrandStatus.COMPLETED
+        : ErrandStatus.CANCELLED;
     return this.performTransition(manager, errandId, to, {
       type: StatusHistoryActor.ADMIN,
       id: actor.userId,
     }, note, { role: actor.role, userId: actor.userId });
   }
 
+  /**
+   * Transitions an errand to a target status, validating against the strict
+   * state machine and recording a history row (append-only). Uses the entity
+   * version column for optimistic concurrency: concurrent transitions from
+   * the same version surface as a retryable conflict. `guard` must be passed
+   * by the one flow allowed to perform a guarded transition.
+   */
   async transition(
     errandId: string,
     to: ErrandStatus,
     actor: ActorReference,
     note?: string,
     subject?: ViewerContext,
+    guard?: TransitionGuard,
   ): Promise<ErrandResult> {
     return this.dataSource.transaction((manager) =>
-      this.performTransition(manager, errandId, to, actor, note, subject),
+      this.performTransition(manager, errandId, to, actor, note, subject, guard),
     );
   }
 
@@ -597,9 +604,18 @@ export class ErrandsService {
     note: string | undefined,
     subject: ViewerContext | undefined,
     within: (manager: EntityManager, result: ErrandResult) => Promise<T>,
+    guard?: TransitionGuard,
   ): Promise<ErrandResult & { extra: T }> {
     return this.dataSource.transaction(async (manager) => {
-      const result = await this.performTransition(manager, errandId, to, actor, note, subject);
+      const result = await this.performTransition(
+        manager,
+        errandId,
+        to,
+        actor,
+        note,
+        subject,
+        guard,
+      );
       const extra = await within(manager, result);
       return { ...result, extra };
     });
@@ -612,6 +628,7 @@ export class ErrandsService {
     actor: ActorReference,
     note?: string,
     subject?: ViewerContext,
+    guard?: TransitionGuard,
   ): Promise<ErrandResult> {
     const errand = await manager.getRepository(Errand).findOne({
       where: { id: errandId },
@@ -623,6 +640,14 @@ export class ErrandsService {
     if (!ErrandStateMachine.canTransition(fromStatus, to)) {
       throw new ConflictException(
         `Illegal status transition: ${fromStatus} -> ${to}`,
+      );
+    }
+    const required = ErrandStateMachine.guardFor(fromStatus, to);
+    if (required && required !== guard) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        `transition_requires_${required}`,
+        `${fromStatus} -> ${to} is only allowed through ${required.replace(/_/g, ' ')}`,
       );
     }
     if (!ErrandStateMachine.actorCanPerform(fromStatus, to, actor.type)) {
@@ -661,6 +686,45 @@ export class ErrandsService {
     });
 
     return { errand, history };
+  }
+
+  /**
+   * System step COMPLETED -> CONFIRMED for errands whose COMPLETED entry is
+   * older than the dispute window (errands.disputeWindowHours). Meant to be
+   * run by a scheduled job; nothing schedules it yet (queue infrastructure
+   * pending, BOARD row 26). Returns the ids it confirmed.
+   */
+  async confirmPastDisputeWindow(now: Date = new Date()): Promise<string[]> {
+    const hours = this.config?.get<number>('errands.disputeWindowHours', 24) ?? 24;
+    const cutoff = new Date(now.getTime() - hours * 3_600_000);
+    const due = await this.errands
+      .createQueryBuilder('e')
+      .select('e.id', 'id')
+      .where('e.status = :completed', { completed: ErrandStatus.COMPLETED })
+      .andWhere(
+        `(SELECT MAX(h."createdAt") FROM "errand_status_history" h
+           WHERE h."errandId" = e.id AND h."toStatus" = :completed) <= :cutoff`,
+        { cutoff },
+      )
+      .getRawMany<{ id: string }>();
+    const confirmed: string[] = [];
+    for (const { id } of due) {
+      try {
+        await this.transition(
+          id,
+          ErrandStatus.CONFIRMED,
+          { type: StatusHistoryActor.SYSTEM },
+          `Dispute window of ${hours}h passed`,
+        );
+        confirmed.push(id);
+      } catch (err) {
+        // Disputed or modified meanwhile: skip, the next run re-checks.
+        if (!(err instanceof ConflictException) && !(err instanceof ApiError)) {
+          throw err;
+        }
+      }
+    }
+    return confirmed;
   }
 
   async historyFor(errandId: string): Promise<ErrandStatusHistory[]> {

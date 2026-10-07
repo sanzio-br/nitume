@@ -21,6 +21,9 @@ describe('NotificationEventType (A-14)', () => {
       ErrandStatus.ACCEPTED,
       ErrandStatus.PAYMENT_CONFIRMED,
       ErrandStatus.EXPIRED,
+      // System-only payout states are never shown to the customer.
+      ErrandStatus.CONFIRMED,
+      ErrandStatus.SETTLED,
     ]) {
       expect(notificationEventTypeFor(status)).toBeNull();
     }

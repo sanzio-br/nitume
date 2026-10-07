@@ -46,6 +46,7 @@ export interface AppConfig {
   errands: {
     urgentWithinHours: number;
     scheduledAfterHours: number;
+    disputeWindowHours: number;
   };
   payments: {
     mpesaTransport: string;
@@ -132,6 +133,9 @@ export const configuration = (): AppConfig => ({
   errands: {
     urgentWithinHours: Number.parseFloat(process.env.ERRANDS_URGENT_WITHIN_HOURS ?? '4'),
     scheduledAfterHours: Number.parseFloat(process.env.ERRANDS_SCHEDULED_AFTER_HOURS ?? '72'),
+    // TODO(owner): dispute window length is not defined anywhere. After it,
+    // the system moves COMPLETED -> CONFIRMED (payout eligibility).
+    disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
   },
   // Evidence storage. `console` (dev default) logs uploads without storing;
   // `cloudinary` uploads to Cloudinary (needs CLOUDINARY_CLOUD_NAME/API_KEY/

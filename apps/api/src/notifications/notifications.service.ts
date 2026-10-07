@@ -134,11 +134,7 @@ const feedCopy = (status: ErrandStatus): FeedCopy | null => {
     case ErrandStatus.AWAITING_CUSTOMER:
       return { title: 'Ready for your review', body: 'Your runner is waiting for you to confirm the task details.' };
     case ErrandStatus.COMPLETED:
-      return { title: 'Task complete', body: 'Your task has been completed. Review the evidence and confirm.' };
-    case ErrandStatus.CONFIRMED:
-      return { title: 'Task confirmed', body: 'You confirmed the task. The runner will be paid out.' };
-    case ErrandStatus.SETTLED:
-      return { title: 'Task settled', body: 'The runner has been paid for your task.' };
+      return { title: 'Task complete', body: 'Your task is complete. Thank you for using Nitume.' };
     case ErrandStatus.DISPUTED:
       return { title: 'Task disputed', body: 'A dispute has been opened on this task and is under review.' };
     case ErrandStatus.CANCELLED:

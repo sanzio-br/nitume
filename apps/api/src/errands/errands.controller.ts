@@ -169,11 +169,10 @@ export class ErrandsController {
   }
 
   /**
-   * Admin-mediated dispute resolution (§3.3 mediation, §A.6 audit). ADMIN only.
-   * The verdict is written through the state machine's DISPUTED→CONFIRMED
-   * (runner-favourable, split ledger still settles) or DISPUTED→CANCELLED
-   * (customer-favourable, escrow legs reversed) transition, so this escapes the
-   * otherwise-terminal DISPUTED deadlock my settlement-guard audit flagged (§A.4).
+   * Admin-mediated dispute resolution. ADMIN only, with a written rationale.
+   * `verdict: runner` → DISPUTED→COMPLETED (normal payout process follows);
+   * `verdict: customer` → DISPUTED→CANCELLED (opens a refund review if the
+   * customer had paid).
    */
   @Roles(UserRole.ADMIN)
   @Patch(':id/resolve-dispute')

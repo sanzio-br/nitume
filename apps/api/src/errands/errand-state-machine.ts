@@ -3,17 +3,29 @@ import { ErrandStatus, StatusHistoryActor } from '../common/enums';
 /**
  * Strict errand lifecycle state machine.
  *
- * Reproduces the §3.3 lifecycle diagram 1:1. Every transition lists which
- * actors are allowed to trigger it. Statuses with no transitions are terminal
- * (CANCELLED, FAILED, EXPIRED, SETTLED).
- * DISPUTED is *suspensive*, not terminal: an ADMIN-mediated resolution is the
- * only way out (runner-favourable -> CONFIRMED, customer-favourable -> CANCELLED),
- * so a disputed escrow is never permanently locked. Resolution always writes a
- * mediation note into status history (§3.3 + split-ledger release audit).
+ * Based on the §3.3 lifecycle diagram plus the owner decisions of
+ * 2026-10-07 (BOARD rows 8-10, 35-37). Every transition lists which actors
+ * may trigger it; statuses with no transitions are terminal (CANCELLED,
+ * FAILED, EXPIRED, SETTLED).
+ *
+ * - Customer "Confirm completion" is AWAITING_CUSTOMER -> COMPLETED.
+ * - COMPLETED -> CONFIRMED -> SETTLED are system-only payout states, moved
+ *   after the dispute window; customers never trigger them.
+ * - DISPUTED is suspensive: only an admin resolves it, runner-favourable to
+ *   COMPLETED or customer-favourable to CANCELLED, with a written rationale.
+ * - IN_PROGRESS -> CANCELLED is the customer's "Reject & cancel task" on a
+ *   pending price-change request, and nothing else (guarded).
  */
+export enum TransitionGuard {
+  /** Only via rejecting a pending price-change request (price-change module). */
+  PRICE_CHANGE_REJECTION = 'price_change_rejection',
+}
+
 export interface ErrandTransition {
   to: ErrandStatus;
   allowedActors: StatusHistoryActor[];
+  /** When set, the transition is only legal through that specific flow. */
+  guard?: TransitionGuard;
 }
 
 const C = StatusHistoryActor.CUSTOMER;
@@ -56,13 +68,19 @@ export const ERRAND_TRANSITIONS: Record<ErrandStatus, ErrandTransition[]> = {
   [ErrandStatus.IN_PROGRESS]: [
     { to: ErrandStatus.AWAITING_CUSTOMER, allowedActors: [R] },
     { to: ErrandStatus.DISPUTED, allowedActors: [C] },
+    {
+      to: ErrandStatus.CANCELLED,
+      allowedActors: [C],
+      guard: TransitionGuard.PRICE_CHANGE_REJECTION,
+    },
   ],
   [ErrandStatus.AWAITING_CUSTOMER]: [
     { to: ErrandStatus.COMPLETED, allowedActors: [C] },
     { to: ErrandStatus.DISPUTED, allowedActors: [C] },
   ],
   [ErrandStatus.COMPLETED]: [
-    { to: ErrandStatus.CONFIRMED, allowedActors: [C] },
+    // System-only, after the dispute window (errands.disputeWindowHours).
+    { to: ErrandStatus.CONFIRMED, allowedActors: [S] },
     { to: ErrandStatus.DISPUTED, allowedActors: [C] },
   ],
   [ErrandStatus.CONFIRMED]: [
@@ -72,12 +90,12 @@ export const ERRAND_TRANSITIONS: Record<ErrandStatus, ErrandTransition[]> = {
   [ErrandStatus.SETTLED]: [],
   [ErrandStatus.CANCELLED]: [],
   [ErrandStatus.FAILED]: [],
-  // Dispute resolution — §3.3 mediation escape hatch (never a dead end).
-  // An ADMIN mediates and, unlike every other transition, records a binding
-  // rationale note (§A.6 audit). Runner-favourable: escrow still settles.
-  // Customer-favourable: errand is cancelled so legs are refunded.
+  // Dispute resolution (never a dead end). An ADMIN mediates and records a
+  // written rationale. Runner-favourable: back to COMPLETED, so the runner's
+  // earnings follow the normal payout process. Customer-favourable: CANCELLED,
+  // which opens an admin refund review when the customer had paid.
   [ErrandStatus.DISPUTED]: [
-    { to: ErrandStatus.CONFIRMED, allowedActors: [A] },
+    { to: ErrandStatus.COMPLETED, allowedActors: [A] },
     { to: ErrandStatus.CANCELLED, allowedActors: [A] },
   ],
   [ErrandStatus.EXPIRED]: [],
@@ -90,6 +108,11 @@ export class ErrandStateMachine {
 
   static allowedActors(from: ErrandStatus, to: ErrandStatus): StatusHistoryActor[] {
     return ERRAND_TRANSITIONS[from]?.find((t) => t.to === to)?.allowedActors ?? [];
+  }
+
+  /** Guard required for `from -> to`, or null when the transition is unguarded. */
+  static guardFor(from: ErrandStatus, to: ErrandStatus): TransitionGuard | null {
+    return ERRAND_TRANSITIONS[from]?.find((t) => t.to === to)?.guard ?? null;
   }
 
   static actorCanPerform(
@@ -111,12 +134,18 @@ export class ErrandStateMachine {
   }
 
   /** All valid one-step transitions, for enumerating the lifecycle. */
-  static allTransitions(): { from: ErrandStatus; to: ErrandStatus; actors: StatusHistoryActor[] }[] {
+  static allTransitions(): {
+    from: ErrandStatus;
+    to: ErrandStatus;
+    actors: StatusHistoryActor[];
+    guard: TransitionGuard | null;
+  }[] {
     return (Object.keys(ERRAND_TRANSITIONS) as ErrandStatus[]).flatMap((from) =>
       ERRAND_TRANSITIONS[from].map((t) => ({
         from,
         to: t.to,
         actors: t.allowedActors,
+        guard: t.guard ?? null,
       })),
     );
   }
