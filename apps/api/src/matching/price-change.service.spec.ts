@@ -12,6 +12,7 @@ const build = (getById: () => Promise<unknown>) => {
     {} as never,
     {} as never,
     errandService as never,
+    { emit: vi.fn() } as never,
   );
   return { service, requests, errandService };
 };
@@ -49,5 +50,45 @@ describe('PriceChangeService.listForErrand (A-8)', () => {
       ForbiddenException,
     );
     expect(requests.find).not.toHaveBeenCalled();
+  });
+});
+
+describe('PriceChangeService.request domain event (A-2)', () => {
+  it('emits price_change.requested after saving', async () => {
+    const emit = vi.fn();
+    const createdAt = new Date('2026-10-07T09:00:00Z');
+    const requests = {
+      findOne: vi.fn(() => Promise.resolve(null)),
+      create: vi.fn((row: object) => row),
+      save: vi.fn((row: object) => Promise.resolve({ id: 'pc-9', createdAt, ...row })),
+    };
+    const errands = {
+      findOne: vi.fn(() =>
+        Promise.resolve({ id: 'e-1', status: 'IN_PROGRESS', quotedPrice: '500.00' }),
+      ),
+    };
+    const service = new PriceChangeService(
+      requests as never,
+      errands as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { emit } as never,
+    );
+
+    await service.request('e-1', { toPrice: 650, reason: 'Price went up' }, {
+      userId: 'admin-1',
+      role: UserRole.ADMIN,
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(emit).toHaveBeenCalledWith('price_change.requested', {
+      errandId: 'e-1',
+      requestId: 'pc-9',
+      fromPrice: '500.00',
+      toPrice: '650.00',
+      reason: 'Price went up',
+      createdAt: '2026-10-07T09:00:00.000Z',
+    });
   });
 });

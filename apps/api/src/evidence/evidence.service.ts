@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserRole, GeoPoint } from '../common/enums';
@@ -31,6 +32,7 @@ export class EvidenceService {
     private readonly errandService: ErrandsService,
     @Inject(EVIDENCE_STORAGE)
     private readonly storage: EvidenceStorage,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -82,7 +84,16 @@ export class EvidenceService {
       capturedAt: dto.capturedAt ? new Date(dto.capturedAt) : new Date(),
       uploadedBy: viewer.userId,
     });
-    return this.evidence.save(row);
+    const saved = await this.evidence.save(row);
+    setImmediate(() => {
+      this.events.emit('evidence.uploaded', {
+        errandId,
+        evidenceId: saved.id,
+        type: saved.type,
+        capturedAt: saved.capturedAt.toISOString(),
+      });
+    });
+    return saved;
   }
 
   async listForErrand(

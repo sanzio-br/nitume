@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -40,6 +41,7 @@ export class PriceChangeService {
     @InjectRepository(RunnerProfile)
     private readonly runners: Repository<RunnerProfile>,
     private readonly errandService: ErrandsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /** Assigned runner (or admin) proposes a new price for a live errand. */
@@ -74,7 +76,7 @@ export class PriceChangeService {
       throw new ConflictException('A price change request is already pending for this task');
     }
 
-    return this.requests.save(
+    const saved = await this.requests.save(
       this.requests.create({
         errandId,
         requestedByUserId: actor.userId,
@@ -84,6 +86,17 @@ export class PriceChangeService {
         status: PriceChangeStatus.REQUESTED,
       }),
     );
+    setImmediate(() => {
+      this.events.emit('price_change.requested', {
+        errandId,
+        requestId: saved.id,
+        fromPrice: saved.fromPrice,
+        toPrice: saved.toPrice,
+        reason: saved.reason,
+        createdAt: saved.createdAt.toISOString(),
+      });
+    });
+    return saved;
   }
 
   /** Errand-owner customer (or admin) approves; price updates on the errand. */
