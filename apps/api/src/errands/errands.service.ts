@@ -232,6 +232,11 @@ export class ErrandsService {
     };
   }
 
+  /** Pickup / drop-off / task-site points of an errand (no access check). */
+  async locationsFor(errandId: string): Promise<ErrandLocation[]> {
+    return this.locations.find({ where: { errandId } });
+  }
+
   /**
    * Current (assigned/accepted) assignment for an errand, or null. Public so
    * other modules (location, realtime) go through this service instead of
