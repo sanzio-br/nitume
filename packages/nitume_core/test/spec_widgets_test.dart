@@ -185,4 +185,119 @@ void main() {
       expect(result, isFalse);
     });
   });
+
+  group('NitumeRadioRow (C-16 radio-row)', () {
+    BoxDecoration decorationOf(WidgetTester tester, String label) {
+      final box = tester.widget<AnimatedContainer>(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      return box.decoration! as BoxDecoration;
+    }
+
+    testWidgets('selected is blue with white text; others slate', (
+      tester,
+    ) async {
+      String? picked;
+      await pumpThemed(
+        tester,
+        Column(
+          children: [
+            NitumeRadioRow(
+              label: 'Pay merchant directly (recommended)',
+              subtitle: "You'll see the merchant's Till or Paybill number.",
+              selected: true,
+              onSelected: () => picked = 'merchant_direct',
+            ),
+            const SizedBox(height: 8),
+            NitumeRadioRow(
+              label: 'Send purchase amount to runner',
+              subtitle: "You'll get instructions after paying the fees.",
+              selected: false,
+              onSelected: () => picked = 'customer_to_runner',
+            ),
+          ],
+        ),
+      );
+
+      final on = decorationOf(tester, 'Pay merchant directly (recommended)');
+      expect(on.color, NitumeColors.blue);
+      expect(
+        tester
+            .widget<Text>(find.text('Pay merchant directly (recommended)'))
+            .style
+            ?.color,
+        NitumeColors.white,
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.text("You'll see the merchant's Till or Paybill number."),
+            )
+            .style
+            ?.color,
+        NitumeColors.white,
+      );
+
+      final off = decorationOf(tester, 'Send purchase amount to runner');
+      expect(off.color, NitumeColors.slate);
+      expect((off.border! as Border).top.color, NitumeColors.slateLine);
+      expect(
+        tester
+            .widget<Text>(
+              find.text("You'll get instructions after paying the fees."),
+            )
+            .style
+            ?.color,
+        NitumeColors.slate600,
+      );
+      expect(on.borderRadius, BorderRadius.circular(NitumeRadii.pill));
+
+      await tester.tap(find.text('Send purchase amount to runner'));
+      expect(picked, 'customer_to_runner');
+      expect(
+        tester.getSize(find.byType(NitumeRadioRow).last).height,
+        greaterThanOrEqualTo(48),
+      );
+    });
+
+    testWidgets('disabled row is slate-400, not tappable, says why', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await pumpThemed(
+        tester,
+        const NitumeRadioRow(
+          label: 'Pay merchant directly (recommended)',
+          subtitle: "Available once the merchant's details are added.",
+          selected: false,
+          onSelected: null,
+        ),
+      );
+      expect(
+        tester
+            .widget<Text>(find.text('Pay merchant directly (recommended)'))
+            .style
+            ?.color,
+        NitumeColors.slate400,
+      );
+      expect(
+        tester.getSemantics(find.byType(NitumeRadioRow)),
+        matchesSemantics(
+          label:
+              'Pay merchant directly (recommended). '
+              "Available once the merchant's details are added.",
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+          hasCheckedState: true,
+          isChecked: false,
+          isInMutuallyExclusiveGroup: true,
+        ),
+      );
+      handle.dispose();
+    });
+  });
 }
