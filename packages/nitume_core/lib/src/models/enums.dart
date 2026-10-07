@@ -314,7 +314,9 @@ enum DevicePlatform {
 }
 
 /// Published `notifications.eventType` values (`errand.<STATUS>`). Every
-/// value refers to the errand in the row's `errandId`.
+/// value refers to the errand in the row's `errandId`. CONFIRMED and SETTLED
+/// are not published (`apps/api/src/common/enums.ts`); unknown values parse
+/// as `null`.
 enum NotificationEventType {
   quoted('errand.QUOTED', ErrandStatus.quoted),
   runnerAssigned('errand.RUNNER_ASSIGNED', ErrandStatus.runnerAssigned),
@@ -323,8 +325,6 @@ enum NotificationEventType {
   inProgress('errand.IN_PROGRESS', ErrandStatus.inProgress),
   awaitingCustomer('errand.AWAITING_CUSTOMER', ErrandStatus.awaitingCustomer),
   completed('errand.COMPLETED', ErrandStatus.completed),
-  confirmed('errand.CONFIRMED', ErrandStatus.confirmed),
-  settled('errand.SETTLED', ErrandStatus.settled),
   disputed('errand.DISPUTED', ErrandStatus.disputed),
   cancelled('errand.CANCELLED', ErrandStatus.cancelled),
   failed('errand.FAILED', ErrandStatus.failed);

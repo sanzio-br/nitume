@@ -380,6 +380,8 @@ void main() {
       final page = await repo.list();
       expect(page.unread, 1);
       expect(page.items.single.event, NotificationEventType.runnerEnRoute);
+      expect(NotificationEventType.tryFromWire('errand.CONFIRMED'), isNull);
+      expect(NotificationEventType.tryFromWire('errand.SETTLED'), isNull);
       expect(page.items.single.event?.status, ErrandStatus.runnerEnRoute);
     });
   });
