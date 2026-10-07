@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../models/auth_tokens.dart';
 import '../storage/token_store.dart';
@@ -16,6 +17,7 @@ class NitumeApiClient {
     required ApiConfig config,
     required TokenStore tokenStore,
     void Function()? onUnauthenticated,
+    @visibleForTesting HttpClientAdapter? httpClientAdapter,
   }) {
     final options = BaseOptions(
       baseUrl: config.baseUrl,
@@ -28,6 +30,10 @@ class NitumeApiClient {
     );
     _rawDio = Dio(options);
     _dio = Dio(options);
+    if (httpClientAdapter != null) {
+      _rawDio.httpClientAdapter = httpClientAdapter;
+      _dio.httpClientAdapter = httpClientAdapter;
+    }
 
     final interceptor = AuthInterceptor(
       tokenStore: tokenStore,

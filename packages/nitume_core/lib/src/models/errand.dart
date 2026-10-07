@@ -1,7 +1,12 @@
 import 'enums.dart';
+import 'json_utils.dart';
+import 'runner.dart';
 
 /// An errand (`errands`). Monetary fields are kept as decimal strings exactly as
 /// the API returns them (`numeric(12,2)`), never as floating point.
+///
+/// There is no title, human-readable reference (A-16) or runner name (A-15);
+/// both are open owner decisions, so screens derive nothing from them yet.
 class Errand {
   const Errand({
     required this.id,
@@ -16,6 +21,7 @@ class Errand {
     this.deadlineAt,
     this.createdAt,
     this.updatedAt,
+    this.assignment,
   });
 
   final String id;
@@ -38,6 +44,11 @@ class Errand {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  /// Runner currently holding the errand; `null` until assigned.
+  final ErrandAssignment? assignment;
+
+  RunnerSummary? get runner => assignment?.runner;
+
   /// The price to display: final if agreed, otherwise the quote.
   String? get displayPrice => finalPrice ?? quotedPrice;
 
@@ -59,6 +70,9 @@ class Errand {
       deadlineAt: _date(json['deadlineAt']),
       createdAt: _date(json['createdAt']),
       updatedAt: _date(json['updatedAt']),
+      assignment: json['assignment'] == null
+          ? null
+          : ErrandAssignment.fromJson(asJsonMap(json['assignment'])),
     );
   }
 }

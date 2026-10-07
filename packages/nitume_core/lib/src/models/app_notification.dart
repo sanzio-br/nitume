@@ -1,3 +1,5 @@
+import 'enums.dart';
+
 /// In-app feed item (`notifications`), returned by `GET /notifications`.
 ///
 /// Distinct from `notification_log` on the API side, which is the outbound
@@ -16,6 +18,9 @@ class AppNotification {
 
   final String id;
   final String eventType;
+
+  /// Typed [eventType]; `null` for values this client does not know.
+  NotificationEventType? get event => NotificationEventType.tryFromWire(eventType);
   final String title;
   final String? body;
   final String? errandId;
