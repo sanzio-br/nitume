@@ -8,15 +8,11 @@ enum ShellTab { home, track, history, profile }
 class ShellController extends ChangeNotifier {
   ShellTab _tab = ShellTab.home;
   String? _trackErrandId;
-  int _refreshTick = 0;
 
   ShellTab get tab => _tab;
 
   /// Errand Track should select, if one was requested.
   String? get trackErrandId => _trackErrandId;
-
-  /// Bumped when root tabs should reload (after a stack reset).
-  int get refreshTick => _refreshTick;
 
   void select(ShellTab tab) {
     if (_tab == tab) return;
@@ -28,7 +24,6 @@ class ShellController extends ChangeNotifier {
   void showTrack(String? errandId) {
     _tab = ShellTab.track;
     _trackErrandId = errandId;
-    _refreshTick++;
     notifyListeners();
   }
 
@@ -40,10 +35,10 @@ class ShellController extends ChangeNotifier {
     return id;
   }
 
-  /// Switches to [tab] and asks the root tabs to reload.
+  /// Switches to [tab] after a stack reset (root tabs reload when the pushed
+  /// screens above them close).
   void reset(ShellTab tab) {
     _tab = tab;
-    _refreshTick++;
     notifyListeners();
   }
 }

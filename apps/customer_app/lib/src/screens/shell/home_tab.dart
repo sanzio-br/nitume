@@ -29,7 +29,6 @@ class _HomeTabState extends State<HomeTab> with ReloadOnReturn<HomeTab> {
   Future<_HomeData>? _future;
   int _unread = 0;
   Poller? _poller;
-  int _tick = -1;
 
   late final AppServices _services = context.services;
 
@@ -52,14 +51,6 @@ class _HomeTabState extends State<HomeTab> with ReloadOnReturn<HomeTab> {
   void didUpdateWidget(HomeTab old) {
     super.didUpdateWidget(old);
     if (widget.active && !old.active) _reload();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final tick = AppScope.of(context).shell.refreshTick;
-    if (_tick != -1 && tick != _tick) _reload();
-    _tick = tick;
   }
 
   @override
