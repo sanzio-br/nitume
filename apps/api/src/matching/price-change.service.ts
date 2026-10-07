@@ -139,6 +139,22 @@ export class PriceChangeService {
     return saved;
   }
 
+  /**
+   * Price-change requests on an errand, newest first, for anyone allowed to
+   * view the errand (owner customer, assigned runner, admin).
+   */
+  async listForErrand(
+    errandId: string,
+    viewer: { userId: string; role: UserRole },
+    status?: PriceChangeStatus,
+  ): Promise<PriceChangeRequest[]> {
+    await this.errandService.getById(errandId, viewer);
+    return this.requests.find({
+      where: status ? { errandId, status } : { errandId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async pendingForErrand(errandId: string): Promise<PriceChangeRequest | null> {
     return this.requests.findOne({
       where: { errandId, status: PriceChangeStatus.REQUESTED },
