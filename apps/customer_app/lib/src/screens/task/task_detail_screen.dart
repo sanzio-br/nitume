@@ -107,8 +107,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen>
         Future<Object?>.value(false),
     ]);
     return _TaskData(
-      hasReport:
-          errand.status == ErrandStatus.disputed || results[3]! as bool,
+      hasReport: errand.status == ErrandStatus.disputed || results[3]! as bool,
       errand: errand,
       payment: results[0] as PaymentSummary?,
       evidence: results[1]! as List<Evidence>,

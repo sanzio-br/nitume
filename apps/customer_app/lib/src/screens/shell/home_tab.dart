@@ -221,6 +221,12 @@ class _HomeTasks extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: NitumeButton.link(
                   label: '+$more more in progress',
+                  richLabel: TextSpan(
+                    children: [
+                      NumSpan('+$more'),
+                      const TextSpan(text: ' more in progress'),
+                    ],
+                  ),
                   onPressed: () =>
                       context.services.shell.select(ShellTab.track),
                 ),

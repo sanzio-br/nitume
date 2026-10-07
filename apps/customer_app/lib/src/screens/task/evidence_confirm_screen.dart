@@ -130,7 +130,8 @@ class _EvidenceConfirmScreenState extends State<EvidenceConfirmScreen> {
         padding: const EdgeInsets.only(bottom: 16),
         children: [
           SectionLabel(
-            'Photos & video (${d.evidence.length})',
+            'Photos & video',
+            numericSuffix: '(${d.evidence.length})',
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
           ),
           if (d.evidence.isEmpty)

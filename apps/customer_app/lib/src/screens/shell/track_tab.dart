@@ -449,6 +449,12 @@ class _TrackBody extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
             child: NitumeNotice(
               message: 'Pay the item amount: ${formatKes(mp.amount)}',
+              richMessage: TextSpan(
+                children: [
+                  const TextSpan(text: 'Pay the item amount: '),
+                  NumSpan.kes(mp.amount),
+                ],
+              ),
               action: NitumeButton.outline(
                 label: 'View details',
                 size: NitumeButtonSize.small,

@@ -270,8 +270,14 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
       ),
       actions: [
         NitumeButton.primary(
-          // TODO(core-ui CC-2): render the amount as a Fira Code span.
           label: 'Approve ${formatKes(diff)} increase',
+          richLabel: TextSpan(
+            children: [
+              const TextSpan(text: 'Approve '),
+              NumSpan.kes(diff),
+              const TextSpan(text: ' increase'),
+            ],
+          ),
           loading: _busy == _Busy.approve,
           onPressed: busy || (_needsRoute && _route == null) ? null : _approve,
         ),

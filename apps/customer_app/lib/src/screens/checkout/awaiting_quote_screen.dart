@@ -147,11 +147,26 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     }
   }
 
+  static String? _total(_QuoteData d) => d.quote?.total ?? d.errand.quotedPrice;
+
   static String _ctaLabel(_QuoteData d) {
-    final total = d.quote?.total ?? d.errand.quotedPrice;
+    final total = _total(d);
     return total == null
         ? 'Confirm & pay →'
         : 'Confirm & pay ${formatKes(total)} →';
+  }
+
+  /// Same wording with the amount in Fira Code (C-32).
+  static InlineSpan? _ctaRichLabel(_QuoteData d) {
+    final total = _total(d);
+    if (total == null) return null;
+    return TextSpan(
+      children: [
+        const TextSpan(text: 'Confirm & pay '),
+        NumSpan.kes(total),
+        const TextSpan(text: ' →'),
+      ],
+    );
   }
 
   bool _expired(Quote? q) =>
@@ -252,8 +267,8 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
             : null,
         child: NitumeButton.primary(
           // quote.total is the service + runner total the STK push charges.
-          // TODO(core-ui CC-2): render the amount as a Fira Code span.
           label: _ctaLabel(data),
+          richLabel: _ctaRichLabel(data),
           expand: true,
           loading: _accepting,
           onPressed: expired || _cancelling ? null : _accept,
