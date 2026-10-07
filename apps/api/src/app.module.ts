@@ -22,6 +22,7 @@ import { RatingsModule } from './ratings/ratings.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { LocationModule } from './location/location.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { LocationModule } from './location/location.module';
     NotificationsModule,
     DisputesModule,
     LocationModule,
+    RealtimeModule,
   ],
   controllers: [HealthController],
   providers: [
