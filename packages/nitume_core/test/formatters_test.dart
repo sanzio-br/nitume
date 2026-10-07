@@ -2,6 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 void main() {
+  test('formatCountdown', () {
+    expect(formatCountdown(const Duration(seconds: 60)), '1:00');
+    expect(formatCountdown(const Duration(seconds: 42)), '0:42');
+    expect(formatCountdown(const Duration(seconds: 5)), '0:05');
+    expect(formatCountdown(const Duration(seconds: -3)), '0:00');
+  });
+
   group('formatKes', () {
     test('formats API decimal strings without floating point', () {
       expect(formatKes('2200.00'), 'KSh 2,200');

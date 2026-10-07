@@ -164,6 +164,92 @@ void main() {
     });
   });
 
+  group('OTP error and resend states', () {
+    testWidgets('errorText turns boxes red and shows the message',
+        (tester) async {
+      await pumpThemed(
+        tester,
+        const OtpCodeField(
+          errorText: 'That code is incorrect or has expired.',
+        ),
+      );
+      expect(_borderColor(tester, find.byKey(const ValueKey('otp-box-0'))),
+          NitumeColors.red);
+      final error = tester.widget<Text>(find.byKey(const ValueKey('otp-error')));
+      expect(error.data, 'That code is incorrect or has expired.');
+      expect(error.style?.color, NitumeColors.red);
+    });
+
+    testWidgets('ResendCooldown counts 60s down to the resend link',
+        (tester) async {
+      final cooldown = ResendCooldown();
+      addTearDown(cooldown.dispose);
+      var resends = 0;
+      await pumpThemed(
+        tester,
+        ListenableBuilder(
+          listenable: cooldown,
+          builder: (_, _) => OtpResendLine(
+            secondsRemaining: cooldown.secondsRemaining,
+            onResend: () => resends++,
+          ),
+        ),
+      );
+      expect(find.text('Resend code'), findsOneWidget);
+
+      cooldown.start();
+      await tester.pump();
+      expect(cooldown.secondsRemaining, 60);
+      expect(find.byKey(const ValueKey('otp-resend-countdown')),
+          findsOneWidget);
+      expect(find.text('Resend code'), findsNothing);
+      final countdown = tester.widget<Text>(
+        find.byKey(const ValueKey('otp-resend-countdown')),
+      );
+      final span = (countdown.textSpan! as TextSpan).children!.single
+          as TextSpan;
+      expect(span.text, '1:00');
+      expect(span.style?.fontFamily, NitumeTypography.numericFamily);
+
+      await tester.pump(const Duration(seconds: 18));
+      expect(cooldown.secondsRemaining, 42);
+
+      await tester.pump(const Duration(seconds: 42));
+      expect(cooldown.isActive, isFalse);
+      await tester.tap(find.text('Resend code'));
+      expect(resends, 1);
+    });
+
+    test('OtpPolicy matches the owner decision (Q17)', () {
+      expect(OtpPolicy.codeLength, 6);
+      expect(OtpPolicy.expiry, const Duration(minutes: 5));
+      expect(OtpPolicy.maxAttempts, 5);
+      expect(OtpPolicy.resendCooldown, const Duration(seconds: 60));
+      expect(OtpPolicy.maxRequestsPerHour, 5);
+    });
+
+    test('OtpErrorKind classifies the API OTP errors', () {
+      OtpErrorKind? kind(int status, String message) =>
+          OtpErrorKind.fromApiException(
+            NitumeApiException(message: message, statusCode: status),
+          );
+      expect(kind(401, 'Incorrect verification code.'),
+          OtpErrorKind.incorrect);
+      expect(kind(401, 'No active verification code. Request a new one.'),
+          OtpErrorKind.expired);
+      expect(kind(401, 'Too many incorrect attempts. Request a new code.'),
+          OtpErrorKind.attemptsExhausted);
+      expect(kind(429, 'Please wait 60s before requesting another code.'),
+          OtpErrorKind.resendTooSoon);
+      expect(kind(429, 'Too many OTP requests. Try again in a few minutes.'),
+          OtpErrorKind.requestLimitReached);
+      expect(kind(500, 'Something went wrong.'), isNull);
+      expect(OtpErrorKind.expired.requiresNewCode, isTrue);
+      expect(OtpErrorKind.attemptsExhausted.requiresNewCode, isTrue);
+      expect(OtpErrorKind.incorrect.requiresNewCode, isFalse);
+    });
+  });
+
   group('OtpCodeField', () {
     testWidgets('fills boxes and completes on the sixth digit',
         (tester) async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../auth/otp_policy.dart';
 import '../theme/nitume_colors.dart';
 import '../theme/nitume_design_choices.dart';
 import '../theme/nitume_typography.dart';
@@ -8,18 +9,25 @@ import '../theme/nitume_typography.dart';
 /// C-26. One-time code entry (`.otp-row`): [length] boxes 44×52, gap 8,
 /// Fira Code 18/600; filled boxes get a green border, empty ones show `•`.
 ///
+/// Error state: pass [errorText] (e.g. `That code is incorrect or has
+/// expired.`); every box gets a red border and the text shows under the
+/// boxes in red (Q13, decided). Map API errors with
+/// `OtpErrorKind.fromApiException`; when `requiresNewCode` is true, set
+/// [enabled] to false until a new code is requested.
+///
 /// Backed by a single hidden [TextField] so SMS autofill
 /// ([AutofillHints.oneTimeCode]) and paste work.
 class OtpCodeField extends StatefulWidget {
   const OtpCodeField({
     super.key,
-    this.length = 6,
+    this.length = OtpPolicy.codeLength,
     this.controller,
     this.onChanged,
     this.onCompleted,
     this.autofocus = true,
     this.enabled = true,
     this.semanticLabel = 'Verification code',
+    this.errorText,
   });
 
   final int length;
@@ -31,6 +39,9 @@ class OtpCodeField extends StatefulWidget {
   final bool autofocus;
   final bool enabled;
   final String semanticLabel;
+
+  /// Inline error under the boxes; `null` = no error.
+  final String? errorText;
 
   @override
   State<OtpCodeField> createState() => _OtpCodeFieldState();
@@ -76,6 +87,7 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
   @override
   Widget build(BuildContext context) {
     final code = _controller.text;
+    final hasError = widget.errorText != null;
     final boxes = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -88,10 +100,13 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: NitumeColors.white,
-              borderRadius:
-                  BorderRadius.circular(NitumeDesignChoices.innerBoxRadius),
+              borderRadius: BorderRadius.circular(
+                NitumeDesignChoices.innerBoxRadius,
+              ),
               border: Border.all(
-                color: i < code.length
+                color: hasError
+                    ? NitumeDesignChoices.fieldError
+                    : i < code.length
                     ? NitumeColors.green
                     : NitumeColors.slateLine,
               ),
@@ -111,7 +126,7 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
       ],
     );
 
-    return Semantics(
+    final field = Semantics(
       label: widget.semanticLabel,
       textField: true,
       value: code,
@@ -148,6 +163,29 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
           ),
         ],
       ),
+    );
+    // Always a Column so toggling the error keeps the hidden TextField (and
+    // its focus) in place.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        field,
+        if (hasError) ...[
+          const SizedBox(height: 8),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              widget.errorText!,
+              key: const ValueKey('otp-error'),
+              textAlign: TextAlign.center,
+              style: NitumeTextStyles.mutedSmall.copyWith(
+                fontSize: 12,
+                color: NitumeDesignChoices.fieldError,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

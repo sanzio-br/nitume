@@ -99,6 +99,13 @@ String formatEta(Duration eta) {
   return 'ETA $minutes min';
 }
 
+/// Countdown `m:ss`, e.g. `0:42`, `1:00` (OTP resend cooldown).
+String formatCountdown(Duration remaining) {
+  final total = remaining.isNegative ? 0 : remaining.inSeconds;
+  final seconds = (total % 60).toString().padLeft(2, '0');
+  return '${total ~/ 60}:$seconds';
+}
+
 /// Progress counter `3/5`.
 String formatCounter(int done, int total) => '$done/$total';
 
@@ -136,8 +143,7 @@ class _DecimalParts {
     return _DecimalParts(m.group(1) == '-' && !zero, integer, fraction);
   }
 
-  bool get isZero =>
-      RegExp(r'^0+$').hasMatch(integer) && fraction == '00';
+  bool get isZero => RegExp(r'^0+$').hasMatch(integer) && fraction == '00';
 
   String get grouped {
     final buf = StringBuffer();
