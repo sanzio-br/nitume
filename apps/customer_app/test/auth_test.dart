@@ -125,6 +125,10 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.text('What should we call you?'), findsOneWidget);
+    expect(
+      t.widget<TextField>(find.byType(TextField)).textCapitalization,
+      TextCapitalization.words,
+    );
     await t.tap(find.text('Continue'));
     await t.pumpAndSettle();
     expect(find.text('Enter your name.'), findsOneWidget);

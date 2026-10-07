@@ -69,6 +69,7 @@ class _NameCaptureScreenState extends State<NameCaptureScreen> {
             readOnly: _saving,
             errorText: _error,
             autofillHints: const [AutofillHints.name],
+            textCapitalization: TextCapitalization.words,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _save(),
             onChanged: (_) {
