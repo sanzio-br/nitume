@@ -150,6 +150,41 @@ void main() {
       expect(find.text('+ KSh 5,000 additional'), findsOneWidget);
     });
 
+    for (final action in ['Approve KSh 5,000 increase', 'reject']) {
+      testWidgets('409 price_change_already_decided on $action', (t) async {
+        final b = TestBackend();
+        b.priceChanges.pendingValue = priceChange();
+        b.priceChanges.decisionError = const NitumeApiException(
+          message: 'decided',
+          statusCode: 409,
+          code: 'price_change_already_decided',
+        );
+        PriceChangeOutcome? outcome;
+        await b.pumpScreen(
+          t,
+          _Host(errand: errand(), onOutcome: (o) => outcome = o),
+        );
+        await t.tap(find.text('open'));
+        await t.pumpAndSettle();
+        if (action == 'reject') {
+          await t.tap(find.text('Reject & cancel task'));
+          await t.pumpAndSettle();
+          await t.tap(find.text('Reject & cancel'));
+        } else {
+          await t.tap(find.text(action));
+        }
+        await t.pumpAndSettle();
+        expect(
+          find.text('This price change was already answered.'),
+          findsOneWidget,
+        );
+        await t.tap(find.text('OK'));
+        await t.pumpAndSettle();
+        expect(outcome, PriceChangeOutcome.dismissed);
+        expect(find.text('Price change'), findsNothing);
+      });
+    }
+
     testWidgets('already answered', (t) async {
       final b = TestBackend();
       await b.pumpScreen(t, _Host(errand: errand()));

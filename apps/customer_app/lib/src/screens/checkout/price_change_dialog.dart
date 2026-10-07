@@ -7,6 +7,10 @@ import '../../util/display.dart';
 import '../../widgets/common.dart';
 import '../../widgets/task_widgets.dart';
 
+/// API code for a request another approve/reject already decided.
+/// TODO(core-ui): move into `ApiErrorCodes`.
+const kPriceChangeAlreadyDecided = 'price_change_already_decided';
+
 /// What happened in the price-change modal.
 enum PriceChangeOutcome { approved, rejected, dismissed }
 
@@ -173,8 +177,12 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
     if (!mounted) return;
     setState(() {
       _busy = _Busy.none;
-      if (e.statusCode == 409 &&
-          e.code != ApiErrorCodes.priceChangeRejectNotCancellable) {
+      // A concurrent decision won (409 price_change_already_decided), or
+      // the request was otherwise already answered: show the spec's
+      // already-answered state; closing it lets the caller refresh.
+      if (e.code == kPriceChangeAlreadyDecided ||
+          (e.statusCode == 409 &&
+              e.code != ApiErrorCodes.priceChangeRejectNotCancellable)) {
         _answered = true;
       } else {
         _error = "Couldn't send your answer. Try again.";
