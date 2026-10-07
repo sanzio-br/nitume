@@ -44,6 +44,7 @@ export 'src/widgets/live_tracking_map.dart';
 export 'src/widgets/nitume_button.dart';
 export 'src/widgets/nitume_card.dart';
 export 'src/widgets/nitume_choice_chip.dart';
+export 'src/widgets/nitume_dialog.dart';
 export 'src/widgets/nitume_field.dart';
 export 'src/widgets/nitume_list_item.dart';
 export 'src/widgets/nitume_pushed_header.dart';

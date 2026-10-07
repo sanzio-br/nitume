@@ -106,6 +106,9 @@ abstract final class NitumeTextStyles {
   /// Auth heading, 22/700.
   static final authHeading = NitumeTypography._sans(22, FontWeight.w700);
 
+  /// Dialog title (design-system `.t-h3`), 17/600.
+  static final dialogTitle = NitumeTypography._sans(17, FontWeight.w600);
+
   /// Card title, 15.5/600.
   static final cardTitle = NitumeTypography._sans(15.5, FontWeight.w600);
 

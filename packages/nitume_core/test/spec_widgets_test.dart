@@ -38,4 +38,151 @@ void main() {
       expect(_labelColor(tester, 'Back to Home'), NitumeColors.blue);
     });
   });
+
+  group('NitumeDialog (C-35)', () {
+    Future<void> pumpLauncher(
+      WidgetTester tester,
+      Future<void> Function(BuildContext) onOpen,
+    ) async {
+      await pumpThemed(
+        tester,
+        Builder(
+          builder: (context) => Center(
+            child: NitumeButton.primary(
+              label: 'Open',
+              onPressed: () => onOpen(context),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('renders card, scrim, title, body and stacked actions', (
+      tester,
+    ) async {
+      await pumpLauncher(
+        tester,
+        (context) => NitumeDialog.show<void>(
+          context,
+          builder: (_) => NitumeDialog(
+            title: 'Price change',
+            body: 'Approve the difference to continue?',
+            content: const Text('compare'),
+            error: "Couldn't send your answer. Try again.",
+            actions: [
+              NitumeButton.primary(label: 'Approve', onPressed: () {}),
+              NitumeButton.outline(
+                label: 'Reject & cancel task',
+                destructive: true,
+                onPressed: () {},
+              ),
+            ],
+          ),
+        ),
+      );
+
+      final barrier = tester.widget<ModalBarrier>(
+        find.byType(ModalBarrier).last,
+      );
+      expect(barrier.color, NitumeDesignChoices.modalScrim);
+      expect(NitumeDesignChoices.modalScrim, NitumeColors.blue.withAlpha(0x80));
+
+      final dialog = tester.widget<Dialog>(find.byType(Dialog));
+      expect(dialog.backgroundColor, NitumeColors.white);
+      expect(
+        (dialog.shape! as RoundedRectangleBorder).borderRadius,
+        BorderRadius.circular(NitumeRadii.large),
+      );
+      expect(
+        tester
+            .getSize(
+              find
+                  .descendant(
+                    of: find.byType(Dialog),
+                    matching: find.byType(Material),
+                  )
+                  .first,
+            )
+            .width,
+        lessThanOrEqualTo(NitumeDialog.maxWidth),
+      );
+
+      final title = tester.widget<Text>(find.text('Price change'));
+      expect(title.style?.fontSize, 17);
+      expect(title.style?.fontWeight, FontWeight.w600);
+      expect(find.text('compare'), findsOneWidget);
+
+      final approve = tester.getRect(find.text('Approve'));
+      final reject = tester.getRect(find.text('Reject & cancel task'));
+      expect(approve.top, lessThan(reject.top));
+      expect(
+        tester
+            .getSize(
+              find.descendant(
+                of: find.byType(Dialog),
+                matching: find.byType(FilledButton),
+              ),
+            )
+            .width,
+        tester.getSize(find.byType(OutlinedButton)).width,
+      );
+      final error = tester.widget<Text>(
+        find.text("Couldn't send your answer. Try again."),
+      );
+      expect(error.style?.color, NitumeColors.red);
+    });
+
+    testWidgets('blocking dialog ignores scrim taps and back', (tester) async {
+      await pumpLauncher(
+        tester,
+        (context) => NitumeDialog.show<void>(
+          context,
+          barrierDismissible: false,
+          builder: (_) => const NitumeDialog(title: 'Price change'),
+        ),
+      );
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.byType(NitumeDialog), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(NitumeDialog), findsOneWidget);
+    });
+
+    testWidgets('confirm helper resolves true, false on scrim tap', (
+      tester,
+    ) async {
+      bool? result;
+      Future<void> open(BuildContext context) async {
+        result = await showNitumeConfirmDialog(
+          context,
+          title: 'Log out of Nitume?',
+          confirmLabel: 'Log out',
+          cancelLabel: 'Cancel',
+        );
+      }
+
+      await pumpLauncher(tester, open);
+      expect(_labelColor(tester, 'Log out'), NitumeColors.red);
+      await tester.tap(find.text('Log out'));
+      await tester.pumpAndSettle();
+      expect(result, isTrue);
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.byType(NitumeDialog), findsNothing);
+      expect(result, isFalse);
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(result, isFalse);
+    });
+  });
 }
