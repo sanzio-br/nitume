@@ -6,11 +6,12 @@ import 'runner.dart';
 /// An errand (`errands`). Monetary fields are kept as decimal strings exactly as
 /// the API returns them (`numeric(12,2)`), never as floating point.
 ///
-/// Owner-approved optional fields ([reference], [title], [runnerNotes],
-/// [items], [locations]; Q15, Q16, Q19) are nullable: their API shape is
-/// pending api-contract, so parsing is tolerant and an absent or malformed
-/// value is `null`. Screens must not derive them client-side (e.g. never
-/// build a reference from [id]).
+/// Owner-approved fields ([reference], [title], [runnerNotes], [items],
+/// [locations]; Q15, Q16, Q19) are returned by `GET /errands/:id` and the
+/// list endpoints. They stay nullable and parse tolerantly (an absent or
+/// malformed value is `null`, bad list entries are skipped) so older
+/// responses still load. Screens must not derive them client-side (e.g.
+/// never build a reference from [id]).
 class Errand {
   const Errand({
     required this.id,
@@ -58,26 +59,24 @@ class Errand {
   /// Runner currently holding the errand; `null` until assigned.
   final ErrandAssignment? assignment;
 
-  /// Backend-generated human-readable reference (Q15, decided; A-16).
-  /// API shape pending api-contract. Never derived client-side.
+  /// Backend-generated human-readable reference, `NT-10001` format (Q15).
+  /// Display as `#` + this value. Never derived client-side.
   final String? reference;
 
-  /// Customer-provided task title, where one exists (Q15, decided; A-16).
-  /// API shape pending api-contract.
+  /// Optional customer task title (Q15). Editable with
+  /// `ErrandRepository.updateTitle`.
   final String? title;
 
   /// Runner-provided notes shown on evidence review (Q16, decided;
-  /// `runner_notes`). API shape pending api-contract. Separate from the
-  /// customer's [description].
+  /// `runnerNotes`). Separate from the customer's [description].
   final String? runnerNotes;
 
-  /// Structured shopping-list items (Q19, decided). API shape pending
-  /// api-contract; `null` when the response has no `items` list.
+  /// Structured shopping-list items (Q19); `null` when the response has no
+  /// `items` list.
   final List<ErrandItem>? items;
 
   /// Errand points: pickup + drop-off for Buy For Me / Get It For Me, task
-  /// site otherwise (Q19, decided). API shape pending api-contract; `null`
-  /// when the response has no `locations` list.
+  /// site otherwise (Q19); `null` when the response has no `locations` list.
   final List<ErrandLocation>? locations;
 
   /// First pickup point in [locations], if any.
@@ -131,17 +130,19 @@ class Errand {
   }
 }
 
-/// One structured shopping-list line on an [Errand] (Q19, decided). Mirrors
-/// the API's `ErrandItemDto` (`name`, `quantity`, `unit`, `notes`); the read
-/// shape is pending api-contract. For `POST /errands` use `ErrandItemInput`.
+/// One structured shopping-list line on an [Errand] (Q19): the API read
+/// shape `{id, name, quantity, unit, notes}`. For `POST /errands` use
+/// `ErrandItemInput`.
 class ErrandItem {
   const ErrandItem({
+    this.id,
     required this.name,
     this.quantity,
     this.unit,
     this.notes,
   });
 
+  final String? id;
   final String name;
 
   /// 1–999; `null` when not given.
@@ -150,6 +151,7 @@ class ErrandItem {
   final String? notes;
 
   factory ErrandItem.fromJson(Map<String, dynamic> json) => ErrandItem(
+        id: parseOptionalString(json['id']),
         name: json['name'] as String,
         quantity: (json['quantity'] as num?)?.toInt(),
         unit: parseOptionalString(json['unit']),
@@ -170,7 +172,7 @@ List<T>? _tolerantList<T>(
     try {
       out.add(parse(entry.cast<String, dynamic>()));
     } on Object {
-      // Shape pending api-contract: ignore entries we cannot read.
+      // Tolerant: skip entries we cannot read.
     }
   }
   return out;

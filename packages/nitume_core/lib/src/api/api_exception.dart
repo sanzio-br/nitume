@@ -124,3 +124,26 @@ class NitumeApiException implements Exception {
       'NitumeApiException($statusCode${code == null ? '' : ', $code'}): '
       '$message';
 }
+
+/// Machine-readable `code` values the apps switch on
+/// (`NitumeApiException.code`). OTP codes live on `OtpErrorKind`.
+abstract final class ApiErrorCodes {
+  /// `Idempotency-Key` header malformed (8–128 chars, `[A-Za-z0-9_-]`).
+  static const idempotencyKeyInvalid = 'idempotency_key_invalid';
+
+  /// The key was already used for a different payment: make a new key.
+  static const idempotencyKeyReused = 'idempotency_key_reused';
+
+  /// The errand has a merchant amount and no `merchantRoute` was sent.
+  static const merchantRouteRequired = 'merchant_route_required';
+
+  /// `merchant_direct` chosen but the merchant's Till/Paybill is unknown.
+  static const merchantDetailsMissing = 'merchant_details_missing';
+
+  /// `paymentMethodId` is not one of the customer's M-Pesa methods.
+  static const paymentMethodInvalid = 'payment_method_invalid';
+
+  /// Price-change reject: the task can no longer be cancelled (409).
+  static const priceChangeRejectNotCancellable =
+      'price_change_reject_not_cancellable';
+}

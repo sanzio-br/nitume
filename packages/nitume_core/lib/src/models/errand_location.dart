@@ -21,10 +21,12 @@ class GeoPoint {
 
 /// An errand point (`errand_locations`): pickup, drop-off or task site.
 ///
-/// Sent in `POST /errands` (`ErrandLocationDto`, `lat`/`lon`) and returned by
-/// `GET /errands/:id/tracking` (`points[]`, `lat`/`lng`).
+/// Sent in `POST /errands` (`ErrandLocationDto`, `lat`/`lon`). Read back as
+/// `{id, pointType, lat, lng, addressText, placeId}` on `GET /errands/:id`
+/// (`locations[]`) and `GET /errands/:id/tracking` (`points[]`).
 class ErrandLocation {
   const ErrandLocation({
+    this.id,
     required this.pointType,
     required this.lat,
     required this.lng,
@@ -32,6 +34,8 @@ class ErrandLocation {
     this.placeId,
   });
 
+  /// Row id; `null` on locations built client-side for `POST /errands`.
+  final String? id;
   final ErrandPointType pointType;
   final double lat;
   final double lng;
@@ -45,6 +49,7 @@ class ErrandLocation {
   factory ErrandLocation.fromJson(Map<String, dynamic> json) {
     final geo = parseGeoPoint(json['coordinates']);
     return ErrandLocation(
+      id: parseOptionalString(json['id']),
       pointType: ErrandPointType.fromWire(json['pointType'] as String),
       lat: parseDouble(json['lat']) ?? geo?.lat ?? 0,
       lng: parseDouble(json['lng'] ?? json['lon']) ?? geo?.lng ?? 0,

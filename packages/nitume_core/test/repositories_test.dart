@@ -261,9 +261,116 @@ void main() {
       expect(r.alreadyPaid, isFalse);
     });
 
-    test('flow choice and idempotency stay TODO (A-6, A-7)', () {
-      final repo = PaymentsRepository(_client(_FakeAdapter({})));
-      expect(() => repo.initiateWith('e1'), throwsUnimplementedError);
+    test('initiateWith sends the Idempotency-Key, route and method',
+        () async {
+      final adapter = _FakeAdapter({
+        'POST /payments/e1/initiate': (201, {
+          'payment': {
+            'id': 'p1',
+            'errandId': 'e1',
+            'serviceFee': '700.00',
+            'runnerFee': '1500.00',
+            'merchantAmount': '40000.00',
+            'paymentFlow': 'merchant_direct',
+            'status': 'pending',
+          },
+          'reference': 'MP123',
+          'checkoutRequestId': 'ws_CO_1',
+          'transactions': <Object>[],
+          'stkStatus': 'PENDING',
+          'merchantPayment': {
+            'route': 'merchant_direct',
+            'amount': '40000.00',
+            'merchantName': null,
+            'tillNumber': null,
+            'paybillNumber': null,
+            'accountReference': null,
+          },
+        }),
+      });
+      final key = PaymentsRepository.newIdempotencyKey();
+      expect(PaymentsRepository.idempotencyKeyPattern.hasMatch(key), isTrue);
+      final r = await PaymentsRepository(_client(adapter)).initiateWith(
+        'e1',
+        idempotencyKey: key,
+        merchantRoute: MerchantRoute.merchantDirect,
+        paymentMethodId: 'pm1',
+      );
+      final request = adapter.requests.single;
+      expect(request.headers['Idempotency-Key'], key);
+      expect(request.data, {
+        'merchantRoute': 'merchant_direct',
+        'paymentMethodId': 'pm1',
+      });
+      expect(r.stkStatus, StkPaymentState.pending);
+      expect(r.merchantPayment?.route, MerchantRoute.merchantDirect);
+      expect(r.merchantPayment?.amount, '40000.00');
+      expect(r.merchantPayment?.hasMerchantDetails, isFalse);
+    });
+
+    test('initiateWith rejects a malformed key before calling the API',
+        () async {
+      final adapter = _FakeAdapter({});
+      final repo = PaymentsRepository(_client(adapter));
+      expect(
+        () => repo.initiateWith('e1', idempotencyKey: 'short'),
+        throwsArgumentError,
+      );
+      expect(
+        () => repo.initiateWith('e1', idempotencyKey: 'has spaces in it'),
+        throwsArgumentError,
+      );
+      expect(adapter.requests, isEmpty);
+    });
+
+    test('payment error codes reach the caller', () async {
+      final adapter = _FakeAdapter({
+        'POST /payments/e1/initiate': (400, {
+          'statusCode': 400,
+          'code': 'merchant_route_required',
+          'message': 'Choose how the merchant amount is paid',
+        }),
+      });
+      await expectLater(
+        PaymentsRepository(_client(adapter))
+            .initiateWith('e1', idempotencyKey: 'abcdefgh'),
+        throwsA(
+          isA<NitumeApiException>().having(
+            (e) => e.code,
+            'code',
+            ApiErrorCodes.merchantRouteRequired,
+          ),
+        ),
+      );
+    });
+
+    test('summary parses send-to-runner and Till details', () {
+      final summary = PaymentSummary.fromJson({
+        'payment': null,
+        'transactions': <Object>[],
+        'stkStatus': null,
+        'merchantPayment': null,
+      });
+      expect(summary.stkStatus, isNull);
+      expect(summary.merchantPayment, isNull);
+
+      final till = MerchantPayment.tryParse({
+        'route': 'merchant_direct',
+        'amount': '45000.00',
+        'merchantName': 'Sarit Shoes',
+        'tillNumber': '123456',
+        'paybillNumber': null,
+        'accountReference': null,
+      })!;
+      expect(till.hasMerchantDetails, isTrue);
+      expect(till.tillNumber, '123456');
+      final runner = MerchantPayment.tryParse({
+        'route': 'send_to_runner',
+        'amount': '5000.00',
+      })!;
+      expect(runner.route, MerchantRoute.sendToRunner);
+      expect(runner.hasMerchantDetails, isFalse);
+      expect(MerchantPayment.tryParse({'route': 'runner_advance'}), isNull);
     });
   });
 
@@ -312,6 +419,20 @@ void main() {
         expect(late.keepChecking, isTrue);
         expect(late.isFinal, isFalse);
       }
+    });
+
+    test('fromSummary prefers the server stkStatus', () {
+      expect(
+        StkPaymentState.fromSummary(
+          const PaymentSummary(stkStatus: StkPaymentState.timeout),
+          elapsed: Duration.zero,
+          confirmationWindow: window,
+        ),
+        StkPaymentState.timeout,
+      );
+      expect(parseStkStatus('SUCCESS'), StkPaymentState.success);
+      expect(parseStkStatus('FAILED'), StkPaymentState.failed);
+      expect(parseStkStatus('nope'), isNull);
     });
 
     test('fromSummary handles a missing payment row', () {
@@ -458,7 +579,7 @@ void main() {
     });
   });
 
-  group('Owner-approved optional fields (pending api-contract)', () {
+  group('Owner-approved errand fields', () {
     test('absent fields parse as null', () {
       final e = Errand.fromJson(Map<String, dynamic>.from(_errand));
       expect(e.reference, isNull);
@@ -484,12 +605,13 @@ void main() {
         'title': 'Apartment check — Nyali',
         'runnerNotes': 'Caretaker says water is on Tuesdays.',
         'items': [
-          {'name': 'Milk', 'quantity': 2, 'notes': 'Brookside'},
+          {'id': 'i1', 'name': 'Milk', 'quantity': 2, 'notes': 'Brookside'},
           {'quantity': 3},
           'bad',
         ],
         'locations': [
           {
+            'id': 'l1',
             'pointType': 'pickup',
             'lat': -1.29,
             'lng': 36.82,
@@ -520,6 +642,9 @@ void main() {
       expect(e.items!.single.name, 'Milk');
       expect(e.items!.single.quantity, 2);
       expect(e.items!.single.notes, 'Brookside');
+      expect(e.items!.single.id, 'i1');
+      expect(e.pickup?.id, 'l1');
+      expect(e.pickup?.lng, 36.82);
       expect(e.locations, hasLength(2));
       expect(e.pickup?.addressText, 'Naivas Westlands');
       expect(e.dropoff?.addressText, 'Kilimani');

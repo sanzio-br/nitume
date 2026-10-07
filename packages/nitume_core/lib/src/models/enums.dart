@@ -221,6 +221,30 @@ enum PaymentFlow {
   static PaymentFlow fromWire(String v) => _fromWire(values, (e) => e.wire, v);
 }
 
+/// How the customer pays the merchant / item amount (OA-5), sent as
+/// `merchantRoute` on payment initiation and price-change approval. Runner
+/// advance is never a customer option.
+enum MerchantRoute {
+  /// Pay the merchant's Till / Paybill directly (`PaymentFlow.merchantDirect`).
+  merchantDirect('merchant_direct'),
+
+  /// Send the item amount to the runner (`PaymentFlow.customerToRunner`).
+  sendToRunner('send_to_runner');
+
+  const MerchantRoute(this.wire);
+  final String wire;
+
+  static MerchantRoute fromWire(String v) => _fromWire(values, (e) => e.wire, v);
+
+  /// `null` for unknown values.
+  static MerchantRoute? tryFromWire(String? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
 enum PaymentStatus {
   pending('pending'),
   authorized('authorized'),

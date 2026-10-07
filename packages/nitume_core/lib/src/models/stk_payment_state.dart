@@ -43,10 +43,11 @@ enum StkPaymentState {
   /// `completed` → [success]; `failed` and `refunded` → [failed];
   /// `pending`, `authorized` and `null` → [pending] or [timeout].
   ///
-  /// Retrying from [timeout] must not create a duplicate charge. Today the
-  /// API answers a second initiate with `checkoutRequestId: PENDING` while a
-  /// push is outstanding (`PaymentInitiation.alreadyPending`); the full
-  /// idempotency key is still an open owner question (BOARD row 24).
+  /// Fallback for responses without a server `stkStatus`; prefer
+  /// [fromSummary], which uses the server value when present.
+  ///
+  /// Retrying from [timeout] must not create a duplicate charge: retry with
+  /// `PaymentsRepository.initiateWith` and the **same** idempotency key.
   static StkPaymentState from({
     required PaymentStatus? status,
     required Duration elapsed,
@@ -65,12 +66,15 @@ enum StkPaymentState {
     }
   }
 
-  /// [from] applied to a `GET /payments/:errandId` result.
+  /// State for a `GET /payments/:errandId` result: the server-computed
+  /// `stkStatus` when present (authoritative, TIMEOUT after 120s), otherwise
+  /// [from] on the payment status.
   static StkPaymentState fromSummary(
     PaymentSummary summary, {
     required Duration elapsed,
     required Duration confirmationWindow,
   }) =>
+      summary.stkStatus ??
       from(
         status: summary.payment?.status,
         elapsed: elapsed,
