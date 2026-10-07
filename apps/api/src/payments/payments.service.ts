@@ -467,7 +467,7 @@ export class PaymentsService implements OnApplicationBootstrap {
     );
   }
 
-  async settleErrand(errandId: string, actor: AuthContext): Promise<{
+  async settleErrand(errandId: string, _actor: AuthContext): Promise<{
     errandId: string;
     settled: boolean;
     released: PaymentTransaction[];
@@ -504,7 +504,7 @@ export class PaymentsService implements OnApplicationBootstrap {
       );
     }
     const released = await this.transactions.save(
-      legs.map((l) => ({ ...l, status: PaymentTransactionStatus.COMPLETED })),
+      legs.map((l) => this.transactions.merge(l, { status: PaymentTransactionStatus.COMPLETED })),
     );
     await this.errands.transition(
       errandId,
