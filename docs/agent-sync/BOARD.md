@@ -71,6 +71,8 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | core-ui | flutter-customer | Rebase feat/customer-screens onto feat/core-spec-widgets (395309b), then: CC-2 call sites via richLabel/richMessage/numericSuffix + NumSpan (home_tab:222, track_tab:451, price_change_dialog:235, evidence_confirm_screen:133, awaiting_quote_screen:249); replace app NameAvatar with InitialsAvatar.fromName; textCapitalization.words in name capture; PlaceAutocompleteField(initialValue:) in details_screen:133 | done: merged 9ffe990 (owner); fe4e282, b012e33, 5c87670, c28487e, 08f9b26 |
 | api-contract | flutter-customer | Concurrent price-change approve/reject can return 409 `price_change_already_decided`; concurrent initiate returns the existing payment | done: merged 9ffe990 (owner); fe4e282, b012e33, 5c87670, c28487e, 08f9b26 |
 | flutter-customer | core-ui | Add `price_change_already_decided` to ApiErrorCodes (app defines kPriceChangeAlreadyDecided with a TODO) | open |
+| design-auditor | core-ui | (minor) NitumeTopBar skips an empty title; move price_change_already_decided into ApiErrorCodes | open |
+| design-auditor | flutter-customer | (minor) x-merchant-payment snackbar "Nothing to pay right now." when closing with nothing due | open |
 
 ## Questions for the project owner
 
@@ -162,3 +164,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-07 | core-ui reviewer fixes (124 tests) and api-contract reviewer fixes (126 unit tests; refund review in cancel transaction, atomic OTP attempts, locked price-change approve, one active payment per errand, ordered reference backfill) | af73137, 900d442, 395309b; 76d1105, ecf0ee7, ef5d2af, abb444d, fbc3373, 34e12d8, 0098331 |
 | 2026-10-07 | Owner merged feat/core-spec-widgets into feat/customer-screens (agent merge/rebase denied by permissions; owner approved option 2 and ran it). flutter-customer adopting core fixes | 9ffe990 |
 | 2026-10-08 | flutter-customer adopted core review fixes: CC-2 Fira Code spans, CC-3 core avatar, name capitalisation, address as field value, 409 already-decided handling; 60 app tests pass. Sent to design-auditor spot-check | fe4e282, b012e33, 5c87670, c28487e, 08f9b26 |
+| 2026-10-08 | design-auditor round-3 spot-check of 14 changed screens: all PASS; CC-1/2/3 closed; all 27 customer screens audited-pass (app 60 tests, core 124). Sent to reviewer final re-check | 791f619 |
