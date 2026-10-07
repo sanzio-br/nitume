@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 529–539 (`#v-notifications`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/notifications_screen.dart` (placeholder text only, unreachable)
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/account/notifications_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 In-app feed of task events (quote ready, runner en route, price change, completion, payment, rating reminders).
@@ -74,4 +74,4 @@ States (proposed):
 - Q3: Fira Code inside sentence subtitles. Default: no (whole subtitle Fira Sans).
 
 ## Current vs design
-`notifications_screen.dart` shows `Notification feed pending — backend events wire up in next phase.` and is not wired to the bell or the Profile row.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `Mark all read` sits under the header, not in it (core header trailing slot, need open).

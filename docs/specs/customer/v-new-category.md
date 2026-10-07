@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 343–359 (`#v-new-category`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
-- Implementation: `apps/customer_app/lib/src/screens/new_task_tab.dart` (rendered as a root tab, not a pushed screen)
-- Status: partial
+- Implementation: `apps/customer_app/lib/src/screens/wizard/category_screen.dart` (pushed by the shell) on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Step 1 of the 3-step task wizard: pick exactly one of the **five** MVP categories.
@@ -67,4 +67,4 @@ States:
 - Q3: Emoji (mockup 🛍️ 📦 👀 📍 📝) vs icon glyphs. Default: icon glyphs (`categoryIcon()` in core), blue on green-050, for consistent rendering.
 
 ## Current vs design
-See gap report. Summary: built as a root tab with a `SliverAppBar`, an extra heading and subtitle, no step counter, stepper or back button; selection hard-coded on Inspect; short labels including a Business tile; CTA inline and inert; inline style with an unregistered `'FiraSans'` family.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS.

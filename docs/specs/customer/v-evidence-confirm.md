@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 443–461 (`#v-evidence-confirm`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/task/evidence_confirm_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 The runner has finished and uploaded evidence. The customer reviews photos/video, the runner's notes and the payment summary, then confirms completion, or reports a problem.
@@ -78,4 +78,4 @@ States (proposed):
 - Merchant amount in the summary: separate line (OA-4, was Q5).
 
 ## Current vs design
-Not built. `track_tab.dart:283` has a "📋 Review evidence" button with a TODO.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. `Confirm completion` fires AWAITING_CUSTOMER → COMPLETED only; no escrow wording. Minor: the `(4)` count in the section label renders in Fira Sans (CC-2).

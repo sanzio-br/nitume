@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Referenced by `v-addresses` "+ Add new address" and card taps. Built from design-system form patterns (field, `.check`, buttons) and the mockup's `.form-card` / `.cta-fixed`; copy is **(proposed)**.
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/account/address_form_screen.dart` on branch `feat/customer-screens`
+- Status: built
 
 ## Purpose
 Create, edit, set as default, or delete a saved place used as a shortcut in the task wizard.
@@ -36,6 +36,8 @@ C-10, C-17, C-16, `PlaceAutocompleteField`, C-36, C-04, C-35, C-01. NEW: C-35, C
 - CTA: `Save address`
 - Delete: `Delete address`; dialog title `Delete "Office"?`, body `You can add it again later.`, buttons `Delete` (outline, red text) / `Keep` (C-01)
 - Validation: empty name `Give this place a name.`; no place chosen from the suggestions `Choose an address from the list.`
+- Discard dialog (back with changes): title `Discard your changes?`, buttons `Discard` (outline, red text) / `Keep editing` (C-01) (builder copy, accepted in the 2026-10-07 re-audit).
+- Delete error (proposed, re-audit): `Couldn't delete the address. Try again.`
 - Errors: save `Couldn't save the address. Try again.`; Places offline `Couldn't search places. Check your connection.`
 
 ## Numeric fields (Fira Code)
@@ -53,6 +55,7 @@ None.
 
 ## Open questions
 - Pending row 30 (Places).
+- BOARD row 60 (flutter-customer): saving typed addresses without coordinates. Until the owner answers, the spec stays as written: no coordinates → Save disabled. If the owner approves manual addresses, this spec gains: a typed address field, edits of the text clear the stored coordinates, and `v-addresses` marks addresses without a map location (they cannot be used in the wizard).
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). FAIL. Blockers: without Places the address is typed and saved without coordinates (spec: Save disabled until row 30); editing the text keeps the old coordinates. See the re-audit.

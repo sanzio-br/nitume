@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Implied by the tappable evidence thumbnails on `v-evidence-confirm` and `v-task-detail`. Built from design-system tokens and the core `EvidenceViewer`; copy is **(proposed)**.
 - Shared conventions: `_shared.md`
-- Implementation: none (core `EvidenceViewer` exists on `feat/core-customer-widgets`)
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/widgets/evidence.dart` (`openEvidenceViewer`) on core `EvidenceViewer` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 View one evidence item at full size (zoomable photo or playable video), swipe between items, and see when and where it was captured.
@@ -52,4 +52,4 @@ Full-screen pushed route, **blue-700 `#08192F` background** (design-system tone,
 - Pending row 32 (video package), row 25 (evidence links).
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (video row 32 and link row 25 fallbacks). Minor: no widget test; `onLoadError` re-fetch not wired (waits for signed links, row 25).

@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 423–441 (`#v-price-auth`, drawn as an overlay screen)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` (opened from `home_shell.dart` on resume and `track_tab.dart`) on branch `feat/customer-screens`
+- Status: built
 
 ## Purpose
 The runner found the item priced higher than the agreed item amount. The customer approves the new amount (and pays the difference) or rejects it, which cancels the task (OA-8).
@@ -82,7 +82,8 @@ States (proposed):
 - Which amount changes and how it is paid: the item/merchant amount; the customer pays the difference (OA-8, was Q4).
 
 ## Open questions for the owner
+- Q2 (payments, raised in the 2026-10-07 re-audit): when the errand has no item amount, no route was chosen at checkout, and the API answers `MERCHANT_ROUTE_REQUIRED` on approve. Should the customer choose the route inside this modal, or should such a request be refused? Build default until answered: the app never picks a route for the customer. The modal shows the checkout route rows (C-16 radio-row variant, same copy as `x-awaiting-quote`; merchant-direct disabled per SQ-6) after that error, and `Approve` stays disabled until the customer selects one.
 - Q1 (payments): "pays the difference" — through the same route chosen at checkout (merchant-direct: pays the merchant more; send-to-runner: SQ-5), or by a new STK push to Nitume? Default: same route, shown on `x-merchant-payment`.
 
 ## Current vs design
-Not built. `track_tab.dart:263` has a "⚠️ Price change" button with a TODO.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). FAIL. Blocker: on `MERCHANT_ROUTE_REQUIRED` the approve call is silently retried with `send-to-runner`, choosing a payment route for the customer. See the re-audit.

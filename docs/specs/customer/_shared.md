@@ -47,7 +47,7 @@ Still **open** on the board. Specs reference these as "pending row N" and never 
 |---|---|---|
 | 1 | ERD enum ↔ display-name mapping (AGENTS.md mapping in use, pending confirmation) | Wire values in §7 |
 | 23 | Socket event names (`errand:join`, `errand:status_changed`, `evidence:uploaded`, `price_change:requested`) | Use names only through core `RealtimeEvents` constants so a rename is one line |
-| 24 | Payment idempotency key mechanism | v-payment safe retry |
+| ~~24~~ | **Answered** (owner): nullable unique `payments.idempotency_key` + `Idempotency-Key` header | v-payment safe retry |
 | 25 | Evidence view links (signed URLs, TTL) | C-25, x-evidence-viewer |
 | 26 | BullMQ for notifications | Push latency only; no UI change |
 | 27 | Runner location privacy window | v-track map visibility |
@@ -58,9 +58,9 @@ Still **open** on the board. Specs reference these as "pending row N" and never 
 | 32 | Video player package | x-evidence-viewer video |
 | 33 | Chip text contrast (WCAG AA at 12px) | C-05 text colour |
 | 34 | Which quote components make up "Service fee" vs "Runner fee" | Every fee line (§8) |
-| 35 | Keep or remove CONFIRMED / SETTLED | Labels exist in §6; no customer screen depends on them |
-| 36 | Dispute resolution target state | x-report-problem and v-task-detail render whatever state follows |
-| 37 | Refunds on cancel after payment; which active states reach CANCELLED | v-price-auth reject outcome; cancel copy |
+| ~~35~~ | **Answered** (owner): CONFIRMED and SETTLED stay as system-only states (COMPLETED → CONFIRMED → SETTLED by the system), never shown in the customer UI | §6 now labels both `Completed`; v-task-detail / v-rate treat them like COMPLETED for rating |
+| ~~36~~ | **Answered** (owner): runner-favourable resolution → COMPLETED; customer-favourable → CANCELLED | x-report-problem and v-task-detail render whatever state follows |
+| ~~37~~ | **Answered** (owner): customer IN_PROGRESS → CANCELLED on price-change reject; goes to admin refund review, admin sets the refund (up to full) | v-price-auth reject copy unchanged (`We'll update you about anything you've already paid.`); no refund amounts shown |
 
 ## 1. Navigation model
 
@@ -223,8 +223,8 @@ State machine: `Nitume_System_Design.md` §3.3 plus the approved API transitions
 | IN_PROGRESS | In progress | info |
 | AWAITING_CUSTOMER | Needs your review | pending |
 | COMPLETED | Completed | success |
-| CONFIRMED | Confirmed | success. The state may be removed or become system-only (pending row 35); no customer screen depends on it |
-| SETTLED | Completed | success (same note, pending row 35) |
+| CONFIRMED | **Completed** | success. System-only state (row 35 answered): the customer never sees the word "Confirmed" |
+| SETTLED | Completed | success (system-only, row 35 answered) |
 | CANCELLED | Cancelled | **danger (red), OA-13** |
 | FAILED | Failed | danger |
 | EXPIRED | Expired | info (not drawn; nothing for the customer to act on) |

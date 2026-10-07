@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Required by §6 of the system design ("show merchant Till/Paybill for merchant_amount, paid separately") and OA-5 (Till/Paybill shown only when merchant-direct is selected). Built from design-system patterns (card, list rows, buttons) and the `.stk-wrap` / `.form-card` mockup components; copy is **(proposed)**.
 - Shared conventions: `_shared.md` (OA-n §0, payment flows §8)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Show the customer exactly what to pay for the item/merchant amount and where, kept separate from the service and runner fees (three flows separate). Nitume does not collect this money in the merchant-direct route.
@@ -78,4 +78,4 @@ Layout (top to bottom):
 - Pending row 37: refunds if the task is cancelled after the merchant was paid; this screen shows no refund copy.
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (send-to-runner variant built as the SQ-5 fallback). Minor: with no amount due on the send-to-runner route the merchant-details notice is shown.

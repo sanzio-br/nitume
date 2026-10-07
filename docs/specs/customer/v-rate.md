@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 463–480 (`#v-rate`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/task/rate_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Collect a 1–5 star rating and an optional comment for the runner after the customer confirms completion.
@@ -14,7 +14,7 @@ Collect a 1–5 star rating and an optional comment for the runner after the cus
 - "Submit rating" → reset the stack to the shell on `v-home` (mockup `jump('v-home', true)`), snackbar.
 
 ## Task states
-COMPLETED (and CONFIRMED / SETTLED if the API still returns them, pending row 35). Submitting a rating changes **no** errand state (OA-7: COMPLETED is terminal for the customer). One rating per errand.
+COMPLETED, CONFIRMED or SETTLED (row 35 answered: CONFIRMED and SETTLED are system-only states the customer sees as `Completed`). Submitting a rating changes **no** errand state (OA-7: COMPLETED is terminal for the customer). One rating per errand.
 
 ## Layout (top to bottom)
 1. Pushed header (C-10) `Rate this task`.
@@ -62,4 +62,4 @@ States (proposed):
 - Q2: Rating mandatory or skippable? Default: skippable (back arrow), with a "Rate your last task" notification (needs: api-contract — a `rating.reminder` event type, not in `NotificationEventType`).
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: uses the app-local `NameAvatar` glyph fallback (CC-3).

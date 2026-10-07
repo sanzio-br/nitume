@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 329–341 (`#v-auth-otp`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
-- Implementation: `apps/customer_app/lib/src/screens/auth/otp_login_screen.dart` (code step, `_CodeStep` lines 265–322)
-- Status: partial
+- Implementation: `apps/customer_app/lib/src/screens/auth/otp_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Verify the 6-digit SMS code and establish the session (JWT pair), then continue to name capture (first sign-in) or Home.
@@ -47,6 +47,7 @@ OTP policy (OA-17): code valid 5 minutes; 5 verification attempts per code; 60 s
 States (proposed copy):
 - Cooldown running (first 60 s after any send): resend line reads `Didn't get it? Resend code in 0:59` with the time in Fira Code counting down each second (C-38); the link is not tappable. At 0:00 it becomes the mockup line with the green-700 `Resend code` link.
 - Verifying: button spinner, boxes disabled. Auto-submit when the 6th digit is entered.
+- `Verify & continue` tapped with fewer than 6 digits: inline red `Enter the 6-digit code.` (builder copy, accepted in the 2026-10-07 re-audit).
 - Wrong code (API `OTP_INCORRECT`): `That code is incorrect. Try again.` Boxes cleared and refocused.
 - Attempts used up (5th wrong attempt, API `OTP_ATTEMPTS_EXCEEDED`): `Too many incorrect attempts. Request a new code.` Boxes disabled until a new code is sent; resend link enabled immediately if the cooldown is over, otherwise the countdown shows.
 - Code expired (older than 5 min, or replaced by a newer code; API `OTP_EXPIRED`): `This code has expired. Request a new code.` Boxes disabled until resend.
@@ -79,4 +80,4 @@ States (proposed copy):
 - Name collection after first sign-in: OA-2 (was Q2) → `x-name-capture`.
 
 ## Current vs design
-See gap report. Summary: code step lives inside the phone screen (no back arrow, phone heading and brand still shown); single text field with letter-spaced digits instead of 6 boxes; copy "Verify" / "Didn't get it? Send again"; `onSubmitted: (_) => onSubmit` never calls the callback (line 298); no countdown; `AuthRepository` and `/users/me` are not used; no session restore.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Six boxes, C-38 countdown, OA-17 error states, suspended-account line with Support link, role `customer` sent. Builder copy `Enter the 6-digit code.` (Verify tapped with fewer than 6 digits) accepted, see Copy.

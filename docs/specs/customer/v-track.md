@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 257–284 (`#v-track`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/track_tab.dart`
-- Status: partial
+- Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Watch the assigned runner on a map, see ETA and runner identity, follow the status timeline, and act on what the task needs (price change, item payment, evidence review).
@@ -99,4 +99,4 @@ States (proposed):
 - Pending row 27 (location privacy window) and row 30 (maps package).
 
 ## Current vs design
-See gap report. Summary: static mock (no errand, socket or map SDK); off-palette `Color(0xFFEAEEF4)`, a raw `Color(0xFF0B2545)` and black shadows; missing asset `assets/map_placeholder.png`; unregistered `'FiraCode'`; inline chips; private copy-pasted timeline and bell; action buttons inert.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (map SDK row 30 and socket row 29 fallbacks). Minor: the item-payment notice amount renders in Fira Sans (core `NitumeNotice` is string-only, CC-2).

@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 386–408 (`#v-new-review`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0; fees §8)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/wizard/review_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Show a **preview** of the price, clearly labelled as an estimate (OA-3), and submit the task for its authoritative quote. Payment does **not** happen here any more; it happens after the customer accepts the final quote on `x-awaiting-quote` (checkout).
@@ -79,4 +79,4 @@ States (proposed):
 - Send-to-runner payment mechanics (was Q5): still open, SQ-5.
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (preview endpoint pending row 47: always the estimate-unavailable state). Minor: the notice is a standalone card, not inside an `Estimated price` form card.
