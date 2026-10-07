@@ -50,6 +50,7 @@ export interface AppConfig {
   };
   payments: {
     mpesaTransport: string;
+    stkTimeoutSeconds: number;
   };
   evidence: {
     storageDriver: 'console' | 'cloudinary';
@@ -127,6 +128,9 @@ export const configuration = (): AppConfig => ({
   },
   payments: {
     mpesaTransport: process.env.PAYMENTS_MPESA_TRANSPORT ?? 'console',
+    // After this long without a provider result an STK push reads TIMEOUT
+    // (not FAILED); a late callback still settles it.
+    stkTimeoutSeconds: int(process.env.PAYMENTS_STK_TIMEOUT_SECONDS, 120),
   },
   // TODO(owner): urgency thresholds are placeholders. Urgency is derived from
   // deadlineAt (owner decision Q19) but no thresholds are defined anywhere.

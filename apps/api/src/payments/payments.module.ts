@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CustomerProfile } from '../customers/customer-profile.entity';
+import { CustomersModule } from '../customers/customers.module';
 import { ErrandsModule } from '../errands/errands.module';
 import { Payment } from './payment.entity';
 import { PaymentTransaction } from './payment-transaction.entity';
@@ -13,6 +14,7 @@ import { stkGatewayProvider } from './stk-gateway/stk-gateway.provider';
 @Module({
   imports: [
     ErrandsModule,
+    CustomersModule,
     TypeOrmModule.forFeature([Payment, PaymentTransaction, PaymentType, CustomerProfile]),
   ],
   controllers: [PaymentsController],

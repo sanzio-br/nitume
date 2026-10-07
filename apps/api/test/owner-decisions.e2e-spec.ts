@@ -390,4 +390,88 @@ describe('Owner decisions (e2e)', () => {
       expect(res.body.errand.status).toBe('COMPLETED');
     });
   });
+
+  describe('payments', () => {
+    const prepare = async (budget: number) => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const errand = await createErrand(customer, { budget });
+      await http().post(`/api/v1/errands/${errand.id}/submit`).set(bearer(customer.token)).expect(201);
+      await http()
+        .post(`/api/v1/errands/${errand.id}/quote`)
+        .set(bearer(admin.token))
+        .send({ total: 1000 })
+        .expect(201);
+      await setStatus(customer, errand.id, 'ACCEPTED');
+      return { customer, errand };
+    };
+
+    it('retries with the same Idempotency-Key return the stored payment', async () => {
+      const { customer, errand } = await prepare(0);
+      const key = `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const first = await http()
+        .post(`/api/v1/payments/${errand.id}/initiate`)
+        .set(bearer(customer.token))
+        .set('Idempotency-Key', key)
+        .send({})
+        .expect(201);
+      expect(first.body.stkStatus).toBe('PENDING');
+      expect(first.body.payment.idempotencyKey).toBe(key);
+      expect(first.body.merchantPayment).toBeNull();
+      const retry = await http()
+        .post(`/api/v1/payments/${errand.id}/initiate`)
+        .set(bearer(customer.token))
+        .set('Idempotency-Key', key)
+        .send({})
+        .expect(201);
+      expect(retry.body.payment.id).toBe(first.body.payment.id);
+      expect(retry.body.reference).toBe(first.body.reference);
+
+      const bad = await http()
+        .post(`/api/v1/payments/${errand.id}/initiate`)
+        .set(bearer(customer.token))
+        .set('Idempotency-Key', 'x')
+        .send({})
+        .expect(400);
+      expect(bad.body.code).toBe('idempotency_key_invalid');
+
+      await http()
+        .post('/api/v1/payments/mpesa/callback')
+        .send({ reference: first.body.reference, resultCode: 0 })
+        .expect(201);
+      const read = await http()
+        .get(`/api/v1/payments/${errand.id}`)
+        .set(bearer(customer.token))
+        .expect(200);
+      expect(read.body.stkStatus).toBe('SUCCESS');
+    });
+
+    it('requires a merchant route and refuses merchant_direct without details', async () => {
+      const { customer, errand } = await prepare(2500);
+      const missing = await http()
+        .post(`/api/v1/payments/${errand.id}/initiate`)
+        .set(bearer(customer.token))
+        .send({})
+        .expect(400);
+      expect(missing.body.code).toBe('merchant_route_required');
+      const direct = await http()
+        .post(`/api/v1/payments/${errand.id}/initiate`)
+        .set(bearer(customer.token))
+        .send({ merchantRoute: 'merchant_direct' })
+        .expect(409);
+      expect(direct.body.code).toBe('merchant_details_missing');
+      await http()
+        .post(`/api/v1/payments/${errand.id}/initiate`)
+        .set(bearer(customer.token))
+        .send({ merchantRoute: 'runner_advance' })
+        .expect(400);
+      const ok = await http()
+        .post(`/api/v1/payments/${errand.id}/initiate`)
+        .set(bearer(customer.token))
+        .send({ merchantRoute: 'send_to_runner' })
+        .expect(201);
+      expect(ok.body.payment.paymentFlow).toBe('customer_to_runner');
+      expect(ok.body.merchantPayment).toEqual({ route: 'send_to_runner', amount: '2500.00' });
+    });
+  });
 });

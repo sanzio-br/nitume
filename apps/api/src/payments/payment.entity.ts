@@ -41,6 +41,14 @@ export class Payment {
   })
   status: PaymentStatus;
 
+  /**
+   * Client-supplied `Idempotency-Key` of the initiate call that created this
+   * payment. A retry with the same key returns this row (no new STK push).
+   */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  idempotencyKey: string | null;
+
   @Index(['status', 'createdAt'])
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
