@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/nitume_colors.dart';
+import '../theme/nitume_design_choices.dart';
 import '../theme/nitume_theme.dart';
 import '../theme/nitume_typography.dart';
 
@@ -43,6 +44,7 @@ class NitumeButton extends StatelessWidget {
     this.icon,
     this.expand = false,
     this.loading = false,
+    this.destructive = false,
   });
 
   const NitumeButton.primary({
@@ -53,7 +55,8 @@ class NitumeButton extends StatelessWidget {
     this.icon,
     this.expand = false,
     this.loading = false,
-  }) : variant = NitumeButtonVariant.primary;
+  })  : variant = NitumeButtonVariant.primary,
+        destructive = false;
 
   const NitumeButton.secondary({
     super.key,
@@ -63,7 +66,8 @@ class NitumeButton extends StatelessWidget {
     this.icon,
     this.expand = false,
     this.loading = false,
-  }) : variant = NitumeButtonVariant.secondary;
+  })  : variant = NitumeButtonVariant.secondary,
+        destructive = false;
 
   const NitumeButton.outline({
     super.key,
@@ -73,6 +77,7 @@ class NitumeButton extends StatelessWidget {
     this.icon,
     this.expand = false,
     this.loading = false,
+    this.destructive = false,
   }) : variant = NitumeButtonVariant.outline;
 
   const NitumeButton.text({
@@ -83,6 +88,7 @@ class NitumeButton extends StatelessWidget {
     this.icon,
     this.expand = false,
     this.loading = false,
+    this.destructive = false,
   }) : variant = NitumeButtonVariant.text;
 
   const NitumeButton.link({
@@ -93,7 +99,8 @@ class NitumeButton extends StatelessWidget {
   })  : variant = NitumeButtonVariant.link,
         size = NitumeButtonSize.small,
         expand = false,
-        loading = false;
+        loading = false,
+        destructive = false;
 
   final String label;
 
@@ -109,17 +116,34 @@ class NitumeButton extends StatelessWidget {
   /// Shows a spinner and disables the button.
   final bool loading;
 
+  /// Destructive action ("Reject & cancel", "Log out", "Delete address"):
+  /// label in [NitumeDesignChoices.destructiveText] (red, OA-13). Only the
+  /// outline and text variants support it; fills never carry red.
+  final bool destructive;
+
   @override
   Widget build(BuildContext context) {
     final isFilled = variant == NitumeButtonVariant.primary ||
         variant == NitumeButtonVariant.secondary;
-    final spinnerColor = isFilled ? NitumeColors.white : NitumeColors.blue;
+    final spinnerColor = isFilled
+        ? NitumeColors.white
+        : destructive
+            ? NitumeDesignChoices.destructiveText
+            : NitumeColors.blue;
 
     var style = switch (variant) {
       NitumeButtonVariant.primary => NitumeTheme.primaryButtonStyle(),
       NitumeButtonVariant.secondary => NitumeTheme.secondaryButtonStyle(),
-      NitumeButtonVariant.outline => NitumeTheme.outlineButtonStyle(),
-      NitumeButtonVariant.text => NitumeTheme.textButtonStyle(),
+      NitumeButtonVariant.outline => NitumeTheme.outlineButtonStyle(
+          color: destructive
+              ? NitumeDesignChoices.destructiveText
+              : NitumeColors.blue,
+        ),
+      NitumeButtonVariant.text => NitumeTheme.textButtonStyle(
+          color: destructive
+              ? NitumeDesignChoices.destructiveText
+              : NitumeColors.blue,
+        ),
       NitumeButtonVariant.link =>
         NitumeTheme.textButtonStyle(color: NitumeColors.green700),
     };

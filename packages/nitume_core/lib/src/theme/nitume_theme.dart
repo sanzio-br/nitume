@@ -235,13 +235,13 @@ abstract final class NitumeTheme {
         pressed: NitumeColors.blue700,
       );
 
-  /// `.btn-outline`: white, slate-line border (blue when pressed), blue text.
-  static ButtonStyle outlineButtonStyle() => ButtonStyle(
+  /// `.btn-outline`: white, slate-line border (blue when pressed), [color]
+  /// label (blue; red only for destructive actions, OA-13).
+  static ButtonStyle outlineButtonStyle({Color color = NitumeColors.blue}) =>
+      ButtonStyle(
         backgroundColor: const WidgetStatePropertyAll(NitumeColors.white),
         foregroundColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.disabled)
-              ? NitumeColors.slate400
-              : NitumeColors.blue,
+          (s) => s.contains(WidgetState.disabled) ? NitumeColors.slate400 : color,
         ),
         overlayColor: const WidgetStatePropertyAll(NitumeColors.slate),
         side: WidgetStateProperty.resolveWith(
