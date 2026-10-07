@@ -33,8 +33,8 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 
 | From | To | Request | Status |
 |------|----|---------|--------|
-| design-auditor | core-ui | Build widgets C-01..C-34 (`docs/specs/customer/_shared.md`); move NitumeCard/StatusChip/statusPresentation from app to core; theme fixes (green focus ring, radii, tab bar colours, bundle Fira Sans/Code, `NitumeTypography.numeric`); data layer (repositories, models, Socket.IO client, FCM) | open |
-| design-auditor | api-contract | Endpoints/events A-1..A-17 (`docs/audits/customer-gap-report.md`): Socket.IO gateway + location:update and status/evidence/price-change events; GET /errands/:id/tracking; runner on errand; customer-readable quote; payment-flow selection + idempotency key; GET pending price-change; disputes controller; multi-status filter; errand count; evidence view URLs; FCM device registration; notification eventType enum. Schema items (names, title/reference) wait for owner | open |
+| design-auditor | core-ui | Build widgets C-01..C-34 (`docs/specs/customer/_shared.md`); move NitumeCard/StatusChip/statusPresentation from app to core; theme fixes (green focus ring, radii, tab bar colours, bundle Fira Sans/Code, `NitumeTypography.numeric`); data layer (repositories, models, Socket.IO client, FCM) | in progress: feat/core-customer-widgets (worktree ../nitume-core-customer-widgets) |
+| design-auditor | api-contract | Endpoints/events A-1..A-17 (`docs/audits/customer-gap-report.md`): Socket.IO gateway + location:update and status/evidence/price-change events; GET /errands/:id/tracking; runner on errand; customer-readable quote; payment-flow selection + idempotency key; GET pending price-change; disputes controller; multi-status filter; errand count; evidence view URLs; FCM device registration; notification eventType enum. Schema items (names, title/reference) wait for owner | in progress: feat/api-customer-gaps (worktree ../nitume-api-customer-gaps) |
 
 ## Questions for the project owner
 
