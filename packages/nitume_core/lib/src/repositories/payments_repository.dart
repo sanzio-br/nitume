@@ -11,7 +11,7 @@ class PaymentsRepository {
   /// Sends the STK push (`POST /payments/:errandId/initiate`). The API picks
   /// the payment flow itself today. Confirmation arrives via the errand
   /// moving to PAYMENT_CONFIRMED (realtime status event or polling
-  /// [forErrand]).
+  /// [forErrand]); map the result with `StkPaymentState.fromSummary`.
   Future<PaymentInitiation> initiate(String errandId) async =>
       PaymentInitiation.fromJson(
         await _api.postMap('/payments/$errandId/initiate'),
@@ -22,9 +22,10 @@ class PaymentsRepository {
       PaymentSummary.fromJson(await _api.getMap('/payments/$errandId'));
 
   /// TODO(A-6, A-7): customer-chosen merchant payment flow and an
-  /// idempotency key on initiation. Neither exists on the API and both are
-  /// owner decisions (payments, §3); do not send these fields until the
-  /// contract is defined. Use [initiate] meanwhile.
+  /// idempotency key on initiation. Neither exists on the API yet. The
+  /// idempotency design is an open owner question (BOARD row 24); do not
+  /// send these fields until the contract is defined. Use [initiate]
+  /// meanwhile.
   Future<PaymentInitiation> initiateWith(
     String errandId, {
     PaymentFlow? flow,

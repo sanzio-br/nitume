@@ -227,6 +227,67 @@ void main() {
     });
   });
 
+  group('StkPaymentState', () {
+    const window = Duration(seconds: 90);
+
+    test('maps provider answers to success / failed', () {
+      expect(
+        StkPaymentState.from(
+          status: PaymentStatus.completed,
+          elapsed: Duration.zero,
+          confirmationWindow: window,
+        ),
+        StkPaymentState.success,
+      );
+      expect(
+        StkPaymentState.from(
+          status: PaymentStatus.failed,
+          elapsed: Duration.zero,
+          confirmationWindow: window,
+        ),
+        StkPaymentState.failed,
+      );
+    });
+
+    test('unconfirmed past the window is timeout, never failed', () {
+      for (final status in [
+        null,
+        PaymentStatus.pending,
+        PaymentStatus.authorized,
+      ]) {
+        expect(
+          StkPaymentState.from(
+            status: status,
+            elapsed: const Duration(seconds: 10),
+            confirmationWindow: window,
+          ),
+          StkPaymentState.pending,
+        );
+        final late = StkPaymentState.from(
+          status: status,
+          elapsed: window,
+          confirmationWindow: window,
+        );
+        expect(late, StkPaymentState.timeout);
+        expect(late.keepChecking, isTrue);
+        expect(late.isFinal, isFalse);
+      }
+    });
+
+    test('fromSummary handles a missing payment row', () {
+      expect(
+        StkPaymentState.fromSummary(
+          const PaymentSummary(),
+          elapsed: const Duration(seconds: 120),
+          confirmationWindow: window,
+        ),
+        StkPaymentState.timeout,
+      );
+      expect(StkPaymentState.success.isConfirmed, isTrue);
+      expect(StkPaymentState.failed.keepChecking, isFalse);
+    });
+  });
+
   group('PriceChangeRepository', () {
     test('pending filters by status and returns the newest', () async {
       final adapter = _FakeAdapter({

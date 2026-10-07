@@ -2,7 +2,8 @@ import 'enums.dart';
 import 'json_utils.dart';
 
 /// Payment record for an errand (`payments`). Service fee, runner fee and
-/// merchant amount stay separate; there is no wallet or escrow balance.
+/// merchant amount are three separate payment flows; the app keeps no
+/// stored balance. For the STK screen state use `StkPaymentState`.
 class Payment {
   const Payment({
     required this.id,

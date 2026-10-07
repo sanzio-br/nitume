@@ -19,6 +19,7 @@ export 'src/models/errand_details.dart';
 export 'src/models/errand_location.dart';
 export 'src/models/payment.dart';
 export 'src/models/runner.dart';
+export 'src/models/stk_payment_state.dart';
 export 'src/places/place_search.dart';
 export 'src/realtime/realtime_client.dart';
 export 'src/repositories/account_repositories.dart';
