@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
 
@@ -650,6 +651,96 @@ void main() {
       );
       expect(line.textSpan!.toPlainText(), "Didn't get it? Resend code in 0:59");
       expect(find.byType(TextButton), findsNothing);
+    });
+  });
+
+  group('CopyableValueRow (C-39)', () {
+    testWidgets('copies the copy value and shows Copied', (tester) async {
+      String? clipboard;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboard = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+      await pumpThemed(
+        tester,
+        const Column(
+          children: [
+            CopyableValueRow(
+              label: 'Merchant',
+              value: 'Sarit Shoes',
+              style: CopyableValueStyle.text,
+              copyable: false,
+            ),
+            CopyableValueRow(
+              label: 'Amount',
+              value: 'KSh 40,000',
+              copyValue: '40000',
+              style: CopyableValueStyle.amount,
+            ),
+          ],
+        ),
+      );
+      expect(find.text('Copy'), findsOneWidget);
+      final label = tester.widget<Text>(find.text('Amount'));
+      expect(label.style?.color, NitumeColors.slate600);
+      expect(label.style?.fontSize, 12.5);
+      final value = tester.widget<SelectableText>(
+        find.widgetWithText(SelectableText, 'KSh 40,000'),
+      );
+      expect(value.style?.fontFamily, NitumeTypography.numericFamily);
+      expect(value.style?.fontSize, 20);
+
+      await tester.tap(find.text('Copy'));
+      await tester.pump();
+      expect(clipboard, '40000');
+      expect(find.text('Copied'), findsOneWidget);
+    });
+  });
+
+  group('NitumeNotice (C-40)', () {
+    testWidgets('white card, slate-line border, slate-600 text, action',
+        (tester) async {
+      await pumpThemed(
+        tester,
+        NitumeNotice(
+          message: 'This quote has expired.',
+          action: NitumeButton.outline(
+            label: 'Pay',
+            size: NitumeButtonSize.small,
+            onPressed: () {},
+          ),
+        ),
+      );
+      final box = tester
+          .widget<Container>(
+            find
+                .descendant(
+                  of: find.byType(NitumeNotice),
+                  matching: find.byType(Container),
+                )
+                .first,
+          )
+          .decoration! as BoxDecoration;
+      expect(box.color, NitumeColors.white);
+      expect((box.border! as Border).top.color, NitumeColors.slateLine);
+      expect(box.borderRadius, BorderRadius.circular(NitumeRadii.medium));
+      final text = tester.widget<Text>(find.text('This quote has expired.'));
+      expect(text.style?.color, NitumeColors.slate600);
+      expect(text.style?.fontSize, 13);
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.info_outline_rounded)).color,
+        NitumeColors.slate600,
+      );
+      expect(find.text('Pay'), findsOneWidget);
     });
   });
 }
