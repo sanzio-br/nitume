@@ -300,4 +300,56 @@ void main() {
       handle.dispose();
     });
   });
+
+  group('ReceiptCard (C-18)', () {
+    testWidgets('caption and separate group stay out of the total',
+        (tester) async {
+      await pumpThemed(
+        tester,
+        const SingleChildScrollView(
+          child: ReceiptCard(
+            rows: [
+              ReceiptRow(label: 'Service fee', amount: 700),
+              ReceiptRow(label: 'Runner fee', amount: 1500),
+              ReceiptRow(
+                label: 'Total (service + runner fee)',
+                amount: 2200,
+                isTotal: true,
+              ),
+            ],
+            caption: ReceiptCaption('Valid until ', number: '4:30 PM'),
+            separate: ReceiptSeparateGroup(
+              rows: [ReceiptRow(label: 'Item amount', amount: 40000)],
+              note: 'Paid to the merchant directly',
+            ),
+          ),
+        ),
+      );
+      expect(find.text('KSh 2,200'), findsOneWidget);
+      expect(find.text('KSh 40,000'), findsOneWidget);
+      expect(find.text('Paid to the merchant directly'), findsOneWidget);
+
+      final caption = tester.widget<Text>(
+        find.descendant(
+          of: find.byType(ReceiptCaption),
+          matching: find.byType(Text),
+        ),
+      );
+      final span = caption.textSpan! as TextSpan;
+      expect(caption.style?.color, NitumeColors.slate600);
+      expect(caption.style?.fontSize, 12);
+      expect(span.toPlainText(), 'Valid until 4:30 PM');
+      expect(
+        (span.children!.single as TextSpan).style?.fontFamily,
+        NitumeTypography.numericFamily,
+      );
+
+      // Order: total, caption, separate group.
+      final total = tester.getRect(find.text('KSh 2,200'));
+      final captionRect = tester.getRect(find.byType(ReceiptCaption));
+      final item = tester.getRect(find.text('KSh 40,000'));
+      expect(total.bottom, lessThanOrEqualTo(captionRect.top));
+      expect(captionRect.bottom, lessThanOrEqualTo(item.top));
+    });
+  });
 }
