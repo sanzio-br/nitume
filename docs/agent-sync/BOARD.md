@@ -26,8 +26,17 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | customer/v-addresses | specced | flutter-customer | docs/customer-spec-audit | core-ui: SavedAddressCard, PlaceAutocompleteField (x-address-form) | Not built; API + core model exist. Edit/delete/add form not drawn |
 | customer/v-profile | audited-fail | flutter-customer | docs/customer-spec-audit | core-ui: MenuRow (+destructive), InitialsAvatar, NitumeTopBar; api-contract: A-11, A-15 | Partial. 3 blockers / 3 minor; Log out not wired. Owner Qs 2,13,18 |
 | customer/shell | audited-fail | flutter-customer | docs/customer-spec-audit | core-ui: NitumeTabBar / navigationBarTheme fix | New task must push the wizard, not be a root tab |
+| customer/x-name-capture | specced | flutter-customer | docs/customer-spec-answers | api-contract A-15 (display_name, PATCH /users/me) | Not in mockup; copy proposed. Qs: edit-name entry point; SQ-3 |
+| customer/x-legal | specced | flutter-customer | docs/customer-spec-answers | core-ui AppConfig termsUri/privacyUri; url_launcher (SQ-2) | External links only. Q: Terms/Privacy URLs |
+| customer/x-awaiting-quote | specced | flutter-customer | docs/customer-spec-answers | api-contract A-20 (fee fields + expiresAt), A-22 merchant details, A-16, A-6/A-7; core-ui C-16 radio-row, C-35, C-40 | Waiting + accept-quote checkout. Qs: quote expiry transition; route change after payment; SQ-5, SQ-6 |
+| customer/x-merchant-payment | specced | flutter-customer | docs/customer-spec-answers | api-contract A-22, A-26; core-ui C-39, C-40 | Send-to-runner variant blocked on SQ-5 |
+| customer/x-payment-method-form | specced | flutter-customer | docs/customer-spec-answers | core-ui C-35, C-36; api-contract A-28 | M-Pesa only; number not editable (DTO). Q: verify new number |
+| customer/x-report-problem | specced | flutter-customer | docs/customer-spec-answers | api-contract A-27 (dispute from errand), A-26; core-ui C-35, C-40 | Q: photo attachments |
+| customer/x-evidence-viewer | specced | flutter-customer | docs/customer-spec-answers | core-ui: counter in EvidenceViewer app bar | Pending rows 25, 32 |
+| customer/x-address-form | specced | flutter-customer | docs/customer-spec-answers | core-ui C-35, C-36 | Pending row 30 (Places) |
+| customer/x-support | specced | flutter-customer | docs/customer-spec-answers | core-ui AppConfig supportUri; url_launcher (SQ-2) | Single configurable row; hidden when unset |
 
-Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec yet): x-awaiting-quote, x-merchant-payment, x-report-problem, x-evidence-viewer, x-address-form, x-payment-method-form, x-recurring-tasks, x-support, x-legal.
+All 17 existing customer specs + shell updated with owner answers on docs/customer-spec-answers (stages unchanged). x-recurring-tasks dropped (out of MVP).
 
 ## Needs (cross-agent requests)
 
@@ -42,6 +51,8 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 | core-ui | flutter-customer | Implement RealtimeClient, PlaceSearchService and LiveTrackingMap(mapBuilder:) once owner approves packages (Q29–Q32) | blocked on owner |
 | core-ui | flutter-customer | (feat/core-owner-decisions) CategoryGrid default = mvpCustomerCategories (5); v-payment on StkPaymentState (TIMEOUT = keep checking + "Check again", never failure; confirmation window per spec, 90s recommended); v-auth-otp with OtpCodeField(errorText:), ResendCooldown + OtpResendLine, OtpErrorKind (disable boxes when requiresNewCode); PaymentMethodCard(label, detail) M-Pesa only; price-change amounts use NitumeDesignChoices.priceChangeAmount; show displayName/reference/title/runnerNotes/items/pickup/dropoff only when non-null | open |
 | core-ui | api-contract | camelCase displayName/reference/title/runnerNotes/items[{name,quantity,unit,notes}]/locations[{pointType,lat,lng,addressText,placeId}]; accept title on POST /errands; validation-only rejection of non-mpesa methods; machine-readable OTP error codes | relayed to running api-contract (feat/api-owner-decisions) |
+| design-auditor | core-ui | (from updated specs) C-35..C-40 new (incl. dialog C-35), C-16 radio-row variant, C-18 estimate caption + separate group, C-28 unread styling, C-15 five-tile grid, EvidenceViewer counter, shortName(), AppConfig termsUri/privacyUri/supportUri. Full list `_shared.md` §4 | open |
+| design-auditor | api-contract | A-18..A-29 (gap report final section): quote preview, OTP config 300s + 5/3600s + retryAfterSeconds, fee fields + expiresAt, route + payer, STK states, merchant details, price-change item amount, runner_notes, urgency, event types, dispute from errand, reject card/bank, remove DISPUTED→CONFIRMED + escrow comments | mostly in progress on feat/api-owner-decisions |
 
 ## Questions for the project owner
 
@@ -84,6 +95,15 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 | 35 | orchestrator (owner answers) | State machine (follow-up to 8 vs §3.3): §3.3 and the API have COMPLETED→CONFIRMED→SETTLED, and SETTLED drives payout. Remove CONFIRMED/SETTLED, or keep them as system-only payout states (customer never sees them)? | answered (owner): keep CONFIRMED and SETTLED as system-only states. Customer confirm = AWAITING_CUSTOMER→COMPLETED; system moves COMPLETED→CONFIRMED→SETTLED; never shown in customer UI |
 | 36 | orchestrator (owner answers) | Dispute resolution target (follow-up to 10): with DISPUTED→CONFIRMED removed, where does a runner-favourable resolution go: COMPLETED? Customer-favourable → CANCELLED? | answered (owner): runner-favourable → COMPLETED; customer-favourable → CANCELLED |
 | 37 | orchestrator (owner answers) | Cancel after payment (follow-up to 9): reject-and-cancel from IN_PROGRESS happens after the service fee is paid and maybe after the merchant was paid. Refund rules? Any other active states that should reach CANCELLED? | answered (owner): allow customer IN_PROGRESS→CANCELLED on price-change reject; goes to admin refund review; admin sets refund amount, up to a full refund |
+| 38 | design-auditor (spec answers) | SQ-1: dialog backdrop colour. Proposed brand blue #0B2545 at 50% opacity | open |
+| 39 | design-auditor (spec answers) | SQ-2: add url_launcher (Flutter) for Terms/Privacy/Support links? Also give Terms/Privacy URLs and the Support target per environment | open |
+| 40 | design-auditor (spec answers) | SQ-3: runner short names (e.g. "Kevin O."): computed by the API or the client? | open |
+| 41 | design-auditor (spec answers) | SQ-4: fallback task title when the customer gives none (e.g. category name)? | open |
+| 42 | design-auditor (spec answers) | SQ-5: send-to-runner mechanics: how does the customer's purchase money reach the runner (STK to platform then runner payout, or direct to runner's M-Pesa)? Blocks x-merchant-payment send-to-runner | open |
+| 43 | design-auditor (spec answers) | SQ-6: merchant Till/Paybill details: who enters them (customer, runner, admin) and when? | open |
+| 44 | design-auditor (spec answers) | Price-change difference: paid via a new STK to the same route as the original merchant payment? (v-price-auth Q1) | open |
+| 45 | design-auditor (spec answers) | Budget visibility per category: which categories show the budget field? (v-new-details Q1) | open |
+| 46 | design-auditor (spec answers) | Quote expiry: §3.3 has no QUOTED→EXPIRED; what happens when a quote expires? (x-awaiting-quote Q1) | open |
 
 ## Session log
 
@@ -93,3 +113,4 @@ Undrawn screens referenced by the mockup (in SCREEN_MAP as `missing`, no spec ye
 | 2026-10-07 | api-contract customer gaps (feat/api-customer-gaps, stage built): 11 A-items added, 4 blocked on owner, Socket.IO gateway added (@nestjs/websockets, @nestjs/platform-socket.io per §4.1); 58 unit + 9 e2e tests pass | c1adb4c, d61992f, f5d2a51, 5a221a0, 03225af, aa9c18a, 1d4b24b, 239e73d, 5bb5b3d, f4213f7, 288e251 |
 | 2026-10-07 | core-ui customer shared (feat/core-customer-widgets, stage built): bundled Fira fonts, theme aligned to design system, C-01..C-34 + data layer; open design Qs held as defaults in nitume_design_choices.dart; 55 tests pass | 6e571dd, d302802, ebe65a3, 25fca57, 38a6b42, 6691b4f |
 | 2026-10-07 | core-ui owner decisions (feat/core-owner-decisions, built): Q11–Q14 colours/radius/fields, 5 MVP categories, M-Pesa only, StkPaymentState, OTP policy/cooldown/errors, optional model fields; 73 tests pass. Timeline keeps no amber step (answer covered the chip only) | b3af34d, ca99b55, 3d7b171, b790157, 9e3640a, 90dac2e |
+| 2026-10-07 | design-auditor folded owner answers into all customer specs + 9 new x- specs (docs/customer-spec-answers, 13 commits); api-contract hit usage limit after 4 commits, resumed | 35a8ef9, 2030f2f, 4b57b32, 22f5bbf, 0f4d8ee, c66da84, f458eb5, 7b3ce36, 370da3a, 55e4ee0, 644f1b8, a07812a, 856166f; api: 015d9c5, dcc80f4, 39505f1, 053e8b0 |
