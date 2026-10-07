@@ -1,9 +1,10 @@
-import { HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { ApiError } from '../common/api-error';
 import { ErrandStatus, PaymentTransactionStatus } from '../common/enums';
+import { TransitionGuard } from '../errands/errand-state-machine';
 import { ErrandsService } from '../errands/errands.service';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { Payment } from './payment.entity';
@@ -16,7 +17,7 @@ interface StatusChanged {
 }
 
 @Injectable()
-export class RefundsService {
+export class RefundsService implements OnModuleInit {
   private readonly logger = new Logger(RefundsService.name);
 
   constructor(
@@ -29,7 +30,23 @@ export class RefundsService {
     private readonly errands: ErrandsService,
   ) {}
 
-  /** A cancellation after payment opens a refund review. */
+  /**
+   * Every CANCELLED transition opens the refund review (when the customer
+   * had paid) inside the same transaction, so the review commits with the
+   * cancellation or not at all.
+   */
+  onModuleInit(): void {
+    this.errands.onCancelled(async (manager, change) => {
+      await this.openWithin(manager, change.errandId, triggerFor(change.from, change.guard));
+    });
+  }
+
+  /**
+   * Backstop after commit. The review is already opened in the cancelling
+   * transaction; this only catches STK payments that completed while the
+   * cancellation was in flight. Idempotent: one review per errand, and the
+   * amount is refreshed only while the review is still pending.
+   */
   @OnEvent('errand.status_changed', { async: true })
   async onStatusChanged(event: StatusChanged): Promise<void> {
     if (event.status !== ErrandStatus.CANCELLED) {
@@ -39,7 +56,7 @@ export class RefundsService {
       await this.openIfPaid(event.errandId, triggerFor(event.from ?? null));
     } catch (err) {
       this.logger.error(
-        `Could not open refund review for ${event.errandId}: ${err instanceof Error ? err.message : String(err)}`,
+        `Could not refresh refund review for ${event.errandId}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -54,30 +71,34 @@ export class RefundsService {
     if (errand.status !== ErrandStatus.CANCELLED) {
       return null;
     }
-    const amountPaid = await this.amountPaid(errandId);
+    return this.reviews.manager.transaction((manager) =>
+      this.openWithin(manager, errandId, trigger),
+    );
+  }
+
+  /**
+   * Same as `openIfPaid` for a caller that already runs a transaction on a
+   * CANCELLED errand. Upserts on the unique errandId, so concurrent opens
+   * never create a second review and never abort the caller's transaction.
+   */
+  async openWithin(
+    manager: EntityManager,
+    errandId: string,
+    trigger: RefundTrigger,
+  ): Promise<RefundReview | null> {
+    const amountPaid = await this.amountPaid(errandId, manager);
     if (amountPaid <= 0) {
       return null;
     }
-    const existing = await this.reviews.findOne({ where: { errandId } });
-    if (existing) {
-      if (existing.status === RefundStatus.PENDING_REVIEW) {
-        existing.amountPaid = amountPaid.toFixed(2);
-        return this.reviews.save(existing);
-      }
-      return existing;
-    }
-    try {
-      return await this.reviews.save(
-        this.reviews.create({ errandId, trigger, amountPaid: amountPaid.toFixed(2) }),
-      );
-    } catch (err) {
-      // Concurrent open for the same errand: keep the one that won.
-      const winner = await this.reviews.findOne({ where: { errandId } });
-      if (winner) {
-        return winner;
-      }
-      throw err;
-    }
+    await manager.query(
+      `INSERT INTO "refund_reviews" ("errandId", "trigger", "amountPaid")
+       VALUES ($1, $2, $3)
+       ON CONFLICT ("errandId") DO UPDATE
+         SET "amountPaid" = EXCLUDED."amountPaid", "updatedAt" = now()
+         WHERE "refund_reviews"."status" = $4`,
+      [errandId, trigger, amountPaid.toFixed(2), RefundStatus.PENDING_REVIEW],
+    );
+    return manager.getRepository(RefundReview).findOne({ where: { errandId } });
   }
 
   async list(opts: {
@@ -168,8 +189,9 @@ export class RefundsService {
   }
 
   /** Everything the customer paid through STK for this errand (completed legs). */
-  private async amountPaid(errandId: string): Promise<number> {
-    const raw = await this.transactions
+  private async amountPaid(errandId: string, manager?: EntityManager): Promise<number> {
+    const repo = manager ? manager.getRepository(PaymentTransaction) : this.transactions;
+    const raw = await repo
       .createQueryBuilder('t')
       .innerJoin(Payment, 'p', 'p.id = t."paymentId"')
       .select('COALESCE(SUM(t.amount), 0)', 'total')
@@ -180,7 +202,13 @@ export class RefundsService {
   }
 }
 
-export const triggerFor = (from: ErrandStatus | null): RefundTrigger => {
+export const triggerFor = (
+  from: ErrandStatus | null,
+  guard?: TransitionGuard,
+): RefundTrigger => {
+  if (guard === TransitionGuard.PRICE_CHANGE_REJECTION) {
+    return RefundTrigger.PRICE_CHANGE_REJECTED;
+  }
   switch (from) {
     case ErrandStatus.IN_PROGRESS:
       return RefundTrigger.PRICE_CHANGE_REJECTED;

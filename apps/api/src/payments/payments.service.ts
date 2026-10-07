@@ -463,29 +463,41 @@ export class PaymentsService implements OnApplicationBootstrap {
     const status = success
       ? PaymentTransactionStatus.COMPLETED
       : PaymentTransactionStatus.FAILED;
-    // eslint-disable-next-line no-misused-spread -- DTO → plain JSON callback payload
-    await this.transactions.save(
-      rows.map((r) =>
-        this.transactions.merge(r, {
-          status,
-          // eslint-disable-next-line no-misused-spread -- DTO → plain JSON
-          rawCallback: { ...dto, ts: new Date().toISOString() },
-        }),
-      ),
-    );
+    const errandId = errandIdOf(payment);
+    // A payment that completes after the task was cancelled opens its refund
+    // review in the same transaction that records the completed legs, so a
+    // failure cannot leave paid legs without a review (a retried callback is
+    // dropped as already final).
+    const cancelled =
+      success && (await this.errands.getById(errandId)).status === ErrandStatus.CANCELLED;
+    await this.payments.manager.transaction(async (manager) => {
+      const txRepo = manager.getRepository(PaymentTransaction);
+      await txRepo.save(
+        rows.map((r) =>
+          txRepo.merge(r, {
+            status,
+            // eslint-disable-next-line no-misused-spread -- DTO → plain JSON
+            rawCallback: { ...dto, ts: new Date().toISOString() },
+          }),
+        ),
+      );
+      await manager
+        .getRepository(Payment)
+        .update(payment.id, { status: success ? PaymentStatus.COMPLETED : PaymentStatus.FAILED });
+      if (cancelled) {
+        await this.refunds.openWithin(manager, errandId, RefundTrigger.CANCELLED_AFTER_PAYMENT);
+      }
+    });
 
-    if (success) {
-      await this.payments.update(payment.id, { status: PaymentStatus.COMPLETED });
-      await this.confirmErrandAfterPayment(errandIdOf(payment));
-    } else {
-      await this.payments.update(payment.id, { status: PaymentStatus.FAILED });
+    if (success && !cancelled) {
+      await this.confirmErrandAfterPayment(errandId);
     }
   }
 
   private async confirmErrandAfterPayment(errandId: string): Promise<void> {
     const errand = await this.errands.getById(errandId);
     if (errand.status === ErrandStatus.CANCELLED) {
-      // Paid after the task was cancelled: goes to admin refund review.
+      // Cancelled meanwhile: the cancellation backstop refreshes the review.
       await this.refunds.openIfPaid(errandId, RefundTrigger.CANCELLED_AFTER_PAYMENT);
       return;
     }
