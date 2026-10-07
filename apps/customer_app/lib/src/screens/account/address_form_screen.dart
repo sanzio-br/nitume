@@ -27,6 +27,11 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   late final AppServices _services = context.services;
   late final _name = TextEditingController(text: widget.address?.label);
   late bool _default = widget.address?.isDefault ?? false;
+
+  /// Read-only value of the saved address (no Places client).
+  late final _currentAddress = TextEditingController(
+    text: widget.address?.addressText,
+  );
   PlaceDetails? _place;
   String? _nameError;
   bool _saving = false;
@@ -46,6 +51,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _currentAddress.dispose();
     super.dispose();
   }
 
@@ -167,10 +173,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                       PlaceAutocompleteField(
                         service: search,
                         label: 'Address',
-                        hint:
-                            _place?.addressText ??
-                            widget.address?.addressText ??
-                            'Search for a place',
+                        hint: 'Search for a place',
+                        initialValue:
+                            _place?.addressText ?? widget.address?.addressText,
                         onPlaceSelected: (p) => setState(
                           () => _place = SavedPlaceSearch.isSavedId(p.placeId)
                               ? null
@@ -181,8 +186,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                       NitumeField(
                         key: const ValueKey('address-readonly'),
                         label: 'Address',
-                        hint:
-                            widget.address?.addressText ?? 'Search for a place',
+                        hint: 'Search for a place',
+                        controller: _currentAddress,
                         readOnly: true,
                         enabled: false,
                       ),

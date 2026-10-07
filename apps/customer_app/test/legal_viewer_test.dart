@@ -84,10 +84,7 @@ void main() {
       await t.pumpAndSettle();
       expect(find.byType(EvidenceViewer), findsOneWidget);
       expect(find.text('2/2'), findsOneWidget);
-      expect(
-        find.text('Photo · 10:43 AM', findRichText: true),
-        findsOneWidget,
-      );
+      expect(find.text('Photo · 10:43 AM', findRichText: true), findsOneWidget);
     });
   });
 
@@ -122,10 +119,7 @@ void main() {
     expect(top.greeting, greetingFor(DateTime.now()));
     expect(top.title, isEmpty);
     // CC-3: core InitialsAvatar shows the person glyph without a name.
-    expect(
-      find.byKey(const ValueKey('initials-avatar-glyph')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('initials-avatar-glyph')), findsOneWidget);
   });
 
   testWidgets('x-merchant-payment: nothing due leaves the screen', (t) async {

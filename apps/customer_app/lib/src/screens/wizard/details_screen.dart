@@ -130,7 +130,8 @@ class _DetailsScreenState extends State<DetailsScreen> {
         key: ValueKey('${_d.category}-$field'),
         service: search,
         label: label,
-        hint: value?.addressText ?? 'Search for a place',
+        hint: 'Search for a place',
+        initialValue: value?.addressText,
         errorText: errors[field],
         savedAddresses: saved,
         onPlaceSelected: (p) => onPicked(

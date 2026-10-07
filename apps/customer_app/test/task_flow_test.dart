@@ -102,8 +102,9 @@ void main() {
       expect(find.text('Price change'), findsNothing);
     });
 
-    testWidgets('route required: customer must choose before approve',
-        (t) async {
+    testWidgets('route required: customer must choose before approve', (
+      t,
+    ) async {
       final b = TestBackend();
       b.priceChanges.pendingValue = priceChange();
       b.priceChanges.requireRoute = true;

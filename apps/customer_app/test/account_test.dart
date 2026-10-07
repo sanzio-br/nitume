@@ -45,7 +45,10 @@ void main() {
       expect(find.text('NTSA queue'), findsOneWidget);
       expect(find.text('Cancelled'), findsOneWidget);
       final chip = t.widget<StatusChip>(
-        find.ancestor(of: find.text('Cancelled'), matching: find.byType(StatusChip)),
+        find.ancestor(
+          of: find.text('Cancelled'),
+          matching: find.byType(StatusChip),
+        ),
       );
       expect(chip.tone, StatusTone.danger);
       expect(find.text('KSh 2,200'), findsWidgets);
@@ -143,8 +146,9 @@ void main() {
       });
     });
 
-    testWidgets('with Places: Save needs a picked place, sends coords',
-        (t) async {
+    testWidgets('with Places: Save needs a picked place, sends coords', (
+      t,
+    ) async {
       final b = TestBackend(placeSearch: FakePlaces());
       await b.pumpScreen(t, const AddressFormScreen());
       final save = find.widgetWithText(NitumeButton, 'Save address');

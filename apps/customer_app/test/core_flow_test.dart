@@ -115,6 +115,40 @@ void main() {
       expect(find.text('Preparing your quote'), findsOneWidget);
     });
 
+    testWidgets('chosen place shows as the value after coming back', (t) async {
+      final b = TestBackend();
+      b.account.addressList = const [
+        SavedAddress(
+          id: 'ad1',
+          label: 'Home',
+          addressText: 'Kilimani Rd, Nairobi',
+          isDefault: true,
+          lat: -1.29,
+          lon: 36.78,
+        ),
+      ];
+      await b.pumpApp(t);
+      await t.tap(find.text('New task'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Check It For Me'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Continue →'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Search for a place'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Home'));
+      await t.pumpAndSettle();
+
+      await t.tap(find.byType(NitumeBackButton));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Continue →'));
+      await t.pumpAndSettle();
+      expect(
+        find.widgetWithText(TextField, 'Kilimani Rd, Nairobi'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('back after entering details asks to discard', (t) async {
       final b = TestBackend();
       await b.pumpApp(t);
@@ -202,8 +236,9 @@ void main() {
     });
   });
 
-  testWidgets('x-awaiting-quote: ACCEPTED shows checkout, no accept call',
-      (t) async {
+  testWidgets('x-awaiting-quote: ACCEPTED shows checkout, no accept call', (
+    t,
+  ) async {
     final b = TestBackend();
     b.errands.put(
       errand(

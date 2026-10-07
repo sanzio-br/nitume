@@ -29,10 +29,7 @@ void main() {
     );
     await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
     expect(numSpans(t, 'Confirm & pay KSh 2,200 →'), ['KSh 2,200']);
-    expect(
-      find.bySemanticsLabel('Confirm & pay KSh 2,200 →'),
-      findsOneWidget,
-    );
+    expect(find.bySemanticsLabel('Confirm & pay KSh 2,200 →'), findsOneWidget);
   });
 
   testWidgets('evidence count is a Fira Code span (CC-2)', (t) async {
