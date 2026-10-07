@@ -133,4 +133,66 @@ void main() {
       matchesGoldenFile('goldens/cards_rows.png'),
     );
   });
+
+  testWidgets('spec widgets', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            NitumeRadioRow(
+              label: 'Pay merchant directly (recommended)',
+              subtitle: "You'll see the merchant's Till or Paybill number.",
+              selected: true,
+              onSelected: () {},
+            ),
+            const SizedBox(height: 8),
+            NitumeRadioRow(
+              label: 'Send purchase amount to runner',
+              subtitle: "You'll get instructions after paying the fees.",
+              selected: false,
+              onSelected: () {},
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                NitumeCheckbox(value: true, onChanged: (_) {}),
+                NitumeCheckbox(
+                  value: false,
+                  label: 'Set as default',
+                  onChanged: (_) {},
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const NitumeNotice(message: 'This quote has expired.'),
+            const SizedBox(height: 10),
+            const ReceiptCard(
+              rows: [
+                ReceiptRow(label: 'Service fee', amount: 700),
+                ReceiptRow(label: 'Runner fee', amount: 1500),
+                ReceiptRow(
+                  label: 'Total (service + runner fee)',
+                  amount: 2200,
+                  isTotal: true,
+                ),
+              ],
+              caption: ReceiptCaption('Valid until ', number: '4:30 PM'),
+              separate: ReceiptSeparateGroup(
+                rows: [ReceiptRow(label: 'Item amount', amount: 40000)],
+                note: 'Paid to the merchant directly',
+              ),
+            ),
+          ],
+        ),
+      ),
+      surfaceSize: const Size(390, 560),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/spec_widgets.png'),
+    );
+  });
 }
