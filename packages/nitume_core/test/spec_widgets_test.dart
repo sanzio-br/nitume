@@ -404,4 +404,54 @@ void main() {
       );
     });
   });
+
+  group('CategoryGrid (C-15)', () {
+    testWidgets('five MVP tiles in a 3 + 2 grid, third cell empty',
+        (tester) async {
+      ErrandCategory? picked;
+      await pumpThemed(
+        tester,
+        SingleChildScrollView(
+          child: CategoryGrid(onSelected: (c) => picked = c),
+        ),
+        surfaceSize: const Size(390, 600),
+      );
+      expect(ErrandCategory.customerMvp, mvpCustomerCategories);
+      expect(find.byType(CategoryTile), findsNWidgets(5));
+      expect(find.text('Business Tasks'), findsNothing);
+
+      Rect tile(ErrandCategory c) => tester.getRect(
+            find.widgetWithText(CategoryTile, c.label),
+          );
+      final buy = tile(ErrandCategory.buyForMe);
+      final get = tile(ErrandCategory.getItForMe);
+      final check = tile(ErrandCategory.checkItForMe);
+      final go = tile(ErrandCategory.goThereForMe);
+      final wait = tile(ErrandCategory.waitForMe);
+
+      // Row 1: three tiles; row 2: two tiles under the first two columns.
+      expect([get.top, check.top], everyElement(buy.top));
+      expect(wait.top, go.top);
+      expect(go.top - buy.bottom, 10);
+      expect(go.left, buy.left);
+      expect(wait.left, get.left);
+      // Same width everywhere: the row-2 tiles are not stretched.
+      expect([get.width, check.width, go.width, wait.width],
+          everyElement(buy.width));
+      expect(get.left - buy.right, 10);
+      // Padding 0 20 20 inside a 390 wide screen.
+      expect(buy.left, 20);
+      expect(check.right, 370);
+      // Nothing occupies the third cell of row 2.
+      final emptyCell = Offset(check.center.dx, go.center.dy);
+      for (final element in find.byType(CategoryTile).evaluate()) {
+        final box = element.renderObject! as RenderBox;
+        final rect = box.localToGlobal(Offset.zero) & box.size;
+        expect(rect.contains(emptyCell), isFalse);
+      }
+
+      await tester.tap(find.text('Wait For Me'));
+      expect(picked, ErrandCategory.waitForMe);
+    });
+  });
 }

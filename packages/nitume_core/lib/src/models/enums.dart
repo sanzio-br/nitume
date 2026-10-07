@@ -55,6 +55,10 @@ enum ErrandCategory {
 
   static ErrandCategory fromWire(String value) =>
       ErrandCategory.values.firstWhere((e) => e.wire == value);
+
+  /// The five customer MVP categories in display order (OA-18), the name
+  /// the customer specs use. Same list as [mvpCustomerCategories].
+  static const List<ErrandCategory> customerMvp = mvpCustomerCategories;
 }
 
 /// The categories a customer can pick in the MVP: the six minus Business

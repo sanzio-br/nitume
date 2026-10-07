@@ -106,7 +106,9 @@ class CategoryTile extends StatelessWidget {
 
 /// C-15 grid (`.cat-grid2`): 3 columns, gap 10, equal-height rows, padding
 /// `0 20 20`. Shows [categories] in order; defaults to
-/// [mvpCustomerCategories] (five, Business Tasks is out of MVP).
+/// [ErrandCategory.customerMvp] (five, Business Tasks is out of MVP), laid
+/// out 3 + 2 with the third cell of row 2 left empty: no placeholder tile,
+/// no stretching (v-new-category, v-home).
 class CategoryGrid extends StatelessWidget {
   const CategoryGrid({
     super.key,
