@@ -422,6 +422,27 @@ export class ErrandsService {
     );
   }
 
+  /**
+   * Same as `transition`, but runs `within` in the same database transaction
+   * after the status row is written, so another module can persist its own
+   * rows atomically with the status change (e.g. disputes). The callback
+   * owns its repositories through the manager it is given.
+   */
+  async transitionWith<T>(
+    errandId: string,
+    to: ErrandStatus,
+    actor: ActorReference,
+    note: string | undefined,
+    subject: ViewerContext | undefined,
+    within: (manager: EntityManager, result: ErrandResult) => Promise<T>,
+  ): Promise<ErrandResult & { extra: T }> {
+    return this.dataSource.transaction(async (manager) => {
+      const result = await this.performTransition(manager, errandId, to, actor, note, subject);
+      const extra = await within(manager, result);
+      return { ...result, extra };
+    });
+  }
+
   private async performTransition(
     manager: EntityManager,
     errandId: string,

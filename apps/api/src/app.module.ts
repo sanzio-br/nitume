@@ -20,6 +20,7 @@ import { UsersModule } from './users/users.module';
 import { EvidenceModule } from './evidence/evidence.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { DisputesModule } from './disputes/disputes.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     EvidenceModule,
     RatingsModule,
     NotificationsModule,
+    DisputesModule,
   ],
   controllers: [HealthController],
   providers: [
