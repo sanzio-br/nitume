@@ -1,7 +1,7 @@
 # v-auth-phone — Phone entry (sign in / sign up)
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 317–327 (`#v-auth-phone`, overlay)
-- Shared conventions: `_shared.md`
+- Shared conventions: `_shared.md` (OA-n = owner answers, §0)
 - Implementation: `apps/customer_app/lib/src/screens/auth/otp_login_screen.dart` (phone step, `AuthFormStep.phone`)
 - Status: partial
 
@@ -10,27 +10,28 @@ First screen for a signed-out user. Collects a Kenyan phone number and requests 
 
 ## Entry / exit
 - Entry: app launch with no valid session; "Log out" on `v-profile`; session expiry (refresh token rejected).
-- Exit: "Send code" success → push `v-auth-otp`. No back button (root of the signed-out stack).
+- Exit: "Send code" success → push `v-auth-otp` with the normalized number and the cooldown end time. No back button (root of the signed-out stack).
+- "Terms" / "Privacy Policy" → `x-legal`.
 
 ## Task states
 None (pre-auth).
 
 ## Layout (top to bottom)
-Full-screen overlay on slate, no tab bar. Content block vertically centered (`.auth-wrap`: flex column, justify center, horizontal padding 28).
-1. Wordmark row: 9px green dot + "Nitume" Fira Sans 22/700 blue, gap 9, margin-bottom 30.
-2. Heading, 22/700 blue, margin-bottom 8.
-3. Sub copy, 13 slate-600, margin-bottom 26.
-4. Phone field (C-17), full width, margin-bottom 16.
-5. Primary button (C-01) full width, margin-bottom 14.
-6. Legal line, 12.5 slate-600, left aligned, "Terms" and "Privacy Policy" tappable.
+Full-screen on slate, no tab bar. Content block vertically centred (`.auth-wrap`: flex column, justify centre, horizontal padding 28).
+1. Wordmark row (`NitumeWordmark`): 9px green dot + "Nitume" Fira Sans 22/700 blue, gap 9, margin-bottom 30.
+2. Heading 22/700 blue, margin-bottom 8.
+3. Sub copy 13 slate-600, margin-bottom 26.
+4. Phone field (C-17 phone variant, OA-12: white, r-s 8, slate-line border, 2px green focus), full width, margin-bottom 16. Inline error below the field in red 12.5 (OA-13).
+5. Primary button (C-01, pill per OA-11), full width, margin-bottom 14.
+6. Legal line 12.5 slate-600, left aligned; "Terms" and "Privacy Policy" are green-700 link spans (C-04) that open `x-legal`.
 
 ## Components
 | Element | Component | Status |
 |---|---|---|
-| Wordmark (dot + text) | NEW `NitumeWordmark` (green dot is a brand mark, not decoration — see Q1) | NEW |
-| Phone field | C-17 `NitumeField` with phone keyboard, +254 prefix handling | NEW (theme partial) |
-| Send code | C-01 primary | core (theme) |
-| Inline error | text under field, see Q-RED | NEW (part of C-17 error state) |
+| Wordmark | `NitumeWordmark` | built |
+| Phone field + inline error | C-17 `NitumeField` (phone) | built |
+| Send code | C-01 | built |
+| Legal links | C-04 link spans | built |
 
 ## Copy (exact, from mockup)
 - Heading: `Someone there, when you can't be.`
@@ -39,30 +40,36 @@ Full-screen overlay on slate, no tab bar. Content block vertically centered (`.a
 - Button: `Send code`
 - Legal: `By continuing you agree to Nitume's Terms & Privacy Policy.`
 
-Implied states (not drawn; recommended copy):
-- Loading: button shows a white spinner, disabled, field read-only.
-- Validation error: `Enter a valid Kenyan number, e.g. +254 712 345 678`.
-- Network/API error: API message, fallback `Something went wrong. Please try again.`
-- Rate-limited (HTTP 429): `Too many attempts. Try again in a few minutes.`
+States (proposed copy; OTP policy from OA-17):
+- Loading: button shows a white spinner and is disabled; field read-only.
+- Invalid number (client check with `KenyanPhone.normalize`): `Enter a valid Kenyan number, e.g. +254 712 345 678`.
+- Cooldown active (a code was sent to this number less than 60 s ago, API code `OTP_COOLDOWN`): do not show an error. Push `v-auth-otp` for that number with the remaining cooldown from `retryAfterSeconds`.
+- Hourly limit reached (5 requests per hour per phone/account, or IP/device throttle, API code `OTP_RATE_LIMITED`): `Too many code requests. Try again in N min.` (N from `retryAfterSeconds`, rounded up, Fira Code). Without `retryAfterSeconds`: `Too many code requests. Try again later.` Button stays enabled.
+- SMS delivery failure (API 400): `We couldn't send the code. Try again.`
+- Network error / unknown: `_shared.md` §7 generic errors.
 
 ## Numeric fields (Fira Code)
-- Phone number input text and placeholder (mockup renders phone numbers in Fira Code elsewhere, e.g. `v-payment-methods`).
+- Phone number input text and placeholder.
+- `N` minutes in the rate-limit message.
 
 ## Data
-- `POST /api/v1/auth/otp/request` `{ phone }` (§3.2; exists in `apps/api/src/auth/auth.controller.ts:31`). Send the normalized `+2547XXXXXXXX` (`KenyanPhone.normalize` in core).
-- Use `AuthRepository.requestOtp` from `nitume_core` (exists) rather than a raw client.
+- `POST /api/v1/auth/otp/request` `{ phone }` via core `AuthRepository.requestOtp(KenyanPhone.normalize(input))`. Send `+2547XXXXXXXX` / `+2541XXXXXXXX`.
+- needs: api-contract — align OTP config with OA-17 (current `apps/api/src/config/configuration.ts`: `ttlSeconds` 600 → 300; `rateLimitWindowSeconds` 900 → 3600 with 5 per window) and return machine-readable error codes with `retryAfterSeconds` (`OTP_COOLDOWN`, `OTP_RATE_LIMITED`). Today both are plain 429 messages, so the client cannot tell them apart. Until then: treat any 429 as the hourly-limit message.
 - No socket events.
 
 ## Accessibility and mobile
-- Field label for screen readers: "Phone number".
-- Keyboard: `TextInputType.phone`, action "send" submits.
-- Keep the button visible above the keyboard (scrollable body with `viewInsets` padding).
-- Safe areas: top and bottom.
+- Field label for screen readers: "Phone number". Error text announced (live region).
+- Keyboard `TextInputType.phone`; action "send" submits.
+- Keep the button visible above the keyboard (scrollable body with `viewInsets` padding). Safe areas top and bottom.
+- Legal link spans have 48dp hit areas (pad the line).
 
-## Questions for owner
-- Q1: The green dot in the wordmark is decorative use of green (design system: green never decorative). Recommended: accept as brand mark, or switch dot to blue.
-- Q2: Links for Terms and Privacy Policy — which URLs (website pages are not in the website mockup either)?
-- Q3 (security, §3): OTP request rate limits and resend cooldown are not specified. Recommended: server enforces (e.g. 3 requests / 10 min / phone) and the app shows the 429 message above.
+## Resolved by owner answers
+- Rate limits and cooldown: OA-17 (was Q3).
+- Pill button, white 8px field, red inline errors: OA-11, OA-12, OA-13.
+
+## Open questions (non-blocking; build default given)
+- Q1: The green dot in the wordmark is a use of green outside actions/states. Default: keep it as the brand mark (as built in `NitumeWordmark`).
+- Q2: Terms and Privacy URLs: see `x-legal.md`.
 
 ## Current vs design
-See `docs/audits/customer-gap-report.md#v-auth-phone`. Summary: phone and OTP are one stateful screen; copy differs ("Continue" vs "Send code", extra footer "We'll text you a code…", missing legal line); brand is a blue rounded square with a handyman icon instead of the green-dot wordmark; field is labelled "Phone number" with a phone prefix icon and `0712 345 678` hint; auth calls bypass `AuthRepository`; raw (non-normalized) phone is sent.
+See `docs/audits/customer-gap-report.md#v-auth-phone`. Summary: phone and OTP are one stateful screen; copy differs ("Continue" vs "Send code", extra footer, missing legal line); brand is a blue rounded square with a handyman icon; field labelled "Phone number" with `0712 345 678` hint; auth calls bypass `AuthRepository`; the raw (not normalized) phone is sent; error text is red (now allowed, OA-13).

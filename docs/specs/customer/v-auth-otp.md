@@ -1,69 +1,82 @@
 # v-auth-otp — OTP verification
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 329–341 (`#v-auth-otp`, overlay)
-- Shared conventions: `_shared.md`
+- Shared conventions: `_shared.md` (OA-n = owner answers, §0)
 - Implementation: `apps/customer_app/lib/src/screens/auth/otp_login_screen.dart` (code step, `_CodeStep` lines 265–322)
 - Status: partial
 
 ## Purpose
-Verify the 6-digit SMS code and establish the session (JWT pair), then land on Home.
+Verify the 6-digit SMS code and establish the session (JWT pair), then continue to name capture (first sign-in) or Home.
 
 ## Entry / exit
-- Entry: "Send code" success on `v-auth-phone` (push).
+- Entry: "Send code" success on `v-auth-phone` (push), or a cooldown hit there (push with remaining cooldown).
 - Back arrow → `v-auth-phone` with the number still filled in.
-- "Verify & continue" success → replace the whole stack with the signed-in shell on `v-home` (mockup `jump('v-home', true)`).
-- "Resend code" → re-request OTP, stay here.
+- Verify success:
+  - `displayName` empty on `GET /users/me` → replace the stack with `x-name-capture` (OA-2).
+  - Otherwise → replace the whole stack with the signed-in shell on `v-home`.
+- "Resend code" → request a new OTP, stay here.
 
 ## Task states
 None (pre-auth).
 
 ## Layout (top to bottom)
-1. Pushed header (C-10) with back button only, no title.
-2. `.auth-wrap` (padding 0 28, top padding 0, vertically centred):
+1. Pushed header (C-10), back button only, no title.
+2. `.auth-wrap` (padding 0 28, vertically centred):
    1. Heading 22/700.
    2. Sub copy 13 slate-600, margin-bottom 26, phone number embedded.
-   3. OTP row (C-26): 6 boxes 44×52, gap 8, margin-bottom 22. Filled boxes have a green border; empty boxes show `•` placeholder.
+   3. OTP row (C-26): 6 boxes 44×52, gap 8. Filled boxes have a green border; empty boxes show a `•` placeholder. Error state: all box borders red and the inline error 12.5 red below the row (margin-top 10). Margin-bottom 22.
    4. Primary button (C-01) full width, margin-bottom 16.
-   5. Resend line centred, 12.5 slate-600, link part green-700 700.
+   5. Resend line centred, 12.5 slate-600 (C-38).
 
 ## Components
 | Element | Component | Status |
 |---|---|---|
-| Back header | C-10 | NEW |
-| OTP boxes | C-26 `OtpCodeField` (single hidden input, autofill `oneTimeCode`, paste support) | NEW |
-| Verify button | C-01 | core (theme) |
-| Resend link | C-04 green-700 link variant | NEW variant |
+| Back header | C-10 | built |
+| OTP boxes | C-26 `OtpCodeField` (single hidden input, autofill `oneTimeCode`, paste support, error state) | built (error border: confirm with core-ui) |
+| Verify button | C-01 | built |
+| Resend line with countdown | C-38 | **NEW** |
 
 ## Copy (exact)
 - Heading: `Enter the code`
-- Sub: `We sent a 6-digit code to +254 712 345 678.` (number = the normalized number, formatted `+254 712 345 678`)
+- Sub: `We sent a 6-digit code to +254 712 345 678.` (the normalized number, formatted `+254 712 345 678`)
 - Button: `Verify & continue`
-- Resend: `Didn't get it?` + link `Resend code`
+- Resend (mockup): `Didn't get it?` + green-700 link `Resend code`
 
-Implied states (recommended):
-- Verifying: button spinner, boxes disabled.
-- Wrong / expired code: `That code is incorrect or has expired.` shown under the boxes; boxes cleared and refocused.
-- Resent: snackbar `New code sent.`
-- Auto-submit when the 6th digit is entered (mockup button still present).
+OTP policy (OA-17): code valid 5 minutes; 5 verification attempts per code; 60 s resend cooldown; 5 requests per hour per phone/account; a new code invalidates the previous one.
+
+States (proposed copy):
+- Cooldown running (first 60 s after any send): resend line reads `Didn't get it? Resend code in 0:59` with the time in Fira Code counting down each second (C-38); the link is not tappable. At 0:00 it becomes the mockup line with the green-700 `Resend code` link.
+- Verifying: button spinner, boxes disabled. Auto-submit when the 6th digit is entered.
+- Wrong code (API `OTP_INCORRECT`): `That code is incorrect. Try again.` Boxes cleared and refocused.
+- Attempts used up (5th wrong attempt, API `OTP_ATTEMPTS_EXCEEDED`): `Too many incorrect attempts. Request a new code.` Boxes disabled until a new code is sent; resend link enabled immediately if the cooldown is over, otherwise the countdown shows.
+- Code expired (older than 5 min, or replaced by a newer code; API `OTP_EXPIRED`): `This code has expired. Request a new code.` Boxes disabled until resend.
+- Resend sent: snackbar `New code sent.`; countdown restarts at 1:00; boxes cleared and enabled. The old code no longer works.
+- Resend hourly limit (API `OTP_RATE_LIMITED`): inline under the boxes `Too many code requests. Try again in N min.` (N in Fira Code); resend link hidden until then.
+- Account suspended or banned (API 401 message): `This account can't sign in. Contact support.` with the Support link if configured (`x-support`).
+- Network / unknown: `_shared.md` §7.
 
 ## Numeric fields (Fira Code)
 - OTP digits (18/600).
 - Phone number in the sub copy.
+- Countdown `0:59` and `N` minutes.
 
 ## Data
-- `POST /api/v1/auth/otp/verify` `{ phone, code, role: 'customer' }` → `{ user, tokens }` (exists, `auth.controller.ts:37`). Use `AuthRepository.verifyOtp` (core), which persists tokens.
+- `POST /api/v1/auth/otp/verify` `{ phone, code, role: 'customer' }` → `{ user, tokens }` via `AuthRepository.verifyOtp` (persists tokens).
 - `POST /api/v1/auth/otp/request` for resend.
-- After success: `GET /users/me` (`AuthRepository.currentUser`) and `GET /customers/me` to hydrate Home.
-- App launch must call `AuthRepository.restoreSession()` and skip auth when a valid session exists (currently a TODO in `app.dart:22`).
+- After success: `GET /users/me` (`displayName`, `phone`, `createdAt`) and `GET /customers/me`.
+- After success register the FCM token (`POST /users/me/devices`) once FCM is approved (pending row 31).
+- App launch calls `AuthRepository.restoreSession()` and skips auth when a valid session exists; a restored user with an empty `displayName` also lands on `x-name-capture`.
+- needs: api-contract — verify errors as codes (`OTP_INCORRECT`, `OTP_ATTEMPTS_EXCEEDED`, `OTP_EXPIRED`, `OTP_RATE_LIMITED`, `OTP_COOLDOWN`) with `retryAfterSeconds`; today the API returns 401 with English messages (`Incorrect verification code.`, `Too many incorrect attempts. Request a new code.`, `No active verification code. Request a new one.`). TTL must become 300 s (OA-17). Until codes exist, map those three messages to the three states above.
+- needs: api-contract — `displayName` on `GET /users/me` (A-15, now approved by OA-2).
 
 ## Accessibility and mobile
-- Announce the six boxes as one field "Verification code, 6 digits".
-- `autofillHints: [AutofillHints.oneTimeCode]`; Android SMS retriever is optional.
+- Announce the six boxes as one field "Verification code, 6 digits"; announce errors and the countdown ("You can resend in 59 seconds") without reading every tick (announce at start and at zero).
+- `autofillHints: [AutofillHints.oneTimeCode]`; Android SMS retriever optional.
 - Back hit area 48dp.
 
-## Questions for owner
-- Q1 (security, §3): OTP length is 6 per mockup; expiry time, max attempts and resend cooldown are not specified. Recommended: 5-minute expiry, 5 attempts, 30-second resend cooldown with a Fira Code countdown (`Resend code in 0:30`).
-- Q2: Should a brand-new user be asked for a display name here (see Q-NAME in `_shared.md`)? The mockup goes straight to Home.
+## Resolved by owner answers
+- Expiry, attempts, cooldown, request limit: OA-17 (was Q1). The 60 s cooldown replaces the earlier 30 s suggestion.
+- Name collection after first sign-in: OA-2 (was Q2) → `x-name-capture`.
 
 ## Current vs design
-See gap report. Summary: code step lives inside the phone screen (no back arrow, phone heading/brand still shown); single text field with letter-spaced digits instead of 6 boxes; copy "Verify" / "Didn't get it? Send again"; `onSubmitted: (_) => onSubmit` never calls the callback (line 298); tokens are written but `AuthRepository` and `/users/me` are not used and no session restore exists.
+See gap report. Summary: code step lives inside the phone screen (no back arrow, phone heading and brand still shown); single text field with letter-spaced digits instead of 6 boxes; copy "Verify" / "Didn't get it? Send again"; `onSubmitted: (_) => onSubmit` never calls the callback (line 298); no countdown; `AuthRepository` and `/users/me` are not used; no session restore.
