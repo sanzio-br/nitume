@@ -306,6 +306,32 @@ void main() {
     });
   });
 
+  group('PaymentMethodCard', () {
+    testWidgets('green M-PESA badge with white text, Fira Code detail',
+        (tester) async {
+      await pumpThemed(
+        tester,
+        PaymentMethodCard(
+          label: 'M-Pesa',
+          detail: '+254 712 ••• 678',
+          onTap: () {},
+        ),
+      );
+      final badge = find.ancestor(
+        of: find.text('M-PESA'),
+        matching: find.byType(Container),
+      );
+      expect(_boxColor(tester, badge.first), NitumeColors.green);
+      expect(tester.widget<Text>(find.text('M-PESA')).style?.color,
+          NitumeColors.white);
+      expect(
+        tester.widget<Text>(find.text('+254 712 ••• 678')).style?.fontFamily,
+        NitumeTypography.numericFamily,
+      );
+      expect(find.text('VISA'), findsNothing);
+    });
+  });
+
   group('CategoryGrid', () {
     testWidgets('shows the five MVP display names and reports selection',
         (tester) async {

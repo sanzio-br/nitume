@@ -243,29 +243,27 @@ class SavedAddressCard extends StatelessWidget {
   }
 }
 
-/// Brand badge colour for [PaymentMethodCard].
-enum PaymentBadgeFill { green, blue }
-
-/// C-30. Payment method card (`.pm-card`): 38×26 badge with white 10/700
-/// Fira Sans text (brand word, not numeric), label 13.5/600, Fira Code 11
-/// slate-600 masked detail, optional trailing tag.
+/// C-30. M-Pesa payment method card (`.pm-card`): 38×26 green badge with
+/// white 10/700 Fira Sans `M-PESA` (brand word, not numeric), label 13.5/600,
+/// Fira Code 11 slate-600 masked number, optional trailing tag.
+///
+/// M-Pesa only: card payments are out of MVP (Q10, decided), so there is no
+/// card / Visa variant.
 class PaymentMethodCard extends StatelessWidget {
   const PaymentMethodCard({
     super.key,
-    required this.badgeText,
-    required this.badgeFill,
     required this.label,
     this.detail,
     this.trailing,
     this.onTap,
   });
 
-  /// `M-PESA`, `VISA`, …
-  final String badgeText;
+  /// Badge text, fixed to the M-Pesa brand word.
+  static const badgeText = 'M-PESA';
 
-  /// Mockup: green for M-Pesa, blue for cards.
-  final PaymentBadgeFill badgeFill;
   final String label;
+
+  /// Masked number, e.g. `+254 712 ••• 678`.
   final String? detail;
   final Widget? trailing;
   final VoidCallback? onTap;
@@ -282,9 +280,7 @@ class PaymentMethodCard extends StatelessWidget {
             height: 26,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: badgeFill == PaymentBadgeFill.green
-                  ? NitumeColors.green
-                  : NitumeColors.blue,
+              color: NitumeColors.green,
               borderRadius: BorderRadius.circular(5),
             ),
             child: FittedBox(

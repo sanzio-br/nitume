@@ -307,6 +307,54 @@ void main() {
     });
   });
 
+  group('CustomerAccountRepository payment methods', () {
+    test('lists M-Pesa only and skips card/bank rows (Q10)', () async {
+      final adapter = _FakeAdapter({
+        'GET /customers/me/payment-methods': (200, [
+          {
+            'id': 'pm1',
+            'type': 'mpesa',
+            'label': 'M-Pesa',
+            'detail': '+254 712 ••• 678',
+            'isDefault': true,
+          },
+          {
+            'id': 'pm2',
+            'type': 'card',
+            'label': 'Visa',
+            'detail': '•••• 4242',
+            'isDefault': false,
+          },
+        ]),
+      });
+      final methods =
+          await CustomerAccountRepository(_client(adapter)).paymentMethods();
+      expect(methods.map((m) => m.id), ['pm1']);
+      expect(methods.single.type, PaymentMethodType.mpesa);
+    });
+
+    test('add always posts type mpesa', () async {
+      final adapter = _FakeAdapter({
+        'POST /customers/me/payment-methods': (201, {
+          'id': 'pm1',
+          'type': 'mpesa',
+          'label': 'M-Pesa',
+          'detail': '+254 712 ••• 678',
+          'isDefault': false,
+        }),
+      });
+      await CustomerAccountRepository(_client(adapter))
+          .addPaymentMethod(label: 'M-Pesa', detail: '+254 712 ••• 678');
+      expect((adapter.requests.single.data as Map)['type'], 'mpesa');
+    });
+
+    test('type enum has no card variant', () {
+      expect(PaymentMethodType.values, [PaymentMethodType.mpesa]);
+      expect(PaymentMethodType.tryFromWire('card'), isNull);
+      expect(() => PaymentMethodType.fromWire('card'), throwsFormatException);
+    });
+  });
+
   group('Evidence and realtime payloads', () {
     test('evidence url may be null', () {
       final e = Evidence.fromJson({
