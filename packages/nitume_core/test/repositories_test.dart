@@ -480,6 +480,84 @@ void main() {
       expect(p?.id, 'new');
       expect(formatAmount(p!.toPrice), '45,000');
     });
+
+    const request = {
+      'id': 'pc1',
+      'errandId': 'e1',
+      'requestedByUserId': 'u2',
+      'fromPrice': '40000.00',
+      'toPrice': '45000.00',
+      'status': 'approved',
+    };
+
+    test('approve sends the route and parses the difference payment',
+        () async {
+      final adapter = _FakeAdapter({
+        'POST /errands/e1/price-change/pc1/approve': (201, {
+          ...request,
+          'differencePayment': {
+            'payment': {
+              'id': 'p2',
+              'errandId': 'e1',
+              'serviceFee': '0.00',
+              'runnerFee': '0.00',
+              'merchantAmount': '5000.00',
+              'paymentFlow': 'customer_to_runner',
+              'status': 'pending',
+            },
+            'merchantPayment': {'route': 'send_to_runner', 'amount': '5000.00'},
+          },
+        }),
+      });
+      final d = await PriceChangeRepository(_client(adapter)).approve(
+        'e1',
+        'pc1',
+        merchantRoute: MerchantRoute.sendToRunner,
+      );
+      expect(adapter.requests.single.data, {'merchantRoute': 'send_to_runner'});
+      expect(d.request.status, PriceChangeStatus.approved);
+      expect(d.differencePayment?.payment.merchantAmount, '5000.00');
+      expect(d.differencePayment?.merchantPayment?.route,
+          MerchantRoute.sendToRunner);
+    });
+
+    test('reject parses a decision without a difference payment', () async {
+      final adapter = _FakeAdapter({
+        'POST /errands/e1/price-change/pc1/reject': (201, {
+          ...request,
+          'status': 'rejected',
+          'differencePayment': null,
+        }),
+      });
+      final d =
+          await PriceChangeRepository(_client(adapter)).reject('e1', 'pc1');
+      expect(d.request.status, PriceChangeStatus.rejected);
+      expect(d.differencePayment, isNull);
+    });
+  });
+
+  group('Profile and title updates', () {
+    test('updateTitle patches the errand; updateDisplayName trims',
+        () async {
+      final adapter = _FakeAdapter({
+        'PATCH /errands/e1': (200, {..._errand, 'title': 'Apartment check'}),
+        'PATCH /users/me': (200, {
+          'id': 'u1',
+          'phone': '+254712345678',
+          'role': 'customer',
+          'status': 'active',
+          'displayName': 'Amina Otieno',
+        }),
+      });
+      final api = _client(adapter);
+      final e = await ErrandRepository(api).updateTitle('e1', 'Apartment check');
+      expect(adapter.requests.first.data, {'title': 'Apartment check'});
+      expect(e.title, 'Apartment check');
+      final u = await AuthRepository(api: api, tokenStore: InMemoryTokenStore())
+          .updateDisplayName('  Amina Otieno ');
+      expect(adapter.requests.last.data, {'displayName': 'Amina Otieno'});
+      expect(u.displayName, 'Amina Otieno');
+    });
   });
 
   group('NotificationsRepository', () {
@@ -528,6 +606,17 @@ void main() {
       expect(adapter.requests.single.data, {'errandId': 'e1', 'reason': 'Wrong item'});
       expect(d.status, DisputeStatus.open);
       expect(d.events.single.eventType, DisputeEventType.opened);
+    });
+
+    test('forErrand returns null on 404', () async {
+      final adapter = _FakeAdapter({
+        'GET /errands/e1/dispute': (404, {
+          'statusCode': 404,
+          'message': 'No dispute for this task',
+        }),
+      });
+      expect(await DisputesRepository(_client(adapter)).forErrand('e1'),
+          isNull);
     });
   });
 

@@ -61,6 +61,13 @@ class ErrandRepository {
         ),
       );
 
+  /// Sets or clears (`null`) the optional title (`PATCH /errands/:id`,
+  /// 3–120 characters after trimming). Returns the updated errand.
+  Future<Errand> updateTitle(String errandId, String? title) async =>
+      Errand.fromJson(
+        await _api.patchMap('/errands/$errandId', data: {'title': title}),
+      );
+
   /// Newest first, cursor-paginated (`GET /errands?status=A,B`). Customers
   /// never see their own drafts in this list.
   Future<ErrandPage> list({

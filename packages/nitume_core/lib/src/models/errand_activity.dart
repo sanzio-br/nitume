@@ -1,6 +1,7 @@
 import 'enums.dart';
 import 'errand_location.dart';
 import 'json_utils.dart';
+import 'payment.dart';
 
 /// Evidence item, `GET /errands/:errandId/evidence`.
 ///
@@ -119,6 +120,44 @@ class PriceChangeRequest {
         decidedByUserId: json['decidedByUserId'] as String?,
         decidedAt: parseDate(json['decidedAt']),
         createdAt: parseDate(json['createdAt']),
+      );
+}
+
+/// Result of approving or rejecting a price change
+/// (`POST /errands/:errandId/price-change/:requestId/approve | reject`).
+///
+/// [differencePayment] is set when an approved increase on an already paid
+/// task was recorded: the extra item amount and how to pay it
+/// (`x-merchant-payment`). A customer reject also cancels the task.
+class PriceChangeDecision {
+  const PriceChangeDecision({required this.request, this.differencePayment});
+
+  final PriceChangeRequest request;
+  final PriceChangeDifference? differencePayment;
+
+  factory PriceChangeDecision.fromJson(Map<String, dynamic> json) =>
+      PriceChangeDecision(
+        request: PriceChangeRequest.fromJson(json),
+        differencePayment: json['differencePayment'] is Map
+            ? PriceChangeDifference.fromJson(
+                asJsonMap(json['differencePayment']),
+              )
+            : null,
+      );
+}
+
+/// The payment recorded for an approved price difference: no service or
+/// runner fee, only the extra merchant / item amount.
+class PriceChangeDifference {
+  const PriceChangeDifference({required this.payment, this.merchantPayment});
+
+  final Payment payment;
+  final MerchantPayment? merchantPayment;
+
+  factory PriceChangeDifference.fromJson(Map<String, dynamic> json) =>
+      PriceChangeDifference(
+        payment: Payment.fromJson(asJsonMap(json['payment'])),
+        merchantPayment: MerchantPayment.tryParse(json['merchantPayment']),
       );
 }
 

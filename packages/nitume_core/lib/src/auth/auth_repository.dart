@@ -52,6 +52,16 @@ class AuthRepository {
     return AppUser.fromJson(data);
   }
 
+  /// Sets the user's display name (`PATCH /users/me`, 2–80 characters after
+  /// trimming; OA-2, `x-name-capture`). Returns the updated user.
+  Future<AppUser> updateDisplayName(String displayName) async =>
+      AppUser.fromJson(
+        await _api.patchMap(
+          '/users/me',
+          data: {'displayName': displayName.trim()},
+        ),
+      );
+
   /// Reads a previously persisted session, if any.
   Future<AuthTokens?> restoreSession() => _tokenStore.read();
 
