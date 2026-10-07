@@ -191,7 +191,10 @@ export class OtpService {
         'This verification code has expired. Request a new one.',
       );
     }
-    if (latest.attempts >= maxAttempts) {
+    // Reserve an attempt atomically before comparing, so concurrent
+    // verifies can never use more than maxAttempts on one code.
+    const attempts = await this.reserveAttempt(latest.id, maxAttempts);
+    if (attempts === null) {
       throw new ApiError(
         HttpStatus.UNAUTHORIZED,
         OtpErrorCode.ATTEMPTS_EXHAUSTED,
@@ -200,8 +203,6 @@ export class OtpService {
     }
 
     if (!this.safeEqual(latest.codeHash, this.hash(code))) {
-      const attempts = latest.attempts + 1;
-      await this.otpCodes.update({ id: latest.id }, { attempts });
       if (attempts >= maxAttempts) {
         throw new ApiError(
           HttpStatus.UNAUTHORIZED,
@@ -217,8 +218,38 @@ export class OtpService {
       );
     }
 
-    // Single-use: the code is consumed on success.
-    await this.otpCodes.update({ id: latest.id }, { consumedAt: now });
+    // Single-use: only one concurrent verify may consume the code.
+    const consumed = await this.otpCodes.update(
+      { id: latest.id, consumedAt: IsNull() },
+      { consumedAt: now },
+    );
+    if (!consumed.affected) {
+      throw new ApiError(
+        HttpStatus.UNAUTHORIZED,
+        OtpErrorCode.NOT_REQUESTED,
+        'No verification code was requested. Request a new one.',
+      );
+    }
+  }
+
+  /**
+   * One atomic `attempts + 1` on an unused code that still has attempts
+   * left. Returns the new count, or null when none are left (or the code
+   * was consumed meanwhile).
+   */
+  private async reserveAttempt(id: string, maxAttempts: number): Promise<number | null> {
+    const result: unknown = await this.otpCodes.query(
+      `UPDATE "otp_codes" SET "attempts" = "attempts" + 1
+        WHERE "id" = $1 AND "attempts" < $2 AND "consumedAt" IS NULL
+        RETURNING "attempts"`,
+      [id, maxAttempts],
+    );
+    // The postgres driver returns [rows, rowCount] for UPDATE.
+    const rows = (Array.isArray(result) && Array.isArray(result[0]) ? result[0] : result) as
+      | { attempts: number }[]
+      | undefined;
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    return row ? Number(row.attempts) : null;
   }
 
   /** Seconds left on the newest unused code's resend lock (0 = may resend). */

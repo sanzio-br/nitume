@@ -57,10 +57,28 @@ class FakeOtpRepo {
     return Promise.resolve(row);
   }
 
-  update(where: Where, patch: Partial<OtpCode>) {
+  /**
+   * Stand-in for the atomic `attempts + 1 ... WHERE attempts < max` UPDATE.
+   * Yields first so concurrent callers interleave like separate requests;
+   * the check-and-increment itself runs as one step, as in Postgres.
+   */
+  queries: string[] = [];
+
+  async query(sql: string, params: [string, number]) {
+    this.queries.push(sql);
+    await Promise.resolve();
+    const [id, max] = params;
+    const row = this.rows.find((r) => r.id === id && r.attempts < max && r.consumedAt === null);
+    if (!row) return [[], 0];
+    row.attempts += 1;
+    return [[{ attempts: row.attempts }], 1];
+  }
+
+  async update(where: Where, patch: Partial<OtpCode>) {
+    await Promise.resolve();
     const hit = this.rows.filter((r) => this.matches(r, where));
     hit.forEach((r) => Object.assign(r, patch));
-    return Promise.resolve({ affected: hit.length });
+    return { affected: hit.length };
   }
 }
 
@@ -160,6 +178,29 @@ describe('OtpService policy (owner Q17)', () => {
     // Even the right code is refused once exhausted.
     const after = await errorOf(service.verifyCode(PHONE, sent[0]));
     expect(after.code).toBe(OtpErrorCode.ATTEMPTS_EXHAUSTED);
+  });
+
+  it('never exceeds 5 attempts under concurrent verifies', async () => {
+    await service.requestCode(PHONE);
+    const wrong = sent[0] === '111111' ? '222222' : '111111';
+    const errors = await Promise.all(
+      Array.from({ length: 20 }, () => errorOf(service.verifyCode(PHONE, wrong))),
+    );
+    expect(repo.rows[0].attempts).toBe(5);
+    expect(errors.filter((e) => e.code === OtpErrorCode.INCORRECT)).toHaveLength(4);
+    expect(errors.filter((e) => e.code === OtpErrorCode.ATTEMPTS_EXHAUSTED)).toHaveLength(16);
+    // The attempt is reserved with one guarded UPDATE, not read-then-write.
+    expect(repo.queries[0]).toMatch(/SET "attempts" = "attempts" \+ 1/);
+    expect(repo.queries[0]).toMatch(/"attempts" < \$2/);
+    expect(repo.queries[0]).toMatch(/RETURNING "attempts"/);
+  });
+
+  it('lets only one of several concurrent correct verifies consume the code', async () => {
+    await service.requestCode(PHONE);
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 3 }, () => service.verifyCode(PHONE, sent[0])),
+    );
+    expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
   });
 
   it('caps requests at 5 per hour per phone with retryAfterSeconds', async () => {
