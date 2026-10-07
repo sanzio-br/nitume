@@ -76,68 +76,6 @@ class FixedCta extends StatelessWidget {
   }
 }
 
-/// Initials avatar from a display name; the person glyph when there is no
-/// name (`_shared.md` C-12). TODO(core-ui): move the glyph fallback into
-/// `InitialsAvatar`.
-class NameAvatar extends StatelessWidget {
-  const NameAvatar({
-    super.key,
-    required this.name,
-    this.size = InitialsAvatarSize.small,
-    this.onTap,
-    this.semanticLabel,
-  });
-
-  final String? name;
-  final InitialsAvatarSize size;
-  final VoidCallback? onTap;
-  final String? semanticLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final n = name?.trim() ?? '';
-    if (n.isNotEmpty) {
-      return InitialsAvatar.fromName(
-        n,
-        size: size,
-        onTap: onTap,
-        semanticLabel: semanticLabel,
-      );
-    }
-    final glyph = Container(
-      width: size.diameter,
-      height: size.diameter,
-      decoration: const BoxDecoration(
-        color: NitumeColors.blue,
-        shape: BoxShape.circle,
-      ),
-      child: Icon(
-        Icons.person_outline_rounded,
-        color: NitumeColors.white,
-        size: size.diameter * 0.5,
-      ),
-    );
-    if (onTap == null) {
-      return Semantics(label: semanticLabel, child: glyph);
-    }
-    final hit = size.diameter < NitumeSpacing.minTapTarget
-        ? NitumeSpacing.minTapTarget
-        : size.diameter;
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      child: InkResponse(
-        onTap: onTap,
-        radius: hit / 2,
-        child: SizedBox.square(
-          dimension: hit,
-          child: Center(child: glyph),
-        ),
-      ),
-    );
-  }
-}
-
 /// Loading / error / data switch over a [Future] (`_shared.md` C-33).
 class AsyncBody<T> extends StatelessWidget {
   const AsyncBody({

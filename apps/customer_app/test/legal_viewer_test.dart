@@ -121,6 +121,11 @@ void main() {
     final top = t.widget<NitumeTopBar>(find.byType(NitumeTopBar));
     expect(top.greeting, greetingFor(DateTime.now()));
     expect(top.title, isEmpty);
+    // CC-3: core InitialsAvatar shows the person glyph without a name.
+    expect(
+      find.byKey(const ValueKey('initials-avatar-glyph')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('x-merchant-payment: nothing due leaves the screen', (t) async {

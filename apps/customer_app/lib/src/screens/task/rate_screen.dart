@@ -99,8 +99,8 @@ class _RateScreenState extends State<RateScreen> {
             children: [
               const SizedBox(height: 10),
               Center(
-                child: NameAvatar(
-                  name: errand.runner?.displayName,
+                child: InitialsAvatar.fromName(
+                  errand.runner?.displayName,
                   size: InitialsAvatarSize.medium,
                 ),
               ),

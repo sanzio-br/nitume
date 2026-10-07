@@ -161,8 +161,8 @@ class _TopBar extends StatelessWidget {
           unreadCount: unread,
           onPressed: () => Nav.toNotifications(context),
         ),
-        NameAvatar(
-          name: displayName,
+        InitialsAvatar.fromName(
+          displayName,
           semanticLabel: 'Profile',
           onTap: () => context.services.shell.select(ShellTab.profile),
         ),

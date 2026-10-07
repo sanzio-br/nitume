@@ -125,7 +125,7 @@ class _Head extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
       child: Column(
         children: [
-          NameAvatar(name: name, size: InitialsAvatarSize.large),
+          InitialsAvatar.fromName(name, size: InitialsAvatarSize.large),
           if (u == null) ...[
             const SizedBox(height: 10),
             Text(
