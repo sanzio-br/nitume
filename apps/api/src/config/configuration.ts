@@ -77,6 +77,19 @@ export interface AppConfig {
       apiSecret: string | null;
     };
   };
+  queue: {
+    prefix: string;
+    attempts: number;
+    disputeSweepIntervalSeconds: number;
+    stkReconcileIntervalSeconds: number;
+  };
+  push: {
+    fcm: {
+      projectId: string | null;
+      clientEmail: string | null;
+      privateKey: string | null;
+    };
+  };
   atsms: {
     apiKey: string | null;
     username: string | null;
@@ -189,6 +202,26 @@ export const configuration = (): AppConfig => ({
       cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
       apiKey: process.env.CLOUDINARY_API_KEY ?? null,
       apiSecret: process.env.CLOUDINARY_API_SECRET ?? null,
+    },
+  },
+  // BullMQ (rows 26, 50). Workers run unless QUEUE_WORKERS_ENABLED=false.
+  queue: {
+    prefix: process.env.QUEUE_PREFIX || 'nitume',
+    attempts: int(process.env.QUEUE_JOB_ATTEMPTS, 5),
+    // How often the dispute-window job runs (COMPLETED -> CONFIRMED -> SETTLED).
+    disputeSweepIntervalSeconds: int(process.env.ERRANDS_DISPUTE_SWEEP_INTERVAL_SECONDS, 300),
+    // How often TIMEOUT STK payments are resolved by STK Query.
+    stkReconcileIntervalSeconds: int(process.env.PAYMENTS_STK_RECONCILE_INTERVAL_SECONDS, 60),
+  },
+  // FCM push (row 31). All three set -> firebase-admin; otherwise a no-op.
+  // The private key may use literal \n sequences (single-line env value).
+  push: {
+    fcm: {
+      projectId: process.env.FCM_PROJECT_ID || null,
+      clientEmail: process.env.FCM_CLIENT_EMAIL || null,
+      privateKey: process.env.FCM_PRIVATE_KEY
+        ? process.env.FCM_PRIVATE_KEY.replace(/\\n/g, '\n')
+        : null,
     },
   },
   atsms: {

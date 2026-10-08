@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { ApiError } from '../common/api-error';
@@ -45,7 +45,24 @@ export class RefundsService implements OnModuleInit {
     @InjectRepository(PaymentTransaction)
     private readonly transactions: Repository<PaymentTransaction>,
     private readonly errands: ErrandsService,
+    private readonly events?: EventEmitter2,
   ) {}
+
+  /** Tells the notifications module the customer-visible status changed. */
+  private announce(row: RefundReview): void {
+    const events = this.events;
+    if (!events) {
+      return;
+    }
+    setImmediate(() =>
+      events.emit('refund.updated', {
+        errandId: row.errandId,
+        refundId: row.id,
+        status: row.status,
+        refundAmount: row.refundAmount,
+      }),
+    );
+  }
 
   /**
    * Every CANCELLED transition opens the refund review (when the customer
@@ -212,7 +229,9 @@ export class RefundsService implements OnModuleInit {
     row.decisionNote = note?.trim() || null;
     row.decidedByUserId = adminUserId;
     row.decidedAt = new Date();
-    return this.reviews.save(row);
+    const saved = await this.reviews.save(row);
+    this.announce(saved);
+    return saved;
   }
 
   /** Admin records the manual M-Pesa payout of an approved refund. */
@@ -229,7 +248,9 @@ export class RefundsService implements OnModuleInit {
     row.payoutReference = payoutReference;
     row.paidByUserId = adminUserId;
     row.paidAt = new Date();
-    return this.reviews.save(row);
+    const saved = await this.reviews.save(row);
+    this.announce(saved);
+    return saved;
   }
 
   /** Everything the customer paid through STK for this errand (completed legs). */

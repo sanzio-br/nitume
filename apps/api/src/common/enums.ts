@@ -211,10 +211,13 @@ export enum PriceChangeStatus {
   REJECTED = 'rejected',
 }
 /**
- * Published `notifications.eventType` values (in-app feed). Clients choose
- * icon and deep link from this value; every value refers to the errand in
- * the row's `errandId`. Format: `errand.<ErrandStatus>`. CONFIRMED and
- * SETTLED are system-only payout states and never reach the customer feed.
+ * Published `notifications.eventType` values (in-app feed and push `data`).
+ * Clients choose icon and deep link from this value; every value refers to
+ * the errand in the row's `errandId`. Status items use
+ * `errand.<ErrandStatus>`; CONFIRMED and SETTLED are system-only payout
+ * states and never reach the customer feed. Non-status items:
+ * `price_change.requested` and `refund.<RefundStatus>` (approved,
+ * no_refund, refunded).
  */
 export enum NotificationEventType {
   ERRAND_QUOTED = 'errand.QUOTED',
@@ -227,4 +230,8 @@ export enum NotificationEventType {
   ERRAND_DISPUTED = 'errand.DISPUTED',
   ERRAND_CANCELLED = 'errand.CANCELLED',
   ERRAND_FAILED = 'errand.FAILED',
+  PRICE_CHANGE_REQUESTED = 'price_change.requested',
+  REFUND_APPROVED = 'refund.approved',
+  REFUND_NO_REFUND = 'refund.no_refund',
+  REFUND_REFUNDED = 'refund.refunded',
 }

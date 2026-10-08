@@ -1,11 +1,22 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { Queue } from 'bullmq';
 import { IsNull, Repository } from 'typeorm';
-import { ErrandStatus, NotificationEventType } from '../common/enums';
+import {
+  ErrandStatus,
+  NotificationChannel,
+  NotificationEventType,
+  NotificationSendStatus,
+} from '../common/enums';
 import { Errand } from '../errands/errand.entity';
 import { CustomerProfile } from '../customers/customer-profile.entity';
+import { NOTIFICATIONS_QUEUE } from '../infra/queue/queues';
+import { DevicesService } from '../users/devices.service';
 import { AppNotification } from './app-notification.entity';
+import { NotificationLog } from './notification-log.entity';
+import { PUSH_SENDER, PushSender } from './push/push-sender';
 
 export const ERrandStatusChangedEvent = 'errand.status_changed';
 
@@ -16,11 +27,43 @@ export interface StatusChangedEvent {
   actor: string;
 }
 
+/** Emitted by the payments module when a refund review changes (row 54). */
+export interface RefundUpdatedEvent {
+  errandId: string;
+  refundId: string;
+  status: string;
+  refundAmount: string | null;
+}
+
+interface PriceChangeRequested {
+  errandId: string;
+  requestId: string;
+  fromPrice: string;
+  toPrice: string;
+}
+
+/** Payload of a `feed` job: one customer-facing feed item to write. */
+export type FeedJob =
+  | { kind: 'errand_status'; errandId: string; status: ErrandStatus }
+  | { kind: 'price_change'; errandId: string; requestId: string; fromPrice: string; toPrice: string }
+  | { kind: 'refund'; errandId: string; refundId: string; status: string; refundAmount: string | null };
+
+export const FEED_JOB = 'feed';
+export const PUSH_JOB = 'push';
+
 interface FeedCopy {
+  eventType: NotificationEventType;
   title: string;
   body: string;
 }
 
+/**
+ * Notification fan-out (§4.4, row 26). Domain events only enqueue a job on
+ * the `notifications` BullMQ queue; the worker (NotificationsProcessor)
+ * writes the in-app feed row and then queues a push job, so a failed push is
+ * retried on its own without writing the feed item twice. Push goes through
+ * FCM when configured (row 31), otherwise it is skipped.
+ */
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -32,6 +75,13 @@ export class NotificationsService {
     private readonly errands: Repository<Errand>,
     @InjectRepository(CustomerProfile)
     private readonly customers: Repository<CustomerProfile>,
+    @InjectRepository(NotificationLog)
+    private readonly logs: Repository<NotificationLog>,
+    @InjectQueue(NOTIFICATIONS_QUEUE)
+    private readonly queue: Queue,
+    private readonly devices: DevicesService,
+    @Inject(PUSH_SENDER)
+    private readonly push: PushSender,
   ) {}
 
   async listForUser(
@@ -70,32 +120,140 @@ export class NotificationsService {
     return { updated: result.affected ?? 0 };
   }
 
-  /** Turns an errand status change into a customer-facing feed item. */
+  /** Errand status change -> queued feed item (published statuses only). */
   @OnEvent(ERrandStatusChangedEvent, { async: true })
   async onStatusChanged(event: StatusChangedEvent): Promise<void> {
-    const eventType = notificationEventTypeFor(event.status);
-    const copy = eventType ? feedCopy(event.status) : null;
-    if (!eventType || !copy) {
+    if (!notificationEventTypeFor(event.status)) {
       return;
     }
-    const errand = await this.errands.findOne({ where: { id: event.errandId } });
-    if (!errand) {
-      return;
-    }
-    const profile = await this.customers.findOne({
-      where: { id: errand.customerId },
+    await this.enqueue({ kind: 'errand_status', errandId: event.errandId, status: event.status });
+  }
+
+  @OnEvent('price_change.requested', { async: true })
+  async onPriceChangeRequested(event: PriceChangeRequested): Promise<void> {
+    await this.enqueue({
+      kind: 'price_change',
+      errandId: event.errandId,
+      requestId: event.requestId,
+      fromPrice: event.fromPrice,
+      toPrice: event.toPrice,
     });
-    if (!profile) {
+  }
+
+  @OnEvent('refund.updated', { async: true })
+  async onRefundUpdated(event: RefundUpdatedEvent): Promise<void> {
+    if (!refundCopy(event.status, event.refundAmount)) {
       return;
     }
-    const titleWithRef = `${copy.title} · ${humanStatus(event.status)}`;
-    await this.notifications.save(
+    await this.enqueue({
+      kind: 'refund',
+      errandId: event.errandId,
+      refundId: event.refundId,
+      status: event.status,
+      refundAmount: event.refundAmount,
+    });
+  }
+
+  private async enqueue(job: FeedJob): Promise<void> {
+    try {
+      await this.queue.add(FEED_JOB, job);
+    } catch (err) {
+      // Never fail the request that emitted the event; the feed is not money.
+      this.logger.error(
+        `Could not queue ${job.kind} notification for ${job.errandId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /** Worker step 1: writes the customer's feed row, then queues its push. */
+  async deliverFeed(job: FeedJob): Promise<AppNotification | null> {
+    const copy = copyFor(job);
+    if (!copy) {
+      return null;
+    }
+    const errand = await this.errands.findOne({ where: { id: job.errandId } });
+    if (!errand) {
+      return null;
+    }
+    const profile = await this.customers.findOne({ where: { id: errand.customerId } });
+    if (!profile) {
+      return null;
+    }
+    const row = await this.notifications.save(
       this.notifications.create({
         userId: profile.userId,
         errandId: errand.id,
-        eventType,
-        title: titleWithRef,
+        eventType: copy.eventType,
+        title: copy.title,
         body: copy.body,
+      }),
+    );
+    if (this.push.enabled) {
+      await this.queue.add(PUSH_JOB, { notificationId: row.id }, { jobId: `push-${row.id}` });
+    }
+    return row;
+  }
+
+  /**
+   * Worker step 2: pushes a feed item to every device of its user. Dead
+   * tokens are dropped; a send where every token failed for another reason
+   * throws so BullMQ retries it with backoff. Every attempt is logged in
+   * `notification_log`.
+   */
+  async deliverPush(notificationId: string): Promise<void> {
+    if (!this.push.enabled) {
+      return;
+    }
+    const row = await this.notifications.findOne({ where: { id: notificationId } });
+    if (!row) {
+      return;
+    }
+    const tokens = await this.devices.pushTokensFor(row.userId);
+    if (tokens.length === 0) {
+      return;
+    }
+    const results = await this.push.send({
+      tokens,
+      title: row.title,
+      body: row.body ?? '',
+      data: {
+        eventType: row.eventType,
+        errandId: row.errandId ?? '',
+        notificationId: row.id,
+      },
+    });
+    const stale = results.filter((r) => r.stale).map((r) => r.token);
+    if (stale.length > 0) {
+      await this.devices.removeStaleTokens(stale);
+    }
+    const sent = results.some((r) => r.ok);
+    await this.logs.save(
+      this.logs.create({
+        errandId: row.errandId,
+        userId: row.userId,
+        channel: NotificationChannel.PUSH,
+        eventType: row.eventType,
+        status: sent ? NotificationSendStatus.SENT : NotificationSendStatus.FAILED,
+        providerResponse: { provider: this.push.name, results },
+      }),
+    );
+    const retryable = results.some((r) => !r.ok && !r.stale);
+    if (!sent && retryable) {
+      throw new Error(`Push failed for notification ${row.id}; retrying`);
+    }
+  }
+
+  /** Final failure of a push job after every retry. */
+  async recordDeadLetter(notificationId: string, reason: string): Promise<void> {
+    const row = await this.notifications.findOne({ where: { id: notificationId } });
+    await this.logs.save(
+      this.logs.create({
+        errandId: row?.errandId ?? null,
+        userId: row?.userId ?? null,
+        channel: NotificationChannel.PUSH,
+        eventType: row?.eventType ?? 'unknown',
+        status: NotificationSendStatus.DEAD_LETTERED,
+        providerResponse: { provider: this.push.name, reason },
       }),
     );
   }
@@ -119,7 +277,52 @@ const humanStatus = (s: ErrandStatus): string =>
     .toLowerCase()
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
-const feedCopy = (status: ErrandStatus): FeedCopy | null => {
+export const copyFor = (job: FeedJob): FeedCopy | null => {
+  switch (job.kind) {
+    case 'errand_status': {
+      const eventType = notificationEventTypeFor(job.status);
+      const copy = statusCopy(job.status);
+      return eventType && copy
+        ? { eventType, title: `${copy.title} · ${humanStatus(job.status)}`, body: copy.body }
+        : null;
+    }
+    case 'price_change':
+      return {
+        eventType: NotificationEventType.PRICE_CHANGE_REQUESTED,
+        title: 'Price change requested',
+        body: `Your runner asked to change the item price from KES ${job.fromPrice} to KES ${job.toPrice}. Review it to continue.`,
+      };
+    case 'refund':
+      return refundCopy(job.status, job.refundAmount);
+  }
+};
+
+const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
+  switch (status) {
+    case 'approved':
+      return {
+        eventType: NotificationEventType.REFUND_APPROVED,
+        title: 'Refund approved',
+        body: `A refund of KES ${amount ?? '0.00'} was approved for your task.`,
+      };
+    case 'no_refund':
+      return {
+        eventType: NotificationEventType.REFUND_NO_REFUND,
+        title: 'Refund review closed',
+        body: 'After review, no refund is due for this task.',
+      };
+    case 'refunded':
+      return {
+        eventType: NotificationEventType.REFUND_REFUNDED,
+        title: 'Refund sent',
+        body: `Your refund of KES ${amount ?? '0.00'} has been sent to M-Pesa.`,
+      };
+    default:
+      return null;
+  }
+};
+
+const statusCopy = (status: ErrandStatus): { title: string; body: string } | null => {
   switch (status) {
     case ErrandStatus.QUOTED:
       return { title: 'Your task has a quote', body: 'A runner can now accept your task. Review the price to continue.' };

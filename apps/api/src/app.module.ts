@@ -11,6 +11,7 @@ import { ErrandsModule } from './errands/errands.module';
 import { HealthController } from './health/health.controller';
 import { MailModule } from './infra/mail/mail.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { QueueModule } from './infra/queue/queue.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { MatchingModule } from './matching/matching.module';
@@ -43,6 +44,7 @@ import { RealtimeModule } from './realtime/realtime.module';
       }),
     }),
     RedisModule,
+    QueueModule,
     MailModule,
     UsersModule,
     CustomersModule,
