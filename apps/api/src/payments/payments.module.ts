@@ -7,6 +7,7 @@ import { UsersModule } from '../users/users.module';
 import { Payment } from './payment.entity';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
+import { ErrandRefundController } from './errand-refund.controller';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { RefundReview } from './refund-review.entity';
@@ -28,7 +29,7 @@ import { stkGatewayProvider } from './stk-gateway/stk-gateway.provider';
       RefundReview,
     ]),
   ],
-  controllers: [PaymentsController, RefundsController],
+  controllers: [PaymentsController, RefundsController, ErrandRefundController],
   providers: [PaymentsService, RefundsService, ConsoleStkGateway, stkGatewayProvider],
   exports: [PaymentsService],
 })

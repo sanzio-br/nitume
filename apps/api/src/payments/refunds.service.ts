@@ -10,6 +10,23 @@ import { PaymentTransaction } from './payment-transaction.entity';
 import { Payment } from './payment.entity';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
 
+/** What the customer sees of a refund review (no admin notes or user ids). */
+export interface CustomerRefundView {
+  id: string;
+  errandId: string;
+  /** pending_review | approved | no_refund | refunded */
+  status: RefundStatus;
+  /** Everything the customer paid by STK for the task. */
+  amountPaid: string;
+  /** Null until an admin decides. */
+  refundAmount: string | null;
+  /** M-Pesa receipt of the manual payout, once refunded. */
+  payoutReference: string | null;
+  createdAt: Date;
+  decidedAt: Date | null;
+  paidAt: Date | null;
+}
+
 interface StatusChanged {
   errandId: string;
   status: ErrandStatus;
@@ -137,6 +154,33 @@ export class RefundsService implements OnModuleInit {
       throw new NotFoundException('Refund review not found');
     }
     return row;
+  }
+
+  /**
+   * Customer-readable refund status of an errand (row 55): the owner
+   * customer (or an admin) sees status and amounts; 404 `refund_not_found`
+   * when no refund review exists. Internal admin notes are not exposed.
+   */
+  async forCustomer(
+    errandId: string,
+    viewer: { userId: string; role: string },
+  ): Promise<CustomerRefundView> {
+    await this.errands.getById(errandId, viewer);
+    const row = await this.reviews.findOne({ where: { errandId } });
+    if (!row) {
+      throw new ApiError(HttpStatus.NOT_FOUND, 'refund_not_found', 'No refund for this task');
+    }
+    return {
+      id: row.id,
+      errandId: row.errandId,
+      status: row.status,
+      amountPaid: row.amountPaid,
+      refundAmount: row.refundAmount,
+      payoutReference: row.payoutReference,
+      createdAt: row.createdAt,
+      decidedAt: row.decidedAt,
+      paidAt: row.paidAt,
+    };
   }
 
   /** Admin sets the refund amount: 0 (no refund) up to the full amount paid. */
