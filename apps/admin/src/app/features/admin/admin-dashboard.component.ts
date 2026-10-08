@@ -1,6 +1,7 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
-import { AdminDataService, maskedId } from './admin-data.service';
+import { AdminDataService, maskedId, shortId } from './admin-data.service';
+import { DrawerNavService } from './drawer-nav.service';
 import { LiveMapPanelComponent } from './panels/live-map.panel';
 import { TaskQueuePanelComponent } from './panels/task-queue.panel';
 import { RunnersPanelComponent } from './panels/runners.panel';
@@ -14,7 +15,6 @@ import { OpsDrawerComponent } from '../../shared/ops-drawer.component';
 import { InlineNoticeComponent } from '../../shared/inline-notice.component';
 
 type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'reports';
-type DrawerKind = 'task' | 'runner' | 'dispute';
 
 /**
  * Ops shell (design `nitume_admin_dashboard.html` → `.app`): Deep Trust Blue
@@ -174,16 +174,23 @@ type DrawerKind = 'task' | 'runner' | 'dispute';
       </main>
     </div>
 
-    <app-ops-drawer [open]="drawer() !== null" [title]="drawerTitle()" (closed)="closeDrawer()">
-      @switch (drawer()) {
-        @case ('task') {
-          <app-task-drawer [errandId]="selId()!" />
-        }
-        @case ('runner') {
-          <app-runner-drawer [runnerId]="selId()!" />
-        }
-        @case ('dispute') {
-          <app-dispute-drawer [errandId]="selId()!" />
+    <app-ops-drawer
+      [open]="nav.current() !== null"
+      [title]="drawerTitle()"
+      (closed)="nav.requestClose()"
+    >
+      <!-- Re-mount per target so each drawer fetches its own data on open. -->
+      @for (t of targets(); track t.kind + ':' + t.id) {
+        @switch (t.kind) {
+          @case ('task') {
+            <app-task-drawer [errandId]="t.id" />
+          }
+          @case ('runner') {
+            <app-runner-drawer [runnerId]="t.id" />
+          }
+          @case ('dispute') {
+            <app-dispute-drawer [errandId]="t.id" />
+          }
         }
       }
     </app-ops-drawer>
@@ -194,45 +201,48 @@ export class AdminDashboardComponent implements OnInit {
   protected readonly s = inject(AdminDataService);
   private readonly auth = inject(AuthService);
 
+  protected readonly nav = inject(DrawerNavService);
+
   readonly panel = signal<Panel>('map');
-  readonly drawer = signal<DrawerKind | null>(null);
-  readonly selId = signal<string | null>(null);
+  protected readonly targets = computed(() => {
+    const t = this.nav.current();
+    return t ? [t] : [];
+  });
 
   ngOnInit(): void {
     void this.s.refresh();
   }
 
+  /** Changing panel closes any open drawer (unless it has unsaved input). */
   protected select(p: Panel): void {
+    if (this.nav.current()) {
+      this.nav.requestClose(() => this.panel.set(p));
+      return;
+    }
     this.panel.set(p);
   }
 
   protected openTask(id: string): void {
-    this.selId.set(id);
-    this.drawer.set('task');
+    this.nav.open('task', id);
   }
 
   protected openRunner(id: string): void {
-    this.selId.set(id);
-    this.drawer.set('runner');
+    this.nav.open('runner', id);
   }
 
   protected openDispute(id: string): void {
-    this.selId.set(id);
-    this.drawer.set('dispute');
-  }
-
-  protected closeDrawer(): void {
-    this.drawer.set(null);
+    this.nav.open('dispute', id);
   }
 
   protected drawerTitle(): string {
-    switch (this.drawer()) {
+    const t = this.nav.current();
+    switch (t?.kind) {
       case 'task':
         return 'Task detail';
       case 'runner':
         return 'Runner profile';
       case 'dispute':
-        return 'Resolve dispute';
+        return `Dispute ${shortId(t.id)}`;
       default:
         return '';
     }

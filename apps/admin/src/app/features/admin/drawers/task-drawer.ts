@@ -1,24 +1,61 @@
-import { Component, inject, input, OnInit, signal } from '@angular/core';
+import { NumTextComponent } from '../../../shared/num-text.component';
+import { Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { AdminDataService, categoryLabel, maskedId, shortId, timeAgo } from '../admin-data.service';
-import { StatusChipComponent } from '../../../shared/status-chip.component';
-import { formatKsh } from '../shared-format';
-import { FormsModule } from '@angular/forms';
-import type { QuoteErrandDto } from '../../../core/api-types';
+import { StatusChipComponent, statusLabel } from '../../../shared/status-chip.component';
+import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice.component';
+import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
+import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
+import { ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
+import type { QuoteErrandResult } from '../../../core/api-types';
+import { formatDateTime, formatKsh, formatKshExact } from '../shared-format';
+import { QuoteConflict, QuoteDialogComponent } from './quote-dialog';
 
 /**
- * Task drawer: errand detail (`GET /errands/:id`) + status-history timeline
- * (`GET /errands/:id/history`). Actions: Assign runner, Issue quote.
+ * Admin actions by state (§3.3): the first quote only from REQUESTED; a
+ * runner can only be assigned from PAYMENT_CONFIRMED (the API's only
+ * assignment transition). Re-quote lives in the Quote section.
+ */
+export function taskActions(status: string): { quote: boolean; assign: boolean } {
+  return { quote: status === 'REQUESTED', assign: status === 'PAYMENT_CONFIRMED' };
+}
+
+/**
+ * Task drawer: errand detail (`GET /errands/:id`) + status history. Sections:
+ * summary, items, locations, merchant payment details, quote, admin actions
+ * (Issue quote / Assign runner), refund link, status history.
  * Re-mounted each time the drawer opens, so it fetches on init.
  */
 @Component({
   selector: 'app-task-drawer',
-  imports: [StatusChipComponent, FormsModule],
+  imports: [
+    NumTextComponent,
+    StatusChipComponent,
+    InlineNoticeComponent,
+    ConfirmDialogComponent,
+    FormFieldComponent,
+    FieldControlDirective,
+    QuoteDialogComponent,
+  ],
   template: `
-    @if (loading()) {
+    @if (s.detailLoading()) {
       <div class="ops-loading">Loading task detail…</div>
-    } @else if (error()) {
-      <div class="ops-empty"><b>Could not load this task</b>{{ error() }}</div>
+    } @else if (s.detailError(); as err) {
+      <app-inline-notice tone="danger">
+        {{ err }}
+        <button notice-action type="button" class="btn btn-outline btn-sm" (click)="reload()">
+          Try again
+        </button>
+      </app-inline-notice>
     } @else if (s.detail(); as d) {
+      @if (notice(); as n) {
+        <app-inline-notice
+          [tone]="n.tone"
+          [dismissible]="true"
+          [autoDismissMs]="n.tone === 'success' ? 6000 : 0"
+          (dismissed)="notice.set(null)"
+          ><app-num-text [text]="n.text"
+        /></app-inline-notice>
+      }
       <section class="drawer-section">
         <div class="drawer-card">
           <div class="drawer-row">
@@ -26,7 +63,7 @@ import type { QuoteErrandDto } from '../../../core/api-types';
           </div>
           <div class="drawer-row"><span>Status</span><app-status-chip [status]="d.status" /></div>
           <div class="drawer-row">
-            <span>Category</span><b>{{ categoryLabel(d.category) }}</b>
+            <span>Category</span><b class="txt">{{ categoryLabel(d.category) }}</b>
           </div>
           <div class="drawer-row">
             <span>Customer</span><b>{{ maskedId(d.customerId) }}</b>
@@ -35,13 +72,13 @@ import type { QuoteErrandDto } from '../../../core/api-types';
             <span>Budget</span><b>{{ formatKsh(d.budget) }}</b>
           </div>
           <div class="drawer-row">
-            <span>Quoted</span><b>{{ formatKsh(d.quotedPrice ?? null) }}</b>
+            <span>Quoted</span><b>{{ formatKshExact(d.quotedPrice ?? null) }}</b>
           </div>
           <div class="drawer-row">
-            <span>Urgency</span><b>{{ d.urgency ?? 'standard' }}</b>
+            <span>Urgency</span><b class="txt">{{ title(d.urgency ?? 'standard') }}</b>
           </div>
           <div class="drawer-row">
-            <span>Deadline</span><b>{{ d.deadlineAt ? timeAgo(d.deadlineAt) : '—' }}</b>
+            <span>Deadline</span><b>{{ formatDateTime(d.deadlineAt ?? null) }}</b>
           </div>
           <div class="drawer-row">
             <span>Created</span><b>{{ timeAgo(d.createdAt) }}</b>
@@ -56,9 +93,12 @@ import type { QuoteErrandDto } from '../../../core/api-types';
             @for (item of d.items; track $index) {
               <div class="drawer-row">
                 <span>{{ item.name }}</span>
-                <b>{{
-                  item.quantity ? item.quantity + ' × ' + (item.unit ?? '') : (item.unit ?? '')
-                }}</b>
+                <span class="val-text">
+                  @if (item.quantity) {
+                    <span class="num">{{ item.quantity }}</span> ×
+                  }
+                  {{ item.unit ?? '' }}</span
+                >
               </div>
             }
           </div>
@@ -72,34 +112,27 @@ import type { QuoteErrandDto } from '../../../core/api-types';
             @for (loc of d.locations; track $index) {
               <div class="drawer-row">
                 <span>{{ title(loc.pointType) }}</span>
-                <b>{{ loc.addressText }}</b>
+                <b class="txt">{{ loc.addressText }}</b>
               </div>
             }
           </div>
         </section>
       }
 
-      <!-- Assign / Quote actions for REQUESTED / QUOTED statuses -->
-      @if (d.status === 'REQUESTED' || d.status === 'QUOTED') {
+      @if (actions().quote || actions().assign) {
         <section class="drawer-section">
           <div class="drawer-label">Admin actions</div>
-          <div class="drawer-card">
-            <div class="action-row">
-              <button
-                class="btn-primary"
-                (click)="openAssign()"
-                [disabled]="assigning()"
-              >
-                {{ assigning() ? 'Assigning…' : 'Assign runner' }}
+          <div class="drawer-actions">
+            @if (actions().quote) {
+              <button type="button" class="btn btn-primary" (click)="quoteOpen.set(true)">
+                Issue quote
               </button>
-              <button
-                class="btn-outline"
-                (click)="openQuote()"
-                [disabled]="quoting()"
-              >
-                {{ quoting() ? 'Issuing…' : 'Issue quote' }}
+            }
+            @if (actions().assign) {
+              <button type="button" class="btn btn-primary" (click)="openAssign()">
+                Assign runner
               </button>
-            </div>
+            }
           </div>
         </section>
       }
@@ -110,8 +143,8 @@ import type { QuoteErrandDto } from '../../../core/api-types';
           @for (entry of s.history(); track entry.id) {
             <div class="dt-item">
               <b
-                >{{ entry.fromStatus ? blank(entry.fromStatus) + ' → ' : ''
-                }}{{ blank(entry.toStatus) }}</b
+                >{{ entry.fromStatus ? statusLabel(entry.fromStatus) + ' → ' : ''
+                }}{{ statusLabel(entry.toStatus) }}</b
               >
               <span class="dt-time"
                 >{{ title(entry.actorType) }} · {{ timeAgo(entry.createdAt) }}</span
@@ -125,71 +158,61 @@ import type { QuoteErrandDto } from '../../../core/api-types';
           }
         </div>
       </section>
-    }
 
-    <!-- Assign runner modal -->
-    @if (showAssign()) {
-      <div class="drawer-modal" (click)="closeAssign()">
-        <div class="drawer-modal-card" (click)="$event.stopPropagation()">
-          <h3>Assign runner</h3>
-          <p class="modal-sub">Select a runner for {{ shortId(errandId()) }}</p>
-          <label class="modal-label">Runner</label>
-          <select class="modal-select" [(ngModel)]="assignRunnerId" (ngModelChange)="onRunnerSelect($event)">
-            <option value="">— Choose runner —</option>
-            @for (r of availableRunners(); track r.id) {
-              <option [value]="r.id">
-                {{ shortId(r.id) }} · {{ r.availability === 'online' ? 'Online' : r.availability }}
-              </option>
-            }
-          </select>
-          <label class="modal-label">Note (optional)</label>
-          <textarea class="modal-textarea" [(ngModel)]="assignNote" rows="2" placeholder="Assignment note…"></textarea>
-          <div class="modal-actions">
-            <button class="btn-outline" (click)="closeAssign()">Cancel</button>
-            <button class="btn-primary" (click)="confirmAssign()" [disabled]="assigning() || !assignRunnerId">
-              {{ assigning() ? 'Assigning…' : 'Assign' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    }
+      <app-quote-dialog
+        [open]="quoteOpen()"
+        [errandId]="d.id"
+        [errandStatus]="d.status"
+        (closed)="quoteOpen.set(false)"
+        (issued)="onQuoted($event)"
+        (conflict)="onQuoteConflict($event)"
+      />
 
-    <!-- Issue quote modal -->
-    @if (showQuote()) {
-      <div class="drawer-modal" (click)="closeQuote()">
-        <div class="drawer-modal-card" (click)="$event.stopPropagation()">
-          <h3>Issue quote</h3>
-          <p class="modal-sub">Enter quote for {{ shortId(errandId()) }}</p>
-          <div class="modal-grid">
-            <label class="modal-label">Total (KSh)</label>
-            <input type="number" class="modal-input" [(ngModel)]="quote.total" required />
-            <label class="modal-label">Base fee</label>
-            <input type="number" class="modal-input" [(ngModel)]="quote.baseFee" />
-            <label class="modal-label">Distance fee</label>
-            <input type="number" class="modal-input" [(ngModel)]="quote.distanceFee" />
-            <label class="modal-label">Time fee</label>
-            <input type="number" class="modal-input" [(ngModel)]="quote.timeFee" />
-            <label class="modal-label">Urgency fee</label>
-            <input type="number" class="modal-input" [(ngModel)]="quote.urgencyFee" />
-            <label class="modal-label">Complexity fee</label>
-            <input type="number" class="modal-input" [(ngModel)]="quote.complexityFee" />
-            <label class="modal-label">Premium fee</label>
-            <input type="number" class="modal-input" [(ngModel)]="quote.premiumFee" />
-            <label class="modal-label">Currency</label>
-            <input type="text" class="modal-input" [(ngModel)]="quote.currency" value="KES" />
-            <label class="modal-label">Expires at (ISO)</label>
-            <input type="datetime-local" class="modal-input" [(ngModel)]="quote.expiresAt" />
-          </div>
-          <label class="modal-label">Note (optional)</label>
-          <textarea class="modal-textarea" [(ngModel)]="quote.note" rows="2" placeholder="Quote note…"></textarea>
-          <div class="modal-actions">
-            <button class="btn-outline" (click)="closeQuote()">Cancel</button>
-            <button class="btn-primary" (click)="confirmQuote()" [disabled]="quoting() || !quote.total">
-              {{ quoting() ? 'Issuing…' : 'Issue quote' }}
-            </button>
-          </div>
+      <app-confirm-dialog
+        [open]="assignOpen()"
+        [form]="true"
+        title="Assign runner"
+        confirmLabel="Assign"
+        busyLabel="Assigning…"
+        [busy]="assigning()"
+        [confirmDisabled]="!assignRunnerId()"
+        (confirmed)="confirmAssign()"
+        (cancelled)="assignOpen.set(false)"
+      >
+        <p>
+          Select a runner for <span class="num">{{ shortId(d.id) }}</span
+          >.
+        </p>
+        @if (assignNotice(); as n) {
+          <app-inline-notice [tone]="n.tone"><app-num-text [text]="n.text" /></app-inline-notice>
+        }
+        <div class="drawer-stack">
+          <app-form-field label="Runner">
+            <select
+              appFieldControl
+              data-autofocus
+              [value]="assignRunnerId()"
+              (change)="assignRunnerId.set(val($event))"
+            >
+              <option value="">Choose a runner</option>
+              @for (r of availableRunners(); track r.id) {
+                <option [value]="r.id">
+                  {{ shortId(r.id) }} · {{ statusLabel(r.availability, 'availability') }}
+                </option>
+              }
+            </select>
+          </app-form-field>
+          <app-form-field label="Note (optional)" [counter]="assignNote().length + '/500'">
+            <textarea
+              appFieldControl
+              rows="2"
+              maxlength="500"
+              [value]="assignNote()"
+              (input)="assignNote.set(val($event))"
+            ></textarea>
+          </app-form-field>
         </div>
-      </div>
+      </app-confirm-dialog>
     }
   `,
   styles: [],
@@ -199,89 +222,88 @@ export class TaskDrawerComponent implements OnInit {
 
   readonly errandId = input.required<string>();
 
-  protected assigning = signal(false);
-  protected quoting = signal(false);
-  protected showAssign = signal(false);
-  protected showQuote = signal(false);
-  protected assignRunnerId = '';
-  protected assignNote = '';
-  protected quote: QuoteErrandDto = {
-    total: '', baseFee: '', distanceFee: '', timeFee: '', urgencyFee: '',
-    complexityFee: '', premiumFee: '', currency: 'KES', expiresAt: '', note: ''
-  };
+  protected readonly notice = signal<{ tone: NoticeTone; text: string } | null>(null);
+  protected readonly quoteOpen = signal(false);
+  protected readonly assignOpen = signal(false);
+  protected readonly assigning = signal(false);
+  protected readonly assignRunnerId = signal('');
+  protected readonly assignNote = signal('');
+  protected readonly assignNotice = signal<{ tone: NoticeTone; text: string } | null>(null);
+
+  protected readonly actions = computed(() => taskActions(this.s.detail()?.status ?? ''));
 
   ngOnInit(): void {
-    this.s.loadErrandDetail(this.errandId());
+    void this.s.loadErrandDetail(this.errandId());
   }
 
-  protected loading(): boolean {
-    return this.s.detailLoading();
-  }
-
-  protected error(): string | null {
-    return this.s.detailError();
+  protected reload(): void {
+    void this.s.loadErrandDetail(this.errandId());
   }
 
   protected title(value: string): string {
-    return value.replace(/_/g, ' ');
+    const v = value.replace(/_/g, ' ');
+    return v.charAt(0).toUpperCase() + v.slice(1);
   }
 
-  protected blank(value: string): string {
-    return value.replace(/_/g, ' ');
+  protected val(event: Event): string {
+    return (event.target as HTMLInputElement).value;
   }
 
+  /** Online and on-task runners (the API decides; busy reads `On task`). */
   protected availableRunners() {
-    return this.s.runners().filter(r => r.availability === 'online' || r.availability === 'busy');
+    return this.s.runners().filter((r) => r.availability === 'online' || r.availability === 'busy');
+  }
+
+  protected onQuoted(res: QuoteErrandResult): void {
+    this.quoteOpen.set(false);
+    this.notice.set({
+      tone: 'success',
+      text: `Quote issued: ${formatKshExact(res.quote.total)}, valid until ${formatDateTime(res.quote.expiresAt)}.`,
+    });
+  }
+
+  protected async onQuoteConflict(_: QuoteConflict): Promise<void> {
+    this.quoteOpen.set(false);
+    await this.s.loadErrandDetail(this.errandId(), { quiet: true });
+    this.notice.set({
+      tone: 'info',
+      text: 'This task changed while you were editing. Showing the latest.',
+    });
   }
 
   protected openAssign(): void {
-    this.assignRunnerId = '';
-    this.assignNote = '';
-    this.showAssign.set(true);
-  }
-
-  protected closeAssign(): void {
-    this.showAssign.set(false);
+    this.assignRunnerId.set('');
+    this.assignNote.set('');
+    this.assignNotice.set(null);
+    this.assignOpen.set(true);
   }
 
   protected async confirmAssign(): Promise<void> {
-    if (!this.assignRunnerId) return;
+    if (!this.assignRunnerId() || this.assigning()) return;
     this.assigning.set(true);
+    this.assignNotice.set(null);
     try {
-      await this.s.assignErrand(this.errandId(), this.assignRunnerId, this.assignNote);
-      this.closeAssign();
+      await this.s.assignErrand(this.errandId(), this.assignRunnerId(), this.assignNote().trim());
+      this.assignOpen.set(false);
+      this.notice.set({ tone: 'success', text: 'Runner assigned.' });
     } catch (e) {
-      console.error('Assign failed:', e);
+      const err = e as ApiErrorInfo;
+      if (err.status === 409) {
+        this.assignOpen.set(false);
+        await this.s.loadErrandDetail(this.errandId(), { quiet: true });
+        this.notice.set({
+          tone: 'info',
+          text: 'This task changed while you were editing. Showing the latest.',
+        });
+      } else if (err.status === 403) {
+        this.assignNotice.set({ tone: 'danger', text: FORBIDDEN_COPY });
+      } else if (err.status === 404) {
+        this.assignNotice.set({ tone: 'info', text: 'That runner or task no longer exists.' });
+      } else {
+        this.assignNotice.set({ tone: 'danger', text: "Couldn't assign the runner. Try again." });
+      }
     } finally {
       this.assigning.set(false);
-    }
-  }
-
-  protected onRunnerSelect(event: Event): void {
-    this.assignRunnerId = (event.target as HTMLSelectElement).value;
-  }
-
-  protected openQuote(): void {
-    // Set default expiry to 24h from now
-    const exp = new Date(Date.now() + 24 * 3600 * 1000);
-    this.quote.expiresAt = exp.toISOString().slice(0, 16);
-    this.showQuote.set(true);
-  }
-
-  protected closeQuote(): void {
-    this.showQuote.set(false);
-  }
-
-  protected async confirmQuote(): Promise<void> {
-    if (!this.quote.total) return;
-    this.quoting.set(true);
-    try {
-      await this.s.quoteErrand(this.errandId(), this.quote);
-      this.closeQuote();
-    } catch (e) {
-      console.error('Quote failed:', e);
-    } finally {
-      this.quoting.set(false);
     }
   }
 
@@ -290,4 +312,7 @@ export class TaskDrawerComponent implements OnInit {
   protected readonly timeAgo = timeAgo;
   protected readonly shortId = shortId;
   protected readonly formatKsh = formatKsh;
+  protected readonly formatKshExact = formatKshExact;
+  protected readonly formatDateTime = formatDateTime;
+  protected readonly statusLabel = statusLabel;
 }

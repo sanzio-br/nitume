@@ -1172,19 +1172,11 @@ tr.clickable:hover {
   justify-content: space-between;
   align-items: center;
 }
-.dc-foot .btn-outline {
-  background: transparent;
-  border: 1px solid var(--nitume-slate-line);
-  color: var(--nitume-blue);
+.dc-foot .btn {
   padding: 8px 14px;
   border-radius: 9px;
   font-size: 12.5px;
   font-weight: 700;
-  cursor: pointer;
-  font-family: var(--nitume-font-ui);
-}
-.dc-foot .btn-outline:hover {
-  border-color: var(--nitume-blue);
 }
 .dc-id {
   font-size: 11px;
@@ -1382,68 +1374,6 @@ tr.clickable:hover {
   color: var(--nitume-slate-400);
 }
 
-// --- Drawer additions (verdict + textarea) ---
-.drawer-textarea {
-  width: 100%;
-  resize: vertical;
-  background: var(--nitume-white);
-  border: 1px solid var(--nitume-slate-line);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--nitume-blue);
-  font-family: var(--nitume-font-ui);
-  box-sizing: border-box;
-}
-.drawer-textarea:focus {
-  outline: 2px solid var(--nitume-green);
-  outline-offset: 1px;
-  border-color: var(--nitume-green);
-}
-.btn-verdict {
-  flex: 1;
-  padding: 11px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: var(--nitume-font-ui);
-  border: none;
-  color: var(--nitume-white);
-}
-.btn-verdict.runner {
-  background: var(--nitume-green);
-}
-.btn-verdict.runner:hover {
-  background: var(--nitume-green-700);
-}
-.btn-verdict.customer {
-  background: var(--nitume-amber);
-}
-.btn-verdict.customer:hover {
-  background: var(--nitume-amber);
-  opacity: 0.85;
-}
-.btn-verdict:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.dispute-result {
-  padding: 12px 14px;
-  border-radius: 10px;
-  font-size: 12.5px;
-  font-weight: 600;
-  font-family: var(--nitume-font-ui);
-}
-.dispute-result.ok {
-  background: var(--nitume-green-050);
-  color: var(--nitume-green-700);
-}
-.dispute-result.bad {
-  background: var(--nitume-red-050);
-  color: var(--nitume-red);
-}
-
 // --- Numeric cells (Fira Code) ---
 .num {
   font-family: var(--nitume-font-num);
@@ -1576,6 +1506,39 @@ tr.clickable:hover {
   justify-content: center;
   margin-top: 18px;
 }
+.chip-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.row-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .ops-sync-notice {
   margin-top: 18px;
+}
+.field-input.is-upper {
+  text-transform: uppercase;
+}
+
+// --- Refunds panel ---
+.cell-muted {
+  font-size: 12px;
+  color: var(--nitume-slate-600);
+}
+.refunds-more-error {
+  margin-top: 14px;
+}
+@media (max-width: 1100px) {
+  .refunds-table .col-opened {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .refunds-table .col-reason {
+    display: none;
+  }
 }

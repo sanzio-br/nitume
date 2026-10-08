@@ -38,7 +38,7 @@ import { StatusChipComponent } from '../../../shared/status-chip.component';
             <span class="chip chip-neutral">Photos</span>
           </div>
           <div class="dc-foot">
-            <button class="btn-outline" (click)="open.emit(d.id)">Review evidence</button>
+            <button class="btn btn-outline" (click)="open.emit(d.id)">Review evidence</button>
             <span class="dc-id">{{ shortId(d.id) }}</span>
           </div>
         </div>

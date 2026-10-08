@@ -9,6 +9,7 @@ import {
   output,
   viewChild,
 } from '@angular/core';
+import { NumTextComponent } from './num-text.component';
 
 let nextId = 0;
 
@@ -22,7 +23,7 @@ let nextId = 0;
  */
 @Component({
   selector: 'app-confirm-dialog',
-  imports: [],
+  imports: [NumTextComponent],
   template: `
     @if (open()) {
       <div class="confirm-scrim" (click)="onScrim()">
@@ -36,7 +37,7 @@ let nextId = 0;
           (click)="$event.stopPropagation()"
           (keydown)="onKeydown($event)"
         >
-          <h3 [id]="titleId">{{ title() }}</h3>
+          <h3 [id]="titleId"><app-num-text [text]="title()" /></h3>
           <div class="confirm-body"><ng-content /></div>
           <div class="confirm-actions">
             <button

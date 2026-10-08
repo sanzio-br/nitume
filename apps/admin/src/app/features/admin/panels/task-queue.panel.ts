@@ -1,4 +1,5 @@
-import { Component, inject, output, signal } from '@angular/core';
+import { Component, computed, inject, output, signal } from '@angular/core';
+import type { ErrandListItem } from '../../../core/api-types';
 import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { formatKsh } from '../shared-format';
@@ -67,11 +68,22 @@ import { formatKsh } from '../shared-format';
                 <div class="task-id">{{ shortId(task.id) }}</div>
               </td>
               <td>{{ categoryLabel(task.category) }}</td>
-              <td><app-status-chip [status]="task.status" /></td>
+              <td>
+                <div class="chip-stack">
+                  <app-status-chip [status]="task.status" />
+                  @if (quoteExpired(task)) {
+                    <app-status-chip label="Quote expired" tone="pending" />
+                  }
+                </div>
+              </td>
               <td class="num">{{ value(task) }}</td>
               <td>
-                <button class="row-assign" (click)="stop($event); open.emit(task.id)">
-                  {{ task.status === 'REQUESTED' || task.status === 'QUOTED' ? 'Assign' : 'View' }}
+                <button
+                  class="row-assign"
+                  [attr.aria-label]="rowAction(task) + ' ' + shortId(task.id)"
+                  (click)="stop($event); open.emit(task.id)"
+                >
+                  {{ rowAction(task) }}
                 </button>
               </td>
             </tr>
@@ -96,6 +108,8 @@ export class TaskQueuePanelComponent {
   readonly open = output<string>();
 
   readonly search = signal('');
+  /** Re-evaluated with every errand refresh. */
+  private readonly now = computed(() => (this.s.refreshedAt(), Date.now()));
   readonly category = signal('all');
 
   protected readonly categories = [
@@ -116,10 +130,25 @@ export class TaskQueuePanelComponent {
       : `${total} task${total === 1 ? '' : 's'} listed · no pending`;
   }
 
+  /** `Assign` only where assignment is valid (PAYMENT_CONFIRMED, §3.3). */
+  protected rowAction(t: ErrandListItem): string {
+    return t.status === 'PAYMENT_CONFIRMED' ? 'Assign' : 'View';
+  }
+
+  /** N-5 `quoteExpiresAt` (feat/api-owner-answers-3); no flag on older APIs. */
+  protected quoteExpired(t: ErrandListItem): boolean {
+    return isQuoteExpired(t, this.now());
+  }
+
   protected visible() {
     const q = this.search().trim().toLowerCase();
     const cat = this.category();
-    return this.s.tasks().filter((t) => {
+    const now = this.now();
+    // Expired quotes first (drawer-task-requote "Queue flag"); otherwise API order.
+    const rows = [...this.s.tasks()].sort(
+      (a, b) => Number(isQuoteExpired(b, now)) - Number(isQuoteExpired(a, now)),
+    );
+    return rows.filter((t) => {
       if (cat !== 'all' && t.category !== cat) return false;
       if (!q) return true;
       return (
@@ -148,4 +177,12 @@ export class TaskQueuePanelComponent {
 
   protected readonly categoryLabel = categoryLabel;
   protected readonly shortId = shortId;
+}
+
+export function isQuoteExpired(t: ErrandListItem, now: number): boolean {
+  return (
+    (t.status === 'QUOTED' || t.status === 'ACCEPTED') &&
+    !!t.quoteExpiresAt &&
+    new Date(t.quoteExpiresAt).getTime() <= now
+  );
 }
