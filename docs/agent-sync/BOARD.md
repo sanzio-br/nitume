@@ -85,6 +85,9 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | api-contract | web-parity | Admin merchant-details form (PUT /errands/:id/merchant-details) and re-quote action (POST /errands/:id/quote on expired quote) | queued |
 | api-contract | owner/ops | After merge: migration:run (1790100500000); set TRUST_PROXY_HOPS, FCM_*, PAYMENTS_MPESA_* and queue env vars per environment; .env.example not updated (agent blocked from reading it) | open |
 | design-auditor | web-parity | Existing admin bugs found while speccing: quote modal sends strings (400, errors only to console); Assign runner shown before PAYMENT_CONFIRMED; .drawer-modal/.modal-* unstyled and btn-primary without .btn; dispute drawer amber button, no 20-char note minimum, false "resolved" on failure, description shown as reason, DISPUTED→CONFIRMED comments; admin app has no tests | open |
+| api-contract | flutter-customer | (feat/api-owner-answers-3) POST /errands/:id/quote/accept when quoteAcceptanceRequired; 409 quote_not_accepted; GET /errands/:id/refunds; socket quote:reissued + merchant_details:updated; refundReview on decisions | relayed to running flutter-customer |
+| api-contract | web-parity | Refund drawer fields (errand summary, customer.mpesaPhone, paid breakdown, decidedBy/paidBy, otherReviews), /refunds/count badge, quoteExpiresAt in the queue, 409 codes, re-quote on ACCEPTED (409 payment_in_progress) | open (web-parity not started) |
+| api-contract | owner/ops | Env docs: PAYMENTS_PROVIDER, PAYHERO_BASE_URL/AUTH_TOKEN/CHANNEL_ID/CALLBACK_URL/TIMEOUT_MS, FCM_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY (agents can't read or edit env files here). Run e2e with --no-file-parallelism on a fresh DB (payment_type seeding race, pre-existing) | open |
 
 ## Questions for the project owner
 
@@ -174,6 +177,11 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 82 | design-auditor (admin specs) | AQ-6: KSh vs KES in notifications? Can a payout receipt be corrected after `refunded`? Default no | open |
 | 83 | design-auditor (admin specs) | AQ-R2: should every quote require an expiry? Default required, 24h. A quote with null expiresAt can never be replaced | open |
 | 84 | web-parity | Scope: may web-parity build admin features beyond the mockup (Refunds panel/drawer, merchant details, re-quote, dispute outcome) from design-auditor specs? | answered (owner, 2026-10-08): yes, build the five spec'd admin features plus the existing-bug fixes, once recorded in docs/audits/admin-gap-report.md |
+| 85 | api-contract (round 3) | PayHero confirmations from its docs/dashboard: (1) exact callback JSON; (2) any callback signing, secret or IP list; (3) GET /transaction-status status values and the receipt field; (4) push response returns `reference` and `CheckoutRequestID`; (5) base URL/version (/api/v2?); (6) integer amounts? Fractions are rounded up today, so up to KES 0.99 over the ledger; (7) does PayHero retry non-2xx callbacks? | open |
+| 86 | api-contract (round 3) | Decrease refund reviews open for every approved decrease on a paid task, including merchant_direct where Nitume never received the item money (the admin can set 0). Restrict them to send_to_runner? | open |
+| 87 | api-contract (round 3) | A cancellation review's ceiling is everything paid, so it can overlap earlier decrease refunds. Should the ceiling subtract decreases already refunded? | open |
+| 88 | api-contract (round 3) | Admin re-quote (QUOTED or ACCEPTED) is only allowed once the quote has expired. Should an admin be able to replace a still-valid quote? | open |
+| 89 | api-contract (round 3) | With PAYMENTS_PROVIDER=console in production, mock callbacks are trusted (a warning is logged). Refuse to start instead? Recommended: yes | open |
 
 ## Session log
 
@@ -204,3 +212,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-08 | Owner answered rows 71–75 (multiple refund reviews + decrease trigger; admin re-quote while ACCEPTED; PayHero first behind a provider abstraction; OTP IP limits; firebase-admin). Owner shared a PayHero PHP reference client (kept in the session scratchpad, not committed) | — |
 | 2026-10-08 | design-auditor admin ops specs (refunds panel + drawer, merchant details, re-quote, dispute outcome); existing admin bugs logged; questions 77–83. api-contract round 3 started (feat/api-owner-answers-3); flutter-customer resumed after usage limit | 2a8fbd9 |
 | 2026-10-08 | web-parity stopped: no admin gap report and new features beyond parity scope. Owner authorised the build (row 84); design-auditor writing docs/audits/admin-gap-report.md on feat/admin-ops | — |
+| 2026-10-08 | api-contract round 3 (feat/api-owner-answers-3, built): multiple refund reviews + price_change_decrease, re-quote on ACCEPTED with explicit acceptance, MpesaProvider abstraction with PayHero first (verify by status re-query), N-1/2/5/6/7/8, merchant-details notifications; 279 unit + 36 e2e (throwaway DB); migrations quotes.acceptedAt and refund_reviews.priceChangeRequestId | 4dc6220, a50892f, 69a3eb0, 3f8a204, fe6e08b, f132f3c, e9cc755 |
