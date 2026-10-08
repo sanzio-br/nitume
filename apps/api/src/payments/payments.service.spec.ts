@@ -24,6 +24,8 @@ const build = (opts: {
   methods?: object[];
   /** Newest quote has expired (row 46). */
   quoteExpired?: boolean;
+  /** Newest quote is an admin re-quote the customer has not accepted (row 72). */
+  quoteNotAccepted?: boolean;
   /** Merchant Till/Paybill columns on the errand (row 43). */
   merchant?: Record<string, string | null>;
 } = {}) => {
@@ -74,11 +76,14 @@ const build = (opts: {
         ...opts.merchant,
       }),
     ),
-    assertQuoteCurrentFor: vi.fn(() =>
+    payableQuote: vi.fn(() =>
       opts.quoteExpired
         ? Promise.reject(new ApiError(409, 'quote_expired', 'expired'))
-        : Promise.resolve(),
+        : opts.quoteNotAccepted
+          ? Promise.reject(new ApiError(409, 'quote_not_accepted', 'accept it'))
+          : Promise.resolve({ id: 'q-1', total: '1000.00', acceptedAt: new Date() }),
     ),
+    onRequote: vi.fn(),
   };
   const stk = { push: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-1', transactionId: 't' })) };
   const config = { get: vi.fn((_k: string, d: unknown) => d) };
@@ -98,7 +103,7 @@ const build = (opts: {
     users as never,
     redis as never,
   );
-  return { service, payments, transactions, stk };
+  return { service, payments, transactions, stk, errands };
 };
 
 const codeOf = async (p: Promise<unknown>) =>
@@ -312,5 +317,33 @@ describe('PaymentsService.initiate quote expiry (row 46)', () => {
     const { service, stk } = build({ quoteExpired: true });
     expect(await codeOf(service.initiate('e-1', user))).toBe('quote_expired');
     expect(stk.push).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentsService re-quote on ACCEPTED (row 72)', () => {
+  it('refuses to push STK until the customer accepts the new quote', async () => {
+    const { service, stk } = build({ quoteNotAccepted: true });
+    expect(await codeOf(service.initiate('e-1', user))).toBe('quote_not_accepted');
+    expect(stk.push).not.toHaveBeenCalled();
+  });
+
+  it('checks the payable quote again inside the payment transaction', async () => {
+    const { service, errands } = build();
+    await service.initiate('e-1', user);
+    expect(errands.payableQuote).toHaveBeenCalledTimes(2);
+    expect(errands.payableQuote).toHaveBeenLastCalledWith('e-1', expect.anything());
+  });
+
+  it('registers a re-quote guard that refuses while a payment is in flight', async () => {
+    const { service, errands } = build();
+    service.onModuleInit();
+    const guard = errands.onRequote.mock.calls[0][0] as (m: unknown, id: string) => Promise<void>;
+    const managerWith = (row: object | null) => ({
+      getRepository: () => ({ findOne: vi.fn(() => Promise.resolve(row)) }),
+    });
+    await expect(guard(managerWith(null), 'e-1')).resolves.toBeUndefined();
+    await expect(
+      guard(managerWith({ id: 'p-1', status: PaymentStatus.PENDING }), 'e-1'),
+    ).rejects.toMatchObject({ code: 'payment_in_progress' });
   });
 });

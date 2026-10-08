@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -117,7 +118,7 @@ const isUniqueViolation = (err: unknown): boolean => {
 };
 
 @Injectable()
-export class PaymentsService implements OnApplicationBootstrap {
+export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
@@ -138,6 +139,26 @@ export class PaymentsService implements OnApplicationBootstrap {
     private readonly users: UsersService,
     private readonly redis: RedisService,
   ) {}
+
+  /**
+   * A re-quote (row 72) is refused while the errand's main payment is
+   * pending or paid: the customer would otherwise be charged for a quote
+   * that no longer applies. A FAILED payment does not block it.
+   */
+  onModuleInit(): void {
+    this.errands.onRequote(async (manager, errandId) => {
+      const active = await manager.getRepository(Payment).findOne({
+        where: { errandId, priceChangeRequestId: IsNull(), status: Not(PaymentStatus.FAILED) },
+      });
+      if (active) {
+        throw conflict(
+          'payment_in_progress',
+          'The customer has already started paying this quote; it cannot be replaced now',
+          { paymentId: active.id, paymentStatus: active.status },
+        );
+      }
+    });
+  }
 
   /** Lazy, idempotent upsert of the payment_type reference table. */
   async onApplicationBootstrap(): Promise<void> {
@@ -209,13 +230,14 @@ export class PaymentsService implements OnApplicationBootstrap {
     if (errand.quotedPrice === null) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'errand_not_quoted', 'Errand has not been quoted yet');
     }
-    // An expired quote cannot be paid (row 46): 409 quote_expired.
-    await this.errands.assertQuoteCurrentFor(errandId);
-
-    const { serviceFee, runnerFee } = feesFor(Number(errand.quotedPrice), {
+    // Only the newest quote is payable, unexpired (row 46: 409 quote_expired)
+    // and accepted by the customer (row 72: 409 quote_not_accepted).
+    // Checked again under the errand lock inside the transaction below.
+    await this.errands.payableQuote(errandId);
+    const rates = {
       serviceFeeRate: this.config.get<number>('pricing.serviceFeeRate', 0.2),
       runnerFeeRate: this.config.get<number>('pricing.runnerFeeRate', 0.3),
-    });
+    };
     const budget = Number(errand.budget);
     const merchantAmount = budget > 0 ? round2(budget) : 0;
     const flow = await this.flowFor(errandId, merchantAmount, opts.merchantRoute);
@@ -225,7 +247,6 @@ export class PaymentsService implements OnApplicationBootstrap {
     // send_to_runner is platform-mediated (rows 42, 48): the purchase amount
     // joins the same STK charge to Nitume as a merchant_payment leg.
     const collectMerchant = flow === PaymentFlow.CUSTOMER_TO_RUNNER && merchantAmount > 0;
-    const chargeKes = serviceFee + runnerFee + (collectMerchant ? merchantAmount : 0);
 
     const [serviceFeeType, runnerFeeType, merchantType] = await Promise.all([
       this.paymentTypeId(PaymentTypeCode.SERVICE_FEE),
@@ -239,8 +260,11 @@ export class PaymentsService implements OnApplicationBootstrap {
     // then returns a complete payment instead of pushing STK a second time.
     let payment: Payment;
     let txRows: PaymentTransaction[];
+    let chargeKes: number;
     try {
-      ({ payment, txRows } = await this.payments.manager.transaction(async (manager) => {
+      ({ payment, txRows, chargeKes } = await this.payments.manager.transaction(async (manager) => {
+        const quote = await this.errands.payableQuote(errandId, manager);
+        const { serviceFee, runnerFee } = feesFor(Number(quote.total), rates);
         const paymentRepo = manager.getRepository(Payment);
         const txRepo = manager.getRepository(PaymentTransaction);
         const saved = await paymentRepo.save(
@@ -282,7 +306,8 @@ export class PaymentsService implements OnApplicationBootstrap {
           );
         }
         const legs = await txRepo.save(legRows);
-        return { payment: saved, txRows: legs };
+        const charge = serviceFee + runnerFee + (collectMerchant ? merchantAmount : 0);
+        return { payment: saved, txRows: legs, chargeKes: charge };
       }));
     } catch (err) {
       if (!isUniqueViolation(err)) {

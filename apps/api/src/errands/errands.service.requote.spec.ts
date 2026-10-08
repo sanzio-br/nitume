@@ -19,6 +19,7 @@ const build = (status: ErrandStatus, latest: Partial<Quote> | null) => {
   };
   const quoteRepo = {
     findOne: vi.fn(() => Promise.resolve(latest)),
+    update: vi.fn(() => Promise.resolve({})),
     create: vi.fn((r: object) => r),
     save: vi.fn((r: object) => Promise.resolve({ id: 'q-new', ...r })),
   };
@@ -34,6 +35,7 @@ const build = (status: ErrandStatus, latest: Partial<Quote> | null) => {
   ]);
   const manager = { getRepository: (entity: unknown) => repos.get(entity) };
   const dataSource = { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) };
+  const emit = vi.fn();
   const service = new ErrandsService(
     dataSource as never,
     {} as never,
@@ -43,11 +45,11 @@ const build = (status: ErrandStatus, latest: Partial<Quote> | null) => {
     {} as never,
     {} as never,
     {} as never,
-    { emit: vi.fn() } as never,
+    { emit } as never,
     {} as never,
     quoteRepo as never,
   );
-  return { service, errand, errandRepo, quoteRepo, historyRepo };
+  return { service, errand, errandRepo, quoteRepo, historyRepo, emit };
 };
 
 const admin = { type: StatusHistoryActor.ADMIN, id: 'admin-1' };
@@ -112,5 +114,111 @@ describe('Admin re-quote (row 46)', () => {
     expect(errand.status).toBe(ErrandStatus.QUOTED);
     expect(out.history).not.toBeNull();
     expect(historyRepo.save).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Admin re-quote on ACCEPTED (row 72)', () => {
+  it('writes a fresh quote without a status change, runs the guards and emits quote.reissued', async () => {
+    const { service, errand, historyRepo, emit } = build(ErrandStatus.ACCEPTED, {
+      id: 'q-1',
+      expiresAt: past,
+      acceptedAt: past,
+    });
+    const guard = vi.fn(() => Promise.resolve());
+    service.onRequote(guard);
+    const out = await service.quote('e-1', { total: 700, expiresAt: future.toISOString() }, admin);
+    expect(errand.status).toBe(ErrandStatus.ACCEPTED);
+    expect(out.history).toBeNull();
+    expect(historyRepo.save).not.toHaveBeenCalled();
+    expect(guard).toHaveBeenCalledWith(expect.anything(), 'e-1');
+    await new Promise((r) => setImmediate(r));
+    expect(emit).toHaveBeenCalledWith('quote.reissued', {
+      errandId: 'e-1',
+      quoteId: 'q-new',
+      total: '700.00',
+      currency: 'KES',
+      expiresAt: future.toISOString(),
+      status: ErrandStatus.ACCEPTED,
+      acceptanceRequired: true,
+    });
+  });
+
+  it('is refused when a guard throws (payment in flight)', async () => {
+    const { service, quoteRepo } = build(ErrandStatus.ACCEPTED, { id: 'q-1', expiresAt: past });
+    service.onRequote(() => Promise.reject(new ApiError(409, 'payment_in_progress', 'busy')));
+    expect(await codeOf(service.quote('e-1', { total: 700 }, admin))).toBe('payment_in_progress');
+    expect(quoteRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('keeps an ACCEPTED quote that has not expired (quote_still_valid)', async () => {
+    const { service } = build(ErrandStatus.ACCEPTED, { id: 'q-1', expiresAt: future });
+    expect(await codeOf(service.quote('e-1', { total: 700 }, admin))).toBe('quote_still_valid');
+  });
+
+  it('records acceptance on the quote when QUOTED -> ACCEPTED', async () => {
+    const { service, quoteRepo } = build(ErrandStatus.QUOTED, { id: 'q-1', expiresAt: future });
+    await service.transition('e-1', ErrandStatus.ACCEPTED, customer, undefined, subject);
+    expect(quoteRepo.update).toHaveBeenCalledWith('q-1', { acceptedAt: expect.any(Date) });
+  });
+});
+
+describe('ErrandsService.acceptQuote (row 72)', () => {
+  const withDetail = (status: ErrandStatus, latest: Partial<Quote> | null) => {
+    const built = build(status, latest);
+    vi.spyOn(built.service, 'getById').mockResolvedValue(built.errand);
+    vi.spyOn(built.service, 'getDetail').mockResolvedValue(built.errand as never);
+    return built;
+  };
+
+  it('records acceptance of a re-quote on an ACCEPTED errand', async () => {
+    const { service, quoteRepo, errand } = withDetail(ErrandStatus.ACCEPTED, {
+      id: 'q-2',
+      expiresAt: future,
+      acceptedAt: null,
+    });
+    const out = await service.acceptQuote('e-1', subject);
+    expect(quoteRepo.update).toHaveBeenCalledWith('q-2', { acceptedAt: expect.any(Date) });
+    expect(out.quote.acceptedAt).toBeInstanceOf(Date);
+    expect(errand.status).toBe(ErrandStatus.ACCEPTED);
+  });
+
+  it('is idempotent once the newest quote is accepted', async () => {
+    const { service, quoteRepo } = withDetail(ErrandStatus.ACCEPTED, {
+      id: 'q-2',
+      expiresAt: future,
+      acceptedAt: past,
+    });
+    await service.acceptQuote('e-1', subject);
+    expect(quoteRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses an expired re-quote with quote_expired', async () => {
+    const { service } = withDetail(ErrandStatus.ACCEPTED, { id: 'q-2', expiresAt: past, acceptedAt: null });
+    expect(await codeOf(service.acceptQuote('e-1', subject))).toBe('quote_expired');
+  });
+
+  it('moves QUOTED -> ACCEPTED', async () => {
+    const { service, errand } = withDetail(ErrandStatus.QUOTED, { id: 'q-1', expiresAt: future });
+    await service.acceptQuote('e-1', subject);
+    expect(errand.status).toBe(ErrandStatus.ACCEPTED);
+  });
+
+  it('409 quote_not_acceptable in other states', async () => {
+    const { service } = withDetail(ErrandStatus.PAYMENT_CONFIRMED, { id: 'q-1', expiresAt: future });
+    expect(await codeOf(service.acceptQuote('e-1', subject))).toBe('quote_not_acceptable');
+  });
+});
+
+describe('ErrandsService.payableQuote (row 72)', () => {
+  it('returns the newest accepted, unexpired quote', async () => {
+    const { service } = build(ErrandStatus.ACCEPTED, { id: 'q-1', expiresAt: future, acceptedAt: past });
+    await expect(service.payableQuote('e-1')).resolves.toMatchObject({ id: 'q-1' });
+  });
+
+  it('409 quote_not_accepted for an unaccepted re-quote, quote_expired for an expired one', async () => {
+    const pending = build(ErrandStatus.ACCEPTED, { id: 'q-2', expiresAt: future, acceptedAt: null });
+    expect(await codeOf(pending.service.payableQuote('e-1'))).toBe('quote_not_accepted');
+    const expired = build(ErrandStatus.ACCEPTED, { id: 'q-2', expiresAt: past, acceptedAt: past });
+    expect(await codeOf(expired.service.payableQuote('e-1'))).toBe('quote_expired');
   });
 });

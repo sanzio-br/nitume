@@ -131,6 +131,14 @@ export type ErrandView = Errand & {
   feeTotal: string | null;
   /** True once the merchant/admin set Till/Paybill details (rows 42-44). */
   merchantDetailsAvailable: boolean;
+  /** Expiry of the newest quote, or null (not quoted / never expires) (N-5). */
+  quoteExpiresAt: Date | null;
+  /**
+   * True when the errand is ACCEPTED but its newest quote (an admin re-quote,
+   * row 72) has not been accepted yet: the customer must accept it
+   * (POST /errands/:id/quote/accept) before paying.
+   */
+  quoteAcceptanceRequired: boolean;
 };
 
 /** States in which the assigned runner may write `runnerNotes`. */
@@ -207,6 +215,40 @@ export interface CancellationInTx {
  */
 export type CancellationHook = (manager: EntityManager, change: CancellationInTx) => Promise<void>;
 
+/**
+ * Runs inside the re-quote transaction, after the errand row is locked;
+ * throwing refuses the re-quote (e.g. a payment is already in flight).
+ */
+export type RequoteGuard = (manager: EntityManager, errandId: string) => Promise<void>;
+
+/** Domain event emitted after an admin re-quote commits (N-4, row 72). */
+export const QUOTE_REISSUED_EVENT = 'quote.reissued';
+
+export interface QuoteReissuedEvent {
+  errandId: string;
+  quoteId: string;
+  total: string;
+  currency: string;
+  expiresAt: string | null;
+  status: ErrandStatus;
+  /** True on an ACCEPTED errand: the customer must accept the new quote. */
+  acceptanceRequired: boolean;
+}
+
+/** Domain event emitted after merchant Till/Paybill details are set. */
+export const MERCHANT_DETAILS_UPDATED_EVENT = 'errand.merchant_details_updated';
+
+export interface MerchantDetailsUpdatedEvent {
+  errandId: string;
+  merchantName: string | null;
+  tillNumber: string | null;
+  paybillNumber: string | null;
+  accountReference: string | null;
+}
+
+/** States in which an admin may replace an expired quote (rows 46, 72). */
+const REQUOTABLE = new Set<ErrandStatus>([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]);
+
 /** An admin dispute resolution about to commit (see `onDisputeResolved`). */
 export interface DisputeResolutionInTx {
   errandId: string;
@@ -226,6 +268,7 @@ export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
   private readonly cancellationHooks: CancellationHook[] = [];
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
+  private readonly requoteGuards: RequoteGuard[] = [];
 
   constructor(
     private readonly dataSource: DataSource,
@@ -326,7 +369,7 @@ export class ErrandsService {
         assignment: null,
         locations: savedLocations.map(toLocationView),
         items: savedItems.map(toItemView),
-        ...this.derivedFields(saved),
+        ...this.derivedFields(saved, null),
       });
       return { errand: view, history };
     });
@@ -409,7 +452,13 @@ export class ErrandsService {
     });
   }
 
-  private derivedFields(errand: Errand): Pick<ErrandView, 'feeTotal' | 'merchantDetailsAvailable'> {
+  private derivedFields(
+    errand: Errand,
+    quote: Pick<Quote, 'expiresAt' | 'acceptedAt'> | null,
+  ): Pick<
+    ErrandView,
+    'feeTotal' | 'merchantDetailsAvailable' | 'quoteExpiresAt' | 'quoteAcceptanceRequired'
+  > {
     const feeTotal =
       errand.quotedPrice === null || errand.quotedPrice === undefined
         ? null
@@ -420,6 +469,9 @@ export class ErrandsService {
     return {
       feeTotal,
       merchantDetailsAvailable: Boolean(errand.merchantTillNumber || errand.merchantPaybillNumber),
+      quoteExpiresAt: quote?.expiresAt ?? null,
+      quoteAcceptanceRequired:
+        errand.status === ErrandStatus.ACCEPTED && quote !== null && !quote.acceptedAt,
     };
   }
 
@@ -428,7 +480,7 @@ export class ErrandsService {
       return [];
     }
     const ids = errands.map((e) => e.id);
-    const [rows, locationRows, itemRows] = await Promise.all([
+    const [rows, locationRows, itemRows, quoteRows] = await Promise.all([
       this.assignments.find({
         where: {
           errandId: In(ids),
@@ -438,7 +490,18 @@ export class ErrandsService {
       }),
       this.locations.find({ where: { errandId: In(ids) } }),
       this.items.find({ where: { errandId: In(ids) } }),
+      this.quotes.find({
+        where: { errandId: In(ids) },
+        select: { id: true, errandId: true, expiresAt: true, acceptedAt: true, createdAt: true },
+        order: { createdAt: 'DESC' },
+      }),
     ]);
+    const newestQuote = new Map<string, Quote>();
+    for (const q of quoteRows) {
+      if (!newestQuote.has(q.errandId)) {
+        newestQuote.set(q.errandId, q);
+      }
+    }
     const locationsBy = groupBy(locationRows, (l) => l.errandId);
     const itemsBy = groupBy(itemRows, (i) => i.errandId);
     const latest = new Map<string, ErrandAssignment>();
@@ -464,7 +527,7 @@ export class ErrandsService {
         assignment,
         locations: (locationsBy.get(errand.id) ?? []).map(toLocationView),
         items: (itemsBy.get(errand.id) ?? []).map(toItemView),
-        ...this.derivedFields(errand),
+        ...this.derivedFields(errand, newestQuote.get(errand.id) ?? null),
       });
     });
   }
@@ -538,6 +601,14 @@ export class ErrandsService {
       merchantAccountReference: paybill ? (details.accountReference ?? null) : null,
     };
     await this.errands.update(errandId, patch);
+    const event: MerchantDetailsUpdatedEvent = {
+      errandId,
+      merchantName: patch.merchantName,
+      tillNumber: patch.merchantTillNumber,
+      paybillNumber: patch.merchantPaybillNumber,
+      accountReference: patch.merchantAccountReference,
+    };
+    setImmediate(() => this.events.emit(MERCHANT_DETAILS_UPDATED_EVENT, event));
     return Object.assign(errand, patch);
   }
 
@@ -834,8 +905,10 @@ export class ErrandsService {
       );
     }
     await this.enforceSubject(manager, errand, actor, subject);
+    let acceptedQuote: Quote | null = null;
     if (fromStatus === ErrandStatus.QUOTED && to === ErrandStatus.ACCEPTED) {
-      assertQuoteCurrent(await this.currentQuote(errandId, manager));
+      acceptedQuote = await this.currentQuote(errandId, manager);
+      assertQuoteCurrent(acceptedQuote);
     }
 
     errand.status = to;
@@ -857,6 +930,15 @@ export class ErrandsService {
       actor: { type: actor.type, id: actor.id ?? null },
       note: note ?? null,
     });
+
+    // Accepting a quoted errand records acceptance on the quote it accepted
+    // (row 72: payment needs the newest quote to be accepted).
+    if (acceptedQuote && !acceptedQuote.acceptedAt) {
+      acceptedQuote.acceptedAt = new Date();
+      await manager.getRepository(Quote).update(acceptedQuote.id, {
+        acceptedAt: acceptedQuote.acceptedAt,
+      });
+    }
 
     if (to === ErrandStatus.CANCELLED) {
       for (const hook of this.cancellationHooks) {
@@ -957,10 +1039,15 @@ export class ErrandsService {
    * transaction. The quoted price is captured on the errand; the full
    * breakdown lands in `quotes` (auditable pricing provenance).
    *
-   * Re-quote (BOARD row 46): on a QUOTED errand whose newest quote has
-   * expired, the same call writes a fresh quote row and updates the quoted
-   * price without a status change (QUOTED stays QUOTED, no history row). A
-   * quote that is still valid is not replaced (409 `quote_still_valid`).
+   * Re-quote (BOARD rows 46, 72): on a QUOTED or ACCEPTED errand whose newest
+   * quote has expired, the same call writes a fresh quote row and updates
+   * the quoted price without a status change (no history row; the quotes
+   * table is the audit trail). The newest quote always supersedes older
+   * ones. On ACCEPTED the new quote starts unaccepted, so the customer must
+   * accept it (`acceptQuote`) before paying, and the re-quote is refused
+   * while a payment is in flight (requote guards, `payment_in_progress`).
+   * A quote that is still valid is not replaced (409 `quote_still_valid`).
+   * Emits `quote.reissued` after commit (N-4).
    */
   async quote(
     errandId: string,
@@ -968,12 +1055,12 @@ export class ErrandsService {
     actor: ActorReference,
     note?: string,
   ): Promise<{ errand: Errand; history: ErrandStatusHistory | null; quote: Quote }> {
-    return this.inTx(async (manager) => {
+    const out = await this.inTx(async (manager) => {
       const current = await manager.getRepository(Errand).findOne({
         where: { id: errandId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (current?.status === ErrandStatus.QUOTED) {
+      if (current && REQUOTABLE.has(current.status)) {
         if (actor.type !== StatusHistoryActor.ADMIN && actor.type !== StatusHistoryActor.SYSTEM) {
           throw new ForbiddenException(`Actor '${actor.type}' cannot re-quote an errand`);
         }
@@ -986,10 +1073,13 @@ export class ErrandsService {
             { quoteId: latest?.id ?? null, expiresAt: latest?.expiresAt?.toISOString() ?? null },
           );
         }
+        for (const guard of this.requoteGuards) {
+          await guard(manager, errandId);
+        }
         const row = await this.saveQuote(manager, errandId, quote);
         current.quotedPrice = quote.total.toFixed(2);
         await manager.getRepository(Errand).update(errandId, { quotedPrice: current.quotedPrice });
-        return { errand: current, history: null, quote: row };
+        return { errand: current, history: null, quote: row, reissued: true };
       }
       const done = await this.performTransition(
         manager,
@@ -1002,8 +1092,122 @@ export class ErrandsService {
       await manager.getRepository(Errand).update(errandId, { quotedPrice });
       done.errand.quotedPrice = quotedPrice;
       const row = await this.saveQuote(manager, errandId, quote);
-      return { errand: done.errand, history: done.history, quote: row };
+      return { errand: done.errand, history: done.history, quote: row, reissued: false };
     });
+    if (out.reissued) {
+      const event: QuoteReissuedEvent = {
+        errandId,
+        quoteId: out.quote.id,
+        total: Number(out.quote.total).toFixed(2),
+        currency: out.quote.currency,
+        expiresAt: out.quote.expiresAt?.toISOString() ?? null,
+        status: out.errand.status,
+        acceptanceRequired: out.errand.status === ErrandStatus.ACCEPTED,
+      };
+      setImmediate(() => this.events.emit(QUOTE_REISSUED_EVENT, event));
+    }
+    return { errand: out.errand, history: out.history, quote: out.quote };
+  }
+
+  /**
+   * Registers a check that runs inside every re-quote transaction (row 72).
+   * The payments module refuses a re-quote while a payment is in flight.
+   */
+  onRequote(guard: RequoteGuard): void {
+    this.requoteGuards.push(guard);
+  }
+
+  /**
+   * Customer accepts the errand's newest quote (row 72):
+   * - QUOTED: the usual QUOTED -> ACCEPTED transition (acceptance recorded
+   *   on the quote).
+   * - ACCEPTED: records acceptance of an admin re-quote on the quote row; no
+   *   status change. Idempotent when the newest quote is already accepted.
+   * 409 `quote_expired` on an expired quote, `quote_not_acceptable` in any
+   * other status; 404 when the errand has no quote.
+   */
+  async acceptQuote(
+    errandId: string,
+    viewer: ViewerContext,
+  ): Promise<{ errand: ErrandView; quote: Quote }> {
+    await this.getById(errandId, viewer);
+    const quote = await this.inTx(async (manager) => {
+      const errand = await manager.getRepository(Errand).findOne({
+        where: { id: errandId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!errand) {
+        throw new NotFoundException('Errand not found');
+      }
+      const latest = await this.currentQuote(errandId, manager);
+      if (!latest) {
+        throw new NotFoundException('Errand has not been quoted yet');
+      }
+      if (errand.status === ErrandStatus.QUOTED) {
+        await this.performTransition(
+          manager,
+          errandId,
+          ErrandStatus.ACCEPTED,
+          { type: StatusHistoryActor.CUSTOMER, id: viewer.userId },
+          'Quote accepted',
+          viewer,
+        );
+        return (await this.currentQuote(errandId, manager)) ?? latest;
+      }
+      if (errand.status !== ErrandStatus.ACCEPTED) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'quote_not_acceptable',
+          `A quote cannot be accepted while the task is ${errand.status}`,
+          { status: errand.status },
+        );
+      }
+      await this.enforceSubject(
+        manager,
+        errand,
+        { type: StatusHistoryActor.CUSTOMER, id: viewer.userId },
+        viewer,
+      );
+      if (latest.acceptedAt) {
+        return latest;
+      }
+      assertQuoteCurrent(latest);
+      latest.acceptedAt = new Date();
+      await manager.getRepository(Quote).update(latest.id, { acceptedAt: latest.acceptedAt });
+      return latest;
+    });
+    return { errand: await this.getDetail(errandId, viewer), quote };
+  }
+
+  /**
+   * The quote a payment may be taken against (row 72). With `manager` it is
+   * checked inside the caller's transaction with the errand row locked, so a
+   * concurrent re-quote cannot slip in between the check and the payment
+   * insert (without, it is a lock-free pre-check). The
+   * newest quote, unexpired (409 `quote_expired`) and accepted by the
+   * customer (409 `quote_not_accepted`).
+   */
+  async payableQuote(errandId: string, manager?: EntityManager): Promise<Quote> {
+    if (manager) {
+      await manager.getRepository(Errand).findOne({
+        where: { id: errandId },
+        lock: { mode: 'pessimistic_write' },
+      });
+    }
+    const latest = await this.currentQuote(errandId, manager);
+    if (!latest) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'errand_not_quoted', 'Errand has not been quoted yet');
+    }
+    assertQuoteCurrent(latest);
+    if (!latest.acceptedAt) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'quote_not_accepted',
+        'A new quote was issued; accept it before paying',
+        { quoteId: latest.id, total: Number(latest.total).toFixed(2) },
+      );
+    }
+    return latest;
   }
 
   private saveQuote(manager: EntityManager, errandId: string, quote: QuoteInput): Promise<Quote> {
