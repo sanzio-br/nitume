@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -30,7 +31,10 @@ export class RatingsController {
   }
 
   @Get()
-  getForErrand(@Param('errandId') errandId: string): Promise<Rating | null> {
-    return this.ratings.getForErrand(errandId);
+  getForErrand(
+    @Param('errandId', ParseUUIDPipe) errandId: string,
+    @CurrentUser() user: AuthContext,
+  ): Promise<Rating | null> {
+    return this.ratings.getForErrand(errandId, { userId: user.userId, role: user.role });
   }
 }
