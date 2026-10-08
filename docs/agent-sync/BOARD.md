@@ -159,7 +159,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 73 | api-contract (round 2) | Daraja go-live: approve a callback adapter for Daraja's Body.stkCallback shape plus a Safaricom IP allowlist/signature check? Real credentials needed. Today Daraja payments resolve only via STK Query | open |
 | 74 | api-contract (round 2) | Per-IP OTP limits: defaults 30 requests and 60 verifies per hour per IP per route (generous for carrier NAT). Confirm? Device-level throttling isn't possible (no device id on OTP requests) | open |
 | 75 | api-contract (round 2) | New API packages added under approved rows: @nestjs/throttler (53), bullmq + @nestjs/bullmq (26), firebase-admin (31 server-side push). Confirm firebase-admin on the server is covered by row 31 | open |
-| 76 | core-ui (integrations) | send_to_runner item amount: one combined STK charge (service + runner + item, as the API is built) or a separate item STK (as _shared.md §8.1/§8.2 say)? Ties to row 66 (SQ-7) | open |
+| 76 | core-ui (integrations) | send_to_runner item amount: one combined STK charge (service + runner + item, as the API is built) or a separate item STK (as _shared.md §8.1/§8.2 say)? Ties to row 66 (SQ-7) | answered (owner, 2026-10-08): one combined STK (service + runner + item) as the API is built; receipt shows the item amount on its own line; specs §8.1/§8.2 to be updated |
 
 ## Session log
 
