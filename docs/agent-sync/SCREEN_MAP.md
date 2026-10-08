@@ -97,9 +97,9 @@ Marked completed by the owner (parity audit only). The panels and drawers below 
 | p-runners | Runners + verification | `apps/admin/src/app/features/admin/panels/runners.panel.ts`, `verifications.panel.ts` | unaudited |
 | p-disputes | Disputes | `apps/admin/src/app/features/admin/panels/disputes.panel.ts` | unaudited |
 | p-reports | Reports | `apps/admin/src/app/features/admin/panels/reports.panel.ts` | unaudited |
-| drawer-task | Task drawer | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` | unaudited |
+| drawer-task | Task drawer | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` | partial (bugs G-15..G-18, G-28, G-29 in `docs/audits/admin-gap-report.md`) |
 | drawer-runner | Runner profile drawer | `apps/admin/src/app/features/admin/drawers/runner-drawer.ts` | unaudited |
-| drawer-dispute | Dispute drawer | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` | unaudited (Resolution/outcome part specced below) |
+| drawer-dispute | Dispute drawer | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` | partial (Resolution/outcome specced below; bugs G-19..G-23 in `docs/audits/admin-gap-report.md`) |
 
 Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced 2026-10-08 on `docs/admin-ops-spec`; they extend the panels/drawers above, copy "(proposed)"):
 
