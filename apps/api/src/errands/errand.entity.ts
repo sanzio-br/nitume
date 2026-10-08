@@ -81,6 +81,23 @@ export class Errand {
   })
   urgency: ErrandUrgency;
 
+  /**
+   * Merchant Till/Paybill details for the merchant_direct route, supplied by
+   * the merchant or an admin (rows 42-44). Either a Till or a Paybill number;
+   * the account reference only goes with a Paybill.
+   */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  merchantName: string | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  merchantTillNumber: string | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  merchantPaybillNumber: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  merchantAccountReference: string | null;
+
   @VersionColumn({ type: 'int', default: 1 })
   version: number;
 

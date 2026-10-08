@@ -379,12 +379,21 @@ export class PaymentsService implements OnApplicationBootstrap {
   }
 
   /**
-   * Merchant Till/Paybill details for an errand, or null when none exist.
-   * No source exists yet: where these details come from (and when) is an
-   * open owner question (SQ-6), so merchant_direct is refused until then.
+   * Merchant Till/Paybill details set on the errand by the merchant or an
+   * admin (PUT /errands/:id/merchant-details), or null when none are set.
+   * merchant_direct is refused until they exist.
    */
-  merchantDetailsFor(_errandId: string): Promise<MerchantDetails | null> {
-    return Promise.resolve(null);
+  async merchantDetailsFor(errandId: string): Promise<MerchantDetails | null> {
+    const errand = await this.errands.getById(errandId);
+    if (!errand.merchantTillNumber && !errand.merchantPaybillNumber) {
+      return null;
+    }
+    return {
+      merchantName: errand.merchantName,
+      tillNumber: errand.merchantTillNumber,
+      paybillNumber: errand.merchantPaybillNumber,
+      accountReference: errand.merchantAccountReference,
+    };
   }
 
   private async merchantPaymentFor(payment: Payment): Promise<MerchantPaymentView | null> {

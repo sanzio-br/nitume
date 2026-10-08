@@ -453,6 +453,54 @@ export class ErrandsService {
   }
 
   /**
+   * Admin sets the merchant Till/Paybill details used by the merchant_direct
+   * route (rows 42-44). Exactly one of Till or Paybill; an account reference
+   * only goes with a Paybill. Not allowed once the errand is closed.
+   */
+  async setMerchantDetails(
+    errandId: string,
+    details: {
+      merchantName: string;
+      tillNumber?: string;
+      paybillNumber?: string;
+      accountReference?: string;
+    },
+  ): Promise<Errand> {
+    const errand = await this.getById(errandId);
+    if (ErrandStateMachine.isTerminal(errand.status)) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'errand_closed',
+        `The task is ${errand.status} and can no longer be edited`,
+      );
+    }
+    const till = details.tillNumber ?? null;
+    const paybill = details.paybillNumber ?? null;
+    if ((till === null) === (paybill === null)) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'merchant_details_invalid',
+        'Give either a Till number or a Paybill number, not both',
+      );
+    }
+    if (details.accountReference && paybill === null) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'merchant_details_invalid',
+        'An account reference only goes with a Paybill number',
+      );
+    }
+    const patch = {
+      merchantName: details.merchantName,
+      merchantTillNumber: till,
+      merchantPaybillNumber: paybill,
+      merchantAccountReference: paybill ? (details.accountReference ?? null) : null,
+    };
+    await this.errands.update(errandId, patch);
+    return Object.assign(errand, patch);
+  }
+
+  /**
    * Assigned runner writes the notes the customer reads on evidence review
    * (ARRIVED, IN_PROGRESS or AWAITING_CUSTOMER).
    */

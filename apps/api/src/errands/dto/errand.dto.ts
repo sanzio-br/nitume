@@ -14,6 +14,7 @@ import {
   Max,
   MaxLength,
   Min,
+  Matches,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -199,4 +200,31 @@ export class ListErrandsQueryDto extends ErrandStatusFilterDto {
   @Min(1)
   @Max(100)
   limit?: number;
+}
+/**
+ * Admin sets the merchant Till/Paybill details of an errand (rows 42-44).
+ * Exactly one of `tillNumber` / `paybillNumber`; `accountReference` only
+ * with a Paybill.
+ */
+export class MerchantDetailsDto {
+  @Transform(trimString)
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  merchantName: string;
+
+  @IsOptional()
+  @Matches(/^\d{5,10}$/, { message: 'tillNumber must be 5-10 digits' })
+  tillNumber?: string;
+
+  @IsOptional()
+  @Matches(/^\d{5,10}$/, { message: 'paybillNumber must be 5-10 digits' })
+  paybillNumber?: string;
+
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  accountReference?: string;
 }

@@ -24,6 +24,8 @@ const build = (opts: {
   methods?: object[];
   /** Newest quote has expired (row 46). */
   quoteExpired?: boolean;
+  /** Merchant Till/Paybill columns on the errand (row 43). */
+  merchant?: Record<string, string | null>;
 } = {}) => {
   const payments = {
     findOne: vi.fn(({ where }: { where: Record<string, unknown> }) =>
@@ -68,6 +70,7 @@ const build = (opts: {
         status: ErrandStatus.ACCEPTED,
         quotedPrice: '1000.00',
         budget: opts.budget ?? '0.00',
+        ...opts.merchant,
       }),
     ),
     assertQuoteCurrentFor: vi.fn(() =>
@@ -221,6 +224,24 @@ describe('PaymentsService.initiate', () => {
     expect(
       await codeOf(service.initiate('e-1', user, { merchantRoute: MerchantRoute.MERCHANT_DIRECT })),
     ).toBe('merchant_details_missing');
+  });
+
+  it('allows merchant_direct once Till/Paybill details are set and returns them', async () => {
+    const { service, payments } = build({
+      budget: '2500.00',
+      merchant: { merchantName: 'Naivas', merchantTillNumber: '123456' },
+    });
+    const res = await service.initiate('e-1', user, { merchantRoute: MerchantRoute.MERCHANT_DIRECT });
+    expect(payments.create).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentFlow: PaymentFlow.MERCHANT_DIRECT }),
+    );
+    expect(res.merchantPayment).toMatchObject({
+      route: 'merchant_direct',
+      amount: '2500.00',
+      merchantName: 'Naivas',
+      tillNumber: '123456',
+      paybillNumber: null,
+    });
   });
 
   it('records send_to_runner as customer_to_runner without Till/Paybill fields', async () => {
