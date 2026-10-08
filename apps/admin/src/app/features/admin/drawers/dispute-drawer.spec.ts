@@ -161,6 +161,12 @@ describe('DisputeDrawerComponent (G-6, G-19..G-22)', () => {
       'Dispute resolved for the customer. The task is now Cancelled. A refund review is waiting in Refunds.',
     );
     expect(buttons(el, 'Open refund review')).toHaveLength(1);
+    // m-4: the result notice sits under the Outcome card.
+    const outcome = Array.from(el.querySelectorAll('.drawer-label')).find(
+      (l) => l.textContent === 'Outcome',
+    )!;
+    const notice = el.querySelector('.notice')!;
+    expect(outcome.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(el.querySelector('textarea')).toBeNull();
   });
 
@@ -181,5 +187,22 @@ describe('DisputeDrawerComponent (G-6, G-19..G-22)', () => {
     expect(el.textContent).toContain(NOTE);
     expect(el.querySelector('textarea')).toBeNull();
     expect(el.textContent).not.toContain('Dispute resolved');
+  });
+
+  it('a 404 shows an info notice without Try again (m-3)', async () => {
+    const fixture = TestBed.createComponent(DisputeDrawerComponent);
+    fixture.componentRef.setInput('errandId', ID);
+    fixture.detectChanges();
+    http.expectOne(`${API}/errands/${ID}`).flush(null, { status: 404, statusText: 'Not Found' });
+    http.expectOne(`${API}/errands/${ID}/history`).flush([]);
+    http
+      .expectOne(`${API}/errands/${ID}/dispute`)
+      .flush(null, { status: 404, statusText: 'Not Found' });
+    await flushAsync();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('This task no longer exists.');
+    expect(el.querySelector('.notice .chip')?.classList).toContain('chip-info');
+    expect(buttons(el, 'Try again')).toHaveLength(0);
   });
 });

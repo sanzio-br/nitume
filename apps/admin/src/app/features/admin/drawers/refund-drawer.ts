@@ -104,7 +104,7 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
         <div class="drawer-muted">
           @for (part of mutedParts(); track $index; let last = $last) {
             @if (part.num) {
-              <span class="num">{{ part.text }}</span>
+              {{ part.prefix }}<span class="num">{{ part.text }}</span>
             } @else {
               {{ part.text }}
             }
@@ -410,6 +410,7 @@ export class RefundDrawerComponent implements OnInit {
   private readonly s = inject(AdminDataService);
   private readonly nav = inject(DrawerNavService);
   private readonly injector = inject(Injector);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly reviewId = input.required<string>();
 
@@ -489,12 +490,13 @@ export class RefundDrawerComponent implements OnInit {
   protected readonly mutedParts = computed(() => {
     const r = this.review();
     if (!r) return [];
-    const parts: { text: string; num: boolean }[] = [];
+    const parts: { text: string; num: boolean; prefix?: string }[] = [];
     const name = r.customer?.shortName;
     if (name) parts.push({ text: name, num: false });
     const category = r.errand?.category ?? this.errand()?.category;
     if (category) parts.push({ text: categoryLabel(category), num: false });
-    parts.push({ text: `Opened ${formatDateTime(r.createdAt)}`, num: true });
+    // Only the date/time is numeric: "Opened" stays Fira Sans.
+    parts.push({ prefix: 'Opened ', text: formatDateTime(r.createdAt), num: true });
     return parts;
   });
 
@@ -583,8 +585,13 @@ export class RefundDrawerComponent implements OnInit {
     this.receiptServerError.set(null);
   }
 
+  /** Amount input (pending_review), receipt input (approved), else the drawer's close button. */
   private focusForm(): void {
-    (this.amountInput() ?? this.receiptInput())?.nativeElement.focus();
+    const input = (this.amountInput() ?? this.receiptInput())?.nativeElement;
+    const close = this.host.nativeElement
+      .closest('.drawer')
+      ?.querySelector<HTMLElement>('.drawer-close');
+    (input ?? close)?.focus();
   }
 
   protected val(event: Event): string {

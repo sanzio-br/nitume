@@ -68,11 +68,13 @@ interface Notice {
     @if (s.detailLoading()) {
       <div class="ops-loading">Loading dispute…</div>
     } @else if (s.detailError(); as err) {
-      <app-inline-notice tone="danger">
+      <app-inline-notice [tone]="s.detailErrorTone()">
         {{ err }}
-        <button notice-action type="button" class="btn btn-outline btn-sm" (click)="reload()">
-          Try again
-        </button>
+        @if (s.detailErrorTone() === 'danger') {
+          <button notice-action type="button" class="btn btn-outline btn-sm" (click)="reload()">
+            Try again
+          </button>
+        }
       </app-inline-notice>
     } @else if (s.detail(); as d) {
       <section class="drawer-section">
@@ -141,29 +143,6 @@ interface Notice {
           }
         </div>
       </section>
-
-      @if (notice(); as n) {
-        <app-inline-notice
-          [tone]="n.tone"
-          [dismissible]="!n.refundId"
-          (dismissed)="notice.set(null)"
-        >
-          <app-num-text [text]="n.text" />
-          @if (n.refundId) {
-            <button
-              notice-action
-              type="button"
-              class="btn btn-outline btn-sm"
-              (click)="nav.open('refund', n.refundId)"
-            >
-              Open refund review
-            </button>
-          }
-        </app-inline-notice>
-        @if (n.caption) {
-          <div class="drawer-caption">{{ n.caption }}</div>
-        }
-      }
 
       @if (outcome(); as o) {
         <section class="drawer-section">
@@ -241,6 +220,30 @@ interface Notice {
             </div>
           </div>
         </section>
+      }
+
+      <!-- Result and error notices sit under the Outcome card (spec order). -->
+      @if (notice(); as n) {
+        <app-inline-notice
+          [tone]="n.tone"
+          [dismissible]="!n.refundId"
+          (dismissed)="notice.set(null)"
+        >
+          <app-num-text [text]="n.text" />
+          @if (n.refundId) {
+            <button
+              notice-action
+              type="button"
+              class="btn btn-outline btn-sm"
+              (click)="nav.open('refund', n.refundId)"
+            >
+              Open refund review
+            </button>
+          }
+        </app-inline-notice>
+        @if (n.caption) {
+          <div class="drawer-caption">{{ n.caption }}</div>
+        }
       }
 
       <app-confirm-dialog

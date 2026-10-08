@@ -46,11 +46,13 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
     @if (s.detailLoading()) {
       <div class="ops-loading">Loading task detail…</div>
     } @else if (s.detailError(); as err) {
-      <app-inline-notice tone="danger">
+      <app-inline-notice [tone]="s.detailErrorTone()">
         {{ err }}
-        <button notice-action type="button" class="btn btn-outline btn-sm" (click)="reload()">
-          Try again
-        </button>
+        @if (s.detailErrorTone() === 'danger') {
+          <button notice-action type="button" class="btn btn-outline btn-sm" (click)="reload()">
+            Try again
+          </button>
+        }
       </app-inline-notice>
     } @else if (s.detail(); as d) {
       @if (notice(); as n) {

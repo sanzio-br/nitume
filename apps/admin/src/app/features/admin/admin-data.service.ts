@@ -274,6 +274,8 @@ export class AdminDataService {
   readonly detailLoading = signal(false);
   /** User copy for a failed detail load (never the raw HTTP message). */
   readonly detailError = signal<string | null>(null);
+  /** 404 is `info` with no retry (specs' error tables); everything else `danger`. */
+  readonly detailErrorTone = signal<'info' | 'danger'>('danger');
   private detailRequest = 0;
 
   /**
@@ -300,6 +302,7 @@ export class AdminDataService {
     } catch (e) {
       if (req !== this.detailRequest) return;
       const err = apiError(e);
+      this.detailErrorTone.set(err.status === 404 ? 'info' : 'danger');
       this.detailError.set(
         err.status === 403
           ? FORBIDDEN_COPY

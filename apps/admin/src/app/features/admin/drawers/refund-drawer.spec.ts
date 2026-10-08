@@ -140,6 +140,36 @@ describe('RefundDrawerComponent', () => {
     expect(text).not.toMatch(/wallet|escrow|balance/i);
   });
 
+  it('keeps "Opened" in Fira Sans and only the date/time in Fira Code (m-1)', async () => {
+    const fixture = await render(review());
+    const muted = fixture.nativeElement.querySelector('.drawer-muted') as HTMLElement;
+    const nums = Array.from(muted.querySelectorAll('.num')).map((n) => n.textContent);
+    expect(muted.textContent).toContain('Opened');
+    expect(nums.some((t) => t?.includes('Opened'))).toBe(false);
+    expect(nums).toHaveLength(1);
+  });
+
+  it('focuses the drawer close button in a read-only state (m-2)', async () => {
+    const drawer = document.createElement('div');
+    drawer.className = 'drawer';
+    const close = document.createElement('button');
+    close.className = 'drawer-close';
+    drawer.appendChild(close);
+    document.body.appendChild(drawer);
+    const fixture = TestBed.createComponent(RefundDrawerComponent);
+    drawer.appendChild(fixture.nativeElement);
+    fixture.componentRef.setInput('reviewId', RID);
+    fixture.detectChanges();
+    http
+      .expectOne(`${API}/refunds/${RID}`)
+      .flush(review({ status: 'no_refund', refundAmount: '0.00' }));
+    await flushAsync();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(close);
+    drawer.remove();
+  });
+
   it('falls back to the total when there is no breakdown (N-1)', async () => {
     const fixture = await render(
       review({ paid: undefined, customer: undefined, errand: undefined }),
