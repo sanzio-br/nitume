@@ -1,6 +1,9 @@
 import { Component, inject, signal, computed } from '@angular/core';
 import { AdminDataService, shortId, timeAgo } from '../admin-data.service';
-import { StatusChipComponent, statusLabel } from '../../../shared/status-chip.component';
+import { StatusChipComponent } from '../../../shared/status-chip.component';
+import { LoadMoreComponent } from '../../../shared/load-more.component';
+import { InlineNoticeComponent } from '../../../shared/inline-notice.component';
+import { apiError, FORBIDDEN_COPY } from '../../../core/api-error';
 import { TitleCasePipe } from '@angular/common';
 import type { RunnerVerification, VerificationStatus } from '../../../core/api-types';
 
@@ -10,7 +13,7 @@ import type { RunnerVerification, VerificationStatus } from '../../../core/api-t
  */
 @Component({
   selector: 'app-verifications-panel',
-  imports: [StatusChipComponent, TitleCasePipe],
+  imports: [StatusChipComponent, TitleCasePipe, LoadMoreComponent, InlineNoticeComponent],
   template: `
     <div class="ops-topbar">
       <div>
@@ -28,6 +31,12 @@ import type { RunnerVerification, VerificationStatus } from '../../../core/api-t
       </div>
     </div>
 
+    @if (notice(); as n) {
+      <app-inline-notice tone="danger" [dismissible]="true" (dismissed)="notice.set(null)">{{
+        n
+      }}</app-inline-notice>
+    }
+
     <p class="kpi-note">
       Runner-submitted documents awaiting admin review. Approve → runner level upgrades.
     </p>
@@ -41,7 +50,7 @@ import type { RunnerVerification, VerificationStatus } from '../../../core/api-t
               <b>{{ shortId(v.runnerProfile?.id ?? '') }}</b>
               <div class="vc-sub">{{ v.user?.phone ?? '—' }}</div>
             </div>
-            <app-status-chip [status]="v.status" />
+            <app-status-chip [status]="v.status" kind="verification" />
           </div>
 
           <div class="vc-body">
@@ -54,7 +63,9 @@ import type { RunnerVerification, VerificationStatus } from '../../../core/api-t
             @if (v.documentKey) {
               <div class="vc-row">
                 <span>Document</span>
-                <a class="doc-link" [href]="docUrl(v.documentKey)" target="_blank" rel="noopener">View</a>
+                <a class="doc-link" [href]="docUrl(v.documentKey)" target="_blank" rel="noopener"
+                  >View</a
+                >
               </div>
             }
             @if (v.reviewerNote) {
@@ -66,10 +77,18 @@ import type { RunnerVerification, VerificationStatus } from '../../../core/api-t
 
           @if (v.status === 'pending') {
             <div class="vc-actions">
-              <button class="btn-outline" (click)="review(v.id, 'rejected')" [disabled]="isSaving(v.id)">
+              <button
+                class="btn btn-outline"
+                (click)="review(v.id, 'rejected')"
+                [disabled]="isSaving(v.id)"
+              >
                 Reject
               </button>
-              <button class="btn-primary" (click)="review(v.id, 'approved')" [disabled]="isSaving(v.id)">
+              <button
+                class="btn btn-primary"
+                (click)="review(v.id, 'approved')"
+                [disabled]="isSaving(v.id)"
+              >
                 {{ isSaving(v.id) ? 'Approving…' : 'Approve' }}
               </button>
             </div>
@@ -90,11 +109,7 @@ import type { RunnerVerification, VerificationStatus } from '../../../core/api-t
 
     <!-- Pagination -->
     @if (hasMore()) {
-      <div class="pagination">
-        <button class="btn-outline" (click)="loadMore()" [disabled]="loadingMore()">
-          {{ loadingMore() ? 'Loading…' : 'Load more' }}
-        </button>
-      </div>
+      <app-load-more [loading]="loadingMore()" (load)="loadMore()" />
     }
   `,
   styles: [],
@@ -106,8 +121,14 @@ export class VerificationsPanelComponent {
   readonly cursor = signal<string | null>(null);
   readonly loadingMore = signal(false);
   readonly saving = signal({} as Record<string, boolean>);
+  readonly notice = signal<string | null>(null);
 
-  protected readonly statusOptions: VerificationStatus[] = ['pending', 'approved', 'rejected', 'in_review'];
+  protected readonly statusOptions: VerificationStatus[] = [
+    'pending',
+    'approved',
+    'rejected',
+    'in_review',
+  ];
 
   ngOnInit(): void {
     this.load();
@@ -118,7 +139,7 @@ export class VerificationsPanelComponent {
       next: (res) => {
         this.cursor.set(res.nextCursor);
       },
-      error: (e) => console.error('Failed to load verifications:', e),
+      error: (e) => this.notice.set(failureCopy(e, "Couldn't load verifications. Try again.")),
     });
   }
 
@@ -130,7 +151,10 @@ export class VerificationsPanelComponent {
         this.cursor.set(res.nextCursor);
         this.loadingMore.set(false);
       },
-      error: () => this.loadingMore.set(false),
+      error: (e) => {
+        this.loadingMore.set(false);
+        this.notice.set(failureCopy(e, "Couldn't load more. Try again."));
+      },
     });
   }
 
@@ -144,7 +168,7 @@ export class VerificationsPanelComponent {
     try {
       await this.s.reviewVerification(id, decision);
     } catch (e) {
-      console.error('Review failed:', e);
+      this.notice.set(failureCopy(e, "Couldn't save the review. Try again."));
     } finally {
       this.saving.update((s) => ({ ...s, [id]: false }));
     }
@@ -159,7 +183,12 @@ export class VerificationsPanelComponent {
   }
 
   protected initials(id: string): string {
-    return id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'R';
+    return (
+      id
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .slice(0, 2)
+        .toUpperCase() || 'R'
+    );
   }
 
   protected typeLabel(type: string): string {
@@ -182,10 +211,14 @@ export class VerificationsPanelComponent {
 
   protected sub(): string {
     const total = this.s.verifications().length;
-    const pending = this.s.verifications().filter(v => v.status === 'pending').length;
+    const pending = this.s.verifications().filter((v) => v.status === 'pending').length;
     return total === 0 ? 'No verifications synced yet' : `${total} items · ${pending} pending`;
   }
 
   protected readonly shortId = shortId;
   protected readonly timeAgo = timeAgo;
+}
+
+function failureCopy(e: unknown, fallback: string): string {
+  return apiError(e).status === 403 ? FORBIDDEN_COPY : fallback;
 }

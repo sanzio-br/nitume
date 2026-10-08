@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { apiError, FORBIDDEN_COPY } from '../../core/api-error';
 import type {
   AssignErrandDto,
   Errand,
@@ -245,7 +246,7 @@ export class AdminDataService {
       this.me.set(me);
       this.refreshedAt.set(Date.now());
     } catch (e) {
-      this.error.set(e instanceof Error ? e.message : String(e));
+      this.error.set(syncErrorCopy(e));
     } finally {
       this.loading.set(false);
     }
@@ -312,21 +313,28 @@ export class AdminDataService {
   async quoteErrand(id: string, dto: QuoteErrandDto): Promise<Errand> {
     const res = await firstValueFrom(this.api.quoteErrand(id, dto));
     this.errands.update((items) =>
-      items.map((e) => (e.id === id ? { ...e, status: res.status, quotedPrice: res.quotedPrice } : e)),
+      items.map((e) =>
+        e.id === id ? { ...e, status: res.status, quotedPrice: res.quotedPrice } : e,
+      ),
     );
     return res;
   }
 
-  async reviewVerification(id: string, decision: 'approved' | 'rejected'): Promise<RunnerVerification> {
+  async reviewVerification(
+    id: string,
+    decision: 'approved' | 'rejected',
+  ): Promise<RunnerVerification> {
     const dto: ReviewVerificationDto = { decision };
     const res = await firstValueFrom(this.api.reviewVerification(id, dto));
-    this.verifications.update((items) =>
-      items.map((v) => (v.id === id ? res : v)),
-    );
+    this.verifications.update((items) => items.map((v) => (v.id === id ? res : v)));
     return res;
   }
 
-  listVerifications(status?: string, cursor?: string | null, limit = 50): Observable<{ items: RunnerVerification[]; nextCursor: string | null }> {
+  listVerifications(
+    status?: string,
+    cursor?: string | null,
+    limit = 50,
+  ): Observable<{ items: RunnerVerification[]; nextCursor: string | null }> {
     return new Observable((subscriber) => {
       this.api.listVerifications(status, cursor, limit).subscribe({
         next: (res) => {
@@ -342,6 +350,13 @@ export class AdminDataService {
       });
     });
   }
+}
+
+/** User copy for a failed dashboard sync (never the raw HTTP message). */
+export function syncErrorCopy(e: unknown): string {
+  const err = apiError(e);
+  if (err.status === 403) return FORBIDDEN_COPY;
+  return "Couldn't reach the ops API. Check your connection and refresh.";
 }
 
 function feedItemFor(t: ErrandListItem): FeedItem {

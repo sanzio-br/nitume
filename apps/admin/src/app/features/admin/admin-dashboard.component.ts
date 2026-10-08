@@ -11,6 +11,7 @@ import { TaskDrawerComponent } from './drawers/task-drawer';
 import { RunnerDrawerComponent } from './drawers/runner-drawer';
 import { DisputeDrawerComponent } from './drawers/dispute-drawer';
 import { OpsDrawerComponent } from '../../shared/ops-drawer.component';
+import { InlineNoticeComponent } from '../../shared/inline-notice.component';
 
 type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'reports';
 type DrawerKind = 'task' | 'runner' | 'dispute';
@@ -34,6 +35,7 @@ type DrawerKind = 'task' | 'runner' | 'dispute';
     RunnerDrawerComponent,
     DisputeDrawerComponent,
     OpsDrawerComponent,
+    InlineNoticeComponent,
   ],
   template: `
     <div class="ops-app">
@@ -164,7 +166,9 @@ type DrawerKind = 'task' | 'runner' | 'dispute';
             }
           }
           @if (s.error()) {
-            <div class="ops-banner">Sync error — {{ s.error() }}</div>
+            <app-inline-notice class="ops-sync-notice" tone="danger">{{
+              s.error()
+            }}</app-inline-notice>
           }
         }
       </main>
