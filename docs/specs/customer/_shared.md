@@ -5,11 +5,11 @@ Applies to every `docs/specs/customer/*.md`. Each view spec references the compo
 Sources (real paths):
 - Mockup: `docs/design/nitume_customer_app.html`
 - Design system: `docs/design/nitume_design_system.html`
-- System design: `docs/design/Nitume_System_Design.md` (identical copy at `docs/Nitume_System_Design.md`)
-- Owner answers: `docs/audits/customer-gap-report.md` → "Questions for the owner (consolidated)", answers 1–21 (summarised on `docs/agent-sync/BOARD.md` rows 2–22)
+- System design: `docs/design/Nitume_System_Design.md`. §3.3 (state machine) was updated on 2026-10-08 per BOARD row 56; the copy at `docs/Nitume_System_Design.md` was not touched on this branch and is stale for §3.3 until someone syncs it
+- Owner answers: `docs/audits/customer-gap-report.md` → "Questions for the owner (consolidated)", answers 1–21 (= BOARD rows 2–22, cited as `OA-n`), plus BOARD rows 1 and 23–65 (answered 2026-10-07/08, cited as `row N`, index in §0.1). Rows 34, 48, 49 and 58 carry "Clarified 2026-10-08" notes; the clarified wording wins
 - Implementation: `apps/customer_app/lib/src/**`; shared package `packages/nitume_core/lib/src/**`
-- Shared widgets and data layer: built by core-ui on branch `feat/core-customer-widgets` (not yet on `main`)
-- API additions: built by api-contract on branch `feat/api-customer-gaps` (not yet on `main`)
+- Shared widgets and data layer: core-ui branches `feat/core-customer-widgets`, `feat/core-owner-decisions`, `feat/core-spec-widgets` (merged into `feat/customer-screens`, not yet on `main`)
+- API additions: api-contract branches `feat/api-customer-gaps`, `feat/api-owner-decisions` (not yet on `main`)
 
 Order of precedence: owner answers, then the design system for styling, then the mockup for content, copy and flow (AGENT_BUILD_INSTRUCTIONS §1). Where the mockup CSS differs from the design system, the spec gives the design-system value and records the mockup value as "mockup:".
 
@@ -41,26 +41,63 @@ Order of precedence: owner answers, then the design system for styling, then the
 | OA-20 | 21 | §6 state → label table below is authoritative | §6 |
 | OA-21 | 22 | After payment go to Track. STK states PENDING / SUCCESS / FAILED / TIMEOUT; TIMEOUT is not failure; safe retry; pay with selected/default M-Pesa method, login phone only as fallback | v-payment, x-awaiting-quote |
 
-Still **open** on the board. Specs reference these as "pending row N" and never decide them:
+### 0.1 Later owner answers (cite as "row N")
+
+All answered. Specs no longer say "pending row N" for these.
+
+| Row | Decision | Applied in |
+|---|---|---|
+| 1 | Category enum ↔ display-name mapping confirmed exactly as in §7 | §7 |
+| 23 | Socket events approved as written: `errand:join`, `errand:leave`, `errand:status_changed`, `evidence:uploaded`, `price_change:requested`, `location:update`, rooms `errand:{id}` (§4.2) | §10, v-home, v-track, x-awaiting-quote, v-payment, v-evidence-confirm, v-price-auth, x-merchant-payment |
+| 24 | Nullable unique `payments.idempotency_key` + `Idempotency-Key` header | v-payment, x-merchant-payment |
+| 25 | Evidence through authenticated, short-lived (~15 min) signed GET URLs; never permanent public URLs | C-25, x-evidence-viewer |
+| 26 | BullMQ for the notification worker (no UI change) | — |
+| 27 | Live runner location only during the current assignment window (RUNNER_ASSIGNED → AWAITING_CUSTOMER) | §10, v-track, v-home |
+| 28 | `GET /errands/:id/rating` access check (API only) | v-rate |
+| 29 | `socket_io_client` approved | §10 |
+| 30 | `google_maps_flutter` and a Google Places client approved, behind interfaces and environment configuration (API key) | §10, v-track, v-new-details, x-address-form |
+| 31 | `firebase_messaging` approved: register the token after login, remove/deactivate it on logout | §10, v-auth-otp, x-name-capture, v-profile, v-notifications |
+| 32 | Video evidence deferred from MVP; no video-player dependency | C-25, x-evidence-viewer |
+| 33 | High-contrast chip text approved | §2, §3, C-05 |
+| 34 | Customer-facing fees = item amount + service fee + runner fee; commission split internal. **Clarified 2026-10-08: show only `Total (service + runner fee)` until pricing rates exist (row 47)** | §8, v-new-review, x-awaiting-quote, v-evidence-confirm, v-task-detail |
+| 35 | CONFIRMED and SETTLED are system-only; customer confirm = AWAITING_CUSTOMER → COMPLETED | §6 |
+| 36 | Dispute resolution: runner-favourable → COMPLETED, customer-favourable → CANCELLED (admin) | x-report-problem, v-task-detail |
+| 37 | Customer IN_PROGRESS → CANCELLED only through a price-change reject; opens an admin refund review; admin sets the refund (up to full) | v-price-auth, §11 |
+| 38 | Dialog scrim: blue `#0B2545` at 50% (was SQ-1) | §2, C-35 |
+| 39 | `url_launcher` approved; targets from `AppConfig.termsUri` / `privacyUri` / `supportUri` (was SQ-2) | x-legal, x-support, v-auth-phone, v-auth-otp |
+| 40 | The API computes the runner short name (was SQ-3) | §7 |
+| 41 | Fallback task title = category display name (was SQ-4) | §7 |
+| 42 | Send-to-runner is platform-mediated: the customer pays Nitume by M-Pesa STK; no direct customer-to-runner transfer (was SQ-5) | §8, x-awaiting-quote, x-merchant-payment |
+| 43 | Merchant Till/Paybill details are supplied by the merchant or an admin; the customer only selects the route (was SQ-6) | §8, x-awaiting-quote, x-merchant-payment |
+| 44 | Price-change difference paid through the same route as the original merchant payment; if that route is unavailable, the customer explicitly selects one | §8.2, v-price-auth, x-merchant-payment |
+| 45 | Budget shown for Buy For Me and Get It For Me only | v-new-details, v-new-review |
+| 46 | Expired quotes cannot be accepted: the API returns `quote_expired`; a fresh quote is required | §8.3, x-awaiting-quote |
+| 47 | No invented pricing rules: the wizard preview stays non-authoritative and is not shown until real pricing rates exist; the authoritative quote is admin-generated | §8.3, v-new-review |
+| 48 | Increase charged on the original merchant route. **Clarified 2026-10-08: a decrease opens an admin refund review for the difference** | §8.2, §11, v-price-auth |
+| 49 | Guarded cancellation on price-change reject only. **Clarified 2026-10-08: runners can request price changes only in IN_PROGRESS; no new transitions** | §8.2, v-price-auth, v-track |
+| 50 | Dispute window configurable (24 h placeholder), restarts after a dispute resolves to COMPLETED | v-task-detail (report row) |
+| 51 | Urgency thresholds from `deadlineAt` (≤ 4 h urgent, > 72 h scheduled), configurable, server-side | v-new-details |
+| 52 | STK timeout from the provider status (Daraja STK Query); TIMEOUT ≠ FAILED and blocks duplicate pushes; 120 s initial placeholder | v-payment, x-merchant-payment |
+| 53 | OTP throttling (per phone/account and per IP/device) | v-auth-phone, v-auth-otp |
+| 54 | Refund payout recorded manually for MVP; **customers can see their refund status**; M-Pesa B2C/reversal later | §11, v-task-detail |
+| 55 | An admin rejecting a price change only rejects it; the task continues | v-price-auth |
+| 56 | System design §3.3 updated to the decided state machine | §6, `docs/design/Nitume_System_Design.md` §3.3 |
+| 58 | Keep AppScope + ChangeNotifier for MVP. Clarified 2026-10-08: Riverpod later, on its own branch after this stack merges | (builders only) |
+| 60 | Task creation and saved addresses need a picked place with coordinates; text-only addresses are never accepted | §10, v-new-details, x-address-form |
+| 61 | `merchant_route_required` on price-change approval: the customer chooses an available route inside the modal | v-price-auth |
+| 63 | Placeholders approved as initial configurable values (24 h dispute window, 4 h / 72 h urgency, 120 s STK timeout, scrim) | §2, v-payment |
+| 65 | Errand and tracking visibility limited to the current runner assignment (API rule) | §10, v-track |
+| Needs 40 | Empty-title-safe `NitumeTopBar` approved | C-09, v-home |
+| Needs 41 | x-merchant-payment snackbar `Nothing to pay right now.` approved | x-merchant-payment |
+
+### 0.2 Still open on the board
 
 | Row | Topic | Customer impact |
 |---|---|---|
-| 1 | ERD enum ↔ display-name mapping (AGENTS.md mapping in use, pending confirmation) | Wire values in §7 |
-| 23 | Socket event names (`errand:join`, `errand:status_changed`, `evidence:uploaded`, `price_change:requested`) | Use names only through core `RealtimeEvents` constants so a rename is one line |
-| ~~24~~ | **Answered** (owner): nullable unique `payments.idempotency_key` + `Idempotency-Key` header | v-payment safe retry |
-| 25 | Evidence view links (signed URLs, TTL) | C-25, x-evidence-viewer |
-| 26 | BullMQ for notifications | Push latency only; no UI change |
-| 27 | Runner location privacy window | v-track map visibility |
-| 28 | `GET /errands/:id/rating` access check | v-rate (API fix only) |
-| 29 | `socket_io_client` package | Live updates; polling fallback until approved |
-| 30 | `google_maps_flutter` + Places client (API key) | v-track map; v-new-details and x-address-form autocomplete |
-| 31 | `firebase_messaging` (FCM) | Push deep links |
-| 32 | Video player package | x-evidence-viewer video |
-| 33 | Chip text contrast (WCAG AA at 12px) | C-05 text colour |
-| 34 | Which quote components make up "Service fee" vs "Runner fee" | Every fee line (§8) |
-| ~~35~~ | **Answered** (owner): CONFIRMED and SETTLED stay as system-only states (COMPLETED → CONFIRMED → SETTLED by the system), never shown in the customer UI | §6 now labels both `Completed`; v-task-detail / v-rate treat them like COMPLETED for rating |
-| ~~36~~ | **Answered** (owner): runner-favourable resolution → COMPLETED; customer-favourable → CANCELLED | x-report-problem and v-task-detail render whatever state follows |
-| ~~37~~ | **Answered** (owner): customer IN_PROGRESS → CANCELLED on price-change reject; goes to admin refund review, admin sets the refund (up to full) | v-price-auth reject copy unchanged (`We'll update you about anything you've already paid.`); no refund amounts shown |
+| 57 | Local DB incident (FYI) | none |
+| 59 | `.env` pubspec asset breaks `flutter test` on a fresh checkout | builders' test setup only |
+| 62 | Schema approval for `refund_reviews` and `payments.priceChangeRequestId` | §11 refund status and price-change difference records depend on these tables. Build the UI against the response shape in §11; it stays hidden while the API returns no refund |
+| 64 | Git housekeeping before merging | none |
 
 ## 1. Navigation model
 
@@ -124,7 +161,9 @@ Off-palette mockup values and their replacement token (OA-14). Never port the mo
 | 14px / 10px button radii | `.cta-fixed`, `.track-btn`, `.btn-sm` | pill 999 (OA-11) |
 | slate 10px field | `.field` | white, r-s 8, slate-line border, 2px green focus (OA-12) |
 
-**Modal scrim**: the design system has no token for it, and C-35 needs one. Proposed `NitumeColors.scrim` = blue `#0B2545` at 50% opacity, a derived tone of an existing colour. Pending owner approval (SQ-1, §9). core-ui must not ship Material's default black barrier.
+**Modal scrim** (decided, row 38): blue `#0B2545` at 50% opacity, a derived tone of an existing colour (`NitumeDesignChoices.modalScrim`). Never Material's default black barrier.
+
+**Chip text** (decided, row 33): high-contrast treatment. Success / pending / danger chips keep their tinted background and coloured 6px dot, and the label text is blue `#0B2545` (13:1 or better on every tint). Info chips are unchanged (blue on blue-050). core-ui flips `NitumeDesignChoices.chipHighContrastText` to `true`; screens change nothing.
 
 ## 3. Typography
 
@@ -144,7 +183,7 @@ Off-palette mockup values and their replacement token (OA-14). Never port the mo
 | Section label | 11.5 / 700, uppercase, letter-spacing 0.05em, slate-600 | Sans |
 | Field label | 12.5 / 600, slate-600 (design-system `.field-label`, OA-12). The mockup's uppercase 11/700 label is kept only as the form-card heading | Sans |
 | Inline error | 12.5 / 400, red | Sans |
-| Chip text | 12 / 600 | Sans |
+| Chip text | 12 / 600, blue on the tone tint (row 33) | Sans |
 | Big amount | 20–30 / 600 | Code |
 | Meta / time / countdown | 11–12.5 / 400–600, slate-600 | Code |
 
@@ -158,11 +197,11 @@ Status: **built** = exists on `feat/core-customer-widgets` (class named); **chan
 | C-02 | Secondary button (blue fill, white text, pill) | `.btn-secondary` | built `NitumeButton.secondary` |
 | C-03 | Outline button + small variant (12/700, padding 11) | `.btn-outline` | built `NitumeButton.outline` (`NitumeButtonSize.small`) |
 | C-04 | Text button / green-700 link | `.btn-text` | built `NitumeButton.text`, `NitumeButton.link` |
-| C-05 | Status chip (pill, 12/600, 6px dot) | `.chip-*` | built `StatusChip`. **change**: En route = pending (amber), Cancelled = danger (red) per OA-13 (`NitumeDesignChoices.runnerProgressTone` must apply to RUNNER_EN_ROUTE only; `cancelledTone` → danger). Text colour pending row 33 |
+| C-05 | Status chip (pill, 12/600, 6px dot) | `.chip-*` | built `StatusChip`. En route = pending (amber), Cancelled = danger (red) per OA-13. **change**: high-contrast label text (row 33, §2) |
 | C-06 | Status presentation map (ErrandStatus → label + tone, §6) | — | built `statusPresentation`. **change**: tones per §6 |
 | C-07 | Card (white, slate-line, r-m 14, padding 16; dashed variant) | `.card-demo` | built `NitumeCard` |
 | C-08 | Section label | — | built `SectionLabel` |
-| C-09 | Root top bar | — | built `NitumeTopBar` |
+| C-09 | Root top bar | — | built `NitumeTopBar`. **change** (approved, BOARD Needs row 40): an empty `title` renders no title line and no empty semantics node |
 | C-10 | Pushed header (back 32 visual / 48 hit, title 18/700, Fira Code step counter) | — | built `NitumePushedHeader` |
 | C-11 | Notification bell + 7px unread dot (red, 1.5px white ring, OA-13) | — | built `NotificationBell`. **change**: `unreadDot` → red |
 | C-12 | Initials avatar (36 / 60 / 70) from `displayName`; person glyph when there is no name | — | built `InitialsAvatar` |
@@ -174,29 +213,36 @@ Status: **built** = exists on `feat/core-customer-widgets` (class named); **chan
 | C-18 | Receipt card + rows (Fira Code amounts; total row with hairline; dashed variant) | — | built `ReceiptCard`, `ReceiptRow`. **change**: needs an "estimate" caption slot and a separate "paid separately" group (§8) |
 | C-19 | Status timeline | — | built `StatusTimeline` |
 | C-20 | Active task hero card | — | built `ActiveTaskCard` (tag = chip-info, meta slate-400, OA-14) |
-| C-21 | Runner summary tile | design-system runner card | built `RunnerSummaryTile` |
+| C-21 | Runner summary tile | design-system runner card | built `RunnerSummaryTile`. Name = API short name as returned (§7, row 40) |
 | C-22 | Compact task row | `.list-item` | built `TaskRow` |
 | C-23 | Task history card | `.list-item` | built `TaskHistoryCard` |
 | C-24 | Menu row (+ destructive: red text, slate-400 chevron, OA-13) | — | built `MenuRow`. **change**: `destructiveText` → red |
-| C-25 | Evidence grid + viewer | — | built `EvidenceGrid`, `EvidenceViewer` (no video playback: pending row 32; URLs pending row 25) |
+| C-25 | Evidence grid + viewer | — | built `EvidenceGrid`, `EvidenceViewer`. Photos only for MVP: video is deferred (row 32), a video item shows the "not supported yet" tile (x-evidence-viewer). Signed short-lived URLs (row 25): re-fetch once when a link has expired |
 | C-26 | OTP code field | — | built `OtpCodeField` |
 | C-27 | Star rating input | — | built `StarRatingInput` |
 | C-28 | Notification row (+ unread: red 7px dot before the time, title 700) | — | built `NotificationRow`. **change**: unread styling |
 | C-29 | Saved address card + "Default" tag | chip-info | built `SavedAddressCard` |
 | C-30 | Payment method card (M-Pesa badge only, OA-10) | — | built `PaymentMethodCard`. **change**: drop the blue card badge variant |
-| C-31 | Live tracking map + ETA chip | — | built `LiveTrackingMap`, `EtaChip` (map SDK pending row 30) |
+| C-31 | Live tracking map + ETA chip | — | built `LiveTrackingMap`, `EtaChip`. **change**: Google Maps body (`google_maps_flutter`, row 30) passed through `mapBuilder`, markers + route + animated runner marker; the token-only placeholder stays for builds without a maps key |
 | C-32 | `formatKes`, `NumText` and other formatters | `.t-num` | built (`formatters.dart`, `NumText`) |
 | C-33 | Empty / error / skeleton states | — | built `NitumeEmptyState`, `NitumeErrorState`, `SkeletonCard` |
 | C-34 | Search entry row | — | built `SearchEntryRow` |
 | — | Wordmark, pulsing dots, Places field | — | built `NitumeWordmark`, `PulsingDots`, `PlaceAutocompleteField` |
-| C-35 | `NitumeDialog`: modal card (white, r-l 20, padding 20, max width 335) over the scrim (§2); title 17/600, body 13.5 slate-600, full-width button stack (gap 10); `barrierDismissible` flag | `.card-demo` + `.btn-*` | **NEW** (scrim token pending SQ-1) |
+| C-35 | `NitumeDialog`: modal card (white, r-l 20, padding 20, max width 335) over the scrim (§2); title 17/600, body 13.5 slate-600, full-width button stack (gap 10); `barrierDismissible` flag | `.card-demo` + `.btn-*` | built (scrim decided, row 38) |
 | C-36 | Checkbox (22px, r 6, 2px slate-line border; checked = green fill + white check) | `.check` | **NEW** |
 | C-37 | Shopping-list editor: item rows (name field, Fira Code quantity stepper − / n / +, remove icon), `+ Add item` link | `.list-item` + C-17 | **NEW** |
 | C-38 | Resend countdown (`Resend code in 0:59`, Fira Code for the time) that turns into a C-04 link at zero | — | **NEW** |
 | C-39 | Copyable value row (label 12.5 slate-600; value Fira Code 16/600; trailing `Copy` text button; copies to clipboard and shows snackbar `Copied`) | — | **NEW** |
 | C-40 | Inline notice (white card, slate-line border, r-m 14, 13 slate-600 text, optional leading info icon in slate-600; no coloured fill) | `.card-demo` | **NEW** |
 
-Non-UI core (built on `feat/core-customer-widgets`): repositories, models, `RealtimeClient` interface + `RealtimeEvents`, `PlaceSearchService` interface. Still needed: the `RealtimeClient` implementation (pending row 29), FCM (pending row 31), `AppConfig` values for the Support, Terms and Privacy URIs (x-support, x-legal), and `url_launcher` (a new package that needs owner approval: SQ-2).
+Non-UI core (built): repositories, models, `RealtimeClient` interface + `RealtimeEvents`, `PlaceSearchService` interface, `AppConfig.termsUri` / `privacyUri` / `supportUri`.
+
+Now approved and still to build (see §10 and the 2026-10-08 addendum in `docs/audits/customer-gap-report.md`):
+- `RealtimeClient` implementation on `socket_io_client` (row 29) with the approved event names (row 23).
+- `PlaceSearchService` on Google Places Autocomplete + Place Details, and the Google Maps `mapBuilder` body for C-31 (row 30), both configured per environment (API key), both absent-safe.
+- FCM push: token registration after login, removal on logout, token refresh, deep-link routing (row 31).
+- Link opening through `url_launcher` with the `AppConfig` URIs (row 39).
+- `AppConfig.quotePreviewEnabled` (default `false`) so the wizard estimate stays hidden until pricing rates exist (row 47, §8.3).
 
 ## 5. Layout constants
 
@@ -208,7 +254,7 @@ Non-UI core (built on `feat/core-customer-widgets`): repositories, models, `Real
 
 ## 6. Errand state → customer label (authoritative, OA-20)
 
-State machine: `Nitume_System_Design.md` §3.3 plus the approved API transitions (OA-9). The UI never invents or skips states and renders whatever state the API returns. Labels are fixed by OA-20; tones follow OA-13.
+State machine: `docs/design/Nitume_System_Design.md` §3.3, updated 2026-10-08 to the owner decisions (row 56: OA-9, rows 35–37, 49). Customer-fired transitions: DRAFT → REQUESTED / CANCELLED; REQUESTED, QUOTED, ACCEPTED → CANCELLED; QUOTED → ACCEPTED; IN_PROGRESS → DISPUTED; IN_PROGRESS → CANCELLED (only through a price-change reject); AWAITING_CUSTOMER → COMPLETED / DISPUTED; COMPLETED → DISPUTED (within the dispute window). Everything else is runner, admin or system. The UI never invents or skips states and renders whatever state the API returns. Labels are fixed by OA-20; tones follow OA-13.
 
 | State | Label | Tone |
 |---|---|---|
@@ -236,7 +282,7 @@ DRAFT errands are never listed (the wizard creates and submits in one step, see 
 
 ## 7. Copy and naming rules
 
-- **Categories** (OA-1): display names only, in this order (AGENTS.md mapping, pending row 1):
+- **Categories** (OA-1): display names only, in this order (AGENTS.md mapping, confirmed by row 1):
 
   | Display name | Wire value | Customer MVP |
   |---|---|---|
@@ -247,32 +293,84 @@ DRAFT errands are never listed (the wizard creates and submits in one step, see 
   | Wait For Me | `queue_admin` | yes |
   | Business Tasks | `business` | **no, out of MVP (OA-18); never offered in the customer app**. If an API errand ever has `business`, lists label it "Business Tasks" |
 
-- **Names** (OA-2): the customer name is `displayName` from `GET /users/me`. The greeting uses the first word; Profile shows the full name. Runner names display as first name + last initial (`Brian K.`), as drawn in the mockup, formatted by a core `shortName(displayName)` helper; whether the API already returns the short form is SQ-3. With no name, fall back as each spec states; never show a phone number as a name.
-- **Task title** (OA-15): show `title` when set. Otherwise show `<category display name> — <first locality>`, where locality is the first comma-separated part of the first location's `addressText` (e.g. `Check It For Me — Links Road Apartments`). This fallback is a display rule only; nothing is stored (SQ-4).
+- **Names** (OA-2): the customer name is `displayName` from `GET /users/me`. The greeting uses the first word; Profile shows the full name. Runner names display as first name + last initial (`Brian K.`), as drawn in the mockup. **The API computes the short name (row 40)**: the client renders the runner's short-name field exactly as returned and never shortens a full name itself (the core `shortName()` helper is not used for runner names). With no short name, show `Your runner`; never show a phone number as a name.
+- **Task title** (OA-15, row 41): show `title` when set. Otherwise show the **category display name** (e.g. `Check It For Me`). The earlier `<category> — <locality>` rule is withdrawn. If the API ever stores the fallback as `title`, the result is the same; the client never composes a title from addresses.
 - **Task reference** (OA-15): `#` + `reference` exactly as returned by the API (e.g. `#NT-10482`). Same format everywhere: the mockup's `#10482` on Home vs `#NT-10482` on Task detail is unified. Never derived client-side; hidden when null.
 - **No wallet or escrow words**: "balance", "hold", "release", "release payment", "escrow", "wallet" and "funds held" are banned (OA-6).
 - **Money**: `KSh 2,200` (space, thousands comma, no decimals unless non-zero), Fira Code (`formatKes`).
 - **Times**: `10:03 AM`, `Today, 10:03 AM`, `Yesterday, 4:12 PM`, `Mon, 10:03 AM`; relative `2m`, `1h`, `Yesterday`, `Mon` in notifications. Fira Code.
 - **Generic errors**: network `Check your connection and try again.`; unknown `Something went wrong. Please try again.`; session expired → back to `v-auth-phone` with snackbar `Please sign in again.`
+- **Suspended or banned account**: at sign-in, `v-auth-otp` shows `This account can't sign in. Contact support.` (+ Support link when configured). If a signed-in session is refused with the same code (API `account_suspended`, on refresh or any call), clear the session, unregister the push token, reset to `v-auth-phone` and show the same sentence as a snackbar (proposed). Never show the reason or any internal note.
 - Copy marked **(proposed)** in a spec was written by the auditor for undrawn states or screens. Build it as written; the owner may revise it later.
 
-## 8. Fees and payment flows (OA-4, OA-5, OA-21)
+## 8. Fees and payment flows (OA-4, OA-5, OA-21, rows 34 and 42–49)
 
 The three flows stay separate (§6 of the system design): service fee, runner fee, merchant/item amount.
 
-- Customer-facing lines, in this order: `Service fee`, `Runner fee`, then the total of those two, then, separated and never added into that total, the `Item amount` (merchant/item purchase) when there is one.
-- **TODO (pending row 34):** which quote components (base / distance / time / urgency / complexity / premium) make up `Service fee` vs `Runner fee` is not decided. The client never computes the split. It renders `serviceFee`, `runnerFee`, `itemAmount` and `total` exactly as the API returns them (quote endpoint and payments endpoint). api-contract owns the mapping once the owner answers.
-- The API's internal commission split (20% / 30% of the quote) is never shown and never added as a fee (OA-4).
-- M-Pesa STK push amount = service fee + runner fee only.
-- Merchant/item amount routes the customer can choose (OA-5): `merchant_direct` ("Pay the merchant directly", only offered when the errand has merchant Till/Paybill details) and `customer_to_runner` ("Send the item amount to your runner"). `runner_advance` is never offered to customers. No purchase → `platform_only`, and no route choice is shown.
+### 8.1 What the customer sees
 
-## 9. Shared open questions (new, not yet on the board)
+- **Fee line (row 34, clarified 2026-10-08)**: one row, `Total (service + runner fee)`, with the API's fee total. `Service fee` and `Runner fee` lines are **not shown** until pricing rates exist (row 47). The client never renders `serviceFee` / `runnerFee` from a payment or quote record as separate lines, and never computes a split. When the owner confirms pricing rates, a later spec change brings the two lines back.
+- On the wizard estimate only (when shown at all, §8.3) the row reads `Estimated total (service + runner fee)`.
+- The **item amount** (merchant/item purchase) is shown separately, under a hairline, and never added into the fee total.
+- The API's internal commission split (20% / 30%) and the quote components (base, distance, time, urgency, complexity, premium) are never shown (OA-4).
+- The fee STK push amount = the fee total only.
 
-These came up while applying the answers. Each spec gives a build default so work is not blocked.
+### 8.2 Merchant/item amount routes (OA-5, rows 42–44, 48, 49, 61)
 
-- **SQ-1 (design system / palette)**: Modal scrim colour for C-35. Proposed: blue `#0B2545` at 50% opacity. Build default: the same.
-- **SQ-2 (third-party package)**: `url_launcher` for Support, Terms, Privacy and phone/WhatsApp targets. Build default: no link opens until approved; the rows are hidden.
-- **SQ-3 (schema/API)**: Does the API return runner names already shortened (`Brian K.`), or the full `displayName` for the client to shorten? Build default: the client shortens.
-- **SQ-4**: Fallback title when the customer leaves `title` empty. Build default: the §7 rule.
-- **SQ-5 (payments)**: Send-to-runner route. How does the customer actually send the item amount: a second STK push to the platform followed by a B2C to the runner, or M-Pesa send-money to a runner number shown in the app? Build default: the route can be selected; the follow-up screen shows the pending state described in `x-merchant-payment.md`.
-- **SQ-6 (payments)**: Who supplies merchant Till/Paybill details (customer in the wizard, runner on site, admin), and when do they appear on the errand? Build default: they arrive on the errand from the API; the merchant-direct option is disabled until they exist.
+Wire values (`merchantRoute` on `POST /payments/:errandId/initiate`, core `MerchantRoute`): `merchant_direct` and `send_to_runner`. No purchase → no route choice (`platform_only` flow). `runner_advance` is never a customer option.
+
+| Route | Customer label (checkout) | How the item amount is paid | Customer screen |
+|---|---|---|---|
+| `merchant_direct` | `Pay merchant directly (recommended)` | The customer pays the merchant's Till/Paybill from their own M-Pesa, after the fees are paid. Nitume does not collect it | `x-merchant-payment` variant A |
+| `send_to_runner` | `Send purchase amount to runner` | **Platform-mediated (row 42)**: the customer pays the item amount **to Nitume by a separate M-Pesa STK push** (never combined with the fee STK). Nitume passes it on for the purchase. No runner phone number is ever shown for paying, and the app never offers a direct transfer to the runner | `x-merchant-payment` variant B |
+
+**Merchant details (row 43)**: the merchant or an admin supplies the Till/Paybill details; the customer never types them. Two customer states:
+- **Details pending** (none on the errand): at checkout `merchant_direct` is disabled with subtitle `Available once the merchant's details are added.`; `x-merchant-payment` variant A shows the notice `The merchant's details aren't available yet. We'll notify you when they are.`
+- **Details available**: `merchant_direct` is selectable at checkout; the Till/Paybill number is shown only on `x-merchant-payment` after the fees are paid (OA-5).
+
+**Price changes** (rows 44, 48, 49, 55, 61):
+- Runners can request a price change **only in IN_PROGRESS** (row 49). The customer sees the modal (`v-price-auth`) only for IN_PROGRESS errands. No new transitions.
+- **Increase**: the difference is paid through the **same route as the original item payment** (row 44): `merchant_direct` → the extra is paid to the same Till/Paybill (`x-merchant-payment` A shows the new amount); `send_to_runner` → a new STK push to Nitume for the difference (`x-merchant-payment` B). If the original route is unavailable (no item payment so far, so `merchant_route_required`, or merchant details now missing), the customer **explicitly chooses** an available route inside the modal (row 61). The app never picks a route for the customer.
+- **Decrease** (row 48 clarification): approving it lowers the item amount. Any difference the customer has already paid goes to an **admin refund review**; the customer follows it on `v-task-detail` (§11).
+- **Reject** = `Reject & cancel task`: IN_PROGRESS → CANCELLED (customer, guarded, row 37), and an admin refund review of what was paid (§11).
+- An admin who rejects a request only rejects it; the task continues (row 55). An open modal shows the already-answered state.
+
+### 8.3 Quotes (OA-3, rows 46, 47)
+
+- **Preview (row 47)**: the wizard estimate is non-authoritative and is **not shown until pricing rates exist**. `AppConfig.quotePreviewEnabled` (default `false`) gates it; while false, `v-new-review` makes no preview call and shows no price.
+- **Authoritative quote**: admin-generated; REQUESTED → QUOTED → ACCEPTED.
+- **Expiry (row 46)**: an expired quote cannot be accepted. The API answers accept with code `quote_expired`; the customer needs a fresh quote (`x-awaiting-quote` expired state). The errand stays QUOTED (no new transition).
+
+## 9. Shared questions
+
+SQ-1 … SQ-6 are answered (rows 38–43, see §0.1). New questions raised while applying the 2026-10-08 answers (each spec gives a build default):
+
+- **SQ-7 (payments, system design)**: Row 42 makes send-to-runner a payment *to Nitume* by STK. `Nitume_System_Design.md` §2.2 (`payments` notes) and §6 (reconciliation bullet: "we don't hold customer purchase money", and the sequence diagram showing only merchant-direct and runner-advance) still say Nitume never takes the purchase money. Please confirm the provider/legal settlement model so the system design text outside §3.3 can be updated. Build default: the row 42 flow as specced; no wallet or balance wording anywhere.
+- **SQ-8 (payments)**: Row 44 says the difference is paid "via a new STK to the same route". For `merchant_direct`, Nitume cannot send an STK push on the merchant's own Till/Paybill without a merchant integration. Build default: the customer pays the extra to the same Till/Paybill from their own M-Pesa (`x-merchant-payment` A shows the increased amount); only `send_to_runner` uses a new STK push to Nitume.
+- **SQ-9 (state machine, payments)**: After `quote_expired` (row 46), how is the fresh quote produced: the customer taps `Request a new quote` (needs a new endpoint; errand stays QUOTED), or ops re-quote automatically on expiry? Build default: `Request a new quote`, see `x-awaiting-quote`.
+- **SQ-10 (privacy)**: On a refund decision, may the customer see the admin's decision note? Build default: no; status and amount only (§11).
+
+## 10. Live data, push and places (rows 23, 25, 27, 29–31, 60, 65)
+
+- **Socket (rows 23, 29)**: one app-wide `RealtimeClient` on `socket_io_client`, authenticated with the access token (`auth: { token }`). Screens join `errand:{id}` with `errand:join` and leave with `errand:leave`. Events: `errand:status_changed`, `evidence:uploaded`, `price_change:requested`, `location:update` `{ lat, lng, eta }`. Event names only through core `RealtimeEvents`.
+- **Polling is a fallback only** while the socket is disconnected (the screen shows `Reconnecting…` where specced). The intervals in each spec apply only then. On reconnect, re-join rooms and refetch the snapshot once.
+- **Runner location (rows 27, 65)**: shown only while the errand is RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS and only for the current assignment. When the errand leaves that window (AWAITING_CUSTOMER or any terminal state), when the runner is reassigned, or when tracking answers 403/404, remove the runner marker and ETA at once and do not keep or show the last position. The client never stores location history.
+- **Maps (row 30)**: `google_maps_flutter` through `LiveTrackingMap(mapBuilder:)`; animate the marker only between pings (§5). Without a maps key (dev builds) the token-only placeholder body stays.
+- **Places (rows 30, 60)**: Google Places Autocomplete + Place Details through `PlaceSearchService` (debounce 300 ms, session token). Every task location and every saved address must be **a picked place (or a saved address) with `lat`/`lng`**; free text is never accepted or sent. Without a Places key the field is read-only and only saved addresses with coordinates can be chosen (existing fallback notice).
+- **Push (row 31)**: after every successful sign-in (and after `x-name-capture` when it runs) register the FCM token with `POST /users/me/devices`; re-register when the token refreshes; on log out call `DELETE /users/me/devices/:id` (best effort, before clearing tokens). Notification taps deep-link per the `v-notifications` table. Push permission is asked once after sign-in; refusing it changes nothing else.
+- **Evidence links (row 25)**: short-lived signed URLs; on an expired link, re-fetch the evidence list once, then show the item's load-failure state.
+
+## 11. Refund status (rows 37, 48, 54; schema row 62 open)
+
+The customer can see the status of any refund review on their task (row 54). Shown on `v-task-detail` (Payment section) only; nowhere else lists refunds. Payout is recorded manually by an admin for MVP; M-Pesa B2C/reversal comes later and does not change this UI.
+
+Opened by: price-change reject (IN_PROGRESS → CANCELLED), a customer-favourable dispute (DISPUTED → CANCELLED), a payment that completes after cancellation, and an approved price **decrease** (row 48).
+
+| API refund status | Chip (C-05) | Tone | Line under it (13 slate-600, proposed) | Amount row |
+|---|---|---|---|---|
+| `pending_review` | `Refund under review` | pending | `We're reviewing a refund for this task. We'll let you know the outcome.` | none |
+| `approved` | `Refund approved` | info | `We'll send you this refund and update this page when it's sent.` | `Refund amount` + amount (Fira Code) |
+| `refunded` | `Refunded` | success | `Sent <date, time>` (date/time Fira Code) | `Refund amount` + amount |
+| `no_refund` | `No refund` | info | `After review, no refund is due for this task.` | none |
+
+Never shown: the admin decision note (SQ-10), the payout reference, and any wording such as "balance", "wallet", "held" or "release" (OA-6).
