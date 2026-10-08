@@ -170,6 +170,8 @@ export class PaymentsService implements OnApplicationBootstrap {
     if (errand.quotedPrice === null) {
       throw new BadRequestException('Errand has not been quoted yet');
     }
+    // An expired quote cannot be paid (row 46): 409 quote_expired.
+    await this.errands.assertQuoteCurrentFor(errandId);
 
     const quote = Number(errand.quotedPrice);
     const serviceFeeRate = this.config.get<number>('pricing.serviceFeeRate', 0.2);

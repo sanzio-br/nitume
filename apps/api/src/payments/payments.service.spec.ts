@@ -22,6 +22,8 @@ const build = (opts: {
   /** Make the payment insert fail with a unique violation (lost a race). */
   conflict?: boolean;
   methods?: object[];
+  /** Newest quote has expired (row 46). */
+  quoteExpired?: boolean;
 } = {}) => {
   const payments = {
     findOne: vi.fn(({ where }: { where: Record<string, unknown> }) =>
@@ -67,6 +69,11 @@ const build = (opts: {
         quotedPrice: '1000.00',
         budget: opts.budget ?? '0.00',
       }),
+    ),
+    assertQuoteCurrentFor: vi.fn(() =>
+      opts.quoteExpired
+        ? Promise.reject(new ApiError(409, 'quote_expired', 'expired'))
+        : Promise.resolve(),
     ),
   };
   const stk = { push: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-1', transactionId: 't' })) };
@@ -246,5 +253,13 @@ describe('PaymentsService.initiate', () => {
     expect(await codeOf(bad.service.initiate('e-1', user, { paymentMethodId: 'nope' }))).toBe(
       'payment_method_invalid',
     );
+  });
+});
+
+describe('PaymentsService.initiate quote expiry (row 46)', () => {
+  it('refuses to push STK for an expired quote with quote_expired', async () => {
+    const { service, stk } = build({ quoteExpired: true });
+    expect(await codeOf(service.initiate('e-1', user))).toBe('quote_expired');
+    expect(stk.push).not.toHaveBeenCalled();
   });
 });

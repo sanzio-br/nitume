@@ -153,6 +153,25 @@ export interface ListErrandViewsResponse {
   nextCursor: string | null;
 }
 
+/**
+ * 409 `quote_expired` when the quote has an expiry that has passed (BOARD
+ * row 46). A quote without `expiresAt` never expires. The customer needs a
+ * fresh quote (admin re-quote) before accepting or paying.
+ */
+export const assertQuoteCurrent = (
+  quote: Pick<Quote, 'id' | 'expiresAt'> | null,
+  now: Date = new Date(),
+): void => {
+  if (quote?.expiresAt && quote.expiresAt.getTime() <= now.getTime()) {
+    throw new ApiError(
+      HttpStatus.CONFLICT,
+      'quote_expired',
+      'This quote has expired. A fresh quote is needed before you can accept or pay.',
+      { quoteId: quote.id, expiresAt: quote.expiresAt.toISOString() },
+    );
+  }
+};
+
 const pointToGeo = (loc: ErrandLocationDto): GeoPoint => ({
   type: 'Point',
   coordinates: [loc.lon, loc.lat],
@@ -315,6 +334,17 @@ export class ErrandsService {
       throw new NotFoundException('Errand has not been quoted yet');
     }
     return quote;
+  }
+
+  /** Newest quote row of an errand, or null (no access check). */
+  async currentQuote(errandId: string, manager?: EntityManager): Promise<Quote | null> {
+    const repo = manager ? manager.getRepository(Quote) : this.quotes;
+    return repo.findOne({ where: { errandId }, order: { createdAt: 'DESC' } });
+  }
+
+  /** Throws 409 `quote_expired` when the errand's newest quote has expired. */
+  async assertQuoteCurrentFor(errandId: string, manager?: EntityManager): Promise<void> {
+    assertQuoteCurrent(await this.currentQuote(errandId, manager));
   }
 
   /** `getById` plus the current assignment and public runner summary. */
@@ -696,6 +726,9 @@ export class ErrandsService {
       );
     }
     await this.enforceSubject(manager, errand, actor, subject);
+    if (fromStatus === ErrandStatus.QUOTED && to === ErrandStatus.ACCEPTED) {
+      assertQuoteCurrent(await this.currentQuote(errandId, manager));
+    }
 
     errand.status = to;
     try {
@@ -802,14 +835,41 @@ export class ErrandsService {
    * Admin quote step: prices the errand and moves REQUESTED -> QUOTED in one
    * transaction. The quoted price is captured on the errand; the full
    * breakdown lands in `quotes` (auditable pricing provenance).
+   *
+   * Re-quote (BOARD row 46): on a QUOTED errand whose newest quote has
+   * expired, the same call writes a fresh quote row and updates the quoted
+   * price without a status change (QUOTED stays QUOTED, no history row). A
+   * quote that is still valid is not replaced (409 `quote_still_valid`).
    */
   async quote(
     errandId: string,
     quote: QuoteInput,
     actor: ActorReference,
     note?: string,
-  ): Promise<{ errand: Errand; history: ErrandStatusHistory; quote: Quote }> {
+  ): Promise<{ errand: Errand; history: ErrandStatusHistory | null; quote: Quote }> {
     return this.inTx(async (manager) => {
+      const current = await manager.getRepository(Errand).findOne({
+        where: { id: errandId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (current?.status === ErrandStatus.QUOTED) {
+        if (actor.type !== StatusHistoryActor.ADMIN && actor.type !== StatusHistoryActor.SYSTEM) {
+          throw new ForbiddenException(`Actor '${actor.type}' cannot re-quote an errand`);
+        }
+        const latest = await this.currentQuote(errandId, manager);
+        if (!latest?.expiresAt || latest.expiresAt.getTime() > Date.now()) {
+          throw new ApiError(
+            HttpStatus.CONFLICT,
+            'quote_still_valid',
+            'The current quote has not expired; only an expired quote can be replaced',
+            { quoteId: latest?.id ?? null, expiresAt: latest?.expiresAt?.toISOString() ?? null },
+          );
+        }
+        const row = await this.saveQuote(manager, errandId, quote);
+        current.quotedPrice = quote.total.toFixed(2);
+        await manager.getRepository(Errand).update(errandId, { quotedPrice: current.quotedPrice });
+        return { errand: current, history: null, quote: row };
+      }
       const done = await this.performTransition(
         manager,
         errandId,
@@ -817,27 +877,30 @@ export class ErrandsService {
         actor,
         note,
       );
-      const errandRepo = manager.getRepository(Errand);
       const quotedPrice = quote.total.toFixed(2);
-      await errandRepo.update(errandId, { quotedPrice });
+      await manager.getRepository(Errand).update(errandId, { quotedPrice });
       done.errand.quotedPrice = quotedPrice;
-      const quoteRepo = manager.getRepository(Quote);
-      const row = await quoteRepo.save(
-        quoteRepo.create({
-          errandId,
-          baseFee: (quote.baseFee ?? quote.total).toString(),
-          distanceFee: (quote.distanceFee ?? 0).toString(),
-          timeFee: (quote.timeFee ?? 0).toString(),
-          urgencyFee: (quote.urgencyFee ?? 0).toString(),
-          complexityFee: (quote.complexityFee ?? 0).toString(),
-          premiumFee: (quote.premiumFee ?? 0).toString(),
-          total: quote.total.toString(),
-          currency: quote.currency ?? 'KES',
-          expiresAt: quote.expiresAt ? new Date(quote.expiresAt) : null,
-        }),
-      );
+      const row = await this.saveQuote(manager, errandId, quote);
       return { errand: done.errand, history: done.history, quote: row };
     });
+  }
+
+  private saveQuote(manager: EntityManager, errandId: string, quote: QuoteInput): Promise<Quote> {
+    const quoteRepo = manager.getRepository(Quote);
+    return quoteRepo.save(
+      quoteRepo.create({
+        errandId,
+        baseFee: (quote.baseFee ?? quote.total).toString(),
+        distanceFee: (quote.distanceFee ?? 0).toString(),
+        timeFee: (quote.timeFee ?? 0).toString(),
+        urgencyFee: (quote.urgencyFee ?? 0).toString(),
+        complexityFee: (quote.complexityFee ?? 0).toString(),
+        premiumFee: (quote.premiumFee ?? 0).toString(),
+        total: quote.total.toString(),
+        currency: quote.currency ?? 'KES',
+        expiresAt: quote.expiresAt ? new Date(quote.expiresAt) : null,
+      }),
+    );
   }
 
   /**
