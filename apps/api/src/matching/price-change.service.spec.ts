@@ -13,6 +13,7 @@ const build = (getById: () => Promise<unknown>) => {
     errandService as never,
     { emit: vi.fn() } as never,
     {} as never,
+    {} as never,
   );
   return { service, requests, errandService };
 };
@@ -73,6 +74,7 @@ describe('PriceChangeService.request domain event (A-2)', () => {
       {} as never,
       { emit } as never,
       {} as never,
+      {} as never,
     );
 
     await service.request('e-1', { toPrice: 650, reason: 'Price went up' }, {
@@ -102,9 +104,9 @@ describe('PriceChangeService decisions (owner Q8)', () => {
     status: PriceChangeStatus.REQUESTED,
   };
 
-  const setup = (status: string) => {
+  const setup = (status: string, over: Record<string, unknown> = {}) => {
     // Stateful request row; findOne returns a copy like a fresh DB read.
-    const row = { ...pending } as Record<string, unknown>;
+    const row = { ...pending, ...over } as Record<string, unknown>;
     const requests = {
       findOne: vi.fn(() => Promise.resolve({ ...row })),
       save: vi.fn((r: Record<string, unknown>) => {
@@ -149,15 +151,62 @@ describe('PriceChangeService decisions (owner Q8)', () => {
         Promise.resolve({ payment: { id }, stkStatus: 'PENDING', checkoutRequestId: 'chk-9' }),
       ),
     };
+    const refunds = {
+      openForDecrease: vi.fn((_m: unknown, errandId: string, priceChangeRequestId: string, amount: number) =>
+        Promise.resolve({
+          id: 'rr-1',
+          errandId,
+          priceChangeRequestId,
+          trigger: 'price_change_decrease',
+          status: 'pending_review',
+          amountPaid: amount.toFixed(2),
+          refundAmount: null,
+          payoutReference: null,
+          createdAt: new Date(),
+          decidedAt: null,
+          paidAt: null,
+        }),
+      ),
+      cancellationReviewFor: vi.fn(() => Promise.resolve(null)),
+    };
     const service = new PriceChangeService(
       requests as never,
       errands as never,
       errandService as never,
       { emit: vi.fn() } as never,
       payments as never,
+      refunds as never,
     );
-    return { service, requests, errands, errandService, payments, manager };
+    return { service, requests, errands, errandService, payments, refunds, manager };
   };
+
+  it('an approved DECREASE on a paid task opens its own refund review (row 71)', async () => {
+    const { service, refunds, payments } = setup(ErrandStatus.IN_PROGRESS, { toPrice: '420.00' });
+    const out = await service.approve('e-1', 'pc-1', customerActor);
+    expect(refunds.openForDecrease).toHaveBeenCalledWith(expect.anything(), 'e-1', 'pc-1', 80);
+    expect(payments.recordPriceDifference).not.toHaveBeenCalled();
+    expect(out.refundReview).toMatchObject({
+      id: 'rr-1',
+      trigger: 'price_change_decrease',
+      priceChangeRequestId: 'pc-1',
+      amountPaid: '80.00',
+      status: 'pending_review',
+    });
+    expect(out.differencePayment).toBeNull();
+  });
+
+  it('a decrease before payment opens no refund review', async () => {
+    const { service, refunds } = setup(ErrandStatus.ACCEPTED, { toPrice: '420.00' });
+    const out = await service.approve('e-1', 'pc-1', customerActor);
+    expect(refunds.openForDecrease).not.toHaveBeenCalled();
+    expect(out.refundReview).toBeNull();
+  });
+
+  it('an increase returns refundReview: null', async () => {
+    const { service } = setup(ErrandStatus.IN_PROGRESS);
+    const out = await service.approve('e-1', 'pc-1', customerActor, undefined);
+    expect(out.refundReview).toBeNull();
+  });
 
   it('approves in one transaction with the request and errand rows locked', async () => {
     const { service, requests, errands, payments, manager } = setup('IN_PROGRESS');
@@ -283,6 +332,7 @@ describe('PriceChangeService.request runner window (row 49)', () => {
       errands as never,
       errandService as never,
       { emit: vi.fn() } as never,
+      {} as never,
       {} as never,
     );
     return { service, requests };

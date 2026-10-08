@@ -435,6 +435,12 @@ export class ErrandsService {
     };
   }
 
+  /** Errand rows by id (no access check; for admin read models elsewhere). */
+  async findByIds(ids: string[]): Promise<Errand[]> {
+    const unique = [...new Set(ids)].filter(Boolean);
+    return unique.length === 0 ? [] : this.errands.find({ where: { id: In(unique) } });
+  }
+
   /** Pickup / drop-off / task-site points of an errand (no access check). */
   async locationsFor(errandId: string): Promise<ErrandLocation[]> {
     return this.locations.find({ where: { errandId } });

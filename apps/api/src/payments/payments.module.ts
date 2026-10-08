@@ -31,6 +31,6 @@ import { stkGatewayProvider } from './stk-gateway/stk-gateway.provider';
   ],
   controllers: [PaymentsController, RefundsController, ErrandRefundController],
   providers: [PaymentsService, RefundsService, ConsoleStkGateway, stkGatewayProvider],
-  exports: [PaymentsService],
+  exports: [PaymentsService, RefundsService],
 })
 export class PaymentsModule {}

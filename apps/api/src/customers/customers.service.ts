@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { conflict } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CustomerProfile } from './customer-profile.entity';
 
 @Injectable()
@@ -25,6 +25,12 @@ export class CustomersService {
       throw new NotFoundException('Customer profile not found');
     }
     return profile;
+  }
+
+  /** Profiles by profile id (missing ids are omitted). */
+  async findByIds(ids: string[]): Promise<CustomerProfile[]> {
+    const unique = [...new Set(ids)].filter(Boolean);
+    return unique.length === 0 ? [] : this.profiles.find({ where: { id: In(unique) } });
   }
 
   async updateDefaults(userId: string, defaultAddressText: string | null): Promise<CustomerProfile> {
