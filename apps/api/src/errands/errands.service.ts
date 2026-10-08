@@ -47,6 +47,7 @@ import {
   deriveUrgency,
 } from './errand-rules';
 import { ApiError } from '../common/api-error';
+import { feesFor } from '../common/fees';
 
 export interface ActorReference {
   type: StatusHistoryActor;
@@ -122,6 +123,13 @@ export type ErrandView = Errand & {
   assignment: ErrandAssignmentView | null;
   locations: ErrandLocationView[];
   items: ErrandItemView[];
+  /**
+   * "Total (service + runner fee)" of the current quote (row 34), as a
+   * 2-decimal string; null until quoted. The component split stays internal.
+   */
+  feeTotal: string | null;
+  /** True once the merchant/admin set Till/Paybill details (rows 42-44). */
+  merchantDetailsAvailable: boolean;
 };
 
 /** States in which the assigned runner may write `runnerNotes`. */
@@ -301,6 +309,7 @@ export class ErrandsService {
         assignment: null,
         locations: savedLocations.map(toLocationView),
         items: savedItems.map(toItemView),
+        ...this.derivedFields(saved),
       });
       return { errand: view, history };
     });
@@ -383,6 +392,20 @@ export class ErrandsService {
     });
   }
 
+  private derivedFields(errand: Errand): Pick<ErrandView, 'feeTotal' | 'merchantDetailsAvailable'> {
+    const feeTotal =
+      errand.quotedPrice === null || errand.quotedPrice === undefined
+        ? null
+        : feesFor(Number(errand.quotedPrice), {
+            serviceFeeRate: this.config?.get<number>('pricing.serviceFeeRate', 0.2) ?? 0.2,
+            runnerFeeRate: this.config?.get<number>('pricing.runnerFeeRate', 0.3) ?? 0.3,
+          }).total.toFixed(2);
+    return {
+      feeTotal,
+      merchantDetailsAvailable: Boolean(errand.merchantTillNumber || errand.merchantPaybillNumber),
+    };
+  }
+
   private async withAssignments(errands: Errand[]): Promise<ErrandView[]> {
     if (errands.length === 0) {
       return [];
@@ -424,6 +447,7 @@ export class ErrandsService {
         assignment,
         locations: (locationsBy.get(errand.id) ?? []).map(toLocationView),
         items: (itemsBy.get(errand.id) ?? []).map(toItemView),
+        ...this.derivedFields(errand),
       });
     });
   }

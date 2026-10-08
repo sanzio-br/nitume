@@ -187,3 +187,25 @@ describe('ErrandsService errand views (A-4)', () => {
     ]);
   });
 });
+
+describe('ErrandsService derived view fields (rows 34, 42-44)', () => {
+  it('adds feeTotal from the quote and merchantDetailsAvailable', async () => {
+    const quoted = Object.assign(errand('e-1'), {
+      quotedPrice: '1000.00',
+      merchantTillNumber: '123456',
+      merchantPaybillNumber: null,
+    });
+    const { service } = build({ errands: [quoted] });
+    const view = await service.getDetail('e-1', admin);
+    expect(view.feeTotal).toBe('500.00');
+    expect(view.merchantDetailsAvailable).toBe(true);
+  });
+
+  it('has a null feeTotal before the quote', async () => {
+    const draft = Object.assign(errand('e-1'), { quotedPrice: null });
+    const { service } = build({ errands: [draft] });
+    const view = await service.getDetail('e-1', admin);
+    expect(view.feeTotal).toBeNull();
+    expect(view.merchantDetailsAvailable).toBe(false);
+  });
+});

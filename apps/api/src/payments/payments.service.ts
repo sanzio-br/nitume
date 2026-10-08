@@ -28,6 +28,7 @@ import { ErrandsService } from '../errands/errands.service';
 import { Payment } from './payment.entity';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
+import { feesFor } from '../common/fees';
 import { PAYMENT_TYPES } from './payment-type.reference';
 import { STK_GATEWAY } from './stk-gateway/stk-gateway.provider';
 import { StkGateway } from './stk-gateway/stk-gateway.interface';
@@ -60,13 +61,36 @@ export interface DifferencePaymentView {
   transactions: PaymentTransaction[];
   /** STK status for send_to_runner differences; null for merchant_direct. */
   stkStatus: StkStatus | null;
+  /** Provider reason when the charge FAILED, else null. */
+  failureReason: string | null;
   /** Set right after a push; null on later reads. */
   checkoutRequestId: string | null;
   merchantPayment: MerchantPaymentView | null;
 }
 
+/**
+ * Provider reason of a FAILED charge (Daraja ResultDesc, e.g. "Request
+ * cancelled by user"), or null.
+ */
+export const failureReasonOf = (
+  payment: Pick<Payment, 'status'>,
+  legs: Pick<PaymentTransaction, 'rawCallback'>[],
+): string | null => {
+  if (payment.status !== PaymentStatus.FAILED) {
+    return null;
+  }
+  const reason = legs
+    .map((l) => l.rawCallback?.resultDesc)
+    .find((d): d is string => typeof d === 'string' && d.length > 0);
+  return reason ?? null;
+};
+
 export interface InitiateResult {
   payment: Payment;
+  /** Provider reason when the charge FAILED, else null. */
+  failureReason: string | null;
+  /** True once the merchant/admin has set Till/Paybill details on the errand. */
+  merchantDetailsAvailable: boolean;
   reference: string;
   checkoutRequestId: string;
   transactions: PaymentTransaction[];
@@ -188,11 +212,10 @@ export class PaymentsService implements OnApplicationBootstrap {
     // An expired quote cannot be paid (row 46): 409 quote_expired.
     await this.errands.assertQuoteCurrentFor(errandId);
 
-    const quote = Number(errand.quotedPrice);
-    const serviceFeeRate = this.config.get<number>('pricing.serviceFeeRate', 0.2);
-    const runnerFeeRate = this.config.get<number>('pricing.runnerFeeRate', 0.3);
-    const serviceFee = round2(quote * serviceFeeRate);
-    const runnerFee = round2(quote * runnerFeeRate);
+    const { serviceFee, runnerFee } = feesFor(Number(errand.quotedPrice), {
+      serviceFeeRate: this.config.get<number>('pricing.serviceFeeRate', 0.2),
+      runnerFeeRate: this.config.get<number>('pricing.runnerFeeRate', 0.3),
+    });
     const budget = Number(errand.budget);
     const merchantAmount = budget > 0 ? round2(budget) : 0;
     const flow = await this.flowFor(errandId, merchantAmount, opts.merchantRoute);
@@ -298,6 +321,8 @@ export class PaymentsService implements OnApplicationBootstrap {
 
     return {
       payment,
+      failureReason: null,
+      merchantDetailsAvailable: await this.hasMerchantDetails(errandId),
       reference,
       checkoutRequestId: push.checkoutRequestId,
       transactions: txRows,
@@ -312,6 +337,8 @@ export class PaymentsService implements OnApplicationBootstrap {
     const stkStatus = this.stkStatus(payment);
     return {
       payment,
+      failureReason: failureReasonOf(payment, tx),
+      merchantDetailsAvailable: await this.hasMerchantDetails(payment.errandId),
       reference: tx[0]?.mpesaReference ?? '',
       checkoutRequestId:
         stkStatus === StkStatus.SUCCESS ? 'PAID' : stkStatus === StkStatus.FAILED ? 'FAILED' : 'PENDING',
@@ -485,6 +512,7 @@ export class PaymentsService implements OnApplicationBootstrap {
       transactions,
       stkStatus:
         payment.paymentFlow === PaymentFlow.CUSTOMER_TO_RUNNER ? this.stkStatus(payment) : null,
+      failureReason: failureReasonOf(payment, transactions),
       checkoutRequestId: checkoutRequestId ?? null,
       merchantPayment: await this.merchantPaymentFor(payment),
     };
@@ -605,6 +633,10 @@ export class PaymentsService implements OnApplicationBootstrap {
       paybillNumber: errand.merchantPaybillNumber,
       accountReference: errand.merchantAccountReference,
     };
+  }
+
+  private async hasMerchantDetails(errandId: string): Promise<boolean> {
+    return (await this.merchantDetailsFor(errandId)) !== null;
   }
 
   private async merchantPaymentFor(payment: Payment): Promise<MerchantPaymentView | null> {
@@ -886,6 +918,8 @@ export class PaymentsService implements OnApplicationBootstrap {
     payment: Payment | null;
     transactions: PaymentTransaction[];
     stkStatus: StkStatus | null;
+    failureReason: string | null;
+    merchantDetailsAvailable: boolean;
     merchantPayment: MerchantPaymentView | null;
     differencePayments: DifferencePaymentView[];
   }> {
@@ -914,6 +948,8 @@ export class PaymentsService implements OnApplicationBootstrap {
         payment: null,
         transactions: [],
         stkStatus: null,
+        failureReason: null,
+        merchantDetailsAvailable: await this.hasMerchantDetails(errandId),
         merchantPayment: null,
         differencePayments: [],
       };
@@ -925,6 +961,8 @@ export class PaymentsService implements OnApplicationBootstrap {
       payment,
       transactions,
       stkStatus: this.stkStatus(payment),
+      failureReason: failureReasonOf(payment, transactions),
+      merchantDetailsAvailable: await this.hasMerchantDetails(errandId),
       merchantPayment: await this.merchantPaymentFor(payment),
       differencePayments: await this.differencesFor(errandId),
     };
