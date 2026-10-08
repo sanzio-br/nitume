@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -15,6 +16,17 @@ import { Evidence } from './evidence.entity';
 import { EVIDENCE_STORAGE } from './evidence-storage/evidence-storage.provider';
 import { EvidenceStorage } from './evidence-storage/evidence-storage.interface';
 import { CreateEvidenceDto, EvidenceViewerContext } from './dto/evidence.dto';
+
+/**
+ * Evidence as returned to clients (row 25): `url` is a short-lived signed
+ * link (null when the asset cannot be served, e.g. the console driver),
+ * `urlExpiresAt` tells the app when to refetch. The storage key and any
+ * permanent URL are never exposed.
+ */
+export type EvidenceView = Omit<Evidence, 's3Key' | 'url'> & {
+  url: string | null;
+  urlExpiresAt: Date | null;
+};
 
 @Injectable()
 export class EvidenceService {
@@ -27,7 +39,20 @@ export class EvidenceService {
     @Inject(EVIDENCE_STORAGE)
     private readonly storage: EvidenceStorage,
     private readonly events: EventEmitter2,
+    private readonly config?: ConfigService,
   ) {}
+
+  private toView(row: Evidence): EvidenceView {
+    const ttl = this.config?.get<number>('evidence.signedUrlTtlSeconds', 900) ?? 900;
+    let signed: { url: string | null; expiresAt: Date | null } = { url: null, expiresAt: null };
+    try {
+      signed = this.storage.viewUrl(row.s3Key, row.url, ttl);
+    } catch {
+      // Storage not configured: the row is still listed, without a link.
+    }
+    const { s3Key: _key, url: _url, ...rest } = row;
+    return { ...rest, url: signed.url, urlExpiresAt: signed.expiresAt };
+  }
 
   /**
    * Upload evidence for an errand. The current user must own the errand
@@ -39,7 +64,7 @@ export class EvidenceService {
     errandId: string,
     dto: CreateEvidenceDto,
     viewer: EvidenceViewerContext,
-  ): Promise<Evidence> {
+  ): Promise<EvidenceView> {
     const errand = await this.errands.findOne({ where: { id: errandId } });
     if (!errand) {
       throw new NotFoundException('Errand not found');
@@ -87,13 +112,13 @@ export class EvidenceService {
         capturedAt: saved.capturedAt.toISOString(),
       });
     });
-    return saved;
+    return this.toView(saved);
   }
 
   async listForErrand(
     errandId: string,
     viewer: EvidenceViewerContext,
-  ): Promise<Evidence[]> {
+  ): Promise<EvidenceView[]> {
     const errand = await this.errands.findOne({ where: { id: errandId } });
     if (!errand) {
       throw new NotFoundException('Errand not found');
@@ -105,7 +130,7 @@ export class EvidenceService {
       where: { errandId },
       order: { createdAt: 'DESC' },
     });
-    return rows;
+    return rows.map((row) => this.toView(row));
   }
 
   /** Customer (owner), the runner on the current assignment, or admin may view/attach. */

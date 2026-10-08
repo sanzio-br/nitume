@@ -71,6 +71,8 @@ export interface AppConfig {
   };
   evidence: {
     storageDriver: 'console' | 'cloudinary';
+    /** Lifetime of signed evidence view URLs (row 25). */
+    signedUrlTtlSeconds: number;
     cloudinary: {
       cloudName: string | null;
       apiKey: string | null;
@@ -198,6 +200,7 @@ export const configuration = (): AppConfig => ({
     storageDriver:
       (process.env.EVIDENCE_STORAGE_DRIVER as AppConfig['evidence']['storageDriver']) ??
       'console',
+    signedUrlTtlSeconds: int(process.env.EVIDENCE_SIGNED_URL_TTL_SECONDS, 900),
     cloudinary: {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
       apiKey: process.env.CLOUDINARY_API_KEY ?? null,
