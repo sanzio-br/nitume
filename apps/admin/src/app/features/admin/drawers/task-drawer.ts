@@ -10,6 +10,7 @@ import type { QuoteErrandResult } from '../../../core/api-types';
 import { formatDateTime, formatKsh, formatKshExact } from '../shared-format';
 import { QuoteConflict, QuoteDialogComponent } from './quote-dialog';
 import { QuoteSectionComponent } from './quote.section';
+import { MerchantDetailsSectionComponent } from './merchant-details.section';
 
 /**
  * Admin actions by state (§3.3): the first quote only from REQUESTED; a
@@ -37,6 +38,7 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
     FieldControlDirective,
     QuoteDialogComponent,
     QuoteSectionComponent,
+    MerchantDetailsSectionComponent,
   ],
   template: `
     @if (s.detailLoading()) {
@@ -120,6 +122,8 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
           </div>
         </section>
       }
+
+      <app-merchant-details-section [errand]="d" />
 
       <app-quote-section [errand]="d" />
 
