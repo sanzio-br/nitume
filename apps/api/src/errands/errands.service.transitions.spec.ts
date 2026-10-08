@@ -91,7 +91,7 @@ describe('ErrandsService.resolveDispute', () => {
     const { service } = build(ErrandStatus.DISPUTED);
     await expect(
       service.resolveDispute('e-1', 'runner_favourable', 'too short', admin as never),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({ status: 409, code: 'rationale_too_short' });
   });
 });
 

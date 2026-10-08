@@ -1,8 +1,8 @@
 import {
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { conflict } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -45,7 +45,7 @@ export class DisputesService {
   async open(dto: OpenDisputeDto, actor: Actor): Promise<DisputeView> {
     const existing = await this.disputes.findOne({ where: { errandId: dto.errandId } });
     if (existing) {
-      throw new ConflictException('A dispute already exists for this task');
+      throw conflict('dispute_already_exists', 'A dispute already exists for this task');
     }
     const reason = dto.reason.trim();
     const { extra } = await this.errands.transitionWith(

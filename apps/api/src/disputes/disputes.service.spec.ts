@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import {
   DisputeEventType,
@@ -83,7 +83,7 @@ describe('DisputesService.open (A-9)', () => {
     const { service, errands } = build({ existing: { id: 'd-0' } as Dispute });
     await expect(
       service.open({ errandId: 'e-1', reason: 'Again please' }, customer),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({ status: 409, code: 'dispute_already_exists' });
     expect(errands.transitionWith).not.toHaveBeenCalled();
   });
 });

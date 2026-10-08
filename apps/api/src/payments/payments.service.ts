@@ -1,6 +1,4 @@
 import {
-  BadRequestException,
-  ConflictException,
   ForbiddenException,
   HttpStatus,
   Inject,
@@ -33,7 +31,7 @@ import { PAYMENT_TYPES } from './payment-type.reference';
 import { STK_GATEWAY } from './stk-gateway/stk-gateway.provider';
 import { StkGateway } from './stk-gateway/stk-gateway.interface';
 import { MpesaCallbackDto } from './dto/payment.dto';
-import { ApiError } from '../common/api-error';
+import { ApiError, conflict } from '../common/api-error';
 import { CustomerAccountsService } from '../customers/customer-accounts.service';
 import { UsersService } from '../users/users.service';
 import { RedisService } from '../infra/redis/redis.service';
@@ -204,10 +202,12 @@ export class PaymentsService implements OnApplicationBootstrap {
     }
 
     if (!ErrandStateMachine.canTransition(errand.status, ErrandStatus.PAYMENT_CONFIRMED)) {
-      throw new ConflictException(`Errand is not payable now (${errand.status})`);
+      throw conflict('errand_not_payable', `Errand is not payable now (${errand.status})`, {
+        status: errand.status,
+      });
     }
     if (errand.quotedPrice === null) {
-      throw new BadRequestException('Errand has not been quoted yet');
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'errand_not_quoted', 'Errand has not been quoted yet');
     }
     // An expired quote cannot be paid (row 46): 409 quote_expired.
     await this.errands.assertQuoteCurrentFor(errandId);
@@ -870,18 +870,21 @@ export class PaymentsService implements OnApplicationBootstrap {
       return { errandId, settled: true, released: prior, previousStatus: ErrandStatus.SETTLED };
     }
     if (errand.status === ErrandStatus.DISPUTED) {
-      throw new ConflictException('Disputed errands are locked; resolve the dispute first');
+      throw conflict('errand_disputed', 'Disputed errands are locked; resolve the dispute first');
     }
     if (!ErrandStateMachine.canTransition(errand.status, ErrandStatus.SETTLED)) {
-      throw new ConflictException(`Cannot settle from ${errand.status}`);
+      throw conflict('errand_not_settleable', `Cannot settle from ${errand.status}`, {
+        status: errand.status,
+      });
     }
     if (!payment) {
-      throw new ConflictException('No payment to settle');
+      throw conflict('no_payment_to_settle', 'No payment to settle');
     }
     const legs = await this.transactions.find({ where: { paymentId: payment.id } });
     const incomplete = legs.filter((t) => t.status !== PaymentTransactionStatus.COMPLETED);
     if (incomplete.length > 0) {
-      throw new ConflictException(
+      throw conflict(
+        'payment_legs_incomplete',
         `Cannot settle: ${incomplete.length} payment leg(s) not completed ` +
           `(${incomplete.map((t) => `${t.paymentTypeId}:${t.status}`).join(', ')}).`,
       );

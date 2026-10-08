@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   ForbiddenException,
   HttpStatus,
   Injectable,
@@ -15,7 +14,7 @@ import {
   StatusHistoryActor,
   UserRole,
 } from '../common/enums';
-import { ApiError } from '../common/api-error';
+import { ApiError, conflict } from '../common/api-error';
 import { ErrandStateMachine, TransitionGuard } from '../errands/errand-state-machine';
 import { MerchantRoute } from '../payments/payment-views';
 import { DifferencePaymentView, PaymentsService } from '../payments/payments.service';
@@ -81,8 +80,10 @@ export class PriceChangeService {
       throw new NotFoundException('Errand not found');
     }
     if (!PRICE_CHANGEABLE.has(errand.status)) {
-      throw new ConflictException(
+      throw conflict(
+        'price_change_not_allowed',
         `Price changes are not allowed in status ${errand.status}`,
+        { status: errand.status },
       );
     }
     if (actor.role !== UserRole.ADMIN) {
@@ -109,7 +110,11 @@ export class PriceChangeService {
       where: { errandId, status: PriceChangeStatus.REQUESTED },
     });
     if (open) {
-      throw new ConflictException('A price change request is already pending for this task');
+      throw conflict(
+        'price_change_already_pending',
+        'A price change request is already pending for this task',
+        { requestId: open.id },
+      );
     }
 
     const saved = await this.requests.save(
@@ -160,8 +165,10 @@ export class PriceChangeService {
       });
       const req = await this.lockPending(manager, errandId, requestId);
       if (!errand || !PRICE_CHANGEABLE.has(errand.status)) {
-        throw new ConflictException(
+        throw conflict(
+          'price_change_not_allowed',
           `Price changes cannot be approved in status ${errand?.status ?? 'unknown'}`,
+          { status: errand?.status ?? null },
         );
       }
       const difference = round2(Number(req.toPrice) - Number(req.fromPrice));

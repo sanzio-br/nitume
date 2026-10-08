@@ -15,3 +15,10 @@ export class ApiError extends HttpException {
     super({ statusCode: status, code, message, ...extra }, status);
   }
 }
+
+/** 409 with a stable `code` (N-8: no bare ConflictException in the API). */
+export const conflict = (
+  code: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+): ApiError => new ApiError(HttpStatus.CONFLICT, code, message, extra);

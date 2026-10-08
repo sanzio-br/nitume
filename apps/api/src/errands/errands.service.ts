@@ -47,7 +47,7 @@ import {
   budgetFor,
   deriveUrgency,
 } from './errand-rules';
-import { ApiError } from '../common/api-error';
+import { ApiError, conflict } from '../common/api-error';
 import { feesFor } from '../common/fees';
 
 export interface ActorReference {
@@ -666,7 +666,8 @@ export class ErrandsService {
   ): Promise<ErrandResult> {
     const note = rationale.trim();
     if (note.length < 20) {
-      throw new ConflictException(
+      throw conflict(
+        'rationale_too_short',
         'Mediation requires a written rationale of at least 20 characters (§A.6 audit).',
       );
     }
@@ -692,7 +693,11 @@ export class ErrandsService {
       throw new NotFoundException('Errand not found');
     }
     if (errand.status !== ErrandStatus.DISPUTED) {
-      throw new ConflictException(`Only DISPUTED errands can be mediated (got ${errand.status})`);
+      throw conflict(
+        'errand_not_disputed',
+        `Only DISPUTED errands can be mediated (got ${errand.status})`,
+        { status: errand.status },
+      );
     }
     const to =
       verdict === 'runner_favourable'
@@ -782,9 +787,10 @@ export class ErrandsService {
     }
     const fromStatus = errand.status;
     if (!ErrandStateMachine.canTransition(fromStatus, to)) {
-      throw new ConflictException(
-        `Illegal status transition: ${fromStatus} -> ${to}`,
-      );
+      throw conflict('illegal_transition', `Illegal status transition: ${fromStatus} -> ${to}`, {
+        from: fromStatus,
+        to,
+      });
     }
     const required = ErrandStateMachine.guardFor(fromStatus, to);
     if (required && required !== guard) {
@@ -809,7 +815,8 @@ export class ErrandsService {
       await manager.getRepository(Errand).save(errand);
     } catch (err) {
       if (err instanceof Error) {
-        throw new ConflictException(
+        throw conflict(
+          'concurrent_modification',
           'Concurrent modification detected. Retry the transition.',
         );
       }

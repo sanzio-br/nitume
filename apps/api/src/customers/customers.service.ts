@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { conflict } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CustomerProfile } from './customer-profile.entity';
@@ -36,7 +37,7 @@ export class CustomersService {
     try {
       return await this.getByUserId(userId);
     } catch {
-      throw new ConflictException('User does not have a customer profile');
+      throw conflict('customer_profile_missing', 'User does not have a customer profile');
     }
   }
 }
