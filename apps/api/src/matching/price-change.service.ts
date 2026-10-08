@@ -65,7 +65,11 @@ export class PriceChangeService {
     private readonly payments: PaymentsService,
   ) {}
 
-  /** Assigned runner (or admin) proposes a new price for a live errand. */
+  /**
+   * Runner on the current assignment proposes a new merchant/item price while
+   * the task is IN_PROGRESS (row 49); an admin may also open one in any
+   * price-changeable state.
+   */
   async request(
     errandId: string,
     dto: RequestPriceChangeDto,
@@ -87,6 +91,16 @@ export class PriceChangeService {
       );
       if (!isAssignedRunner) {
         throw new ForbiddenException('Only the assigned runner can request a price change');
+      }
+      // Owner clarification 2026-10-08 (row 49): runners request price
+      // changes only while the task is IN_PROGRESS.
+      if (errand.status !== ErrandStatus.IN_PROGRESS) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'price_change_not_in_progress',
+          `Runners can request a price change only while the task is IN_PROGRESS (current: ${errand.status})`,
+          { status: errand.status },
+        );
       }
     }
 

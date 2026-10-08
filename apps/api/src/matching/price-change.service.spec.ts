@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { PriceChangeStatus, UserRole } from '../common/enums';
+import { ErrandStatus, PriceChangeStatus, UserRole } from '../common/enums';
+import { ApiError } from '../common/api-error';
 import { PriceChangeService } from './price-change.service';
 
 const build = (getById: () => Promise<unknown>) => {
@@ -229,4 +230,44 @@ describe('PriceChangeService decisions (owner Q8)', () => {
     expect((err as { code?: string }).code).toBe('price_change_reject_not_cancellable');
     expect(errandService.transitionWith).not.toHaveBeenCalled();
   });
+});
+
+describe('PriceChangeService.request runner window (row 49)', () => {
+  const runner = { userId: 'runner-user', role: UserRole.RUNNER };
+  const buildFor = (status: ErrandStatus) => {
+    const requests = {
+      findOne: vi.fn(() => Promise.resolve(null)),
+      create: vi.fn((row: object) => row),
+      save: vi.fn((row: object) => Promise.resolve({ id: 'pc-1', createdAt: new Date(), ...row })),
+    };
+    const errands = {
+      findOne: vi.fn(() => Promise.resolve({ id: 'e-1', status, budget: '500.00' })),
+    };
+    const errandService = { isCurrentRunner: vi.fn(() => Promise.resolve(true)) };
+    const service = new PriceChangeService(
+      requests as never,
+      errands as never,
+      errandService as never,
+      { emit: vi.fn() } as never,
+      {} as never,
+    );
+    return { service, requests };
+  };
+
+  it('accepts a runner request while IN_PROGRESS', async () => {
+    const { service, requests } = buildFor(ErrandStatus.IN_PROGRESS);
+    await service.request('e-1', { toPrice: 650 }, runner);
+    expect(requests.save).toHaveBeenCalled();
+  });
+
+  it.each([ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.RUNNER_EN_ROUTE, ErrandStatus.ARRIVED])(
+    'refuses a runner request while %s with price_change_not_in_progress',
+    async (status) => {
+      const { service, requests } = buildFor(status);
+      const err = await service.request('e-1', { toPrice: 650 }, runner).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).code).toBe('price_change_not_in_progress');
+      expect(requests.save).not.toHaveBeenCalled();
+    },
+  );
 });
