@@ -56,10 +56,20 @@ export interface AppConfig {
     disputeWindowHours: number;
   };
   payments: {
+    /** Active M-Pesa provider (row 73): console | payhero | daraja. */
+    provider: 'console' | 'payhero' | 'daraja';
+    /** @deprecated alias of `provider` (PAYMENTS_MPESA_TRANSPORT). */
     mpesaTransport: string;
     stkTimeoutSeconds: number;
     /** Minimum gap between two STK Queries for the same payment. */
     stkQueryIntervalSeconds: number;
+    payhero: {
+      baseUrl: string;
+      authToken: string | null;
+      channelId: number | null;
+      callbackUrl: string | null;
+      timeoutMs: number;
+    };
     daraja: {
       baseUrl: string;
       consumerKey: string | null;
@@ -166,14 +176,27 @@ export const configuration = (): AppConfig => ({
     runnerFeeRate: Number.parseFloat(process.env.PRICING_RUNNER_FEE_RATE ?? '0.3'),
   },
   payments: {
-    mpesaTransport: process.env.PAYMENTS_MPESA_TRANSPORT ?? 'console',
+    provider: (process.env.PAYMENTS_PROVIDER ||
+      process.env.PAYMENTS_MPESA_TRANSPORT ||
+      'console') as AppConfig['payments']['provider'],
+    mpesaTransport: process.env.PAYMENTS_PROVIDER || process.env.PAYMENTS_MPESA_TRANSPORT || 'console',
     // After this long without a provider result an STK push reads TIMEOUT
     // (not FAILED); a late callback still settles it.
     stkTimeoutSeconds: int(process.env.PAYMENTS_STK_TIMEOUT_SECONDS, 120),
     // A TIMEOUT payment is resolved by Daraja STK Query (row 52) at most
     // once per interval, from GET /payments/:errandId or the reconcile job.
     stkQueryIntervalSeconds: int(process.env.PAYMENTS_STK_QUERY_INTERVAL_SECONDS, 30),
-    // Only used with PAYMENTS_MPESA_TRANSPORT=daraja; every value must be set
+    // PayHero (row 73), used with PAYMENTS_PROVIDER=payhero. Token, channel
+    // id and callback URL come from the owner's PayHero account; never commit
+    // real values. The base URL default must be confirmed by the owner.
+    payhero: {
+      baseUrl: process.env.PAYHERO_BASE_URL || 'https://backend.payhero.co.ke/api/v2',
+      authToken: process.env.PAYHERO_AUTH_TOKEN || null,
+      channelId: process.env.PAYHERO_CHANNEL_ID ? int(process.env.PAYHERO_CHANNEL_ID, 0) : null,
+      callbackUrl: process.env.PAYHERO_CALLBACK_URL || null,
+      timeoutMs: int(process.env.PAYHERO_TIMEOUT_MS, 15000),
+    },
+    // Future provider (row 73), PAYMENTS_PROVIDER=daraja; every value must be set
     // (owner-approved Daraja account). Never commit real values.
     daraja: {
       baseUrl: process.env.PAYMENTS_MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke',

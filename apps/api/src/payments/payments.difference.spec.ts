@@ -10,6 +10,7 @@ import {
 } from '../common/enums';
 import { MerchantRoute } from './payment-views';
 import { PaymentsService } from './payments.service';
+import { ConsoleMpesaProvider } from './providers/console.provider';
 
 /** Price-change differences (rows 44, 48) and the callback path for them. */
 const build = (opts: {
@@ -74,10 +75,10 @@ const build = (opts: {
     ),
     transition: vi.fn(() => Promise.resolve({})),
   };
-  const stk = {
-    name: 'console',
-    push: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-d', transactionId: 't' })),
-  };
+  // Real console provider (trusted mock callbacks) with the push stubbed.
+  const stk = Object.assign(new ConsoleMpesaProvider(), {
+    initiateStk: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-d', transactionId: 't' })),
+  });
   const config = { get: vi.fn((_k: string, d: unknown) => d) };
   const accounts = { listPaymentMethods: vi.fn(() => Promise.resolve([])) };
   const redis = { setIfAbsent: vi.fn(() => Promise.resolve(true)) };
@@ -170,7 +171,7 @@ describe('PaymentsService.chargeDifference / retryDifference', () => {
   it('pushes the difference to the errand owner phone with the leg reference', async () => {
     const { service, stk } = build({ stored: stkDifference });
     const view = await service.chargeDifference('p-1');
-    expect(stk.push).toHaveBeenCalledWith(
+    expect(stk.initiateStk).toHaveBeenCalledWith(
       expect.objectContaining({ phone: '+254700000009', amountKes: '150.00', reference: 'NTM-DIFF' }),
     );
     expect(view).toMatchObject({ stkStatus: 'PENDING', checkoutRequestId: 'chk-d' });
@@ -182,7 +183,7 @@ describe('PaymentsService.chargeDifference / retryDifference', () => {
       merchant: { merchantName: 'Naivas', merchantTillNumber: '123456' },
     });
     const view = await service.chargeDifference('p-1');
-    expect(stk.push).not.toHaveBeenCalled();
+    expect(stk.initiateStk).not.toHaveBeenCalled();
     expect(view.stkStatus).toBeNull();
   });
 
@@ -195,11 +196,11 @@ describe('PaymentsService.chargeDifference / retryDifference', () => {
     });
     await failed.service.retryDifference('e-1', 'pc-1', owner);
     expect(failed.saved).toHaveLength(1);
-    expect(failed.stk.push).toHaveBeenCalledTimes(1);
+    expect(failed.stk.initiateStk).toHaveBeenCalledTimes(1);
 
     const pending = build({ latestDifference: stkDifference });
     await pending.service.retryDifference('e-1', 'pc-1', owner);
-    expect(pending.stk.push).not.toHaveBeenCalled();
+    expect(pending.stk.initiateStk).not.toHaveBeenCalled();
   });
 
   it('refuses a retry for a merchant_direct difference', async () => {

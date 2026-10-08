@@ -85,7 +85,7 @@ const build = (opts: {
     ),
     onRequote: vi.fn(),
   };
-  const stk = { push: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-1', transactionId: 't' })) };
+  const stk = { name: 'console', initiateStk: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-1', transactionId: 't' })) };
   const config = { get: vi.fn((_k: string, d: unknown) => d) };
   const redis = { setIfAbsent: vi.fn(() => Promise.resolve(true)) };
   const users = { findById: vi.fn(() => Promise.resolve({ id: 'u-1', phone: '+254700000001' })) };
@@ -139,7 +139,7 @@ describe('PaymentsService.initiate', () => {
     const res = await service.initiate('e-1', user, { idempotencyKey: 'key-12345678' });
     expect(res.payment).toBe(keyed);
     expect(res.stkStatus).toBe(StkStatus.PENDING);
-    expect(stk.push).not.toHaveBeenCalled();
+    expect(stk.initiateStk).not.toHaveBeenCalled();
   });
 
   it('refuses a key that belongs to another errand and malformed keys', async () => {
@@ -163,14 +163,14 @@ describe('PaymentsService.initiate', () => {
     const { service, stk } = build({ existing });
     const res = await service.initiate('e-1', user, { idempotencyKey: 'another-key-1' });
     expect(res.stkStatus).toBe(StkStatus.TIMEOUT);
-    expect(stk.push).not.toHaveBeenCalled();
+    expect(stk.initiateStk).not.toHaveBeenCalled();
   });
 
   it('pushes a fresh charge with the key after a FAILED payment', async () => {
     const existing = { id: 'p-0', errandId: 'e-1', status: PaymentStatus.FAILED, createdAt: new Date(), paymentFlow: PaymentFlow.PLATFORM_ONLY };
     const { service, stk, payments } = build({ existing });
     const res = await service.initiate('e-1', user, { idempotencyKey: 'retry-key-01' });
-    expect(stk.push).toHaveBeenCalledTimes(1);
+    expect(stk.initiateStk).toHaveBeenCalledTimes(1);
     expect(payments.create).toHaveBeenCalledWith(
       expect.objectContaining({ idempotencyKey: 'retry-key-01', paymentFlow: PaymentFlow.PLATFORM_ONLY }),
     );
@@ -189,7 +189,7 @@ describe('PaymentsService.initiate', () => {
     const res = await service.initiate('e-1', user);
     expect(payments.manager.transaction).toHaveBeenCalledTimes(1);
     expect(res.payment).toBe(active);
-    expect(stk.push).not.toHaveBeenCalled();
+    expect(stk.initiateStk).not.toHaveBeenCalled();
   });
 
   it('returns the winning payment when a concurrent initiate used a different key', async () => {
@@ -204,13 +204,13 @@ describe('PaymentsService.initiate', () => {
     const { service, stk } = build({ conflict: true, active, keyed: null });
     const res = await service.initiate('e-1', user, { idempotencyKey: 'other-key-002' });
     expect(res.payment).toBe(active);
-    expect(stk.push).not.toHaveBeenCalled();
+    expect(stk.initiateStk).not.toHaveBeenCalled();
   });
 
   it('rethrows a unique violation when no winning payment is found', async () => {
     const { service, stk } = build({ conflict: true });
     expect(await codeOf(service.initiate('e-1', user))).toMatch(/duplicate key/);
-    expect(stk.push).not.toHaveBeenCalled();
+    expect(stk.initiateStk).not.toHaveBeenCalled();
   });
 
   it('writes the payment and its two legs in one transaction before pushing', async () => {
@@ -221,7 +221,7 @@ describe('PaymentsService.initiate', () => {
       expect.objectContaining({ paymentId: 'p-new', paymentTypeId: 'type-service_fee' }),
       expect.objectContaining({ paymentId: 'p-new', paymentTypeId: 'type-runner_fee' }),
     ]);
-    expect(stk.push).toHaveBeenCalledTimes(1);
+    expect(stk.initiateStk).toHaveBeenCalledTimes(1);
   });
 
   it('requires a merchant route when there is a merchant amount', async () => {
@@ -266,7 +266,7 @@ describe('PaymentsService.initiate', () => {
       expect.objectContaining({ paymentTypeId: 'type-merchant_payment', amount: '2500.00' }),
     ]);
     // service 200 + runner 300 + purchase 2500, one push to Nitume.
-    expect(stk.push).toHaveBeenCalledWith(expect.objectContaining({ amountKes: '3000.00' }));
+    expect(stk.initiateStk).toHaveBeenCalledWith(expect.objectContaining({ amountKes: '3000.00' }));
     expect(res.merchantPayment).toEqual({ route: 'send_to_runner', amount: '2500.00', paidTo: 'nitume' });
   });
 
@@ -276,7 +276,7 @@ describe('PaymentsService.initiate', () => {
       merchant: { merchantName: 'Naivas', merchantTillNumber: '123456' },
     });
     await service.initiate('e-1', user, { merchantRoute: MerchantRoute.MERCHANT_DIRECT });
-    expect(stk.push).toHaveBeenCalledWith(expect.objectContaining({ amountKes: '500.00' }));
+    expect(stk.initiateStk).toHaveBeenCalledWith(expect.objectContaining({ amountKes: '500.00' }));
   });
 
   it('stores the provider checkout ids on the legs after the push', async () => {
@@ -284,7 +284,7 @@ describe('PaymentsService.initiate', () => {
     await service.initiate('e-1', user);
     expect(transactions.merge).toHaveBeenCalledWith(
       expect.anything(),
-      { rawCallback: { stkPush: { checkoutRequestId: 'chk-1', merchantRequestId: null, gateway: undefined } } },
+      { rawCallback: { stkPush: { checkoutRequestId: 'chk-1', merchantRequestId: null, providerReference: null, gateway: 'console' } } },
     );
   });
 
@@ -295,15 +295,15 @@ describe('PaymentsService.initiate', () => {
     ];
     const chosen = build({ methods });
     await chosen.service.initiate('e-1', user, { paymentMethodId: 'm-1' });
-    expect(chosen.stk.push).toHaveBeenCalledWith(expect.objectContaining({ phone: '+254711111111' }));
+    expect(chosen.stk.initiateStk).toHaveBeenCalledWith(expect.objectContaining({ phone: '+254711111111' }));
 
     const byDefault = build({ methods });
     await byDefault.service.initiate('e-1', user);
-    expect(byDefault.stk.push).toHaveBeenCalledWith(expect.objectContaining({ phone: '+254722222222' }));
+    expect(byDefault.stk.initiateStk).toHaveBeenCalledWith(expect.objectContaining({ phone: '+254722222222' }));
 
     const login = build();
     await login.service.initiate('e-1', user);
-    expect(login.stk.push).toHaveBeenCalledWith(expect.objectContaining({ phone: '+254700000001' }));
+    expect(login.stk.initiateStk).toHaveBeenCalledWith(expect.objectContaining({ phone: '+254700000001' }));
 
     const bad = build({ methods });
     expect(await codeOf(bad.service.initiate('e-1', user, { paymentMethodId: 'nope' }))).toBe(
@@ -316,7 +316,7 @@ describe('PaymentsService.initiate quote expiry (row 46)', () => {
   it('refuses to push STK for an expired quote with quote_expired', async () => {
     const { service, stk } = build({ quoteExpired: true });
     expect(await codeOf(service.initiate('e-1', user))).toBe('quote_expired');
-    expect(stk.push).not.toHaveBeenCalled();
+    expect(stk.initiateStk).not.toHaveBeenCalled();
   });
 });
 
@@ -324,7 +324,7 @@ describe('PaymentsService re-quote on ACCEPTED (row 72)', () => {
   it('refuses to push STK until the customer accepts the new quote', async () => {
     const { service, stk } = build({ quoteNotAccepted: true });
     expect(await codeOf(service.initiate('e-1', user))).toBe('quote_not_accepted');
-    expect(stk.push).not.toHaveBeenCalled();
+    expect(stk.initiateStk).not.toHaveBeenCalled();
   });
 
   it('checks the payable quote again inside the payment transaction', async () => {

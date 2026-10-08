@@ -12,7 +12,7 @@ import { AuthContext, Public, Roles } from '../common/decorators/auth.decorators
 import { UserRole } from '../common/enums';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { InitiatePaymentDto, MpesaCallbackDto } from './dto/payment.dto';
+import { InitiatePaymentDto } from './dto/payment.dto';
 import { PaymentsService } from './payments.service';
 
 @Controller('payments')
@@ -39,10 +39,16 @@ export class PaymentsController {
     });
   }
 
+  /**
+   * Provider callback. The body shape depends on PAYMENTS_PROVIDER (console
+   * mock: MpesaCallbackDto; PayHero: its callback JSON), so it is parsed by
+   * the provider, not by the global ValidationPipe. A real provider's
+   * callback is confirmed by a status query before anything is marked paid.
+   */
   @Public()
   @Post('mpesa/callback')
-  async mpesaCallback(@Body() dto: MpesaCallbackDto): Promise<{ received: true }> {
-    await this.payments.handleCallback(dto);
+  async mpesaCallback(@Body() body: Record<string, unknown>): Promise<{ received: true }> {
+    await this.payments.handleCallback(body);
     return { received: true };
   }
 

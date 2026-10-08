@@ -13,3 +13,9 @@ export const MAINTENANCE_QUEUE = 'maintenance';
  */
 export const queueWorkersEnabled = (): boolean =>
   (process.env.QUEUE_WORKERS_ENABLED ?? 'true').trim().toLowerCase() !== 'false';
+
+/**
+ * Maintenance job that confirms a payment with its provider after a
+ * provider callback (row 73): callbacks are never trusted on their own.
+ */
+export const PAYMENT_VERIFY_JOB = 'payment-verify';

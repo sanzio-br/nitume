@@ -1,11 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  StkGateway,
-  StkPushRequest,
-  StkPushResponse,
+  FetchLike,
+  MpesaProvider,
+  ParsedCallback,
+  ProviderPaymentRef,
+  StkInitiateRequest,
+  StkInitiateResult,
   StkQueryResult,
-} from './stk-gateway.interface';
+  msisdn,
+  wholeKes,
+} from './mpesa-provider';
 
 export interface DarajaConfig {
   baseUrl: string;
@@ -35,24 +40,21 @@ export const darajaConfigFrom = (config: ConfigService): DarajaConfig | null => 
 /** Daraja "request is still being processed" error code on STK Query. */
 const STILL_PROCESSING = '500.001.1001';
 
-export type FetchLike = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body?: string },
-) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
-
 /** `YYYYMMDDHHmmss` in Kenya time (EAT, UTC+3), as Daraja expects. */
 export const darajaTimestamp = (now: Date = new Date()): string =>
   new Date(now.getTime() + 3 * 3_600_000).toISOString().replace(/\D/g, '').slice(0, 14);
 
 /**
  * Safaricom Daraja client: Lipa Na M-Pesa Online (STK push) and STK Query.
- * Selected with PAYMENTS_MPESA_TRANSPORT=daraja and only when all
- * PAYMENTS_MPESA_* credentials are set.
+ * A future provider (row 73): selected with PAYMENTS_PROVIDER=daraja and only
+ * when all PAYMENTS_MPESA_* credentials are set. Daraja callbacks are not
+ * handled (no Body.stkCallback adapter, IP allowlist or signature check):
+ * payments resolve through STK Query only.
  */
 @Injectable()
-export class DarajaStkGateway extends StkGateway {
+export class DarajaMpesaProvider extends MpesaProvider {
   readonly name = 'daraja';
-  private readonly logger = new Logger(DarajaStkGateway.name);
+  private readonly logger = new Logger(DarajaMpesaProvider.name);
   private token: { value: string; expiresAt: number } | null = null;
 
   constructor(
@@ -62,14 +64,14 @@ export class DarajaStkGateway extends StkGateway {
     super();
   }
 
-  async push(req: StkPushRequest): Promise<StkPushResponse> {
+  async initiateStk(req: StkInitiateRequest): Promise<StkInitiateResult> {
     const timestamp = darajaTimestamp();
     const body = await this.post('/mpesa/stkpush/v1/processrequest', {
       BusinessShortCode: this.cfg.shortCode,
       Password: this.password(timestamp),
       Timestamp: timestamp,
       TransactionType: 'CustomerPayBillOnline',
-      Amount: Math.ceil(Number(req.amountKes)),
+      Amount: wholeKes(req.amountKes),
       PartyA: msisdn(req.phone),
       PartyB: this.cfg.shortCode,
       PhoneNumber: msisdn(req.phone),
@@ -87,7 +89,11 @@ export class DarajaStkGateway extends StkGateway {
     };
   }
 
-  async query(checkoutRequestId: string): Promise<StkQueryResult> {
+  async queryStatus(ref: ProviderPaymentRef): Promise<StkQueryResult> {
+    const checkoutRequestId = ref.checkoutRequestId;
+    if (!checkoutRequestId) {
+      return { state: 'pending', resultCode: null, resultDesc: 'No checkout request id stored' };
+    }
     const timestamp = darajaTimestamp();
     const body = await this.post('/mpesa/stkpushquery/v1/query', {
       BusinessShortCode: this.cfg.shortCode,
@@ -110,6 +116,11 @@ export class DarajaStkGateway extends StkGateway {
       resultCode,
       resultDesc: typeof body.json.ResultDesc === 'string' ? body.json.ResultDesc : null,
     };
+  }
+
+  /** Daraja callbacks are out of scope for MVP (row 73): always unrecognised. */
+  parseCallback(_body: unknown): ParsedCallback | null {
+    return null;
   }
 
   private password(timestamp: string): string {
@@ -154,9 +165,6 @@ export class DarajaStkGateway extends StkGateway {
     return { ok: res.ok, json };
   }
 }
-
-/** `+2547XXXXXXXX` -> `2547XXXXXXXX`. */
-const msisdn = (phone: string): string => phone.replace(/^\+/, '');
 
 const describe = (json: Record<string, unknown>): string => {
   const text = [json.errorMessage, json.ResultDesc, json.ResponseDescription].find(
