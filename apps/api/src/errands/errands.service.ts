@@ -44,6 +44,7 @@ import {
 import {
   assertDeadlineInFuture,
   assertLocationsFit,
+  budgetFor,
   deriveUrgency,
 } from './errand-rules';
 import { ApiError } from '../common/api-error';
@@ -252,6 +253,7 @@ export class ErrandsService {
       dto.category,
       dto.locations.map((l) => l.pointType),
     );
+    const budget = budgetFor(dto.category, dto.budget);
     return this.inTx(async (manager) => {
       const profile = await manager
         .getRepository(CustomerProfile)
@@ -265,7 +267,7 @@ export class ErrandsService {
         category: dto.category,
         title: dto.title ?? null,
         description: dto.description,
-        budget: dto.budget.toString(),
+        budget: budget.toFixed(2),
         deadlineAt,
         // Client-sent `urgency` is ignored: deadline_at is authoritative.
         urgency: deriveUrgency(deadlineAt, this.urgencyThresholds()),

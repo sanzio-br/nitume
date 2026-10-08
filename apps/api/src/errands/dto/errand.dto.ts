@@ -90,10 +90,16 @@ export class CreateErrandDto {
   @MaxLength(4000)
   description: string;
 
+  /**
+   * Merchant/item budget (row 45). Required for buy_for_me and
+   * pickup_delivery (0 allowed); other categories may omit it or send 0,
+   * and a positive budget there is refused (400 budget_not_applicable).
+   */
+  @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(1_000_000)
-  budget: number;
+  budget?: number;
 
   @IsOptional()
   @IsISO8601({ strict: true })
