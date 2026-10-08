@@ -835,9 +835,10 @@ export class ErrandsService {
 
   /**
    * System step COMPLETED -> CONFIRMED for errands whose COMPLETED entry is
-   * older than the dispute window (errands.disputeWindowHours). Meant to be
-   * run by a scheduled job; nothing schedules it yet (queue infrastructure
-   * pending, BOARD row 26). Returns the ids it confirmed.
+   * older than the dispute window (errands.disputeWindowHours). Run by the
+   * `dispute-window` job on the maintenance queue (rows 26, 50). The window
+   * counts from the latest COMPLETED entry, so it restarts after a dispute
+   * resolves back to COMPLETED. Returns the ids it confirmed.
    */
   async confirmPastDisputeWindow(now: Date = new Date()): Promise<string[]> {
     const hours = this.config?.get<number>('errands.disputeWindowHours', 24) ?? 24;
@@ -870,6 +871,17 @@ export class ErrandsService {
       }
     }
     return confirmed;
+  }
+
+  /** Ids of errands in a status, oldest first (system jobs only, no access check). */
+  async idsInStatus(status: ErrandStatus, limit = 100): Promise<string[]> {
+    const rows = await this.errands.find({
+      where: { status },
+      select: { id: true },
+      order: { updatedAt: 'ASC' },
+      take: limit,
+    });
+    return rows.map((r) => r.id);
   }
 
   async historyFor(errandId: string): Promise<ErrandStatusHistory[]> {

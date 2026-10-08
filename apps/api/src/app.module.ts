@@ -24,6 +24,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { LocationModule } from './location/location.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     DisputesModule,
     LocationModule,
     RealtimeModule,
+    SchedulerModule,
   ],
   controllers: [HealthController],
   providers: [

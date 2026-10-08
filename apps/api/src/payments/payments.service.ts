@@ -816,20 +816,25 @@ export class PaymentsService implements OnApplicationBootstrap {
     );
   }
 
-  async settleErrand(errandId: string, _actor: AuthContext): Promise<{
+  /**
+   * System step CONFIRMED -> SETTLED: the errand's main payment must have
+   * every leg completed; the runner's earnings then become payable through
+   * the payout ledger. Idempotent on an already SETTLED errand.
+   */
+  async settleErrand(errandId: string): Promise<{
     errandId: string;
     settled: boolean;
     released: PaymentTransaction[];
     previousStatus: string;
   }> {
     const errand = await this.errands.getById(errandId);
-    if (!errand) {
-      throw new NotFoundException('Errand not found');
-    }
+    const payment = await this.activePrimaryPayment(errandId);
     if (errand.status === ErrandStatus.SETTLED) {
-      const prior = await this.transactions.find({
-        where: { paymentId: (await this.payments.findOne({ where: { errandId } }))?.id ?? '', status: PaymentTransactionStatus.COMPLETED },
-      });
+      const prior = payment
+        ? await this.transactions.find({
+            where: { paymentId: payment.id, status: PaymentTransactionStatus.COMPLETED },
+          })
+        : [];
       return { errandId, settled: true, released: prior, previousStatus: ErrandStatus.SETTLED };
     }
     if (errand.status === ErrandStatus.DISPUTED) {
@@ -838,30 +843,43 @@ export class PaymentsService implements OnApplicationBootstrap {
     if (!ErrandStateMachine.canTransition(errand.status, ErrandStatus.SETTLED)) {
       throw new ConflictException(`Cannot settle from ${errand.status}`);
     }
-    const payment = await this.payments.findOne({ where: { errandId } });
     if (!payment) {
       throw new ConflictException('No payment to settle');
     }
     const legs = await this.transactions.find({ where: { paymentId: payment.id } });
-    const incomplete = legs.filter(
-      (t) => t.status !== PaymentTransactionStatus.COMPLETED,
-    );
+    const incomplete = legs.filter((t) => t.status !== PaymentTransactionStatus.COMPLETED);
     if (incomplete.length > 0) {
       throw new ConflictException(
         `Cannot settle: ${incomplete.length} payment leg(s) not completed ` +
           `(${incomplete.map((t) => `${t.paymentTypeId}:${t.status}`).join(', ')}).`,
       );
     }
-    const released = await this.transactions.save(
-      legs.map((l) => this.transactions.merge(l, { status: PaymentTransactionStatus.COMPLETED })),
-    );
     await this.errands.transition(
       errandId,
       ErrandStatus.SETTLED,
       { type: StatusHistoryActor.SYSTEM },
-      `Settled: runner earnings recorded for payout (${released.length} legs).`,
+      `Settled: runner earnings recorded for payout (${legs.length} legs).`,
     );
-    return { errandId, settled: true, released, previousStatus: errand.status as string };
+    return { errandId, settled: true, released: legs, previousStatus: errand.status as string };
+  }
+
+  /**
+   * Settles every CONFIRMED errand (dispute-window job, rows 26, 50).
+   * Errands that cannot settle yet are logged and retried on the next run.
+   */
+  async settleConfirmed(limit = 100): Promise<string[]> {
+    const settled: string[] = [];
+    for (const id of await this.errands.idsInStatus(ErrandStatus.CONFIRMED, limit)) {
+      try {
+        await this.settleErrand(id);
+        settled.push(id);
+      } catch (err) {
+        this.logger.warn(
+          `Could not settle errand ${id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return settled;
   }
 
   async listForErrand(errandId: string, user: AuthContext): Promise<{
