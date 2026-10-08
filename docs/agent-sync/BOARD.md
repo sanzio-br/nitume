@@ -35,11 +35,11 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | customer/x-evidence-viewer | awaiting-owner | owner | feat/customer-screens | core-ui: counter in EvidenceViewer app bar | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/x-address-form | awaiting-owner | owner | feat/customer-screens | core-ui C-35, C-36 | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/x-support | built | flutter-customer | feat/customer-integrations | core-ui AppConfig supportUri; url_launcher (SQ-2) | round 2 built 2026-10-09; awaiting re-audit |
-| admin/p-refunds | built | web-parity | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | New Refunds panel (Network nav, badge, filters); EXTENDS MOCKUP; built 2026-10-09, awaiting re-audit |
-| admin/drawer-refund | built | web-parity | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | Refund decision + payout drawer; EXTENDS MOCKUP; built 2026-10-09, awaiting re-audit |
-| admin/drawer-task-merchant-details | built | web-parity | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | Merchant Till/Paybill section in task drawer; EXTENDS MOCKUP; built 2026-10-09, awaiting re-audit |
-| admin/drawer-task-requote | built | web-parity | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | Quote section + Issue new quote; EXTENDS MOCKUP; built 2026-10-09, awaiting re-audit |
-| admin/drawer-dispute-outcome | built | web-parity | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | Dispute verdict copy, rules, result; EXTENDS MOCKUP; built 2026-10-09, awaiting re-audit |
+| admin/p-refunds | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
+| admin/drawer-refund | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
+| admin/drawer-task-merchant-details | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
+| admin/drawer-task-requote | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
+| admin/drawer-dispute-outcome | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
 
 All 17 existing customer specs + shell updated with owner answers on docs/customer-spec-answers (stages unchanged). x-recurring-tasks dropped (out of MVP).
 
@@ -90,6 +90,8 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | api-contract | owner/ops | Env docs: PAYMENTS_PROVIDER, PAYHERO_BASE_URL/AUTH_TOKEN/CHANNEL_ID/CALLBACK_URL/TIMEOUT_MS, FCM_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY (agents can't read or edit env files here). Run e2e with --no-file-parallelism on a fresh DB (payment_type seeding race, pre-existing) | open |
 | flutter-customer | core-ui | ErrandRepository.acceptQuote (move app quote_acceptance.dart into core), Errand.quoteAcceptanceRequired/quoteExpiresAt, codes quote_not_accepted/quote_not_acceptable, socket streams quote:reissued + merchant_details:updated, NotificationEventType quote.reissued/merchant_details.added, ErrandRepository.refunds() list + price_change_decrease trigger, Payment.priceChangeRequestId | in progress (feat/customer-integrations) |
 | flutter-customer | owner | Verify full Android + iOS builds on a machine with network (Android failed downloading Flutter engine artifacts; iOS not built; Runner.entitlements linked by hand in project.pbxproj) | open |
+| design-auditor | web-parity | Admin minors (non-blocking): m-1 "Opened" in Fira Code (refund-drawer.ts:497); m-2 focus to close button on read-only refund drawer; m-3 404 on task/dispute drawer → info notice without retry; m-4 dispute result notice below the Outcome card; m-5 duplicate .row-assign in _ops.scss | open |
+| design-auditor | design-auditor | SA-1 refund drawer "Refundable in this review" row + p-refunds column "Refundable"; SA-2 refund link for any task from PAYMENT_CONFIRMED once /errands/:id/refunds is merged; full parity audit of drawer-task (Payment card) and drawer-dispute/p-disputes (Evidence on file, G-31) | open |
 
 ## Questions for the project owner
 
@@ -220,3 +222,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-08 | design-auditor admin gap report (FAIL, G-1..G-31; incl. security G-25 token logging); drawer-task, drawer-dispute → partial. web-parity dispatched on feat/admin-ops | e841db5 |
 | 2026-10-09 | web-parity built admin ops G-1..G-30 on feat/admin-ops (token logging removed, shared admin layer, quote/assign/dispute fixes, re-quote, merchant details, Refunds panel + drawer); 98 tests (was 2). G-31 record-only | 06f2bcc, 1870b6e, 5a64c32, 9fe4563, 72da255, edacaa2, 5534160, ec6444c, 3c5953e |
 | 2026-10-09 | flutter-customer round 2 on feat/customer-integrations: socket/FCM/Places/links wired, live Track with Google Maps, 10 screens rebuilt, Android/iOS setup (no keys committed), round-3 quote acceptance; 86 app + 177 core tests; device builds unverified | c096e78, c0ea660, 3d7b5be, 0f7121b, 7e9de19, 25decf4, 16fdb5a, d801a27, b69fcd6, 7e6d5b6, 77d712f, 684515c |
+| 2026-10-09 | design-auditor admin re-audit round 1: all five ops views and G-1..G-30 PASS (98 tests, build clean); drawer-task and drawer-dispute built (full parity audit pending) | 5bc8591 |
