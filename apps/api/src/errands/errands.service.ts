@@ -207,10 +207,25 @@ export interface CancellationInTx {
  */
 export type CancellationHook = (manager: EntityManager, change: CancellationInTx) => Promise<void>;
 
+/** An admin dispute resolution about to commit (see `onDisputeResolved`). */
+export interface DisputeResolutionInTx {
+  errandId: string;
+  verdict: 'runner_favourable' | 'customer_favourable';
+  rationale: string;
+  adminUserId: string;
+}
+
+/** Runs inside the resolve-dispute transaction; throwing rolls it back. */
+export type DisputeResolutionHook = (
+  manager: EntityManager,
+  resolution: DisputeResolutionInTx,
+) => Promise<void>;
+
 @Injectable()
 export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
   private readonly cancellationHooks: CancellationHook[] = [];
+  private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
 
   constructor(
     private readonly dataSource: DataSource,
@@ -703,10 +718,23 @@ export class ErrandsService {
       verdict === 'runner_favourable'
         ? ErrandStatus.COMPLETED
         : ErrandStatus.CANCELLED;
-    return this.performTransition(manager, errandId, to, {
+    const result = await this.performTransition(manager, errandId, to, {
       type: StatusHistoryActor.ADMIN,
       id: actor.userId,
     }, note, { role: actor.role, userId: actor.userId });
+    for (const hook of this.disputeResolutionHooks) {
+      await hook(manager, { errandId, verdict, rationale: note, adminUserId: actor.userId });
+    }
+    return result;
+  }
+
+  /**
+   * Registers work that commits atomically with an admin dispute resolution
+   * (N-6): the disputes module closes its `disputes` row there, without
+   * errands depending on disputes.
+   */
+  onDisputeResolved(hook: DisputeResolutionHook): void {
+    this.disputeResolutionHooks.push(hook);
   }
 
   /**
