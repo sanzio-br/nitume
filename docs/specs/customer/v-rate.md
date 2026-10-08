@@ -31,8 +31,8 @@ C-10, C-12, C-27, C-17 (multiline), C-01. All built.
 
 ## Copy (exact)
 - Header: `Rate this task`
-- Heading: `How was Brian K.?` (runner short name, OA-2; no name → `How was your runner?`)
-- Subtitle: `Apartment check — Nyali` (task title per `_shared.md` §7)
+- Heading: `How was Brian K.?` (runner short name from the API, row 40; no name → `How was your runner?`)
+- Subtitle: `Apartment check — Nyali` (task title per `_shared.md` §7; without a title the category display name, row 41)
 - Placeholder: `Add a comment (optional)`
 - CTA: `Submit rating`
 
@@ -48,8 +48,8 @@ States (proposed):
 
 ## Data
 - `POST /api/v1/errands/:errandId/rating` `{ score: 1..5, comment? }` (exists).
-- `GET /api/v1/errands/:errandId/rating` to detect an existing rating (exists; access check fix pending row 28, no client change).
-- Runner identity: assignment + runner summary on `GET /errands/:id` (`feat/api-customer-gaps`); `displayName` needs: api-contract (OA-2).
+- `GET /api/v1/errands/:errandId/rating` to detect an existing rating (exists; access check approved as an API fix, row 28, no client change).
+- Runner identity: assignment + runner summary on `GET /errands/:id`; short name needs: api-contract (row 40).
 
 ## Accessibility and mobile
 - Stars as a radio group: "Rating, 4 of 5 stars"; each star 48dp hit area.

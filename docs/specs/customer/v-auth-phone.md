@@ -69,7 +69,9 @@ States (proposed copy; OTP policy from OA-17):
 
 ## Open questions (non-blocking; build default given)
 - Q1: The green dot in the wordmark is a use of green outside actions/states. Default: keep it as the brand mark (as built in `NitumeWordmark`).
-- Q2: Terms and Privacy URLs: see `x-legal.md`.
+- Q2: Terms and Privacy URL values per environment: see `x-legal.md` (the mechanism is decided, row 39).
 
 ## Current vs design
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Split from the OTP step; copy, states (invalid, cooldown, hourly limit, delivery failure) and Fira Code phone input match. Minor: legal link spans cannot get 48dp hit areas as `TextSpan`s (links are inactive until SQ-2).
+
+Spec update 2026-10-08 (row 39): `url_launcher` is approved, so the legal links become live whenever `AppConfig.termsUri` / `privacyUri` are configured. The 48dp hit-area minor is now active: build the legal line as two padded link widgets (C-04 link) inside a wrap rather than `TextSpan` recognisers. Status stays `matches-design` (minor), re-check with x-legal.

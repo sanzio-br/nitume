@@ -21,6 +21,10 @@ In-app feed of task events (quote ready, runner en route, price change, completi
 | `errand.COMPLETED`, `errand.CONFIRMED`, `errand.SETTLED`, `errand.CANCELLED`, `errand.FAILED`, `errand.DISPUTED` | `v-task-detail` |
 | price change requested (type missing) | Track + `v-price-auth` modal if still pending |
 | payment confirmed / failed (types missing) | `v-task-detail` / `v-payment` |
+| item payment confirmed / failed, `send_to_runner` (types missing, row 42) | `x-merchant-payment` |
+| merchant details added (type missing, row 43) | `x-awaiting-quote` while QUOTED/ACCEPTED, else `x-merchant-payment` |
+| quote expired (type missing, row 46; optional) | `x-awaiting-quote` |
+| refund status changed (type missing, rows 54, 62) | `v-task-detail` |
 | rate your last task (type missing) | `v-rate` if not yet rated |
 | unknown type | `v-task-detail` when `errandId` is set; otherwise no navigation |
 
@@ -59,8 +63,8 @@ States (proposed):
 
 ## Data
 - `GET /api/v1/notifications?limit=` → `{ items, unread }`; `PATCH /notifications/:id/read`; `PATCH /notifications/read-all`; `GET /notifications/unread-count` (exist). Core `AppNotification`.
-- `NotificationEventType` (published on `feat/api-customer-gaps`) has only `errand.*` status types. needs: api-contract — add price change requested, payment confirmed / failed, rating reminder, merchant details added, dispute resolved.
-- Push: FCM deep links (§7.2); registration `POST /users/me/devices` exists on `feat/api-customer-gaps`; client package pending row 31. Delivery queue pending row 26 (no UI change).
+- `NotificationEventType` has only `errand.*` status types (CONFIRMED/SETTLED removed). needs: api-contract — add price change requested, payment confirmed / failed, item payment confirmed / failed, merchant details added, refund status changed, dispute resolved, rating reminder (and optionally quote expired).
+- Push (row 31): FCM through `firebase_messaging`; the same deep-link table applies to push taps, cold start included. Registration `POST /users/me/devices` exists. Delivery through BullMQ (row 26, no UI change).
 
 ## Accessibility and mobile
 - Each row is a button: "Unread. Brian K. is en route. Apartment check, Nyali, ETA 12 minutes. 2 minutes ago."

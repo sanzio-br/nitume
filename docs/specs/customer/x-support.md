@@ -3,7 +3,7 @@
 - Mockup: the `Support` menu row on `v-profile` (lines 296–305) has no target. OA-18: "a simple configurable Support entry point rather than separate WhatsApp/phone/chat/web systems". No screen is drawn and none is built: this spec covers the row's behaviour and configuration.
 - Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/shell/profile_tab.dart` (Support row) + `screens/auth/otp_screen.dart` (Contact support) on branch `feat/customer-screens`
-- Status: matches-design
+- Status: partial (spec changed 2026-10-08: `url_launcher` approved, row 39; links must now open when configured)
 
 ## Purpose
 One place for a customer to reach Nitume support, pointing at a single configurable target.
@@ -23,13 +23,13 @@ No screen. The row itself: C-24, label `Support`, slate-400 chevron, standard (n
 | Element | Component | Status |
 |---|---|---|
 | Row | C-24 `MenuRow` | built |
-| Config | `AppConfig.supportUri` from `--dart-define=NITUME_SUPPORT_URI` | **NEW** (core-ui) |
-| Launcher | `url_launcher` | **NEW package, needs owner approval (SQ-2)** |
+| Config | `AppConfig.supportUri` from `--dart-define=NITUME_SUPPORT_URI` | built (core-ui) |
+| Launcher | `url_launcher` | approved (row 39); **NEW** dependency (flutter-customer, or core-ui behind a `LinkOpener` interface) |
 
 ## Copy
 - Row (mockup): `Support`
 - Open failure (proposed): snackbar `Couldn't open support. Try again later.`
-- Not configured, or `url_launcher` not approved: **hide the row** (and the link on `v-auth-otp`).
+- Not configured: **hide the row** (and the link on `v-auth-otp`).
 
 ## Numeric fields (Fira Code)
 None.
@@ -42,7 +42,8 @@ None.
 
 ## Open questions for the owner
 - Q1: The support target value (URL, WhatsApp number or phone number) for each environment.
-- SQ-2: approve `url_launcher`.
 
 ## Current vs design
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Row hidden while not configured / no opener (SQ-2 fallback).
+
+Spec update 2026-10-08 (row 39): the build hides the row because there is no opener. Now required: open `AppConfig.supportLink` with `url_launcher` when configured (row shown), with the open-failure snackbar. The target value per environment (Q1) is still needed. Status set to `partial`.

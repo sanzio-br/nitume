@@ -46,7 +46,8 @@ Same frame as `v-auth-phone`: full-screen on slate, no tab bar, `.auth-wrap` (fl
 None.
 
 ## Data
-- Save: `PATCH /api/v1/users/me` `{ displayName }` (trimmed, 2–60 chars). needs: api-contract — today `UpdateProfileDto` accepts only `email` and there is no `display_name` column (A-15, approved by OA-2: add to users for customers and runners, return on `GET /users/me`, and on runner summaries).
+- Save: `PATCH /api/v1/users/me` `{ displayName }` (trimmed, 2–60 chars; exists).
+- After a successful save, push registration runs if it has not yet (row 31, `_shared.md` §10).
 - On success update the cached `AppUser` so Home greets by name immediately.
 - No socket events.
 
@@ -57,7 +58,7 @@ None.
 
 ## Open questions (non-blocking)
 - Q1: Should customers be able to edit their name later (e.g. tap the name on `v-profile` to open this screen in edit mode with header `Edit name` and a back arrow)? Not drawn. Default: not built.
-- SQ-3 (`_shared.md` §9): whether runners see the customer's full name or a short form is an API/privacy decision.
+- Whether runners see the customer's full name or a short form: an API decision (row 40 made the API responsible for short names); no customer-app change either way.
 
 ## Current vs design
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: no `TextCapitalization.words` (core `NitumeField` has no parameter yet; flutter-customer need open).

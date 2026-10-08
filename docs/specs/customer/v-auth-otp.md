@@ -53,7 +53,7 @@ States (proposed copy):
 - Code expired (older than 5 min, or replaced by a newer code; API `OTP_EXPIRED`): `This code has expired. Request a new code.` Boxes disabled until resend.
 - Resend sent: snackbar `New code sent.`; countdown restarts at 1:00; boxes cleared and enabled. The old code no longer works.
 - Resend hourly limit (API `OTP_RATE_LIMITED`): inline under the boxes `Too many code requests. Try again in N min.` (N in Fira Code); resend link hidden until then.
-- Account suspended or banned (API 401 message): `This account can't sign in. Contact support.` with the Support link if configured (`x-support`).
+- Account suspended or banned (API code `account_suspended`; until the code exists, the 401 suspended/banned message): `This account can't sign in. Contact support.` with the `Contact support` link when `AppConfig.supportLink` is set (`x-support`, row 39). Boxes disabled; no resend. Never show the reason. The same sentence is used if a signed-in session is later refused as suspended (`_shared.md` §7).
 - Network / unknown: `_shared.md` §7.
 
 ## Numeric fields (Fira Code)
@@ -65,10 +65,10 @@ States (proposed copy):
 - `POST /api/v1/auth/otp/verify` `{ phone, code, role: 'customer' }` → `{ user, tokens }` via `AuthRepository.verifyOtp` (persists tokens).
 - `POST /api/v1/auth/otp/request` for resend.
 - After success: `GET /users/me` (`displayName`, `phone`, `createdAt`) and `GET /customers/me`.
-- After success register the FCM token (`POST /users/me/devices`) once FCM is approved (pending row 31).
+- After success register the FCM token with `POST /users/me/devices` (row 31, `_shared.md` §10); ask for push permission once. Failure to register never blocks sign-in.
 - App launch calls `AuthRepository.restoreSession()` and skips auth when a valid session exists; a restored user with an empty `displayName` also lands on `x-name-capture`.
-- needs: api-contract — verify errors as codes (`OTP_INCORRECT`, `OTP_ATTEMPTS_EXCEEDED`, `OTP_EXPIRED`, `OTP_RATE_LIMITED`, `OTP_COOLDOWN`) with `retryAfterSeconds`; today the API returns 401 with English messages (`Incorrect verification code.`, `Too many incorrect attempts. Request a new code.`, `No active verification code. Request a new one.`). TTL must become 300 s (OA-17). Until codes exist, map those three messages to the three states above.
-- needs: api-contract — `displayName` on `GET /users/me` (A-15, now approved by OA-2).
+- Verify errors arrive as codes with `retryAfterSeconds` (exists on `feat/api-owner-decisions`; core `OtpErrorKind`).
+- needs: api-contract — code `account_suspended` for suspended/banned accounts on verify and refresh (open need from core-ui and flutter-customer).
 
 ## Accessibility and mobile
 - Announce the six boxes as one field "Verification code, 6 digits"; announce errors and the countdown ("You can resend in 59 seconds") without reading every tick (announce at start and at zero).
@@ -81,3 +81,5 @@ States (proposed copy):
 
 ## Current vs design
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Six boxes, C-38 countdown, OA-17 error states, suspended-account line with Support link, role `customer` sent. Builder copy `Enter the 6-digit code.` (Verify tapped with fewer than 6 digits) accepted, see Copy.
+
+Spec update 2026-10-08 (rows 31, 39): FCM registration after sign-in and the `account_suspended` code are new; the visible screen is unchanged. Status stays `matches-design`; the push registration is tracked as a flutter-customer need.

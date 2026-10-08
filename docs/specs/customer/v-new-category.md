@@ -51,7 +51,7 @@ States:
 - Step counter `Step 1 of 3`.
 
 ## Data
-- Categories from `ErrandCategory` in `nitume_core`; wire values per `_shared.md` §7 (mapping pending row 1).
+- Categories from `ErrandCategory` in `nitume_core`; wire values per `_shared.md` §7 (mapping confirmed, row 1).
 - No endpoint, no socket event.
 
 ## Accessibility and mobile
