@@ -97,19 +97,19 @@ Marked completed by the owner (parity audit only). The panels and drawers below 
 | p-runners | Runners + verification | `apps/admin/src/app/features/admin/panels/runners.panel.ts`, `verifications.panel.ts` | unaudited |
 | p-disputes | Disputes | `apps/admin/src/app/features/admin/panels/disputes.panel.ts` | unaudited |
 | p-reports | Reports | `apps/admin/src/app/features/admin/panels/reports.panel.ts` | unaudited |
-| drawer-task | Task drawer | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` | partial (bugs G-15..G-18, G-28, G-29 in `docs/audits/admin-gap-report.md`) |
+| drawer-task | Task drawer | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` | built (ops bug fixes PASS, `docs/audits/admin-reaudit-2026-10-09.md`; mockup `Payment` card not built, full parity audit pending) |
 | drawer-runner | Runner profile drawer | `apps/admin/src/app/features/admin/drawers/runner-drawer.ts` | unaudited |
-| drawer-dispute | Dispute drawer | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` | partial (Resolution/outcome specced below; bugs G-19..G-23 in `docs/audits/admin-gap-report.md`) |
+| drawer-dispute | Dispute drawer | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` | built (Resolution/outcome PASS, `docs/audits/admin-reaudit-2026-10-09.md`; `Evidence on file` parity audit pending) |
 
 Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced 2026-10-08 on `docs/admin-ops-spec`; they extend the panels/drawers above, copy "(proposed)"):
 
 | Id (auditor-assigned) | Purpose | Placed in | Spec | Implementation file | Status |
 |---|---|---|---|---|---|
-| p-refunds | Refund reviews list (`GET /refunds`), status filter, nav item + badge | new sidebar item under Network, after Disputes | `docs/specs/admin/p-refunds.md` | (expected `apps/admin/src/app/features/admin/panels/refunds.panel.ts`) | missing |
-| drawer-refund | Decide refund amount (`PATCH /refunds/:id/decision`), record manual M-Pesa payout (`POST /refunds/:id/mark-paid`) | new drawer kind in the shell drawer | `docs/specs/admin/drawer-refund.md` | (expected `apps/admin/src/app/features/admin/drawers/refund-drawer.ts`) | missing |
-| drawer-task-merchant-details | Merchant Till/Paybill details (`PUT /errands/:id/merchant-details`) | section of `drawer-task` | `docs/specs/admin/drawer-task-merchant-details.md` | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` (section not built) | missing |
-| drawer-task-requote | Quote section + re-quote of an expired QUOTED task (`POST /errands/:id/quote`) | section/action of `drawer-task` | `docs/specs/admin/drawer-task-requote.md` | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` (section not built) | missing |
-| drawer-dispute-outcome | Verdict copy and outcome: runner → COMPLETED, customer → CANCELLED + refund review | Resolution section of `drawer-dispute` | `docs/specs/admin/drawer-dispute-outcome.md` | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` (outcome not built) | missing |
+| p-refunds | Refund reviews list (`GET /refunds`), status filter, nav item + badge | new sidebar item under Network, after Disputes | `docs/specs/admin/p-refunds.md` | `apps/admin/src/app/features/admin/panels/refunds.panel.ts` | matches-design |
+| drawer-refund | Decide refund amount (`PATCH /refunds/:id/decision`), record manual M-Pesa payout (`POST /refunds/:id/mark-paid`) | new drawer kind in the shell drawer | `docs/specs/admin/drawer-refund.md` | `apps/admin/src/app/features/admin/drawers/refund-drawer.ts` (+ `refund-link.section.ts`) | matches-design |
+| drawer-task-merchant-details | Merchant Till/Paybill details (`PUT /errands/:id/merchant-details`) | section of `drawer-task` | `docs/specs/admin/drawer-task-merchant-details.md` | `apps/admin/src/app/features/admin/drawers/merchant-details.section.ts` | matches-design |
+| drawer-task-requote | Quote section + re-quote of an expired QUOTED task (`POST /errands/:id/quote`) | section/action of `drawer-task` | `docs/specs/admin/drawer-task-requote.md` | `apps/admin/src/app/features/admin/drawers/quote.section.ts`, `quote-dialog.ts` | matches-design |
+| drawer-dispute-outcome | Verdict copy and outcome: runner → COMPLETED, customer → CANCELLED + refund review | Resolution section of `drawer-dispute` | `docs/specs/admin/drawer-dispute-outcome.md` | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` | matches-design |
 
 ## Website — `docs/design/nitume_website.html` → `apps/website`
 
