@@ -1,17 +1,23 @@
 import {
   ConflictException,
+  HttpStatus,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { ApiError } from '../common/api-error';
 import { UserRole } from '../common/enums';
 import { CustomersService } from '../customers/customers.service';
 import { RunnersService } from '../runners/runners.service';
 import { PublicUser, toPublicUser, UsersService } from '../users/users.service';
 import { OtpService } from './otp.service';
 import { TokenPair, TokenService } from './token.service';
+
+/** 401 with machine-readable `account_suspended` (suspended or banned user). */
+const accountSuspended = (): ApiError =>
+  new ApiError(HttpStatus.UNAUTHORIZED, 'account_suspended', 'Account is suspended or banned');
 
 const LEGACY_BUSINESS_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.BUSINESS];
 
@@ -90,7 +96,7 @@ export class AuthService {
       throw new UnauthorizedException('No admin account is linked to this email');
     }
     if (user.status !== 'active') {
-      throw new UnauthorizedException('Account is suspended or banned');
+      throw accountSuspended();
     }
     const tokens = await this.tokens.issueTokenPair(user);
     return { user: toPublicUser(user), tokens };
@@ -120,7 +126,7 @@ export class AuthService {
         await this.customers.createForUser(user.id);
       }
     } else if (user.status !== 'active') {
-      throw new UnauthorizedException('Account is suspended or banned');
+      throw accountSuspended();
     }
     const tokens = await this.tokens.issueTokenPair(user);
     return { user: toPublicUser(user), tokens };
