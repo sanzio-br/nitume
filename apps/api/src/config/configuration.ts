@@ -2,6 +2,8 @@ export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'staging' | 'production';
   port: number;
   apiPrefix: string;
+  /** Express `trust proxy` hop count so per-IP limits see the client IP. */
+  trustProxyHops: number;
   database: {
     host: string;
     port: number;
@@ -25,6 +27,11 @@ export interface AppConfig {
     resendCooldownSeconds: number;
     rateLimitWindowSeconds: number;
     rateLimitPerPhone: number;
+    /** Per-IP limits on OTP request / verify routes (row 53). */
+    ipRequestLimit: number;
+    ipRequestWindowSeconds: number;
+    ipVerifyLimit: number;
+    ipVerifyWindowSeconds: number;
     senderTransport: 'console' | 'africas_talking';
   };
   mail: {
@@ -86,6 +93,7 @@ export const configuration = (): AppConfig => ({
   nodeEnv: (process.env.NODE_ENV as AppConfig['nodeEnv']) ?? 'development',
   port: int(process.env.PORT, 3000),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
+  trustProxyHops: int(process.env.TRUST_PROXY_HOPS, 0),
   database: {
     host: process.env.DATABASE_HOST ?? 'localhost',
     port: int(process.env.DATABASE_PORT, 5432),
@@ -111,6 +119,12 @@ export const configuration = (): AppConfig => ({
     resendCooldownSeconds: int(process.env.OTP_RESEND_COOLDOWN_SECONDS, 60),
     rateLimitWindowSeconds: int(process.env.OTP_RATE_LIMIT_WINDOW_SECONDS, 3600),
     rateLimitPerPhone: int(process.env.OTP_RATE_LIMIT_PER_PHONE, 5),
+    // Per-IP throttling (row 53). Generous by default because many mobile
+    // users share one carrier NAT address; tune per deployment.
+    ipRequestLimit: int(process.env.OTP_IP_REQUEST_LIMIT, 30),
+    ipRequestWindowSeconds: int(process.env.OTP_IP_REQUEST_WINDOW_SECONDS, 3600),
+    ipVerifyLimit: int(process.env.OTP_IP_VERIFY_LIMIT, 60),
+    ipVerifyWindowSeconds: int(process.env.OTP_IP_VERIFY_WINDOW_SECONDS, 3600),
     senderTransport:
       (process.env.OTP_SENDER_TRANSPORT as AppConfig['otp']['senderTransport']) ??
       'console',

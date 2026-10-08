@@ -53,8 +53,8 @@ export const normalizeEmail = (email: string): string => email.trim().toLowerCas
  * table. Every issued code is stored (hashed) and single-use. Policy (owner
  * decision Q17, defaults in config): 5-minute expiry, 5 verification
  * attempts per code, 60s resend cooldown, 5 codes per hour per phone/email,
- * and a new code invalidates the previous ones. Per-IP throttling is not
- * applied here (no throttler in the framework setup; owner question).
+ * and a new code invalidates the previous ones. Per-IP throttling sits in
+ * front of the routes (OtpThrottlerGuard, Redis-backed, row 53).
  */
 @Injectable()
 export class OtpService {

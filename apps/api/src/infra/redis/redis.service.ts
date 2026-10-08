@@ -39,6 +39,11 @@ export class RedisService {
     return (await this.client.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK';
   }
 
+  /** Runs a Lua script atomically (EVAL). */
+  async evalScript(script: string, keys: string[], args: (string | number)[]): Promise<unknown> {
+    return this.client.eval(script, keys.length, ...keys, ...args);
+  }
+
   /** Atomically fetch and delete a key (single-use semantics). */
   async getAndDelete(key: string): Promise<string | null> {
     const value = await this.client.get(key);
