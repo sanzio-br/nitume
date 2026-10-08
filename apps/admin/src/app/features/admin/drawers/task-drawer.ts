@@ -11,6 +11,7 @@ import { formatDateTime, formatKsh, formatKshExact } from '../shared-format';
 import { QuoteConflict, QuoteDialogComponent } from './quote-dialog';
 import { QuoteSectionComponent } from './quote.section';
 import { MerchantDetailsSectionComponent } from './merchant-details.section';
+import { RefundLinkSectionComponent } from './refund-link.section';
 
 /**
  * Admin actions by state (§3.3): the first quote only from REQUESTED; a
@@ -39,6 +40,7 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
     QuoteDialogComponent,
     QuoteSectionComponent,
     MerchantDetailsSectionComponent,
+    RefundLinkSectionComponent,
   ],
   template: `
     @if (s.detailLoading()) {
@@ -144,6 +146,8 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
           </div>
         </section>
       }
+
+      <app-refund-link-section [errandId]="d.id" [status]="d.status" />
 
       <section class="drawer-section">
         <div class="drawer-label">Status history</div>

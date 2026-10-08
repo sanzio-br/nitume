@@ -1,0 +1,769 @@
+import { NumTextComponent } from '../../../shared/num-text.component';
+import {
+  Component,
+  ElementRef,
+  Injector,
+  OnInit,
+  afterNextRender,
+  computed,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { ApiService } from '../../../core/services/api.service';
+import { apiError, ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
+import type { Errand, RefundDetail, RefundReview } from '../../../core/api-types';
+import { StatusChipComponent } from '../../../shared/status-chip.component';
+import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice.component';
+import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
+import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
+import { AdminDataService, categoryLabel, maskedId, shortId } from '../admin-data.service';
+import { DrawerNavService } from '../drawer-nav.service';
+import { refundTriggerLabel } from '../refund-labels';
+import { formatDateTime, formatKshExact, isBlank, parseKsh } from '../shared-format';
+
+export const AMOUNT_REQUIRED = 'Enter a refund amount, or KSh 0 for no refund.';
+export const AMOUNT_FORMAT = 'Enter an amount in KSh, up to 2 decimal places.';
+export const RECEIPT_ERROR = 'Enter the M-Pesa receipt code, letters and numbers only.';
+const RECEIPT_PATTERN = /^[A-Za-z0-9-]{4,64}$/;
+
+/** Refund amount rule (mirrors `DecideRefundDto` + `RefundsService.decide`). */
+export function validateRefundAmount(input: string, amountPaid: string | number): string | null {
+  if (isBlank(input)) return AMOUNT_REQUIRED;
+  const value = parseKsh(input);
+  if (value === null) return AMOUNT_FORMAT;
+  if (value > Number(amountPaid)) {
+    return `The refund can't be more than the ${formatKshExact(amountPaid)} the customer paid.`;
+  }
+  return null;
+}
+
+export function validateReceipt(input: string): string | null {
+  return RECEIPT_PATTERN.test(input.trim()) ? null : RECEIPT_ERROR;
+}
+
+/** The decision button follows the amount. */
+export function decisionLabel(input: string, amountPaid: string | number): string {
+  if (validateRefundAmount(input, amountPaid) !== null) return 'Approve refund';
+  const value = parseKsh(input)!;
+  return value > 0 ? `Approve refund · ${formatKshExact(value)}` : 'Close with no refund';
+}
+
+/** `+254712345678` → `+254 712 345 678`; anything else unchanged. */
+export function formatPhone(phone: string): string {
+  const m = /^\+?254(\d{3})(\d{3})(\d{3})$/.exec(phone.replace(/\s/g, ''));
+  return m ? `+254 ${m[1]} ${m[2]} ${m[3]}` : phone;
+}
+
+type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
+
+/**
+ * Refund review drawer (rows 37, 54): decide the amount (KSh 0 up to what
+ * the customer paid Nitume), then record the manual M-Pesa payout. A refund
+ * is a record on a CANCELLED task, not a task state.
+ */
+@Component({
+  selector: 'app-refund-drawer',
+  imports: [
+    NumTextComponent,
+    StatusChipComponent,
+    InlineNoticeComponent,
+    ConfirmDialogComponent,
+    FormFieldComponent,
+    FieldControlDirective,
+  ],
+  template: `
+    @if (loading()) {
+      <div class="ops-loading">Loading refund review…</div>
+    } @else if (loadError(); as le) {
+      <app-inline-notice [tone]="le.tone">
+        {{ le.text }}
+        @if (le.tone === 'danger') {
+          <button notice-action type="button" class="btn btn-outline btn-sm" (click)="load()">
+            Try again
+          </button>
+        }
+      </app-inline-notice>
+    } @else if (review(); as r) {
+      @if (notice(); as n) {
+        <app-inline-notice
+          [tone]="n.tone"
+          [dismissible]="true"
+          [autoDismissMs]="n.tone === 'success' ? 6000 : 0"
+          (dismissed)="notice.set(null)"
+          ><app-num-text [text]="n.text"
+        /></app-inline-notice>
+      }
+
+      <!-- 1. Summary -->
+      <section class="drawer-section">
+        <app-status-chip [status]="r.status" kind="refund" />
+        <h3 class="drawer-summary-title">{{ taskTitle() }}</h3>
+        <div class="drawer-muted">
+          @for (part of mutedParts(); track $index; let last = $last) {
+            @if (part.num) {
+              <span class="num">{{ part.text }}</span>
+            } @else {
+              {{ part.text }}
+            }
+            @if (!last) {
+              ·
+            }
+          }
+        </div>
+        <div class="drawer-card">
+          <div class="drawer-row">
+            <span>Task</span>
+            <span class="row-inline">
+              <b>{{ shortId(r.errandId) }}</b>
+              <button type="button" class="btn btn-text btn-sm" (click)="openTask()">
+                Open task
+              </button>
+            </span>
+          </div>
+          @if (taskStatus(); as ts) {
+            <div class="drawer-row"><span>Task status</span><app-status-chip [status]="ts" /></div>
+          }
+          <div class="drawer-row">
+            <span>Reason</span><b class="txt">{{ triggerLabel(r.trigger) }}</b>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. What was paid (three flows kept apart) -->
+      <section class="drawer-section">
+        <div class="drawer-label">What the customer paid</div>
+        <div class="drawer-card">
+          @if (r.paid; as p) {
+            <div class="drawer-row">
+              <span>Service + runner fee</span><b>{{ formatKshExact(p.serviceAndRunnerFee) }}</b>
+            </div>
+            @if (positive(p.itemAmountToNitume)) {
+              <div class="drawer-row">
+                <span>Item amount (paid to Nitume)</span
+                ><b>{{ formatKshExact(p.itemAmountToNitume) }}</b>
+              </div>
+            }
+            @if (positive(p.priceChangeDifferences)) {
+              <div class="drawer-row">
+                <span>Price change difference</span
+                ><b>{{ formatKshExact(p.priceChangeDifferences) }}</b>
+              </div>
+            }
+            <div class="drawer-row drawer-row-total">
+              <span>Total paid to Nitume</span><b>{{ formatKshExact(p.totalPaidToNitume) }}</b>
+            </div>
+          } @else {
+            <div class="drawer-row drawer-row-total">
+              <span>Total paid to Nitume</span><b>{{ formatKshExact(r.amountPaid) }}</b>
+            </div>
+          }
+          <div class="drawer-row">
+            <span>Refund to</span>
+            @if (phone(); as ph) {
+              <b>{{ formatPhone(ph) }}</b>
+            } @else {
+              <span class="val-muted">Customer's M-Pesa number not available</span>
+            }
+          </div>
+        </div>
+        @if (!r.paid) {
+          <!-- TODO(N-1): breakdown arrives with feat/api-owner-answers-3. -->
+          <div class="drawer-caption">Breakdown by payment isn't available yet.</div>
+        } @else if (positive(r.paid.merchantDirectAmount)) {
+          <div class="drawer-caption">
+            The item amount (<span class="num">{{
+              formatKshExact(r.paid.merchantDirectAmount)
+            }}</span
+            >) was paid straight to the merchant. Nitume didn't collect it, so it isn't part of this
+            refund.
+          </div>
+        }
+      </section>
+
+      <!-- 3. Decision -->
+      <section class="drawer-section">
+        <div class="drawer-label">Decision</div>
+        @if (r.status === 'pending_review') {
+          <div class="drawer-card drawer-stack">
+            <app-form-field
+              label="Refund amount"
+              prefix="KSh"
+              [hint]="amountHint()"
+              [error]="amountShown()"
+            >
+              <input
+                #amountInput
+                appFieldControl
+                [numeric]="true"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                [value]="amount()"
+                [disabled]="saving()"
+                (input)="setAmount(val($event))"
+                (blur)="amountTouched.set(true)"
+              />
+            </app-form-field>
+            <div class="quick-fill">
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                [disabled]="saving()"
+                (click)="setAmount(plain(r.amountPaid))"
+              >
+                Full refund
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                [disabled]="saving()"
+                (click)="setAmount('0')"
+              >
+                No refund
+              </button>
+            </div>
+            <app-form-field
+              label="Note for the ops record (optional)"
+              hint="Not shown to the customer."
+              [counter]="note().length + '/1000'"
+            >
+              <textarea
+                appFieldControl
+                rows="3"
+                maxlength="1000"
+                [value]="note()"
+                [disabled]="saving()"
+                (input)="note.set(val($event))"
+              ></textarea>
+            </app-form-field>
+            <div class="drawer-actions">
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="!!amountError() || saving()"
+                (click)="submitDecision()"
+              >
+                @if (amountValue(); as v) {
+                  Approve refund · <span class="num">{{ formatKshExact(v) }}</span>
+                } @else {
+                  {{ decisionLabel(amount(), r.amountPaid) }}
+                }
+              </button>
+            </div>
+          </div>
+        } @else {
+          <div class="drawer-card">
+            <div class="drawer-row">
+              <span>Refund amount</span><b>{{ formatKshExact(r.refundAmount ?? 0) }}</b>
+            </div>
+            <div class="drawer-row">
+              <span>Decided</span><b>{{ formatDateTime(r.decidedAt ?? null) }}</b>
+            </div>
+            <div class="drawer-row">
+              <span>Decided by</span
+              ><b class="txt">{{ adminName(r.decidedBy, r.decidedByUserId) }}</b>
+            </div>
+            @if (r.decisionNote) {
+              <p class="drawer-note">{{ r.decisionNote }}</p>
+            }
+          </div>
+        }
+      </section>
+
+      <!-- 4. Payout -->
+      @if (r.status === 'approved') {
+        <section class="drawer-section">
+          <div class="drawer-label">Record the payout</div>
+          <div class="drawer-card drawer-stack">
+            <p class="drawer-instruction">
+              Send <span class="num">{{ formatKshExact(r.refundAmount) }}</span> to the customer by
+              M-Pesa, then enter the M-Pesa receipt here.
+            </p>
+            @if (!phone()) {
+              <div class="drawer-caption">
+                Find the customer's number from the task before you send.
+              </div>
+            }
+            <app-form-field label="M-Pesa receipt" [error]="receiptShown()">
+              <input
+                #receiptInput
+                appFieldControl
+                [numeric]="true"
+                class="is-upper"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="64"
+                placeholder="e.g. SLK4H7XQ2P"
+                [value]="receipt()"
+                [disabled]="saving()"
+                (input)="setReceipt(val($event))"
+                (blur)="receiptTouched.set(true)"
+              />
+            </app-form-field>
+            <div class="drawer-actions">
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="!!receiptError() || saving()"
+                (click)="submitPayout()"
+              >
+                Mark as refunded
+              </button>
+            </div>
+          </div>
+        </section>
+      } @else if (r.status === 'refunded') {
+        <section class="drawer-section">
+          <div class="drawer-label">Payout</div>
+          <div class="drawer-card">
+            <div class="drawer-row">
+              <span>Refund sent</span><b>{{ formatKshExact(r.refundAmount) }}</b>
+            </div>
+            <div class="drawer-row">
+              <span>M-Pesa receipt</span><b>{{ r.payoutReference ?? '—' }}</b>
+            </div>
+            <div class="drawer-row">
+              <span>Sent</span><b>{{ formatDateTime(r.paidAt ?? null) }}</b>
+            </div>
+            <div class="drawer-row">
+              <span>Recorded by</span><b class="txt">{{ adminName(r.paidBy, r.paidByUserId) }}</b>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- 5. Activity -->
+      <section class="drawer-section">
+        <div class="drawer-label">Activity</div>
+        <div class="drawer-card">
+          <div class="drawer-timeline">
+            <div class="dt-item">
+              <b>Review opened</b>
+              <span class="dt-time">{{ formatDateTime(r.createdAt) }}</span>
+            </div>
+            @if (r.decidedAt) {
+              <div class="dt-item">
+                @if (r.status === 'no_refund') {
+                  <b>Closed with no refund</b>
+                } @else {
+                  <b
+                    >Refund of
+                    <span class="num">{{ formatKshExact(r.refundAmount) }}</span> approved</b
+                  >
+                }
+                <span class="dt-time">{{ formatDateTime(r.decidedAt) }}</span>
+              </div>
+            }
+            @if (r.paidAt) {
+              <div class="dt-item">
+                <b
+                  >Refund sent · <span class="num">{{ r.payoutReference }}</span></b
+                >
+                <span class="dt-time">{{ formatDateTime(r.paidAt) }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      </section>
+
+      <app-confirm-dialog
+        [open]="dialog() !== null"
+        [title]="dialogTitle()"
+        [confirmLabel]="dialogConfirm()"
+        [busy]="saving()"
+        (confirmed)="confirmDialog()"
+        (cancelled)="cancelDialog()"
+      >
+        @switch (dialog()) {
+          @case ('approve') {
+            <p>
+              The customer will be told a refund is on its way. You'll record the M-Pesa payout
+              next. You can't change the amount after this.
+            </p>
+          }
+          @case ('no_refund') {
+            <p>
+              The customer will be told no refund is due for this task. You can't change this later.
+            </p>
+          }
+          @case ('mark_paid') {
+            <p>
+              M-Pesa receipt <span class="num">{{ normalisedReceipt() }}</span
+              >. The customer will be told the refund has been sent. This can't be undone.
+            </p>
+          }
+          @case ('discard') {
+            <p>The amount and note you entered will be lost.</p>
+          }
+        }
+      </app-confirm-dialog>
+    }
+  `,
+  styles: [],
+})
+export class RefundDrawerComponent implements OnInit {
+  private readonly api = inject(ApiService);
+  private readonly s = inject(AdminDataService);
+  private readonly nav = inject(DrawerNavService);
+  private readonly injector = inject(Injector);
+
+  readonly reviewId = input.required<string>();
+
+  readonly review = signal<RefundDetail | null>(null);
+  /** Task summary from `GET /errands/:id` when the API has no N-1 errand summary. */
+  private readonly errand = signal<Errand | null>(null);
+  readonly loading = signal(true);
+  readonly loadError = signal<{ tone: NoticeTone; text: string } | null>(null);
+  readonly notice = signal<{ tone: NoticeTone; text: string } | null>(null);
+  readonly saving = signal(false);
+  readonly dialog = signal<Dialog>(null);
+
+  readonly amount = signal('');
+  readonly amountTouched = signal(false);
+  private readonly amountServerError = signal<string | null>(null);
+  readonly note = signal('');
+  readonly receipt = signal('');
+  readonly receiptTouched = signal(false);
+  private readonly receiptServerError = signal<string | null>(null);
+  private pendingLeave: (() => void) | null = null;
+
+  private readonly amountInput = viewChild<ElementRef<HTMLInputElement>>('amountInput');
+  private readonly receiptInput = viewChild<ElementRef<HTMLInputElement>>('receiptInput');
+
+  readonly amountError = computed(() => {
+    const r = this.review();
+    return r ? validateRefundAmount(this.amount(), r.amountPaid) : AMOUNT_REQUIRED;
+  });
+  protected readonly amountShown = computed(
+    () => this.amountServerError() ?? (this.amountTouched() ? this.amountError() : null),
+  );
+  /** Valid amount > 0 (drives the button's Fira Code amount), else null. */
+  protected readonly amountValue = computed(() => {
+    if (this.amountError()) return null;
+    const v = parseKsh(this.amount());
+    return v && v > 0 ? v : null;
+  });
+  readonly receiptError = computed(() => validateReceipt(this.receipt()));
+  protected readonly receiptShown = computed(
+    () => this.receiptServerError() ?? (this.receiptTouched() ? this.receiptError() : null),
+  );
+  protected readonly normalisedReceipt = computed(() => this.receipt().trim().toUpperCase());
+
+  protected readonly amountHint = computed(() => {
+    const r = this.review();
+    return r
+      ? `Between KSh 0 and ${formatKshExact(r.amountPaid)}. KSh 0 closes the review with no refund.`
+      : '';
+  });
+
+  readonly dirty = computed(() => {
+    const r = this.review();
+    if (!r) return false;
+    if (r.status === 'pending_review') return !isBlank(this.amount()) || !isBlank(this.note());
+    if (r.status === 'approved') return !isBlank(this.receipt());
+    return false;
+  });
+
+  protected readonly taskTitle = computed(() => {
+    const e = this.review()?.errand ?? this.errand();
+    if (e?.title) return e.title;
+    const firstLine = e?.description?.split('\n')[0]?.trim();
+    if (firstLine) return firstLine;
+    if (e?.category) return categoryLabel(e.category);
+    return 'Task';
+  });
+
+  protected readonly taskStatus = computed(
+    () => this.review()?.errand?.status ?? this.errand()?.status ?? null,
+  );
+
+  protected readonly phone = computed(() => {
+    const c = this.review()?.customer;
+    return c?.mpesaPhone ?? c?.phone ?? null;
+  });
+
+  protected readonly mutedParts = computed(() => {
+    const r = this.review();
+    if (!r) return [];
+    const parts: { text: string; num: boolean }[] = [];
+    const name = r.customer?.shortName;
+    if (name) parts.push({ text: name, num: false });
+    const category = r.errand?.category ?? this.errand()?.category;
+    if (category) parts.push({ text: categoryLabel(category), num: false });
+    parts.push({ text: `Opened ${formatDateTime(r.createdAt)}`, num: true });
+    return parts;
+  });
+
+  protected readonly dialogTitle = computed(() => {
+    const r = this.review();
+    switch (this.dialog()) {
+      case 'approve':
+        return `Approve a refund of ${formatKshExact(parseKsh(this.amount()))}?`;
+      case 'no_refund':
+        return 'Close with no refund?';
+      case 'mark_paid':
+        return `Mark ${formatKshExact(r?.refundAmount ?? null)} as refunded?`;
+      case 'discard':
+        return 'Discard this decision?';
+      default:
+        return '';
+    }
+  });
+
+  protected readonly dialogConfirm = computed(() => {
+    switch (this.dialog()) {
+      case 'approve':
+        return 'Approve refund';
+      case 'no_refund':
+        return 'Close review';
+      case 'mark_paid':
+        return 'Mark as refunded';
+      case 'discard':
+        return 'Discard';
+      default:
+        return '';
+    }
+  });
+
+  ngOnInit(): void {
+    this.nav.setCloseGuard((proceed) => {
+      if (!this.dirty() || this.saving()) return !this.saving();
+      this.pendingLeave = proceed;
+      this.dialog.set('discard');
+      return false;
+    });
+    void this.load();
+  }
+
+  async load(): Promise<void> {
+    this.loading.set(true);
+    this.loadError.set(null);
+    try {
+      const review = await firstValueFrom(this.api.getRefund(this.reviewId()));
+      this.review.set(review);
+      this.resetForms();
+      if (!review.errand) {
+        // TODO(N-1): the round-3 detail embeds the errand; older APIs need this call.
+        void this.loadErrand(review.errandId);
+      }
+    } catch (e) {
+      const err = apiError(e);
+      this.loadError.set(
+        err.status === 404
+          ? { tone: 'info', text: 'This refund review no longer exists.' }
+          : err.status === 403
+            ? { tone: 'danger', text: FORBIDDEN_COPY }
+            : { tone: 'danger', text: "Couldn't load this refund review." },
+      );
+    } finally {
+      this.loading.set(false);
+      afterNextRender(() => this.focusForm(), { injector: this.injector });
+    }
+  }
+
+  private async loadErrand(id: string): Promise<void> {
+    try {
+      this.errand.set(await firstValueFrom(this.api.getErrand(id)));
+    } catch {
+      /* the summary falls back to `Task` */
+    }
+  }
+
+  private resetForms(): void {
+    this.amount.set('');
+    this.amountTouched.set(false);
+    this.amountServerError.set(null);
+    this.note.set('');
+    this.receipt.set('');
+    this.receiptTouched.set(false);
+    this.receiptServerError.set(null);
+  }
+
+  private focusForm(): void {
+    (this.amountInput() ?? this.receiptInput())?.nativeElement.focus();
+  }
+
+  protected val(event: Event): string {
+    return (event.target as HTMLInputElement).value;
+  }
+
+  protected setAmount(value: string): void {
+    this.amount.set(value);
+    this.amountServerError.set(null);
+  }
+
+  protected setReceipt(value: string): void {
+    this.receipt.set(value.toUpperCase());
+    this.receiptServerError.set(null);
+  }
+
+  protected positive(value: string | null | undefined): boolean {
+    return Number(value ?? 0) > 0;
+  }
+
+  protected plain(value: string): string {
+    const n = Number(value);
+    return Number.isInteger(n) ? String(n) : n.toFixed(2);
+  }
+
+  protected adminName(
+    ref: { id: string; displayName: string | null } | null | undefined,
+    userId: string | null | undefined,
+  ): string {
+    const id = ref?.id ?? userId;
+    if (!id) return '—';
+    if (id === this.s.me()?.id) return 'You';
+    // TODO(N-2): older APIs send only the user id.
+    return ref?.displayName ?? maskedId(id);
+  }
+
+  protected openTask(): void {
+    const r = this.review();
+    if (r) this.nav.open('task', r.errandId);
+  }
+
+  protected submitDecision(): void {
+    this.amountTouched.set(true);
+    if (this.amountError() || this.saving()) return;
+    this.dialog.set(parseKsh(this.amount())! > 0 ? 'approve' : 'no_refund');
+  }
+
+  protected submitPayout(): void {
+    this.receiptTouched.set(true);
+    if (this.receiptError() || this.saving()) return;
+    this.dialog.set('mark_paid');
+  }
+
+  protected cancelDialog(): void {
+    this.pendingLeave = null;
+    this.dialog.set(null);
+  }
+
+  protected async confirmDialog(): Promise<void> {
+    const d = this.dialog();
+    if (d === 'discard') {
+      const leave = this.pendingLeave;
+      this.pendingLeave = null;
+      this.dialog.set(null);
+      this.nav.setCloseGuard(null);
+      leave?.();
+      return;
+    }
+    if (d === 'approve' || d === 'no_refund') await this.decide();
+    if (d === 'mark_paid') await this.markPaid();
+  }
+
+  private async decide(): Promise<void> {
+    const r = this.review()!;
+    const refundAmount = parseKsh(this.amount())!;
+    const note = this.note().trim();
+    this.saving.set(true);
+    try {
+      const saved = await firstValueFrom(
+        this.api.decideRefund(r.id, { refundAmount, ...(note ? { note } : {}) }),
+      );
+      this.applySaved(saved);
+      this.notice.set({
+        tone: 'success',
+        text:
+          saved.status === 'approved'
+            ? `Refund of ${formatKshExact(saved.refundAmount)} approved. Record the payout once you've sent it.`
+            : 'Review closed with no refund.',
+      });
+    } catch (e) {
+      await this.handleError(apiError(e), 'decision');
+    } finally {
+      this.saving.set(false);
+      this.dialog.set(null);
+    }
+  }
+
+  private async markPaid(): Promise<void> {
+    const r = this.review()!;
+    this.saving.set(true);
+    try {
+      const saved = await firstValueFrom(
+        this.api.markRefundPaid(r.id, { payoutReference: this.normalisedReceipt() }),
+      );
+      this.applySaved(saved);
+      this.notice.set({ tone: 'success', text: 'Refund marked as sent.' });
+    } catch (e) {
+      await this.handleError(apiError(e), 'payout');
+    } finally {
+      this.saving.set(false);
+      this.dialog.set(null);
+    }
+  }
+
+  /** The write endpoints return the bare review: keep the enriched parts. */
+  private applySaved(saved: RefundReview): void {
+    const current = this.review();
+    const me = this.s.me();
+    const meRef = me ? { id: me.id, displayName: null } : null;
+    this.review.set({
+      ...current,
+      ...saved,
+      errand: current?.errand,
+      customer: current?.customer,
+      paid: current?.paid,
+      otherReviews: current?.otherReviews,
+      decidedBy: saved.decidedByUserId ? (current?.decidedBy ?? meRef) : null,
+      paidBy: saved.paidByUserId ? (current?.paidBy ?? meRef) : null,
+    });
+    this.resetForms();
+    this.s.refundUpdated(saved);
+    afterNextRender(() => this.focusForm(), { injector: this.injector });
+  }
+
+  private async reloadWith(notice: { tone: NoticeTone; text: string }): Promise<void> {
+    await this.load();
+    this.notice.set(notice);
+  }
+
+  private async handleError(err: ApiErrorInfo, kind: 'decision' | 'payout'): Promise<void> {
+    if (err.code === 'refund_already_decided') {
+      await this.reloadWith({
+        tone: 'info',
+        text: 'Another admin already decided this refund. Showing the latest.',
+      });
+    } else if (err.code === 'refund_not_approved') {
+      await this.reloadWith({
+        tone: 'info',
+        text: "This refund isn't approved, so it can't be marked as sent. Showing the latest.",
+      });
+    } else if (err.code === 'refund_exceeds_amount_paid') {
+      const paid = (err.extra['amountPaid'] as string | undefined) ?? this.review()?.amountPaid;
+      const amount = this.amount();
+      const note = this.note();
+      await this.load();
+      this.amount.set(amount);
+      this.note.set(note);
+      this.amountServerError.set(
+        `The refund can't be more than the ${formatKshExact(paid ?? null)} the customer paid.`,
+      );
+    } else if (err.status === 400) {
+      if (kind === 'decision') this.amountServerError.set(AMOUNT_FORMAT);
+      else this.receiptServerError.set(RECEIPT_ERROR);
+    } else if (err.status === 404) {
+      this.loadError.set({ tone: 'info', text: 'This refund review no longer exists.' });
+    } else if (err.status === 403) {
+      this.notice.set({ tone: 'danger', text: FORBIDDEN_COPY });
+    } else {
+      this.notice.set({
+        tone: 'danger',
+        text: "Couldn't save. Check your connection and try again.",
+      });
+    }
+  }
+
+  protected readonly shortId = shortId;
+  protected readonly triggerLabel = refundTriggerLabel;
+  protected readonly formatKshExact = formatKshExact;
+  protected readonly formatDateTime = formatDateTime;
+  protected readonly formatPhone = formatPhone;
+  protected readonly decisionLabel = decisionLabel;
+}

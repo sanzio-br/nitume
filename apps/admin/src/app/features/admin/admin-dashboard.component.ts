@@ -11,10 +11,12 @@ import { ReportsPanelComponent } from './panels/reports.panel';
 import { TaskDrawerComponent } from './drawers/task-drawer';
 import { RunnerDrawerComponent } from './drawers/runner-drawer';
 import { DisputeDrawerComponent } from './drawers/dispute-drawer';
+import { RefundDrawerComponent } from './drawers/refund-drawer';
+import { RefundsPanelComponent } from './panels/refunds.panel';
 import { OpsDrawerComponent } from '../../shared/ops-drawer.component';
 import { InlineNoticeComponent } from '../../shared/inline-notice.component';
 
-type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'reports';
+type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'refunds' | 'reports';
 
 /**
  * Ops shell (design `nitume_admin_dashboard.html` → `.app`): Deep Trust Blue
@@ -34,6 +36,8 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'repor
     TaskDrawerComponent,
     RunnerDrawerComponent,
     DisputeDrawerComponent,
+    RefundDrawerComponent,
+    RefundsPanelComponent,
     OpsDrawerComponent,
     InlineNoticeComponent,
   ],
@@ -106,6 +110,23 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'repor
               <span class="badge-count">{{ s.disputeCount() }}</span>
             }
           </button>
+          <button
+            class="ops-nav-item"
+            [class.active]="panel() === 'refunds'"
+            (click)="select('refunds')"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+              <path d="M3 4v4h4"></path>
+              <path d="M12 7v5l3 2"></path>
+            </svg>
+            Refunds
+            @if (s.refundBadge().count > 0) {
+              <span class="badge-count">{{
+                s.refundBadge().more ? '99+' : s.refundBadge().count
+              }}</span>
+            }
+          </button>
         </div>
 
         <div class="ops-nav-group">
@@ -161,6 +182,9 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'repor
             @case ('disputes') {
               <app-disputes-panel (open)="openDispute($event)" />
             }
+            @case ('refunds') {
+              <app-refunds-panel />
+            }
             @case ('reports') {
               <app-reports-panel />
             }
@@ -190,6 +214,9 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'repor
           }
           @case ('dispute') {
             <app-dispute-drawer [errandId]="t.id" />
+          }
+          @case ('refund') {
+            <app-refund-drawer [reviewId]="t.id" />
           }
         }
       }
@@ -243,6 +270,8 @@ export class AdminDashboardComponent implements OnInit {
         return 'Runner profile';
       case 'dispute':
         return `Dispute ${shortId(t.id)}`;
+      case 'refund':
+        return 'Refund review';
       default:
         return '';
     }
