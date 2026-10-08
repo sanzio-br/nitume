@@ -12,6 +12,8 @@
  *    `errand.status_changed`)
  *  - server -> client `evidence:uploaded`
  *  - server -> client `price_change:requested`
+ *  - server -> client `quote:reissued` (admin re-quote, N-4 / row 72)
+ *  - server -> client `merchant_details:updated` (Till/Paybill set)
  */
 export const errandRoom = (errandId: string): string => `errand:${errandId}`;
 
@@ -25,6 +27,8 @@ export const SocketServerEvent = {
   ERRAND_STATUS_CHANGED: 'errand:status_changed',
   EVIDENCE_UPLOADED: 'evidence:uploaded',
   PRICE_CHANGE_REQUESTED: 'price_change:requested',
+  QUOTE_REISSUED: 'quote:reissued',
+  MERCHANT_DETAILS_UPDATED: 'merchant_details:updated',
 } as const;
 
 /** In-process domain events (EventEmitter2) the realtime module listens to. */
@@ -32,6 +36,8 @@ export const DomainEvent = {
   ERRAND_STATUS_CHANGED: 'errand.status_changed',
   EVIDENCE_UPLOADED: 'evidence.uploaded',
   PRICE_CHANGE_REQUESTED: 'price_change.requested',
+  QUOTE_REISSUED: 'quote.reissued',
+  MERCHANT_DETAILS_UPDATED: 'errand.merchant_details_updated',
 } as const;
 
 export interface EvidenceUploadedEvent {

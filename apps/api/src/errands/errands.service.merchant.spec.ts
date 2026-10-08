@@ -8,6 +8,7 @@ const build = (status: ErrandStatus) => {
     findOne: vi.fn(() => Promise.resolve({ id: 'e-1', status })),
     update: vi.fn(() => Promise.resolve({})),
   };
+  const emit = vi.fn();
   const service = new ErrandsService(
     {} as never,
     errands as never,
@@ -17,11 +18,11 @@ const build = (status: ErrandStatus) => {
     {} as never,
     {} as never,
     {} as never,
-    { emit: vi.fn() } as never,
+    { emit } as never,
     {} as never,
     {} as never,
   );
-  return { service, errands };
+  return { service, errands, emit };
 };
 
 const codeOf = (p: Promise<unknown>) =>
@@ -41,6 +42,19 @@ describe('ErrandsService.setMerchantDetails (rows 42-44)', () => {
       merchantAccountReference: null,
     });
     expect(out).toMatchObject({ merchantTillNumber: '123456' });
+  });
+
+  it('emits errand.merchant_details_updated after saving', async () => {
+    const { service, emit } = build(ErrandStatus.ACCEPTED);
+    await service.setMerchantDetails('e-1', { merchantName: 'Naivas', tillNumber: '123456' });
+    await new Promise((r) => setImmediate(r));
+    expect(emit).toHaveBeenCalledWith('errand.merchant_details_updated', {
+      errandId: 'e-1',
+      merchantName: 'Naivas',
+      tillNumber: '123456',
+      paybillNumber: null,
+      accountReference: null,
+    });
   });
 
   it('stores a Paybill with its account reference', async () => {
