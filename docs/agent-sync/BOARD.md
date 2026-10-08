@@ -182,6 +182,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 87 | api-contract (round 3) | A cancellation review's ceiling is everything paid, so it can overlap earlier decrease refunds. Should the ceiling subtract decreases already refunded? | open |
 | 88 | api-contract (round 3) | Admin re-quote (QUOTED or ACCEPTED) is only allowed once the quote has expired. Should an admin be able to replace a still-valid quote? | open |
 | 89 | api-contract (round 3) | With PAYMENTS_PROVIDER=console in production, mock callbacks are trusted (a warning is logged). Refuse to start instead? Recommended: yes | open |
+| 90 | design-auditor (admin gap report) | Security (G-25): apps/admin logs access and refresh tokens and the OTP request response to the browser console (core/auth/auth.service.ts:39, 47, 50). Being removed on feat/admin-ops. FYI: anyone with console access on a shared machine could have read tokens | open (FYI) |
 
 ## Session log
 
@@ -213,3 +214,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-08 | design-auditor admin ops specs (refunds panel + drawer, merchant details, re-quote, dispute outcome); existing admin bugs logged; questions 77–83. api-contract round 3 started (feat/api-owner-answers-3); flutter-customer resumed after usage limit | 2a8fbd9 |
 | 2026-10-08 | web-parity stopped: no admin gap report and new features beyond parity scope. Owner authorised the build (row 84); design-auditor writing docs/audits/admin-gap-report.md on feat/admin-ops | — |
 | 2026-10-08 | api-contract round 3 (feat/api-owner-answers-3, built): multiple refund reviews + price_change_decrease, re-quote on ACCEPTED with explicit acceptance, MpesaProvider abstraction with PayHero first (verify by status re-query), N-1/2/5/6/7/8, merchant-details notifications; 279 unit + 36 e2e (throwaway DB); migrations quotes.acceptedAt and refund_reviews.priceChangeRequestId | 4dc6220, a50892f, 69a3eb0, 3f8a204, fe6e08b, f132f3c, e9cc755 |
+| 2026-10-08 | design-auditor admin gap report (FAIL, G-1..G-31; incl. security G-25 token logging); drawer-task, drawer-dispute → partial. web-parity dispatched on feat/admin-ops | e841db5 |
