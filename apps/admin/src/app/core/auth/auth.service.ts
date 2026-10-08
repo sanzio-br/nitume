@@ -35,8 +35,7 @@ export class AuthService {
   /** POST /auth/otp/email/request — emails a code to the entered admin address. */
   requestEmailOtp(email: string) {
     return this.http
-      .post<OtpRequestResult>(`${this.base}/auth/otp/email/request`, { email })
-      .pipe(tap((r) => console.info('[nitume:admin] OTP requested', r)));
+      .post<OtpRequestResult>(`${this.base}/auth/otp/email/request`, { email });
   }
 
   verifyEmailOtp(email: string, code: string) {
@@ -44,10 +43,8 @@ export class AuthService {
       .post<OtpVerifyResult>(`${this.base}/auth/otp/email/verify`, { email, code })
       .pipe(
         tap((res) => {
-          console.log('[AuthService] verifyEmailOtp response:', res);
           this.store.applyTokens(res.tokens);
           this.store.setUser(res.user);
-          console.log('[AuthService] store state after apply:', this.store.state());
         }),
       );
   }
