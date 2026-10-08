@@ -173,6 +173,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 81 | design-auditor (admin specs) | AQ-5: should the refund ceiling include the item amount paid to Nitume after the runner already bought the item? | open |
 | 82 | design-auditor (admin specs) | AQ-6: KSh vs KES in notifications? Can a payout receipt be corrected after `refunded`? Default no | open |
 | 83 | design-auditor (admin specs) | AQ-R2: should every quote require an expiry? Default required, 24h. A quote with null expiresAt can never be replaced | open |
+| 84 | web-parity | Scope: may web-parity build admin features beyond the mockup (Refunds panel/drawer, merchant details, re-quote, dispute outcome) from design-auditor specs? | answered (owner, 2026-10-08): yes, build the five spec'd admin features plus the existing-bug fixes, once recorded in docs/audits/admin-gap-report.md |
 
 ## Session log
 
@@ -202,3 +203,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-08 | core-ui integrations on feat/customer-integrations: socket_io_client RealtimeClient, Google Places + Maps, FCM PushService, url_launcher opener, decided chips/scrim, empty-title top bar, new error codes and models; 177 core tests | d847c64, 0406525, 63b5432, 767e429, ff59af0, dfc53bb, b48bd52, bae2b8d, 6cbf6f1, 915e525 |
 | 2026-10-08 | Owner answered rows 71–75 (multiple refund reviews + decrease trigger; admin re-quote while ACCEPTED; PayHero first behind a provider abstraction; OTP IP limits; firebase-admin). Owner shared a PayHero PHP reference client (kept in the session scratchpad, not committed) | — |
 | 2026-10-08 | design-auditor admin ops specs (refunds panel + drawer, merchant details, re-quote, dispute outcome); existing admin bugs logged; questions 77–83. api-contract round 3 started (feat/api-owner-answers-3); flutter-customer resumed after usage limit | 2a8fbd9 |
+| 2026-10-08 | web-parity stopped: no admin gap report and new features beyond parity scope. Owner authorised the build (row 84); design-auditor writing docs/audits/admin-gap-report.md on feat/admin-ops | — |
