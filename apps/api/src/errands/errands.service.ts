@@ -432,7 +432,7 @@ export class ErrandsService {
     viewer: ViewerContext,
   ): Promise<ErrandView> {
     const errand = await this.getById(errandId, viewer);
-    const active = await this.isActiveRunner(errandId, viewer.userId);
+    const active = await this.isCurrentRunner(errandId, viewer.userId);
     if (!active) {
       throw new ForbiddenException('Only the assigned runner can write runner notes');
     }
@@ -449,19 +449,19 @@ export class ErrandsService {
     return this.getDetail(errandId, viewer);
   }
 
-  private async isActiveRunner(errandId: string, userId: string): Promise<boolean> {
+  /**
+   * True when `userId` is the runner on the errand's CURRENT assignment (the
+   * newest assigned/accepted row). A past assignment (declined, expired or
+   * superseded by a newer one) grants nothing (BOARD rows 27, 65). Public so
+   * other modules (evidence, price change, location) share one rule.
+   */
+  async isCurrentRunner(errandId: string, userId: string): Promise<boolean> {
     const runnerProfile = await this.runnerProfiles.findOne({ where: { userId } });
     if (!runnerProfile) {
       return false;
     }
-    const row = await this.assignments.findOne({
-      where: {
-        errandId,
-        runnerProfileId: runnerProfile.id,
-        status: In(ACTIVE_ASSIGNMENT_STATUSES),
-      },
-    });
-    return row !== null;
+    const current = await this.activeAssignmentFor(errandId);
+    return current !== null && current.runnerProfileId === runnerProfile.id;
   }
 
   async listFor(
@@ -519,11 +519,16 @@ export class ErrandsService {
       if (!runnerProfile) {
         throw new ForbiddenException('Runner profile not found');
       }
+      // Only errands where this runner holds the current assignment (the
+      // newest assigned/accepted row); past assignments are not listed.
       qb.innerJoin(
         ErrandAssignment,
         'a',
-        'a."errandId" = e.id AND a."runnerProfileId" = :runnerProfileId',
-        { runnerProfileId: runnerProfile.id },
+        `a.id = (SELECT a2.id FROM "errand_assignments" a2
+                  WHERE a2."errandId" = e.id AND a2.status IN (:...activeAssignment)
+                  ORDER BY a2."createdAt" DESC LIMIT 1)
+         AND a."runnerProfileId" = :runnerProfileId`,
+        { runnerProfileId: runnerProfile.id, activeAssignment: ACTIVE_ASSIGNMENT_STATUSES },
       );
     } else if (viewer.role !== 'admin') {
       const profile = await this.customerProfiles.findOne({
@@ -888,16 +893,7 @@ export class ErrandsService {
       return true;
     }
     if (viewer.role === 'runner') {
-      const runnerProfile = await this.runnerProfiles.findOne({
-        where: { userId: viewer.userId },
-      });
-      if (!runnerProfile) {
-        return false;
-      }
-      const assignment = await this.assignments.findOne({
-        where: { errandId: errand.id, runnerProfileId: runnerProfile.id },
-      });
-      return assignment !== null;
+      return this.isCurrentRunner(errand.id, viewer.userId);
     }
     const ownerProfileId = await this.customerProfileIdFor(
       this.mutableEntityManager(),

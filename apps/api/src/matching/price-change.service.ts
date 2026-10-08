@@ -21,8 +21,6 @@ import { MerchantPaymentView, MerchantRoute } from '../payments/payment-views';
 import { PaymentsService } from '../payments/payments.service';
 import { Errand } from '../errands/errand.entity';
 import { ErrandsService } from '../errands/errands.service';
-import { ErrandAssignment } from '../errands/errand-assignment.entity';
-import { RunnerProfile } from '../runners/runner-profile.entity';
 import { PriceChangeRequest } from './price-change-request.entity';
 import { RequestPriceChangeDto } from './dto/price-change.dto';
 
@@ -62,10 +60,6 @@ export class PriceChangeService {
     private readonly requests: Repository<PriceChangeRequest>,
     @InjectRepository(Errand)
     private readonly errands: Repository<Errand>,
-    @InjectRepository(ErrandAssignment)
-    private readonly assignments: Repository<ErrandAssignment>,
-    @InjectRepository(RunnerProfile)
-    private readonly runners: Repository<RunnerProfile>,
     private readonly errandService: ErrandsService,
     private readonly events: EventEmitter2,
     private readonly payments: PaymentsService,
@@ -309,15 +303,8 @@ export class PriceChangeService {
     }
   }
 
-  private async isAssignedRunner(
-    errandId: string,
-    userId: string,
-  ): Promise<boolean> {
-    const runner = await this.runners.findOne({ where: { userId } });
-    if (!runner) return false;
-    const assignment = await this.assignments.findOne({
-      where: { errandId, runnerProfileId: runner.id },
-    });
-    return assignment !== null;
+  /** Runner on the errand's current assignment (BOARD rows 27, 65). */
+  private isAssignedRunner(errandId: string, userId: string): Promise<boolean> {
+    return this.errandService.isCurrentRunner(errandId, userId);
   }
 }

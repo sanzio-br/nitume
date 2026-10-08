@@ -9,8 +9,6 @@ const build = (getById: () => Promise<unknown>) => {
   const service = new PriceChangeService(
     requests as never,
     {} as never,
-    {} as never,
-    {} as never,
     errandService as never,
     { emit: vi.fn() } as never,
     {} as never,
@@ -71,8 +69,6 @@ describe('PriceChangeService.request domain event (A-2)', () => {
     const service = new PriceChangeService(
       requests as never,
       errands as never,
-      {} as never,
-      {} as never,
       {} as never,
       { emit } as never,
       {} as never,
@@ -149,8 +145,6 @@ describe('PriceChangeService decisions (owner Q8)', () => {
     const service = new PriceChangeService(
       requests as never,
       errands as never,
-      {} as never,
-      {} as never,
       errandService as never,
       { emit: vi.fn() } as never,
       payments as never,

@@ -10,8 +10,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserRole, GeoPoint } from '../common/enums';
 import { Errand } from '../errands/errand.entity';
-import { ErrandAssignment } from '../errands/errand-assignment.entity';
-import { RunnerProfile } from '../runners/runner-profile.entity';
 import { ErrandsService } from '../errands/errands.service';
 import { Evidence } from './evidence.entity';
 import { EVIDENCE_STORAGE } from './evidence-storage/evidence-storage.provider';
@@ -25,10 +23,6 @@ export class EvidenceService {
     private readonly evidence: Repository<Evidence>,
     @InjectRepository(Errand)
     private readonly errands: Repository<Errand>,
-    @InjectRepository(ErrandAssignment)
-    private readonly assignments: Repository<ErrandAssignment>,
-    @InjectRepository(RunnerProfile)
-    private readonly runners: Repository<RunnerProfile>,
     private readonly errandService: ErrandsService,
     @Inject(EVIDENCE_STORAGE)
     private readonly storage: EvidenceStorage,
@@ -114,7 +108,7 @@ export class EvidenceService {
     return rows;
   }
 
-  /** Customer (owner), assigned runner, or admin may view/attach. */
+  /** Customer (owner), the runner on the current assignment, or admin may view/attach. */
   private async hasAccess(
     errand: Errand,
     viewer: EvidenceViewerContext,
@@ -123,14 +117,8 @@ export class EvidenceService {
       return true;
     }
     if (viewer.role === UserRole.RUNNER) {
-      const runner = await this.runners.findOne({ where: { userId: viewer.userId } });
-      if (!runner) {
-        return false;
-      }
-      const assignment = await this.assignments.findOne({
-        where: { errandId: errand.id, runnerProfileId: runner.id },
-      });
-      return assignment !== null;
+      // Current assignment only (BOARD rows 27, 65).
+      return this.errandService.isCurrentRunner(errand.id, viewer.userId);
     }
     const owner = await this.errandService.getCustomerProfileId(viewer.userId);
     return owner === errand.customerId;
