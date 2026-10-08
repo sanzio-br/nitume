@@ -35,6 +35,11 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | customer/x-evidence-viewer | awaiting-owner | owner | feat/customer-screens | core-ui: counter in EvidenceViewer app bar | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/x-address-form | awaiting-owner | owner | feat/customer-screens | core-ui C-35, C-36 | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/x-support | specced | flutter-customer | feat/customer-integrations (planned) | core-ui AppConfig supportUri; url_launcher (SQ-2) | reviewed stack awaiting owner merge; round-2 spec changes (docs/customer-answers-2) → partial, rebuild queued |
+| admin/p-refunds | specced | web-parity | docs/admin-ops-spec (2a8fbd9) | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | New Refunds panel (Network nav, badge, filters); EXTENDS MOCKUP |
+| admin/drawer-refund | specced | web-parity | docs/admin-ops-spec (2a8fbd9) | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | Refund decision + payout drawer; EXTENDS MOCKUP |
+| admin/drawer-task-merchant-details | specced | web-parity | docs/admin-ops-spec (2a8fbd9) | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | Merchant Till/Paybill section in task drawer; EXTENDS MOCKUP |
+| admin/drawer-task-requote | specced | web-parity | docs/admin-ops-spec (2a8fbd9) | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | Quote section + Issue new quote; EXTENDS MOCKUP |
+| admin/drawer-dispute-outcome | specced | web-parity | docs/admin-ops-spec (2a8fbd9) | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | Dispute verdict copy, rules, result; EXTENDS MOCKUP |
 
 All 17 existing customer specs + shell updated with owner answers on docs/customer-spec-answers (stages unchanged). x-recurring-tasks dropped (out of MVP).
 
@@ -79,6 +84,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | orchestrator | web-parity | Admin: refund review screens, merchant Till/Paybill entry (row 43), dispute resolve → COMPLETED | queued (after API) |
 | api-contract | web-parity | Admin merchant-details form (PUT /errands/:id/merchant-details) and re-quote action (POST /errands/:id/quote on expired quote) | queued |
 | api-contract | owner/ops | After merge: migration:run (1790100500000); set TRUST_PROXY_HOPS, FCM_*, PAYMENTS_MPESA_* and queue env vars per environment; .env.example not updated (agent blocked from reading it) | open |
+| design-auditor | web-parity | Existing admin bugs found while speccing: quote modal sends strings (400, errors only to console); Assign runner shown before PAYMENT_CONFIRMED; .drawer-modal/.modal-* unstyled and btn-primary without .btn; dispute drawer amber button, no 20-char note minimum, false "resolved" on failure, description shown as reason, DISPUTED→CONFIRMED comments; admin app has no tests | open |
 
 ## Questions for the project owner
 
@@ -160,6 +166,13 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 74 | api-contract (round 2) | Per-IP OTP limits: defaults 30 requests and 60 verifies per hour per IP per route (generous for carrier NAT). Confirm? Device-level throttling isn't possible (no device id on OTP requests) | answered (owner): confirmed 30 requests/hour and 60 verifies/hour per IP; keep the per-phone/account limits as an additional layer |
 | 75 | api-contract (round 2) | New API packages added under approved rows: @nestjs/throttler (53), bullmq + @nestjs/bullmq (26), firebase-admin (31 server-side push). Confirm firebase-admin on the server is covered by row 31 | answered (owner): yes, covered by row 31. The agent must list exactly which Firebase credentials/config the server needs |
 | 76 | core-ui (integrations) | send_to_runner item amount: one combined STK charge (service + runner + item, as the API is built) or a separate item STK (as _shared.md §8.1/§8.2 say)? Ties to row 66 (SQ-7) | answered (owner, 2026-10-08): one combined STK (service + runner + item) as the API is built; receipt shows the item amount on its own line; specs §8.1/§8.2 to be updated |
+| 77 | design-auditor (admin specs) | AQ-1: who may approve refunds and record payouts? Should a second admin approve above some amount? Also: Refunds nav under Network or a new Payments group? | open |
+| 78 | design-auditor (admin specs) | AQ-2: rename the mockup's "Refund customer" dispute verdict to "Side with customer" (it only opens a refund review, which can end at KSh 0)? | open |
+| 79 | design-auditor (admin specs) | AQ-3: can both the customer and the runner see the dispute resolution note? Default yes | open |
+| 80 | design-auditor (admin specs) | AQ-4: which categories can carry a merchant amount? Default Buy For Me, Get It For Me. If merchant details change after the customer started a merchant-direct payment: block or warn? Default warn | open |
+| 81 | design-auditor (admin specs) | AQ-5: should the refund ceiling include the item amount paid to Nitume after the runner already bought the item? | open |
+| 82 | design-auditor (admin specs) | AQ-6: KSh vs KES in notifications? Can a payout receipt be corrected after `refunded`? Default no | open |
+| 83 | design-auditor (admin specs) | AQ-R2: should every quote require an expiry? Default required, 24h. A quote with null expiresAt can never be replaced | open |
 
 ## Session log
 
@@ -188,3 +201,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-08 | api-contract round 2 (feat/api-owner-answers-2, built): rating access, current-assignment access, shortName, quote_expired + admin re-quote, IN_PROGRESS-only price changes, merchant details, send_to_runner via Nitume STK, refund status, STK Query, per-IP OTP throttling, BullMQ notifications + dispute-window job + FCM push, 15-min signed evidence URLs; 217 unit + 31 e2e (throwaway DB) | 80bb176, 5f0b138, 44a8e60, 75b5d97, 0ad2116, 9b54e64, b6c8cda, 2002e21, 726105c, 811e32f, 5a1ddcd, c5d4c08, 99e3ca5, 58d3a75, 595f19e, 5dacfd6, cb48266, 13f8760 |
 | 2026-10-08 | core-ui integrations on feat/customer-integrations: socket_io_client RealtimeClient, Google Places + Maps, FCM PushService, url_launcher opener, decided chips/scrim, empty-title top bar, new error codes and models; 177 core tests | d847c64, 0406525, 63b5432, 767e429, ff59af0, dfc53bb, b48bd52, bae2b8d, 6cbf6f1, 915e525 |
 | 2026-10-08 | Owner answered rows 71–75 (multiple refund reviews + decrease trigger; admin re-quote while ACCEPTED; PayHero first behind a provider abstraction; OTP IP limits; firebase-admin). Owner shared a PayHero PHP reference client (kept in the session scratchpad, not committed) | — |
+| 2026-10-08 | design-auditor admin ops specs (refunds panel + drawer, merchant details, re-quote, dispute outcome); existing admin bugs logged; questions 77–83. api-contract round 3 started (feat/api-owner-answers-3); flutter-customer resumed after usage limit | 2a8fbd9 |
