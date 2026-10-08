@@ -34,6 +34,7 @@ import { StkGateway } from './stk-gateway/stk-gateway.interface';
 import { MpesaCallbackDto } from './dto/payment.dto';
 import { ApiError } from '../common/api-error';
 import { CustomerAccountsService } from '../customers/customer-accounts.service';
+import { UsersService } from '../users/users.service';
 import { RefundTrigger } from './refund-review.entity';
 import { RefundsService } from './refunds.service';
 import {
@@ -50,6 +51,17 @@ export interface InitiateOptions {
   idempotencyKey?: string;
   merchantRoute?: MerchantRoute;
   paymentMethodId?: string;
+}
+
+/** A price-change difference payment as returned to the customer. */
+export interface DifferencePaymentView {
+  payment: Payment;
+  transactions: PaymentTransaction[];
+  /** STK status for send_to_runner differences; null for merchant_direct. */
+  stkStatus: StkStatus | null;
+  /** Set right after a push; null on later reads. */
+  checkoutRequestId: string | null;
+  merchantPayment: MerchantPaymentView | null;
 }
 
 export interface InitiateResult {
@@ -100,6 +112,7 @@ export class PaymentsService implements OnApplicationBootstrap {
     private readonly config: ConfigService,
     private readonly accounts: CustomerAccountsService,
     private readonly refunds: RefundsService,
+    private readonly users: UsersService,
   ) {}
 
   /** Lazy, idempotent upsert of the payment_type reference table. */
@@ -183,15 +196,17 @@ export class PaymentsService implements OnApplicationBootstrap {
     const flow = await this.flowFor(errandId, merchantAmount, opts.merchantRoute);
     const phone = await this.payerPhone(user, opts.paymentMethodId);
 
-    const reference = `NTM-${Date.now().toString(36).toUpperCase()}`;
+    const reference = newReference();
+    // send_to_runner is platform-mediated (rows 42, 48): the purchase amount
+    // joins the same STK charge to Nitume as a merchant_payment leg.
+    const collectMerchant = flow === PaymentFlow.CUSTOMER_TO_RUNNER && merchantAmount > 0;
+    const chargeKes = serviceFee + runnerFee + (collectMerchant ? merchantAmount : 0);
 
-    const [serviceFeeType, runnerFeeType] = await Promise.all([
-      this.paymentTypes.findOne({ where: { code: PaymentTypeCode.SERVICE_FEE } }),
-      this.paymentTypes.findOne({ where: { code: PaymentTypeCode.RUNNER_FEE } }),
+    const [serviceFeeType, runnerFeeType, merchantType] = await Promise.all([
+      this.paymentTypeId(PaymentTypeCode.SERVICE_FEE),
+      this.paymentTypeId(PaymentTypeCode.RUNNER_FEE),
+      this.paymentTypeId(PaymentTypeCode.MERCHANT_PAYMENT),
     ]);
-    if (!serviceFeeType || !runnerFeeType) {
-      throw new Error('payment_type reference data is not seeded');
-    }
 
     // The payment row and its two legs are written together, so a
     // concurrent initiate that loses on a unique index (same key, or the
@@ -214,22 +229,34 @@ export class PaymentsService implements OnApplicationBootstrap {
             idempotencyKey: opts.idempotencyKey ?? null,
           }),
         );
-        const legs = await txRepo.save([
+        const legRows = [
           txRepo.create({
             paymentId: saved.id,
-            paymentTypeId: serviceFeeType.id,
+            paymentTypeId: serviceFeeType,
             mpesaReference: reference,
             amount: serviceFee.toFixed(2),
             status: PaymentTransactionStatus.INITIATED,
           }),
           txRepo.create({
             paymentId: saved.id,
-            paymentTypeId: runnerFeeType.id,
+            paymentTypeId: runnerFeeType,
             mpesaReference: reference,
             amount: runnerFee.toFixed(2),
             status: PaymentTransactionStatus.INITIATED,
           }),
-        ]);
+        ];
+        if (collectMerchant) {
+          legRows.push(
+            txRepo.create({
+              paymentId: saved.id,
+              paymentTypeId: merchantType,
+              mpesaReference: reference,
+              amount: merchantAmount.toFixed(2),
+              status: PaymentTransactionStatus.INITIATED,
+            }),
+          );
+        }
+        const legs = await txRepo.save(legRows);
         return { payment: saved, txRows: legs };
       }));
     } catch (err) {
@@ -261,10 +288,11 @@ export class PaymentsService implements OnApplicationBootstrap {
 
     const push = await this.stk.push({
       phone,
-      amountKes: (serviceFee + runnerFee).toFixed(2),
+      amountKes: round2(chargeKes).toFixed(2),
       reference,
       description: `Nitume errand ${errand.reference ?? errandId}`,
     });
+    await this.rememberCheckout(txRows, push);
 
     return {
       payment,
@@ -307,13 +335,17 @@ export class PaymentsService implements OnApplicationBootstrap {
   }
 
   /**
-   * Records the merchant/item price difference of an approved price change
-   * (no service or runner fee) on the same merchant route as the original
-   * merchant amount, and tells the customer how to pay it. No STK push: the
-   * merchant amount never goes through Nitume's charge (owner question on
-   * how the difference is collected). Errands without a merchant amount so
-   * far need `route` (merchant_route_required). Pass `manager` to write the
-   * record inside the caller's transaction (price-change approval).
+   * Records the merchant/item difference of an approved price-change
+   * increase (no service or runner fee), paid by the same route as the
+   * original merchant amount (rows 44, 48):
+   * - send_to_runner: an STK charge to Nitume for the difference (a
+   *   merchant_payment leg); the push itself happens after the caller's
+   *   transaction commits (`chargeDifference`).
+   * - merchant_direct: the customer pays the merchant's Till/Paybill.
+   * When the original route is unavailable (no merchant amount so far, or
+   * merchant_direct without Till/Paybill details) the customer must pick a
+   * route explicitly (`merchant_route_required`). Pass `manager` to write
+   * inside the caller's transaction (price-change approval).
    */
   async recordPriceDifference(
     errandId: string,
@@ -324,13 +356,31 @@ export class PaymentsService implements OnApplicationBootstrap {
   ): Promise<{ payment: Payment; merchantPayment: MerchantPaymentView | null }> {
     const repo = manager ? manager.getRepository(Payment) : this.payments;
     const primary = await repo.findOne({
-      where: { errandId, priceChangeRequestId: IsNull() },
+      where: { errandId, priceChangeRequestId: IsNull(), status: Not(PaymentStatus.FAILED) },
       order: { createdAt: 'DESC' },
     });
-    const primaryRoute = primary ? routeOf(primary.paymentFlow) : null;
-    const flow = primaryRoute
-      ? ROUTE_TO_FLOW[primaryRoute]
+    const original = primary ? routeOf(primary.paymentFlow) : null;
+    const usable =
+      original === MerchantRoute.SEND_TO_RUNNER ||
+      (original === MerchantRoute.MERCHANT_DIRECT && (await this.merchantDetailsFor(errandId)) !== null);
+    const flow = usable && original
+      ? ROUTE_TO_FLOW[original]
       : await this.flowFor(errandId, difference, route);
+    const write = (m: EntityManager) =>
+      this.saveDifference(m, errandId, priceChangeRequestId, difference, flow);
+    const payment = manager ? await write(manager) : await this.payments.manager.transaction(write);
+    return { payment, merchantPayment: await this.merchantPaymentFor(payment) };
+  }
+
+  /** Difference payment row, plus its merchant_payment leg when charged by STK. */
+  private async saveDifference(
+    manager: EntityManager,
+    errandId: string,
+    priceChangeRequestId: string,
+    difference: number,
+    flow: PaymentFlow,
+  ): Promise<Payment> {
+    const repo = manager.getRepository(Payment);
     const payment = await repo.save(
       repo.create({
         errandId,
@@ -342,7 +392,166 @@ export class PaymentsService implements OnApplicationBootstrap {
         status: PaymentStatus.PENDING,
       }),
     );
-    return { payment, merchantPayment: await this.merchantPaymentFor(payment) };
+    if (flow === PaymentFlow.CUSTOMER_TO_RUNNER) {
+      const txRepo = manager.getRepository(PaymentTransaction);
+      await txRepo.save(
+        txRepo.create({
+          paymentId: payment.id,
+          paymentTypeId: await this.paymentTypeId(PaymentTypeCode.MERCHANT_PAYMENT),
+          mpesaReference: newReference(),
+          amount: difference.toFixed(2),
+          status: PaymentTransactionStatus.INITIATED,
+        }),
+      );
+    }
+    return payment;
+  }
+
+  /**
+   * Pushes the STK charge of a send_to_runner difference payment to the
+   * errand owner's phone (default M-Pesa method, else login phone). No-op
+   * for merchant_direct differences. Call after the recording transaction
+   * has committed.
+   */
+  async chargeDifference(paymentId: string): Promise<DifferencePaymentView> {
+    const payment = await this.payments.findOne({ where: { id: paymentId } });
+    if (!payment?.priceChangeRequestId) {
+      throw new NotFoundException('Price difference payment not found');
+    }
+    if (payment.paymentFlow === PaymentFlow.CUSTOMER_TO_RUNNER && payment.status === PaymentStatus.PENDING) {
+      const legs = await this.transactions.find({ where: { paymentId } });
+      const errand = await this.errands.getById(payment.errandId);
+      const push = await this.stk.push({
+        phone: await this.ownerPhone(errand.customerId),
+        amountKes: payment.merchantAmount,
+        reference: legs[0]?.mpesaReference ?? '',
+        description: `Nitume price change ${errand.reference ?? errand.id}`,
+      });
+      await this.rememberCheckout(legs, push);
+      return this.differenceView(payment, push.checkoutRequestId);
+    }
+    return this.differenceView(payment);
+  }
+
+  /**
+   * Customer retries the STK charge of a send_to_runner difference after it
+   * FAILED: a new difference payment row is written and pushed. A pending,
+   * timed-out or paid difference is returned as is (no second push).
+   */
+  async retryDifference(
+    errandId: string,
+    priceChangeRequestId: string,
+    user: AuthContext,
+  ): Promise<DifferencePaymentView> {
+    await this.assertOwner(errandId, user);
+    const latest = await this.payments.findOne({
+      where: { errandId, priceChangeRequestId },
+      order: { createdAt: 'DESC' },
+    });
+    if (!latest) {
+      throw new NotFoundException('No price difference payment for this request');
+    }
+    if (latest.paymentFlow !== PaymentFlow.CUSTOMER_TO_RUNNER) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'difference_not_stk',
+        'This difference is paid to the merchant directly, not by STK',
+      );
+    }
+    if (latest.status !== PaymentStatus.FAILED) {
+      return this.differenceView(latest);
+    }
+    const fresh = await this.payments.manager.transaction((manager) =>
+      this.saveDifference(
+        manager,
+        errandId,
+        priceChangeRequestId,
+        Number(latest.merchantAmount),
+        PaymentFlow.CUSTOMER_TO_RUNNER,
+      ),
+    );
+    return this.chargeDifference(fresh.id);
+  }
+
+  private async differenceView(
+    payment: Payment,
+    checkoutRequestId?: string,
+  ): Promise<DifferencePaymentView> {
+    const transactions = await this.transactions.find({ where: { paymentId: payment.id } });
+    return {
+      payment,
+      transactions,
+      stkStatus:
+        payment.paymentFlow === PaymentFlow.CUSTOMER_TO_RUNNER ? this.stkStatus(payment) : null,
+      checkoutRequestId: checkoutRequestId ?? null,
+      merchantPayment: await this.merchantPaymentFor(payment),
+    };
+  }
+
+  /** Every price-change difference payment of an errand, newest first. */
+  private async differencesFor(errandId: string): Promise<DifferencePaymentView[]> {
+    const rows = await this.payments.find({
+      where: { errandId, priceChangeRequestId: Not(IsNull()) },
+      order: { createdAt: 'DESC' },
+    });
+    return Promise.all(rows.map((row) => this.differenceView(row)));
+  }
+
+  /** Phone that receives an STK push for the errand owner. */
+  private async ownerPhone(customerProfileId: string): Promise<string> {
+    const profile = await this.customers.findOne({ where: { id: customerProfileId } });
+    if (!profile) {
+      throw new NotFoundException('Customer profile not found');
+    }
+    const methods = await this.accounts.listPaymentMethods(profile.userId);
+    const preferred = methods.find(
+      (m) => m.type === PaymentMethodType.MPESA && m.isDefault && m.phoneNumber,
+    );
+    if (preferred?.phoneNumber) {
+      return preferred.phoneNumber;
+    }
+    const owner = await this.users.findById(profile.userId);
+    if (!owner) {
+      throw new NotFoundException('Customer account not found');
+    }
+    return owner.phone;
+  }
+
+  private async assertOwner(errandId: string, user: AuthContext): Promise<void> {
+    const customer = await this.customers.findOne({ where: { userId: user.userId } });
+    const errand = await this.errands.getById(errandId);
+    if (!customer || errand.customerId !== customer.id) {
+      throw new ForbiddenException('Errand belongs to another customer');
+    }
+  }
+
+  /**
+   * Keeps the provider's checkout ids on the legs (`rawCallback.stkPush`) so
+   * an unresolved push can be looked up later (STK Query, row 52).
+   */
+  private async rememberCheckout(
+    legs: PaymentTransaction[],
+    push: { checkoutRequestId: string; merchantRequestId?: string },
+  ): Promise<void> {
+    if (legs.length === 0) {
+      return;
+    }
+    const stkPush = {
+      checkoutRequestId: push.checkoutRequestId,
+      merchantRequestId: push.merchantRequestId ?? null,
+      gateway: this.stk.name,
+    };
+    await this.transactions.save(
+      legs.map((leg) => this.transactions.merge(leg, { rawCallback: { ...leg.rawCallback, stkPush } })),
+    );
+  }
+
+  private async paymentTypeId(code: PaymentTypeCode): Promise<string> {
+    const row = await this.paymentTypes.findOne({ where: { code } });
+    if (!row) {
+      throw new Error('payment_type reference data is not seeded');
+    }
+    return row.id;
   }
 
   private stkStatus(payment: Payment): StkStatus {
@@ -402,12 +611,13 @@ export class PaymentsService implements OnApplicationBootstrap {
       return null;
     }
     if (route === MerchantRoute.SEND_TO_RUNNER) {
-      return { route, amount: payment.merchantAmount };
+      return { route, amount: payment.merchantAmount, paidTo: 'nitume' };
     }
     const details = await this.merchantDetailsFor(payment.errandId);
     return {
       route,
       amount: payment.merchantAmount,
+      paidTo: 'merchant',
       merchantName: details?.merchantName ?? null,
       tillNumber: details?.tillNumber ?? null,
       paybillNumber: details?.paybillNumber ?? null,
@@ -487,8 +697,9 @@ export class PaymentsService implements OnApplicationBootstrap {
         rows.map((r) =>
           txRepo.merge(r, {
             status,
+            // Keeps the push ids (`stkPush`) next to the provider result.
             // eslint-disable-next-line no-misused-spread -- DTO → plain JSON
-            rawCallback: { ...dto, ts: new Date().toISOString() },
+            rawCallback: { ...r.rawCallback, ...dto, ts: new Date().toISOString() },
           }),
         ),
       );
@@ -500,7 +711,8 @@ export class PaymentsService implements OnApplicationBootstrap {
       }
     });
 
-    if (success && !cancelled) {
+    // A price-change difference never moves the errand (it is already paid).
+    if (success && !cancelled && !payment.priceChangeRequestId) {
       await this.confirmErrandAfterPayment(errandId);
     }
   }
@@ -579,6 +791,7 @@ export class PaymentsService implements OnApplicationBootstrap {
     transactions: PaymentTransaction[];
     stkStatus: StkStatus | null;
     merchantPayment: MerchantPaymentView | null;
+    differencePayments: DifferencePaymentView[];
   }> {
     if (user.role !== 'admin') {
       const customer = await this.customers.findOne({ where: { userId: user.userId } });
@@ -589,7 +802,13 @@ export class PaymentsService implements OnApplicationBootstrap {
     }
     const payment = await this.primaryPayment(errandId);
     if (!payment) {
-      return { payment: null, transactions: [], stkStatus: null, merchantPayment: null };
+      return {
+        payment: null,
+        transactions: [],
+        stkStatus: null,
+        merchantPayment: null,
+        differencePayments: [],
+      };
     }
     const transactions = await this.transactions.find({
       where: { paymentId: payment.id },
@@ -599,9 +818,13 @@ export class PaymentsService implements OnApplicationBootstrap {
       transactions,
       stkStatus: this.stkStatus(payment),
       merchantPayment: await this.merchantPaymentFor(payment),
+      differencePayments: await this.differencesFor(errandId),
     };
   }
 }
+
+const newReference = (): string =>
+  `NTM-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 

@@ -4,10 +4,12 @@ import {
   Get,
   Headers,
   Param,
+  ParseUUIDPipe,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { AuthContext, Public } from '../common/decorators/auth.decorators';
+import { AuthContext, Public, Roles } from '../common/decorators/auth.decorators';
+import { UserRole } from '../common/enums';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { InitiatePaymentDto, MpesaCallbackDto } from './dto/payment.dto';
@@ -42,6 +44,21 @@ export class PaymentsController {
   async mpesaCallback(@Body() dto: MpesaCallbackDto): Promise<{ received: true }> {
     await this.payments.handleCallback(dto);
     return { received: true };
+  }
+
+  /**
+   * Retries the STK charge of a send_to_runner price-change difference after
+   * it FAILED (rows 44, 48). A pending or paid difference comes back as is.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.CUSTOMER)
+  @Post(':errandId/price-changes/:requestId/initiate')
+  retryDifference(
+    @Param('errandId', ParseUUIDPipe) errandId: string,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @CurrentUser() user: AuthContext,
+  ) {
+    return this.payments.retryDifference(errandId, requestId, user);
   }
 
   @UseGuards(JwtAuthGuard)

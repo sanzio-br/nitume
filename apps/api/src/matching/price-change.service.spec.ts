@@ -140,7 +140,13 @@ describe('PriceChangeService decisions (owner Q8)', () => {
     };
     const payments = {
       recordPriceDifference: vi.fn(() =>
-        Promise.resolve({ payment: { id: 'p-diff' }, merchantPayment: { route: 'send_to_runner', amount: '150.00' } }),
+        Promise.resolve({
+          payment: { id: 'p-diff', paymentFlow: 'customer_to_runner' },
+          merchantPayment: { route: 'send_to_runner', amount: '150.00', paidTo: 'nitume' },
+        }),
+      ),
+      chargeDifference: vi.fn((id: string) =>
+        Promise.resolve({ payment: { id }, stkStatus: 'PENDING', checkoutRequestId: 'chk-9' }),
       ),
     };
     const service = new PriceChangeService(
@@ -200,6 +206,34 @@ describe('PriceChangeService decisions (owner Q8)', () => {
     expect(payments.recordPriceDifference).toHaveBeenCalledWith('e-1', 'pc-1', 150, undefined, expect.anything());
     expect(res.status).toBe(PriceChangeStatus.APPROVED);
     expect(res.differencePayment?.payment).toEqual({ id: 'p-diff' });
+  });
+
+  it('charges the difference by STK only after the approval transaction commits', async () => {
+    const { service, payments, requests } = setup('IN_PROGRESS');
+    let committed = false;
+    const tx = vi.mocked(requests.manager.transaction);
+    const inner = tx.getMockImplementation()!;
+    tx.mockImplementationOnce(async (fn) => {
+      const out = await inner(fn);
+      committed = true;
+      return out;
+    });
+    payments.chargeDifference.mockImplementationOnce((id: string) => {
+      expect(committed).toBe(true);
+      return Promise.resolve({ payment: { id }, stkStatus: 'PENDING', checkoutRequestId: 'chk-9' });
+    });
+    const res = await service.approve('e-1', 'pc-1', customerActor);
+    expect(payments.chargeDifference).toHaveBeenCalledWith('p-diff');
+    expect(res.differencePayment?.checkoutRequestId).toBe('chk-9');
+  });
+
+  it('does not charge anything when the approval fails', async () => {
+    const { service, payments } = setup('IN_PROGRESS');
+    payments.recordPriceDifference.mockImplementationOnce(() =>
+      Promise.reject(new Error('merchant_route_required')),
+    );
+    await expect(service.approve('e-1', 'pc-1', customerActor)).rejects.toThrow();
+    expect(payments.chargeDifference).not.toHaveBeenCalled();
   });
 
   it('approval before payment only moves the merchant amount', async () => {

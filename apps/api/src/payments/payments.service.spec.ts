@@ -49,6 +49,7 @@ const build = (opts: {
     find: vi.fn(() => Promise.resolve([{ mpesaReference: 'NTM-OLD' }])),
     create: vi.fn((row: object) => row),
     save: vi.fn((rows: object[]) => Promise.resolve(rows)),
+    merge: vi.fn((row: object, patch: object) => Object.assign(row, patch)),
   };
   const manager = {
     getRepository: (entity: { name: string }) =>
@@ -81,6 +82,7 @@ const build = (opts: {
   };
   const stk = { push: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-1', transactionId: 't' })) };
   const config = { get: vi.fn((_k: string, d: unknown) => d) };
+  const users = { findById: vi.fn(() => Promise.resolve({ id: 'u-1', phone: '+254700000001' })) };
   const accounts = { listPaymentMethods: vi.fn(() => Promise.resolve(opts.methods ?? [])) };
   const service = new PaymentsService(
     payments as never,
@@ -92,6 +94,7 @@ const build = (opts: {
     config as never,
     accounts as never,
     {} as never,
+    users as never,
   );
   return { service, payments, transactions, stk };
 };
@@ -244,13 +247,38 @@ describe('PaymentsService.initiate', () => {
     });
   });
 
-  it('records send_to_runner as customer_to_runner without Till/Paybill fields', async () => {
-    const { service, payments } = build({ budget: '2500.00' });
+  it('collects send_to_runner by STK to Nitume with a merchant_payment leg (row 42)', async () => {
+    const { service, payments, transactions, stk } = build({ budget: '2500.00' });
     const res = await service.initiate('e-1', user, { merchantRoute: MerchantRoute.SEND_TO_RUNNER });
     expect(payments.create).toHaveBeenCalledWith(
       expect.objectContaining({ paymentFlow: PaymentFlow.CUSTOMER_TO_RUNNER, merchantAmount: '2500.00' }),
     );
-    expect(res.merchantPayment).toEqual({ route: 'send_to_runner', amount: '2500.00' });
+    expect(transactions.save).toHaveBeenCalledWith([
+      expect.objectContaining({ paymentTypeId: 'type-service_fee', amount: '200.00' }),
+      expect.objectContaining({ paymentTypeId: 'type-runner_fee', amount: '300.00' }),
+      expect.objectContaining({ paymentTypeId: 'type-merchant_payment', amount: '2500.00' }),
+    ]);
+    // service 200 + runner 300 + purchase 2500, one push to Nitume.
+    expect(stk.push).toHaveBeenCalledWith(expect.objectContaining({ amountKes: '3000.00' }));
+    expect(res.merchantPayment).toEqual({ route: 'send_to_runner', amount: '2500.00', paidTo: 'nitume' });
+  });
+
+  it('keeps merchant_direct out of the STK charge', async () => {
+    const { service, stk } = build({
+      budget: '2500.00',
+      merchant: { merchantName: 'Naivas', merchantTillNumber: '123456' },
+    });
+    await service.initiate('e-1', user, { merchantRoute: MerchantRoute.MERCHANT_DIRECT });
+    expect(stk.push).toHaveBeenCalledWith(expect.objectContaining({ amountKes: '500.00' }));
+  });
+
+  it('stores the provider checkout ids on the legs after the push', async () => {
+    const { service, transactions } = build();
+    await service.initiate('e-1', user);
+    expect(transactions.merge).toHaveBeenCalledWith(
+      expect.anything(),
+      { rawCallback: { stkPush: { checkoutRequestId: 'chk-1', merchantRequestId: null, gateway: undefined } } },
+    );
   });
 
   it('charges the selected M-Pesa method, then the default, then the login phone', async () => {

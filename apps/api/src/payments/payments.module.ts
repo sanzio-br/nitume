@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { CustomersModule } from '../customers/customers.module';
 import { ErrandsModule } from '../errands/errands.module';
+import { UsersModule } from '../users/users.module';
 import { Payment } from './payment.entity';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
@@ -18,6 +19,7 @@ import { stkGatewayProvider } from './stk-gateway/stk-gateway.provider';
   imports: [
     ErrandsModule,
     CustomersModule,
+    UsersModule,
     TypeOrmModule.forFeature([
       Payment,
       PaymentTransaction,

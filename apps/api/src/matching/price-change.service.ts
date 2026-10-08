@@ -10,15 +10,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import {
   ErrandStatus,
+  PaymentFlow,
   PriceChangeStatus,
   StatusHistoryActor,
   UserRole,
 } from '../common/enums';
 import { ApiError } from '../common/api-error';
 import { ErrandStateMachine, TransitionGuard } from '../errands/errand-state-machine';
-import { Payment } from '../payments/payment.entity';
-import { MerchantPaymentView, MerchantRoute } from '../payments/payment-views';
-import { PaymentsService } from '../payments/payments.service';
+import { MerchantRoute } from '../payments/payment-views';
+import { DifferencePaymentView, PaymentsService } from '../payments/payments.service';
 import { Errand } from '../errands/errand.entity';
 import { ErrandsService } from '../errands/errands.service';
 import { PriceChangeRequest } from './price-change-request.entity';
@@ -46,11 +46,12 @@ const POST_PAYMENT = new Set<ErrandStatus>([
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export type PriceChangeDecision = PriceChangeRequest & {
-  /** Set when an approved increase on a paid task was recorded. */
-  differencePayment: {
-    payment: Payment;
-    merchantPayment: MerchantPaymentView | null;
-  } | null;
+  /**
+   * Set when an approved increase on a paid task was recorded. For
+   * send_to_runner it carries the STK charge to Nitume (stkStatus,
+   * checkoutRequestId); for merchant_direct the Till/Paybill to pay.
+   */
+  differencePayment: DifferencePaymentView | null;
 };
 
 @Injectable()
@@ -152,7 +153,7 @@ export class PriceChangeService {
     await this.assertCustomer(errandId, actor);
     // One transaction: status check, difference record, budget and request.
     // Lock order errand -> request matches reject (transition, then request).
-    return this.requests.manager.transaction(async (manager) => {
+    const decided = await this.requests.manager.transaction(async (manager) => {
       const errand = await manager.getRepository(Errand).findOne({
         where: { id: errandId },
         lock: { mode: 'pessimistic_write' },
@@ -164,24 +165,31 @@ export class PriceChangeService {
         );
       }
       const difference = round2(Number(req.toPrice) - Number(req.fromPrice));
-      let differencePayment: PriceChangeDecision['differencePayment'] = null;
+      let recorded: { paymentId: string; flow: PaymentFlow } | null = null;
       if (difference > 0 && POST_PAYMENT.has(errand.status)) {
         // Validates the route before anything is written.
-        differencePayment = await this.payments.recordPriceDifference(
+        const { payment } = await this.payments.recordPriceDifference(
           errandId,
           req.id,
           difference,
           route,
           manager,
         );
+        recorded = { paymentId: payment.id, flow: payment.paymentFlow };
       }
       await manager.getRepository(Errand).update(errandId, { budget: req.toPrice });
       req.status = PriceChangeStatus.APPROVED;
       req.decidedByUserId = actor.userId;
       req.decidedAt = new Date();
       const saved = await manager.getRepository(PriceChangeRequest).save(req);
-      return Object.assign(saved, { differencePayment });
+      return { saved, recorded };
     });
+    // The STK charge for a send_to_runner difference goes out only after the
+    // approval has committed (rows 44, 48).
+    const differencePayment = decided.recorded
+      ? await this.payments.chargeDifference(decided.recorded.paymentId)
+      : null;
+    return Object.assign(decided.saved, { differencePayment });
   }
 
   /**

@@ -62,10 +62,21 @@ export interface MerchantDetails {
 }
 
 /**
+ * Who receives the merchant/item amount from the customer:
+ * - `nitume`: send_to_runner is platform-mediated (rows 42, 48). The amount
+ *   is part of the customer's STK charge to Nitume and the runner is
+ *   reimbursed through the payout ledger. Never a direct customer-to-runner
+ *   transfer.
+ * - `merchant`: merchant_direct, the customer pays the merchant's Till or
+ *   Paybill themselves.
+ */
+export type MerchantPayee = 'nitume' | 'merchant';
+
+/**
  * How the customer settles the merchant/item amount. Till/Paybill fields
  * are present only for `merchant_direct`; null when there is no merchant
  * amount (platform-only errand).
  */
 export type MerchantPaymentView =
-  | ({ route: MerchantRoute.MERCHANT_DIRECT; amount: string } & MerchantDetails)
-  | { route: MerchantRoute.SEND_TO_RUNNER; amount: string };
+  | ({ route: MerchantRoute.MERCHANT_DIRECT; amount: string; paidTo: 'merchant' } & MerchantDetails)
+  | { route: MerchantRoute.SEND_TO_RUNNER; amount: string; paidTo: 'nitume' };
