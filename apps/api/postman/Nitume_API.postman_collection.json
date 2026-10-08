@@ -40,6 +40,11 @@
       "key": "verification_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "price_change_request_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -1057,6 +1062,332 @@
               "path": [
                 "payments",
                 "{{errand_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "9_Owner_Answers_2026_10_08",
+      "item": [
+        {
+          "name": "Rating (owner/current runner/admin only)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/rating",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "rating"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refund status (404 refund_not_found when none)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/refund",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "refund"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin merchant Till/Paybill details",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantName\": \"Naivas Nyali\",\n  \"tillNumber\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/merchant-details",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "merchant-details"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin re-quote an expired quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"total\": 1200,\n  \"expiresAt\": \"2026-12-31T12:00:00.000Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/quote",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "quote"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner price change (IN_PROGRESS only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toPrice\": 650,\n  \"reason\": \"Price went up\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/price-change",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "price-change"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve price change (increase charged by original route)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/price-change/{{price_change_request_id}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "price-change",
+                "{{price_change_request_id}}",
+                "approve"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Retry FAILED price-difference STK",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{errand_id}}/price-changes/{{price_change_request_id}}/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{errand_id}}",
+                "price-changes",
+                "{{price_change_request_id}}",
+                "initiate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Evidence (15-minute signed URLs)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/evidence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "evidence"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tracking (current assignment only for runners)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/tracking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "tracking"
               ]
             }
           },

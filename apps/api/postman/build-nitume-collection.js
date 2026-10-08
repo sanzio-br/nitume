@@ -54,6 +54,17 @@ const patch = (name, pathname, raw, actingRole) => ({
   response: [],
 });
 
+const put = (name, pathname, raw, actingRole) => ({
+  name,
+  request: {
+    method: 'PUT',
+    header: [...bearer(actingRole), { key: 'Content-Type', value: 'application/json' }],
+    body: jsonBody(raw),
+    url: u(`{{baseUrl}}${pathname}`),
+  },
+  response: [],
+});
+
 const folder = (name, item) => ({ name, item });
 
 const collection = {
@@ -78,6 +89,7 @@ const collection = {
     { key: 'errand_id', value: '', type: 'string' },
     { key: 'runner_id', value: '', type: 'string' },
     { key: 'verification_id', value: '', type: 'string' },
+    { key: 'price_change_request_id', value: '', type: 'string' },
   ],
   item: [
     folder('0_Health', [
@@ -178,6 +190,17 @@ const collection = {
       post('Initiate (crypto)', '/payments/{{errand_id}}/initiate', '{\n  "method": "mpesa"\n}', 'customer'),
       patch('Settle', '/payments/{{errand_id}}/settle', '{}', 'admin'),
       req('For errand', 'GET', '/payments/{{errand_id}}', 'customer'),
+    ]),
+    folder('9_Owner_Answers_2026_10_08', [
+      req('Rating (owner/current runner/admin only)', 'GET', '/errands/{{errand_id}}/rating', 'customer'),
+      req('Refund status (404 refund_not_found when none)', 'GET', '/errands/{{errand_id}}/refund', 'customer'),
+      put('Admin merchant Till/Paybill details', '/errands/{{errand_id}}/merchant-details', '{\n  "merchantName": "Naivas Nyali",\n  "tillNumber": "123456"\n}', 'admin'),
+      post('Admin re-quote an expired quote', '/errands/{{errand_id}}/quote', '{\n  "total": 1200,\n  "expiresAt": "2026-12-31T12:00:00.000Z"\n}', 'admin'),
+      post('Runner price change (IN_PROGRESS only)', '/errands/{{errand_id}}/price-change', '{\n  "toPrice": 650,\n  "reason": "Price went up"\n}', 'runner'),
+      post('Approve price change (increase charged by original route)', '/errands/{{errand_id}}/price-change/{{price_change_request_id}}/approve', '{}', 'customer'),
+      post('Retry FAILED price-difference STK', '/payments/{{errand_id}}/price-changes/{{price_change_request_id}}/initiate', '{}', 'customer'),
+      req('Evidence (15-minute signed URLs)', 'GET', '/errands/{{errand_id}}/evidence', 'customer'),
+      req('Tracking (current assignment only for runners)', 'GET', '/errands/{{errand_id}}/tracking', 'runner'),
     ]),
   ],
 };
