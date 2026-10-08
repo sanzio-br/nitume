@@ -4,11 +4,7 @@ import { Router } from '@angular/router';
 import { catchError, of, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthStore } from './auth.store';
-import type {
-  OtpRequestResult,
-  OtpVerifyResult,
-  RefreshResult,
-} from '../api-types';
+import type { OtpRequestResult, OtpVerifyResult, RefreshResult } from '../api-types';
 
 /**
  * Admin OTP login module (design `nitume_admin_dashboard.html → #login-screen`):
@@ -34,8 +30,7 @@ export class AuthService {
 
   /** POST /auth/otp/email/request — emails a code to the entered admin address. */
   requestEmailOtp(email: string) {
-    return this.http
-      .post<OtpRequestResult>(`${this.base}/auth/otp/email/request`, { email });
+    return this.http.post<OtpRequestResult>(`${this.base}/auth/otp/email/request`, { email });
   }
 
   verifyEmailOtp(email: string, code: string) {
