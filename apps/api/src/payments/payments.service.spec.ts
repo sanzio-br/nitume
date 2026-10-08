@@ -82,6 +82,7 @@ const build = (opts: {
   };
   const stk = { push: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-1', transactionId: 't' })) };
   const config = { get: vi.fn((_k: string, d: unknown) => d) };
+  const redis = { setIfAbsent: vi.fn(() => Promise.resolve(true)) };
   const users = { findById: vi.fn(() => Promise.resolve({ id: 'u-1', phone: '+254700000001' })) };
   const accounts = { listPaymentMethods: vi.fn(() => Promise.resolve(opts.methods ?? [])) };
   const service = new PaymentsService(
@@ -95,6 +96,7 @@ const build = (opts: {
     accounts as never,
     {} as never,
     users as never,
+    redis as never,
   );
   return { service, payments, transactions, stk };
 };

@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, Not, Repository } from 'typeorm';
+import { EntityManager, IsNull, LessThanOrEqual, Not, Repository } from 'typeorm';
 import {
   PaymentFlow,
   PaymentMethodType,
@@ -35,6 +35,7 @@ import { MpesaCallbackDto } from './dto/payment.dto';
 import { ApiError } from '../common/api-error';
 import { CustomerAccountsService } from '../customers/customer-accounts.service';
 import { UsersService } from '../users/users.service';
+import { RedisService } from '../infra/redis/redis.service';
 import { RefundTrigger } from './refund-review.entity';
 import { RefundsService } from './refunds.service';
 import {
@@ -113,6 +114,7 @@ export class PaymentsService implements OnApplicationBootstrap {
     private readonly accounts: CustomerAccountsService,
     private readonly refunds: RefundsService,
     private readonly users: UsersService,
+    private readonly redis: RedisService,
   ) {}
 
   /** Lazy, idempotent upsert of the payment_type reference table. */
@@ -717,6 +719,82 @@ export class PaymentsService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Resolves a TIMEOUT payment with the provider (Daraja STK Query, row 52).
+   * TIMEOUT is not FAILED: the payment stays unresolved (and blocks a new
+   * push) until the provider reports a final result, which is then applied
+   * exactly like a callback. Queries for one payment are spaced by
+   * payments.stkQueryIntervalSeconds. Returns the STK status afterwards.
+   */
+  async resolvePending(paymentId: string): Promise<StkStatus | null> {
+    const payment = await this.payments.findOne({ where: { id: paymentId } });
+    if (!payment) {
+      return null;
+    }
+    const status = this.stkStatus(payment);
+    if (status !== StkStatus.TIMEOUT) {
+      return status;
+    }
+    const legs = await this.transactions.find({ where: { paymentId } });
+    const reference = legs[0]?.mpesaReference;
+    const checkout = legs
+      .map((l) => (l.rawCallback?.stkPush as { checkoutRequestId?: string } | undefined)?.checkoutRequestId)
+      .find((id): id is string => typeof id === 'string' && id.length > 0);
+    if (!reference || !checkout) {
+      return status;
+    }
+    const interval = this.config.get<number>('payments.stkQueryIntervalSeconds', 30);
+    if (!(await this.redis.setIfAbsent(`stk-query:${paymentId}`, '1', interval))) {
+      return status;
+    }
+    const result = await this.stk.query(checkout);
+    if (result.state === 'pending') {
+      return status;
+    }
+    await this.handleCallback({
+      reference,
+      resultCode: result.state === 'success' ? 0 : Math.max(result.resultCode ?? 1, 1),
+      resultDesc: result.resultDesc ?? undefined,
+      mpesaType: 'STK',
+    });
+    const after = await this.payments.findOne({ where: { id: paymentId } });
+    return after ? this.stkStatus(after) : null;
+  }
+
+  /**
+   * Reconcile step for the scheduled job: tries to resolve every payment
+   * still pending past the STK timeout (and younger than `maxAgeHours`).
+   * Returns how many reached a final status.
+   */
+  async resolveTimedOut(now: Date = new Date(), maxAgeHours = 24, limit = 50): Promise<number> {
+    const timeout = this.config.get<number>('payments.stkTimeoutSeconds', 120);
+    const rows = await this.payments.find({
+      where: {
+        status: PaymentStatus.PENDING,
+        createdAt: LessThanOrEqual(new Date(now.getTime() - timeout * 1000)),
+      },
+      order: { createdAt: 'ASC' },
+      take: limit,
+    });
+    let resolved = 0;
+    for (const row of rows) {
+      if (row.createdAt.getTime() < now.getTime() - maxAgeHours * 3_600_000) {
+        continue;
+      }
+      try {
+        const out = await this.resolvePending(row.id);
+        if (out === StkStatus.SUCCESS || out === StkStatus.FAILED) {
+          resolved += 1;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `STK query for payment ${row.id} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return resolved;
+  }
+
   private async confirmErrandAfterPayment(errandId: string): Promise<void> {
     const errand = await this.errands.getById(errandId);
     if (errand.status === ErrandStatus.CANCELLED) {
@@ -800,7 +878,19 @@ export class PaymentsService implements OnApplicationBootstrap {
         throw new ForbiddenException('Cannot view this payment');
       }
     }
-    const payment = await this.primaryPayment(errandId);
+    let payment = await this.primaryPayment(errandId);
+    if (payment && this.stkStatus(payment) === StkStatus.TIMEOUT) {
+      // Best effort: ask the provider before answering (row 52).
+      const timedOutId = payment.id;
+      try {
+        await this.resolvePending(timedOutId);
+        payment = await this.primaryPayment(errandId);
+      } catch (err) {
+        this.logger.warn(
+          `STK query for payment ${timedOutId} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     if (!payment) {
       return {
         payment: null,

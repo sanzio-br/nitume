@@ -51,6 +51,16 @@ export interface AppConfig {
   payments: {
     mpesaTransport: string;
     stkTimeoutSeconds: number;
+    /** Minimum gap between two STK Queries for the same payment. */
+    stkQueryIntervalSeconds: number;
+    daraja: {
+      baseUrl: string;
+      consumerKey: string | null;
+      consumerSecret: string | null;
+      shortCode: string | null;
+      passkey: string | null;
+      callbackUrl: string | null;
+    };
   };
   evidence: {
     storageDriver: 'console' | 'cloudinary';
@@ -131,6 +141,19 @@ export const configuration = (): AppConfig => ({
     // After this long without a provider result an STK push reads TIMEOUT
     // (not FAILED); a late callback still settles it.
     stkTimeoutSeconds: int(process.env.PAYMENTS_STK_TIMEOUT_SECONDS, 120),
+    // A TIMEOUT payment is resolved by Daraja STK Query (row 52) at most
+    // once per interval, from GET /payments/:errandId or the reconcile job.
+    stkQueryIntervalSeconds: int(process.env.PAYMENTS_STK_QUERY_INTERVAL_SECONDS, 30),
+    // Only used with PAYMENTS_MPESA_TRANSPORT=daraja; every value must be set
+    // (owner-approved Daraja account). Never commit real values.
+    daraja: {
+      baseUrl: process.env.PAYMENTS_MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke',
+      consumerKey: process.env.PAYMENTS_MPESA_CONSUMER_KEY || null,
+      consumerSecret: process.env.PAYMENTS_MPESA_CONSUMER_SECRET || null,
+      shortCode: process.env.PAYMENTS_MPESA_SHORTCODE || null,
+      passkey: process.env.PAYMENTS_MPESA_PASSKEY || null,
+      callbackUrl: process.env.PAYMENTS_MPESA_CALLBACK_URL || null,
+    },
   },
   // TODO(owner): urgency thresholds are placeholders. Urgency is derived from
   // deadlineAt (owner decision Q19) but no thresholds are defined anywhere.

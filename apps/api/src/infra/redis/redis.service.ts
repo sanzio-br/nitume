@@ -34,6 +34,11 @@ export class RedisService {
     return value;
   }
 
+  /** SET NX with a TTL: true when this call created the key. */
+  async setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    return (await this.client.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK';
+  }
+
   /** Atomically fetch and delete a key (single-use semantics). */
   async getAndDelete(key: string): Promise<string | null> {
     const value = await this.client.get(key);

@@ -4,6 +4,7 @@ import {
   StkGateway,
   StkPushRequest,
   StkPushResponse,
+  StkQueryResult,
 } from './stk-gateway.interface';
 
 /** Dev transport: mocks a successful M-Pesa STK push in B2C/C2B shape. No
@@ -22,5 +23,11 @@ export class ConsoleStkGateway extends StkGateway {
         `reference=${req.reference} desc=${req.description}`,
     );
     return { checkoutRequestId, transactionId };
+  }
+
+  /** No provider behind the console transport: a push never resolves by query. */
+  query(checkoutRequestId: string): Promise<StkQueryResult> {
+    this.logger.log(`[console STK] query ${checkoutRequestId}: no provider status`);
+    return Promise.resolve({ state: 'pending', resultCode: null, resultDesc: null });
   }
 }
