@@ -9,6 +9,7 @@ import { ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
 import type { QuoteErrandResult } from '../../../core/api-types';
 import { formatDateTime, formatKsh, formatKshExact } from '../shared-format';
 import { QuoteConflict, QuoteDialogComponent } from './quote-dialog';
+import { QuoteSectionComponent } from './quote.section';
 
 /**
  * Admin actions by state (§3.3): the first quote only from REQUESTED; a
@@ -35,6 +36,7 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
     FormFieldComponent,
     FieldControlDirective,
     QuoteDialogComponent,
+    QuoteSectionComponent,
   ],
   template: `
     @if (s.detailLoading()) {
@@ -118,6 +120,8 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
           </div>
         </section>
       }
+
+      <app-quote-section [errand]="d" />
 
       @if (actions().quote || actions().assign) {
         <section class="drawer-section">

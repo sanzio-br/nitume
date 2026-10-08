@@ -1,0 +1,230 @@
+import { TestBed } from '@angular/core/testing';
+import { HttpTestingController } from '@angular/common/http/testing';
+import { API, errandFixture, flushAsync, setupHttp } from '../../../testing/admin-test-utils';
+import {
+  AMOUNT_ERROR,
+  buildQuoteBody,
+  EXPIRY_ERROR,
+  QuoteForm,
+  quoteExpired,
+  TOTAL_ERROR,
+  validateQuoteForm,
+} from './quote-dialog';
+import { acceptedRequoteSupported, canRequote, QuoteSectionComponent } from './quote.section';
+import type { Quote } from '../../../core/api-types';
+import { AdminDataService } from '../admin-data.service';
+
+const NOW = new Date('2026-10-08T09:00:00Z');
+
+function form(patch: Partial<QuoteForm> = {}): QuoteForm {
+  return {
+    total: '1,450',
+    components: {
+      baseFee: '',
+      distanceFee: '',
+      timeFee: '',
+      urgencyFee: '',
+      complexityFee: '',
+      premiumFee: '',
+    },
+    expiresAt: '2026-10-09T12:00',
+    note: '',
+    ...patch,
+  };
+}
+
+function quote(patch: Partial<Quote> = {}): Quote {
+  return {
+    id: 'q1',
+    errandId: errandFixture().id,
+    baseFee: '1000.00',
+    distanceFee: '450.00',
+    timeFee: '0',
+    urgencyFee: '0',
+    complexityFee: '0',
+    premiumFee: '0',
+    total: '1450.00',
+    currency: 'KES',
+    expiresAt: '2026-10-08T08:00:00Z',
+    createdAt: '2026-10-07T08:00:00Z',
+    ...patch,
+  };
+}
+
+describe('quote form (G-15)', () => {
+  it('sends numbers only, omits empty components and currency, keeps the EAT offset', () => {
+    const body = buildQuoteBody(
+      form({
+        components: { ...form().components, baseFee: '1,000', distanceFee: '450.5' },
+        note: '  traffic  ',
+      }),
+    );
+    expect(body).toEqual({
+      total: 1450,
+      baseFee: 1000,
+      distanceFee: 450.5,
+      expiresAt: '2026-10-09T12:00:00+03:00',
+      note: 'traffic',
+    });
+    expect(typeof body.total).toBe('number');
+    expect('timeFee' in body).toBe(false);
+    expect('currency' in body).toBe(false);
+  });
+
+  it('validates total, components and expiry', () => {
+    expect(validateQuoteForm(form(), NOW)).toEqual({});
+    expect(validateQuoteForm(form({ total: '' }), NOW).total).toBe(TOTAL_ERROR);
+    expect(validateQuoteForm(form({ total: '0.5' }), NOW).total).toBe(TOTAL_ERROR);
+    expect(validateQuoteForm(form({ total: '10000001' }), NOW).total).toBe(TOTAL_ERROR);
+    expect(validateQuoteForm(form({ total: '1.234' }), NOW).total).toBe(TOTAL_ERROR);
+    expect(
+      validateQuoteForm(form({ components: { ...form().components, timeFee: 'x' } }), NOW).timeFee,
+    ).toBe(AMOUNT_ERROR);
+    // 12:04 EAT is less than 5 minutes after 12:00 EAT (NOW).
+    expect(validateQuoteForm(form({ expiresAt: '2026-10-08T12:04' }), NOW).expiresAt).toBe(
+      EXPIRY_ERROR,
+    );
+    expect(validateQuoteForm(form({ expiresAt: '' }), NOW).expiresAt).toBe(EXPIRY_ERROR);
+  });
+});
+
+describe('re-quote visibility (G-5)', () => {
+  const now = NOW.getTime();
+
+  it('detects expiry like the API (expiresAt <= now; null never expires)', () => {
+    expect(quoteExpired(quote({ expiresAt: '2026-10-08T09:00:00Z' }), now)).toBe(true);
+    expect(quoteExpired(quote({ expiresAt: '2026-10-08T09:00:01Z' }), now)).toBe(false);
+    expect(quoteExpired(quote({ expiresAt: null }), now)).toBe(false);
+    expect(quoteExpired(null, now)).toBe(false);
+  });
+
+  it('offers Issue new quote only for an expired QUOTED quote', () => {
+    expect(canRequote(errandFixture({ status: 'QUOTED' }), quote(), now)).toBe(true);
+    expect(
+      canRequote(
+        errandFixture({ status: 'QUOTED' }),
+        quote({ expiresAt: '2026-10-09T00:00:00Z' }),
+        now,
+      ),
+    ).toBe(false);
+    expect(canRequote(errandFixture({ status: 'PAYMENT_CONFIRMED' }), quote(), now)).toBe(false);
+  });
+
+  it('offers it on ACCEPTED only when the API supports row 72', () => {
+    const old = errandFixture({ status: 'ACCEPTED' });
+    expect(acceptedRequoteSupported(old)).toBe(false);
+    expect(canRequote(old, quote(), now)).toBe(false);
+    const round3 = errandFixture({ status: 'ACCEPTED', quoteAcceptanceRequired: false });
+    expect(canRequote(round3, quote(), now)).toBe(true);
+  });
+});
+
+describe('QuoteSectionComponent', () => {
+  let http: HttpTestingController;
+  beforeEach(() => {
+    http = setupHttp();
+  });
+  afterEach(() => http.verify());
+
+  async function render(status: Errand['status']) {
+    const fixture = TestBed.createComponent(QuoteSectionComponent);
+    fixture.componentRef.setInput('errand', errandFixture({ status }));
+    fixture.detectChanges();
+    return fixture;
+  }
+  type Errand = ReturnType<typeof errandFixture>;
+
+  it('does not call the quote endpoint for REQUESTED', async () => {
+    const fixture = await render('REQUESTED');
+    http.expectNone(`${API}/errands/${errandFixture().id}/quote`);
+    expect(fixture.nativeElement.textContent).not.toContain('Quote');
+  });
+
+  it('flags an expired quote and shows Issue new quote', async () => {
+    const fixture = await render('QUOTED');
+    http.expectOne(`${API}/errands/${errandFixture().id}/quote`).flush(quote());
+    await flushAsync();
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Quote expired');
+    expect(text).toContain('Expired');
+    const btn = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLElement).textContent?.trim() === 'Issue new quote',
+    ) as HTMLButtonElement;
+    expect(btn.classList).toContain('btn-primary');
+  });
+
+  it('shows the wait hint for a valid quote', async () => {
+    const fixture = await render('QUOTED');
+    http
+      .expectOne(`${API}/errands/${errandFixture().id}/quote`)
+      .flush(quote({ expiresAt: '2099-01-01T00:00:00Z' }));
+    await flushAsync();
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('You can issue a new quote after this one expires at');
+    expect(text).not.toContain('Issue new quote');
+  });
+
+  it('on 409 quote_still_valid reloads the quote and explains', async () => {
+    const fixture = await render('QUOTED');
+    http.expectOne(`${API}/errands/${errandFixture().id}/quote`).flush(quote());
+    await flushAsync();
+    const cmp = fixture.componentInstance as unknown as {
+      onConflict(c: { error: unknown }): Promise<void>;
+    };
+    const done = cmp.onConflict({
+      error: {
+        status: 409,
+        code: 'quote_still_valid',
+        message: '',
+        messages: [],
+        extra: { expiresAt: '2026-10-08T13:30:00Z' },
+      },
+    });
+    http
+      .expectOne(`${API}/errands/${errandFixture().id}/quote`)
+      .flush(quote({ expiresAt: '2026-10-08T13:30:00Z' }));
+    await done;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('The current quote is still valid until');
+  });
+});
+
+describe('AdminDataService.quoteErrand (G-15)', () => {
+  let http: HttpTestingController;
+  beforeEach(() => {
+    http = setupHttp();
+  });
+  afterEach(() => http.verify());
+
+  it('reads the { errand, history, quote } response and patches the queue row', async () => {
+    const s = TestBed.inject(AdminDataService);
+    const e = errandFixture({ status: 'REQUESTED', quotedPrice: null });
+    s.errands.set([{ ...e }]);
+    const p = s.quoteErrand(e.id, { total: 1450, expiresAt: '2026-10-09T12:00:00+03:00' });
+    const req = http.expectOne(`${API}/errands/${e.id}/quote`);
+    expect(req.request.body.total).toBe(1450);
+    req.flush({
+      errand: { ...e, status: 'QUOTED', quotedPrice: '1450.00' },
+      history: null,
+      quote: quote({ expiresAt: '2026-10-09T09:00:00Z' }),
+    });
+    await p;
+    expect(s.errands()[0].status).toBe('QUOTED');
+    expect(s.errands()[0].quotedPrice).toBe('1450.00');
+    expect(s.errands()[0].quoteExpiresAt).toBe('2026-10-09T09:00:00Z');
+  });
+
+  it('throws the A-14 error shape', async () => {
+    const s = TestBed.inject(AdminDataService);
+    const p = s.quoteErrand('x', { total: 1, expiresAt: '2026-10-09T12:00:00+03:00' });
+    http
+      .expectOne(`${API}/errands/x/quote`)
+      .flush(
+        { statusCode: 409, code: 'quote_still_valid', message: 'm', expiresAt: 'z' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await expect(p).rejects.toMatchObject({ status: 409, code: 'quote_still_valid' });
+  });
+});
