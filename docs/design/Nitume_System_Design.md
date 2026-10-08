@@ -271,34 +271,87 @@ Design conventions: **cursor-based pagination** on list endpoints (not offset �
 
 ### 3.3 Task State Machine (enforced in `errands` module)
 
+> Updated 2026-10-08 to the project owner's state decisions (BOARD row 56: "Update Nitume_System_Design.md §3.3 to match decisions … approved; update the system design to match these state decisions"). Sources quoted from the BOARD:
+> - Row 8: "AWAITING_CUSTOMER→COMPLETED on confirm; COMPLETED is terminal for the customer."
+> - Row 10: "keep DRAFT→CANCELLED, AWAITING_CUSTOMER→DISPUTED; remove DISPUTED→CONFIRMED; resolve to operational state or CANCELLED."
+> - Row 35: "keep CONFIRMED and SETTLED as system-only states. Customer confirm = AWAITING_CUSTOMER→COMPLETED; system moves COMPLETED→CONFIRMED→SETTLED; never shown in customer UI."
+> - Row 36: "runner-favourable → COMPLETED; customer-favourable → CANCELLED."
+> - Row 37: "allow customer IN_PROGRESS→CANCELLED on price-change reject; goes to admin refund review; admin sets refund amount, up to a full refund."
+> - Row 49 (clarified 2026-10-08): "runners can request price changes only in IN_PROGRESS; no new transitions."
+> - Row 50: dispute window "24h placeholder; restart after a dispute resolves to COMPLETED", approved as configurable behaviour.
+
 ```mermaid
 stateDiagram-v2
     [*] --> DRAFT
-    DRAFT --> REQUESTED
-    REQUESTED --> QUOTED
-    QUOTED --> ACCEPTED
-    ACCEPTED --> PAYMENT_CONFIRMED
-    PAYMENT_CONFIRMED --> RUNNER_ASSIGNED
-    RUNNER_ASSIGNED --> RUNNER_EN_ROUTE
-    RUNNER_EN_ROUTE --> ARRIVED
-    ARRIVED --> IN_PROGRESS
-    IN_PROGRESS --> AWAITING_CUSTOMER
-    AWAITING_CUSTOMER --> COMPLETED
-    COMPLETED --> CONFIRMED
-    CONFIRMED --> SETTLED
+    DRAFT --> REQUESTED : customer submits
+    REQUESTED --> QUOTED : admin / system quotes
+    QUOTED --> ACCEPTED : customer accepts quote
+    ACCEPTED --> PAYMENT_CONFIRMED : system (payment callback) / admin
+    PAYMENT_CONFIRMED --> RUNNER_ASSIGNED : admin / system
+    RUNNER_ASSIGNED --> RUNNER_EN_ROUTE : runner
+    RUNNER_EN_ROUTE --> ARRIVED : runner / system (geofence)
+    ARRIVED --> IN_PROGRESS : runner
+    IN_PROGRESS --> AWAITING_CUSTOMER : runner (evidence uploaded)
+    AWAITING_CUSTOMER --> COMPLETED : customer confirms
+    COMPLETED --> CONFIRMED : system only, after the dispute window
+    CONFIRMED --> SETTLED : system only (payout)
     SETTLED --> [*]
 
-    REQUESTED --> CANCELLED
-    QUOTED --> CANCELLED
-    ACCEPTED --> CANCELLED
-    RUNNER_ASSIGNED --> CANCELLED
-    RUNNER_EN_ROUTE --> FAILED
-    IN_PROGRESS --> DISPUTED
-    COMPLETED --> DISPUTED
-    RUNNER_ASSIGNED --> EXPIRED : no runner accepts in time
+    DRAFT --> CANCELLED : customer
+    REQUESTED --> CANCELLED : customer
+    QUOTED --> CANCELLED : customer
+    ACCEPTED --> CANCELLED : customer
+    RUNNER_ASSIGNED --> CANCELLED : admin
+    IN_PROGRESS --> CANCELLED : customer, only by rejecting a price change
+    RUNNER_EN_ROUTE --> FAILED : runner / system
+    RUNNER_ASSIGNED --> EXPIRED : system, no runner accepts in time
+
+    IN_PROGRESS --> DISPUTED : customer
+    AWAITING_CUSTOMER --> DISPUTED : customer
+    COMPLETED --> DISPUTED : customer, within the dispute window
+    DISPUTED --> COMPLETED : admin, runner-favourable
+    DISPUTED --> CANCELLED : admin, customer-favourable
+
+    CANCELLED --> [*]
+    FAILED --> [*]
+    EXPIRED --> [*]
 ```
 
-Implemented as a small explicit transition table in code (not a generic state-machine library at MVP size) — each transition validates the actor (customer/runner/admin/system), writes an `errand_status_history` row, and emits a domain event (`errand.status_changed`) that the Notifications and Realtime modules subscribe to.
+Transition table (actors: C = customer, R = runner, A = admin, S = system):
+
+| From | To | Actors | Notes |
+|---|---|---|---|
+| DRAFT | REQUESTED | C | Submit |
+| DRAFT | CANCELLED | C | Abandoned draft |
+| REQUESTED | QUOTED | A, S | Authoritative quote (the wizard's preview is not a quote) |
+| REQUESTED | CANCELLED | C | |
+| QUOTED | ACCEPTED | C | Refused with `quote_expired` once the quote has expired; a fresh quote is needed, no state change (row 46) |
+| QUOTED | CANCELLED | C | |
+| ACCEPTED | PAYMENT_CONFIRMED | A, S | Provider-confirmed service + runner fee payment |
+| ACCEPTED | CANCELLED | C | |
+| PAYMENT_CONFIRMED | RUNNER_ASSIGNED | A, S | |
+| RUNNER_ASSIGNED | RUNNER_EN_ROUTE | R | |
+| RUNNER_ASSIGNED | CANCELLED | A | |
+| RUNNER_ASSIGNED | EXPIRED | S | No runner accepts in time |
+| RUNNER_EN_ROUTE | ARRIVED | R, S | System = geofence (§4.3) |
+| RUNNER_EN_ROUTE | FAILED | R, S | |
+| ARRIVED | IN_PROGRESS | R | |
+| IN_PROGRESS | AWAITING_CUSTOMER | R | Evidence uploaded |
+| IN_PROGRESS | DISPUTED | C | |
+| IN_PROGRESS | CANCELLED | C | **Guarded**: only through rejecting a pending price-change request; opens an admin refund review (admin sets the refund, up to the full amount paid) |
+| AWAITING_CUSTOMER | COMPLETED | C | "Confirm completion"; the runner's earnings become eligible for the normal payout process. No escrow |
+| AWAITING_CUSTOMER | DISPUTED | C | |
+| COMPLETED | DISPUTED | C | Only within the dispute window (configurable, 24 h initial value) |
+| COMPLETED | CONFIRMED | S | **System only**, after the dispute window closes; never customer-triggered |
+| CONFIRMED | SETTLED | S | **System only**, payout settled |
+| DISPUTED | COMPLETED | A | Runner-favourable resolution, with a written rationale; a new dispute window applies where relevant |
+| DISPUTED | CANCELLED | A | Customer-favourable resolution, with a written rationale; opens an admin refund review when the customer had paid |
+
+- **Terminal states**: SETTLED, CANCELLED, FAILED, EXPIRED. COMPLETED is the last state the customer acts on; CONFIRMED and SETTLED are system-only payout states and the customer app shows them as "Completed".
+- **Removed**: DISPUTED → CONFIRMED (row 10). A dispute always resolves to COMPLETED or CANCELLED.
+- **Price changes** are requested by the runner only while the errand is IN_PROGRESS (row 49). Approving one changes no state; rejecting one is the guarded IN_PROGRESS → CANCELLED above. A price decrease, and any cancellation after payment, goes to an admin refund review (rows 37, 48); refund reviews are records, not states.
+
+Implemented as a small explicit transition table in code (not a generic state-machine library at MVP size) — each transition validates the actor (customer/runner/admin/system) and any guard, writes an `errand_status_history` row, and emits a domain event (`errand.status_changed`) that the Notifications and Realtime modules subscribe to.
 
 ### 3.4 Matching Algorithm (v1 → v2)
 
