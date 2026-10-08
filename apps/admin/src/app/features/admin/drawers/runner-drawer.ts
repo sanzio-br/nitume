@@ -20,10 +20,11 @@ import { StatusChipComponent } from '../../../shared/status-chip.component';
             <span>Runner</span><b>{{ shortId(r.id) }}</b>
           </div>
           <div class="drawer-row">
-            <span>Availability</span><app-status-chip [status]="r.availability" />
+            <span>Availability</span
+            ><app-status-chip [status]="r.availability" kind="availability" />
           </div>
           <div class="drawer-row">
-            <span>Level</span><app-status-chip [status]="r.verificationLevel" />
+            <span>Level</span><app-status-chip [status]="r.verificationLevel" kind="level" />
           </div>
           <div class="drawer-row">
             <span>Rating</span><b>{{ num(r.avgRating) }}</b>

@@ -48,7 +48,7 @@ import { StatusChipComponent, statusLabel } from '../../../shared/status-chip.co
           <div class="vc-body">
             <div class="r-top">
               <b>{{ shortId(runner.id) }}</b>
-              <app-status-chip [status]="runner.availability" />
+              <app-status-chip [status]="runner.availability" kind="availability" />
             </div>
             <div class="r-sub">Nairobi · joined {{ timeAgo(runner.createdAt) }}</div>
             <div class="r-stats">
@@ -70,7 +70,7 @@ import { StatusChipComponent, statusLabel } from '../../../shared/status-chip.co
               </div>
             </div>
             <div class="r-tags">
-              <app-status-chip [status]="runner.verificationLevel" />
+              <app-status-chip [status]="runner.verificationLevel" kind="level" />
               <span class="chip chip-neutral">{{ runner.skillsCount ?? 0 }} skills</span>
             </div>
             <button class="vc-action" (click)="open.emit(runner.id)">Open profile</button>
@@ -108,7 +108,7 @@ export class RunnersPanelComponent {
         r.id.toLowerCase().includes(q) ||
         shortId(r.id).toLowerCase().includes(q) ||
         (r.verificationLevel ?? '').toLowerCase().includes(q) ||
-        statusLabel(r.availability).toLowerCase().includes(q)
+        statusLabel(r.availability, 'availability').toLowerCase().includes(q)
       );
     });
   }

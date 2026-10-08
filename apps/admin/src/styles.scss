@@ -198,6 +198,67 @@ button {
   border-color: var(--nitume-red);
   outline-color: var(--nitume-red);
 }
+textarea.field-input {
+  resize: vertical;
+}
+/* Numeric value text (amounts, Till/Paybill, receipts, datetime): Fira Code. */
+.field-input.is-numeric {
+  font-family: var(--nitume-font-num);
+}
+.field-control {
+  position: relative;
+}
+.field-prefix {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--nitume-font-ui);
+  font-size: 13px;
+  color: var(--nitume-slate-600);
+  pointer-events: none;
+}
+.field-control.has-prefix .field-input {
+  padding-left: 46px;
+}
+.field-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.field-hint {
+  font-family: var(--nitume-font-ui);
+  font-size: 12px;
+  color: var(--nitume-slate-600);
+}
+.field-counter {
+  font-family: var(--nitume-font-num);
+  font-size: 11px;
+  color: var(--nitume-slate-600);
+  white-space: nowrap;
+}
+.field-counter.is-error {
+  color: var(--nitume-red);
+  font-weight: 600;
+}
+/* Error is text only (red accent at text size, never a filled surface). */
+.field-error {
+  font-family: var(--nitume-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nitume-red);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* --- List item pattern (mobile-first list interface) --- */
 .list-item {
