@@ -74,9 +74,11 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | design-auditor | core-ui | (minor) NitumeTopBar skips an empty title; move price_change_already_decided into ApiErrorCodes | answered/done: preserve empty-title-safe top bar and use shared ApiErrorCodes |
 | design-auditor | flutter-customer | (minor) x-merchant-payment snackbar "Nothing to pay right now." when closing with nothing due | answered/done: show the snackbar when the merchant-payment flow is closed with nothing due |
 | orchestrator | design-auditor | Owner answers round 2: update customer specs (live map, Places, FCM, url_launcher, short names, fallback title, send-to-runner via Nitume, merchant details by merchant/admin, price-change routes and decreases, budget per category, quote_expired, refund status, snackbar, top bar) and System Design §3.3 (row 56) | done: docs/customer-answers-2 (6cb3eca … f9cfde4); 10 screens back to partial |
-| orchestrator | api-contract | Owner answers round 2: rows 25–28, 31, 40, 42–44, 46, 48–50, 52, 53, 55, 65 + board needs (account_suspended, failure reason, fee total) | in progress: feat/api-owner-answers-2 (../nitume-api-answers2) |
+| orchestrator | api-contract | Owner answers round 2: rows 25–28, 31, 40, 42–44, 46, 48–50, 52, 53, 55, 65 + board needs (account_suspended, failure reason, fee total) | done: feat/api-owner-answers-2 (18 commits, 217 unit + 31 e2e on throwaway DB). Decrease refund review not built (row 62) |
 | orchestrator | core-ui → flutter-customer | After specs + API: one branch feat/customer-integrations from feat/customer-screens; core-ui first (packages: socket_io_client, google_maps_flutter, Places client, firebase_messaging, url_launcher; high-contrast chips; models), then flutter-customer (apps) | queued |
 | orchestrator | web-parity | Admin: refund review screens, merchant Till/Paybill entry (row 43), dispute resolve → COMPLETED | queued (after API) |
+| api-contract | web-parity | Admin merchant-details form (PUT /errands/:id/merchant-details) and re-quote action (POST /errands/:id/quote on expired quote) | queued |
+| api-contract | owner/ops | After merge: migration:run (1790100500000); set TRUST_PROXY_HOPS, FCM_*, PAYMENTS_MPESA_* and queue env vars per environment; .env.example not updated (agent blocked from reading it) | open |
 
 ## Questions for the project owner
 
@@ -152,6 +154,11 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 68 | design-auditor (round 2) | SQ-9: after quote_expired, how is a fresh quote produced? Default: customer taps "Request a new quote" and admin re-quotes. OK? | open |
 | 69 | design-auditor (round 2) | SQ-10: show the admin's refund decision note to the customer? Default: no | open |
 | 70 | design-auditor (round 2) | Two copies of the system design: docs/Nitume_System_Design.md and docs/design/Nitume_System_Design.md. §3.3 was updated only in docs/design/. Which is canonical? (Then delete or sync the other) | open |
+| 71 | api-contract (round 2) | Row 48 decrease (needs row 62): refund reviews for price decreases need refund_reviews to allow more than one review per errand (unique on errandId+trigger) and a new trigger `price_change_decrease`, refunding the difference. Approve this schema change? | open |
+| 72 | api-contract (round 2) | An ACCEPTED errand whose quote expires can't be paid (quote_expired) and re-quote only works in QUOTED. Allow admin re-quote while ACCEPTED (no status change), or add ACCEPTED→QUOTED (state-machine change)? Until decided the customer can only cancel | open |
+| 73 | api-contract (round 2) | Daraja go-live: approve a callback adapter for Daraja's Body.stkCallback shape plus a Safaricom IP allowlist/signature check? Real credentials needed. Today Daraja payments resolve only via STK Query | open |
+| 74 | api-contract (round 2) | Per-IP OTP limits: defaults 30 requests and 60 verifies per hour per IP per route (generous for carrier NAT). Confirm? Device-level throttling isn't possible (no device id on OTP requests) | open |
+| 75 | api-contract (round 2) | New API packages added under approved rows: @nestjs/throttler (53), bullmq + @nestjs/bullmq (26), firebase-admin (31 server-side push). Confirm firebase-admin on the server is covered by row 31 | open |
 
 ## Session log
 
@@ -177,3 +184,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-08 | reviewer final re-check: all 10 branches READY, stage reviewed → awaiting-owner. Merge order: chore/claude-agent-team → docs/customer-spec-audit → docs/customer-spec-answers → docs/customer-reaudit → feat/api-customer-gaps → feat/api-owner-decisions → feat/core-customer-widgets → feat/core-owner-decisions → feat/core-spec-widgets → feat/customer-screens (merge commits, PRs against main; push the 4 local-main commits first). Run migration:run on local DBs after merge | — |
 | 2026-10-08 | Owner answered rows 1–65 (open: 57, 59, 62, 64); clarifications on 34/48/49/58. Round 2 started: design-auditor (specs + §3.3) and api-contract in parallel | e415e70, 05f43be |
 | 2026-10-08 | design-auditor round 2: customer specs updated with owner answers, System Design §3.3 rewritten (docs/design copy), 10 screens → partial; new questions 66–70 | 6cb3eca, 3f021c2, 56a45fa, 4a2d881, 728b44c, 94cae86, b2db92d, 5635efc, b78628d, f9cfde4 |
+| 2026-10-08 | api-contract round 2 (feat/api-owner-answers-2, built): rating access, current-assignment access, shortName, quote_expired + admin re-quote, IN_PROGRESS-only price changes, merchant details, send_to_runner via Nitume STK, refund status, STK Query, per-IP OTP throttling, BullMQ notifications + dispute-window job + FCM push, 15-min signed evidence URLs; 217 unit + 31 e2e (throwaway DB) | 80bb176, 5f0b138, 44a8e60, 75b5d97, 0ad2116, 9b54e64, b6c8cda, 2002e21, 726105c, 811e32f, 5a1ddcd, c5d4c08, 99e3ca5, 58d3a75, 595f19e, 5dacfd6, cb48266, 13f8760 |
