@@ -109,7 +109,7 @@ export function refundRowAction(status: string): string {
             <tr>
               <th>Task</th>
               <th class="col-reason">Reason</th>
-              <th>Paid to Nitume</th>
+              <th>Refundable</th>
               <th>Refund</th>
               <th>Status</th>
               <th class="col-opened">Opened</th>

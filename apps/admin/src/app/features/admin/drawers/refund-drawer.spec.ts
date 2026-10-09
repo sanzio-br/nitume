@@ -142,6 +142,25 @@ describe('RefundDrawerComponent', () => {
     expect(text).not.toMatch(/wallet|escrow|balance/i);
   });
 
+  it('adds Refundable in this review when the ceiling is not the total paid (SA-1)', async () => {
+    const fixture = await render(
+      review({ trigger: 'price_change_decrease', amountPaid: '300.00' }),
+    );
+    const el = fixture.nativeElement as HTMLElement;
+    const rows = Array.from(el.querySelectorAll('.drawer-row'), (r) =>
+      (r.textContent ?? '').replace(/\s+/g, ''),
+    );
+    const total = rows.indexOf('TotalpaidtoNitumeKSh1,200');
+    expect(total).toBeGreaterThan(-1);
+    expect(rows[total + 1]).toBe('RefundableinthisreviewKSh300');
+    expect(el.textContent).toContain('Between KSh 0 and KSh 300.');
+  });
+
+  it('has no Refundable row when the ceiling equals the total paid', async () => {
+    const fixture = await render(review());
+    expect(fixture.nativeElement.textContent).not.toContain('Refundable in this review');
+  });
+
   it('keeps "Opened" in Fira Sans and only the date/time in Fira Code (m-1)', async () => {
     const fixture = await render(review());
     const muted = fixture.nativeElement.querySelector('.drawer-muted') as HTMLElement;

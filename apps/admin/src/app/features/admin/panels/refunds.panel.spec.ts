@@ -71,6 +71,18 @@ describe('RefundsPanelComponent (G-1)', () => {
     expect(TestBed.inject(AdminDataService).refundBadge().count).toBe(3);
   });
 
+  it('labels the amountPaid column Refundable (SA-1)', async () => {
+    const fixture = await render();
+    http.expectOne(list('pending_review')).flush({ items: [item('1')], nextCursor: null });
+    await flushAsync();
+    fixture.detectChanges();
+    const heads = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('th'), (th) =>
+      th.textContent?.trim(),
+    );
+    expect(heads.slice(0, 4)).toEqual(['Task', 'Reason', 'Refundable', 'Refund']);
+    expect(heads).not.toContain('Paid to Nitume');
+  });
+
   it('shows the filter-specific empty state', async () => {
     const fixture = await render();
     http.expectOne(list('pending_review')).flush({ items: [], nextCursor: null });

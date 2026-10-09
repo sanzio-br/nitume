@@ -154,6 +154,12 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
           <div class="drawer-row drawer-row-total">
             <span>Total paid to Nitume</span><b>{{ formatKshExact(r.paid.totalPaidToNitume) }}</b>
           </div>
+          @if (differs(r.amountPaid, r.paid.totalPaidToNitume)) {
+            <!-- SA-1: this review's ceiling (e.g. a price decrease) is not the total paid. -->
+            <div class="drawer-row">
+              <span>Refundable in this review</span><b>{{ formatKshExact(r.amountPaid) }}</b>
+            </div>
+          }
           <div class="drawer-row">
             <span>Refund to</span>
             @if (phone(); as ph) {
@@ -581,6 +587,11 @@ export class RefundDrawerComponent implements OnInit {
   protected setReceipt(value: string): void {
     this.receipt.set(value.toUpperCase());
     this.receiptServerError.set(null);
+  }
+
+  /** Two decimal strings differ by at least a cent. */
+  protected differs(a: string, b: string): boolean {
+    return Math.round(Number(a) * 100) !== Math.round(Number(b) * 100);
   }
 
   protected positive(value: string | null | undefined): boolean {
