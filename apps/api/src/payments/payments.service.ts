@@ -1,6 +1,4 @@
 import {
-  BadRequestException,
-  ConflictException,
   ForbiddenException,
   HttpStatus,
   Inject,
@@ -8,8 +6,11 @@ import {
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
+  OnModuleInit,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
+import type { Queue } from 'bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, IsNull, LessThanOrEqual, Not, Repository } from 'typeorm';
 import {
@@ -30,10 +31,15 @@ import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
 import { feesFor } from '../common/fees';
 import { PAYMENT_TYPES } from './payment-type.reference';
-import { STK_GATEWAY } from './stk-gateway/stk-gateway.provider';
-import { StkGateway } from './stk-gateway/stk-gateway.interface';
-import { MpesaCallbackDto } from './dto/payment.dto';
-import { ApiError } from '../common/api-error';
+import { MPESA_PROVIDER } from './providers/mpesa-provider.factory';
+import {
+  MpesaProvider,
+  ProviderPaymentRef,
+  StkInitiateResult,
+  StkQueryResult,
+} from './providers/mpesa-provider';
+import { MAINTENANCE_QUEUE, PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
+import { ApiError, conflict } from '../common/api-error';
 import { CustomerAccountsService } from '../customers/customer-accounts.service';
 import { UsersService } from '../users/users.service';
 import { RedisService } from '../infra/redis/redis.service';
@@ -119,7 +125,7 @@ const isUniqueViolation = (err: unknown): boolean => {
 };
 
 @Injectable()
-export class PaymentsService implements OnApplicationBootstrap {
+export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
@@ -132,14 +138,36 @@ export class PaymentsService implements OnApplicationBootstrap {
     @InjectRepository(CustomerProfile)
     private readonly customers: Repository<CustomerProfile>,
     private readonly errands: ErrandsService,
-    @Inject(STK_GATEWAY)
-    private readonly stk: StkGateway,
+    @Inject(MPESA_PROVIDER)
+    private readonly provider: MpesaProvider,
     private readonly config: ConfigService,
     private readonly accounts: CustomerAccountsService,
     private readonly refunds: RefundsService,
     private readonly users: UsersService,
     private readonly redis: RedisService,
+    @InjectQueue(MAINTENANCE_QUEUE)
+    private readonly maintenance?: Queue,
   ) {}
+
+  /**
+   * A re-quote (row 72) is refused while the errand's main payment is
+   * pending or paid: the customer would otherwise be charged for a quote
+   * that no longer applies. A FAILED payment does not block it.
+   */
+  onModuleInit(): void {
+    this.errands.onRequote(async (manager, errandId) => {
+      const active = await manager.getRepository(Payment).findOne({
+        where: { errandId, priceChangeRequestId: IsNull(), status: Not(PaymentStatus.FAILED) },
+      });
+      if (active) {
+        throw conflict(
+          'payment_in_progress',
+          'The customer has already started paying this quote; it cannot be replaced now',
+          { paymentId: active.id, paymentStatus: active.status },
+        );
+      }
+    });
+  }
 
   /** Lazy, idempotent upsert of the payment_type reference table. */
   async onApplicationBootstrap(): Promise<void> {
@@ -204,18 +232,21 @@ export class PaymentsService implements OnApplicationBootstrap {
     }
 
     if (!ErrandStateMachine.canTransition(errand.status, ErrandStatus.PAYMENT_CONFIRMED)) {
-      throw new ConflictException(`Errand is not payable now (${errand.status})`);
+      throw conflict('errand_not_payable', `Errand is not payable now (${errand.status})`, {
+        status: errand.status,
+      });
     }
     if (errand.quotedPrice === null) {
-      throw new BadRequestException('Errand has not been quoted yet');
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'errand_not_quoted', 'Errand has not been quoted yet');
     }
-    // An expired quote cannot be paid (row 46): 409 quote_expired.
-    await this.errands.assertQuoteCurrentFor(errandId);
-
-    const { serviceFee, runnerFee } = feesFor(Number(errand.quotedPrice), {
+    // Only the newest quote is payable, unexpired (row 46: 409 quote_expired)
+    // and accepted by the customer (row 72: 409 quote_not_accepted).
+    // Checked again under the errand lock inside the transaction below.
+    await this.errands.payableQuote(errandId);
+    const rates = {
       serviceFeeRate: this.config.get<number>('pricing.serviceFeeRate', 0.2),
       runnerFeeRate: this.config.get<number>('pricing.runnerFeeRate', 0.3),
-    });
+    };
     const budget = Number(errand.budget);
     const merchantAmount = budget > 0 ? round2(budget) : 0;
     const flow = await this.flowFor(errandId, merchantAmount, opts.merchantRoute);
@@ -225,7 +256,6 @@ export class PaymentsService implements OnApplicationBootstrap {
     // send_to_runner is platform-mediated (rows 42, 48): the purchase amount
     // joins the same STK charge to Nitume as a merchant_payment leg.
     const collectMerchant = flow === PaymentFlow.CUSTOMER_TO_RUNNER && merchantAmount > 0;
-    const chargeKes = serviceFee + runnerFee + (collectMerchant ? merchantAmount : 0);
 
     const [serviceFeeType, runnerFeeType, merchantType] = await Promise.all([
       this.paymentTypeId(PaymentTypeCode.SERVICE_FEE),
@@ -239,8 +269,11 @@ export class PaymentsService implements OnApplicationBootstrap {
     // then returns a complete payment instead of pushing STK a second time.
     let payment: Payment;
     let txRows: PaymentTransaction[];
+    let chargeKes: number;
     try {
-      ({ payment, txRows } = await this.payments.manager.transaction(async (manager) => {
+      ({ payment, txRows, chargeKes } = await this.payments.manager.transaction(async (manager) => {
+        const quote = await this.errands.payableQuote(errandId, manager);
+        const { serviceFee, runnerFee } = feesFor(Number(quote.total), rates);
         const paymentRepo = manager.getRepository(Payment);
         const txRepo = manager.getRepository(PaymentTransaction);
         const saved = await paymentRepo.save(
@@ -282,7 +315,8 @@ export class PaymentsService implements OnApplicationBootstrap {
           );
         }
         const legs = await txRepo.save(legRows);
-        return { payment: saved, txRows: legs };
+        const charge = serviceFee + runnerFee + (collectMerchant ? merchantAmount : 0);
+        return { payment: saved, txRows: legs, chargeKes: charge };
       }));
     } catch (err) {
       if (!isUniqueViolation(err)) {
@@ -311,11 +345,12 @@ export class PaymentsService implements OnApplicationBootstrap {
       throw err;
     }
 
-    const push = await this.stk.push({
+    const push = await this.provider.initiateStk({
       phone,
       amountKes: round2(chargeKes).toFixed(2),
       reference,
       description: `Nitume errand ${errand.reference ?? errandId}`,
+      customerName: (await this.users.findById(user.userId))?.displayName ?? null,
     });
     await this.rememberCheckout(txRows, push);
 
@@ -450,7 +485,7 @@ export class PaymentsService implements OnApplicationBootstrap {
     if (payment.paymentFlow === PaymentFlow.CUSTOMER_TO_RUNNER && payment.status === PaymentStatus.PENDING) {
       const legs = await this.transactions.find({ where: { paymentId } });
       const errand = await this.errands.getById(payment.errandId);
-      const push = await this.stk.push({
+      const push = await this.provider.initiateStk({
         phone: await this.ownerPhone(errand.customerId),
         amountKes: payment.merchantAmount,
         reference: legs[0]?.mpesaReference ?? '',
@@ -561,7 +596,7 @@ export class PaymentsService implements OnApplicationBootstrap {
    */
   private async rememberCheckout(
     legs: PaymentTransaction[],
-    push: { checkoutRequestId: string; merchantRequestId?: string },
+    push: StkInitiateResult,
   ): Promise<void> {
     if (legs.length === 0) {
       return;
@@ -569,7 +604,8 @@ export class PaymentsService implements OnApplicationBootstrap {
     const stkPush = {
       checkoutRequestId: push.checkoutRequestId,
       merchantRequestId: push.merchantRequestId ?? null,
-      gateway: this.stk.name,
+      providerReference: push.providerReference ?? null,
+      gateway: this.provider.name,
     };
     await this.transactions.save(
       legs.map((leg) => this.transactions.merge(leg, { rawCallback: { ...leg.rawCallback, stkPush } })),
@@ -683,48 +719,119 @@ export class PaymentsService implements OnApplicationBootstrap {
   }
 
   /**
-   * M-Pesa result notification (mock: the same reference returned by
-   * initiate). Idempotent: repeated callbacks for an already-final
-   * transaction are answered with the stored outcome instead of re-running
-   * the state transition.
+   * Provider callback (POST /payments/mpesa/callback). The active provider
+   * parses the body (400 `callback_unrecognised` when it cannot):
+   * - console mock (trusted, dev/e2e): the result is applied at once.
+   * - real providers (PayHero): the callback is never trusted. It only names
+   *   the payment, which a `payment-verify` job on the maintenance queue
+   *   confirms with the provider's status query before anything is marked
+   *   paid (row 73). Unknown payments are 404.
+   * Idempotent: callbacks for an already-final payment are dropped.
    */
-  async handleCallback(dto: MpesaCallbackDto): Promise<void> {
-    const rows = await this.transactions.find({
-      where: { mpesaReference: dto.reference },
-    });
-    if (rows.length === 0) {
-      throw new NotFoundException('Unknown mpesaReference');
+  async handleCallback(body: unknown): Promise<void> {
+    const parsed = this.provider.parseCallback(body);
+    if (!parsed) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'callback_unrecognised',
+        'Callback body not recognised for this payment provider',
+      );
     }
-    const payment = await this.payments.findOne({
-      where: { id: rows[0].paymentId },
-    });
+    const rows = await this.legsFor(parsed);
+    if (rows.length === 0) {
+      throw new NotFoundException('Unknown payment reference');
+    }
+    const payment = await this.payments.findOne({ where: { id: rows[0].paymentId } });
     if (!payment) {
       throw new NotFoundException('Payment record not found');
     }
-
-    const alreadyFinal = rows.every(
-      (r) =>
-        r.status === PaymentTransactionStatus.COMPLETED ||
-        r.status === PaymentTransactionStatus.FAILED,
-    );
-    if (alreadyFinal) {
-      this.logger.warn(
-        `Dropping duplicate callback for ${dto.reference} (final=${rows[0].status})`,
-      );
+    if (parsed.trusted) {
+      await this.applyResult(payment, rows, parsed.claimed, 'callback');
       return;
     }
+    if (isFinal(rows)) {
+      return;
+    }
+    await this.queueVerification(payment.id, parsed.claimed.state);
+  }
 
-    const success = dto.resultCode === 0;
-    const status = success
-      ? PaymentTransactionStatus.COMPLETED
-      : PaymentTransactionStatus.FAILED;
+  /** Transaction legs a callback refers to: by our reference, else by provider ids. */
+  private async legsFor(parsed: {
+    reference: string | null;
+    checkoutRequestId: string | null;
+    providerReference: string | null;
+  }): Promise<PaymentTransaction[]> {
+    if (parsed.reference) {
+      const rows = await this.transactions.find({ where: { mpesaReference: parsed.reference } });
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
+    const ids = [parsed.checkoutRequestId, parsed.providerReference].filter(
+      (v): v is string => typeof v === 'string' && v.length > 0,
+    );
+    if (ids.length === 0) {
+      return [];
+    }
+    const match = await this.transactions
+      .createQueryBuilder('t')
+      .where(`t."rawCallback"->'stkPush'->>'checkoutRequestId' IN (:...ids)`, { ids })
+      .orWhere(`t."rawCallback"->'stkPush'->>'providerReference' IN (:...ids)`, { ids })
+      .getOne();
+    return match ? this.transactions.find({ where: { paymentId: match.paymentId } }) : [];
+  }
+
+  /**
+   * Queues the provider confirmation of a payment. If the queue is down the
+   * STK reconcile job still resolves it once it times out.
+   */
+  private async queueVerification(paymentId: string, claimed: StkQueryResult['state']): Promise<void> {
+    if (!this.maintenance) {
+      return;
+    }
+    try {
+      await this.maintenance.add(PAYMENT_VERIFY_JOB, { paymentId, claimed });
+    } catch (err) {
+      this.logger.error(
+        `Could not queue verification of payment ${paymentId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Records a final provider result on the payment and its legs, then moves
+   * the errand (main payment) or opens the refund review (cancelled task).
+   * Dropped when every leg is already final.
+   */
+  private async applyResult(
+    payment: Payment,
+    rows: PaymentTransaction[],
+    result: StkQueryResult,
+    source: 'callback' | 'query',
+  ): Promise<void> {
+    if (result.state === 'pending') {
+      return;
+    }
+    if (isFinal(rows)) {
+      this.logger.warn(`Dropping duplicate result for payment ${payment.id} (final=${rows[0].status})`);
+      return;
+    }
+    const success = result.state === 'success';
+    const status = success ? PaymentTransactionStatus.COMPLETED : PaymentTransactionStatus.FAILED;
     const errandId = errandIdOf(payment);
     // A payment that completes after the task was cancelled opens its refund
     // review in the same transaction that records the completed legs, so a
-    // failure cannot leave paid legs without a review (a retried callback is
+    // failure cannot leave paid legs without a review (a retried result is
     // dropped as already final).
     const cancelled =
       success && (await this.errands.getById(errandId)).status === ErrandStatus.CANCELLED;
+    const outcome = {
+      resultCode: success ? 0 : Math.max(result.resultCode ?? 1, 1),
+      resultDesc: result.resultDesc ?? undefined,
+      receiptNumber: result.receiptNumber ?? undefined,
+      provider: this.provider.name,
+      source,
+    };
     await this.payments.manager.transaction(async (manager) => {
       const txRepo = manager.getRepository(PaymentTransaction);
       await txRepo.save(
@@ -732,8 +839,7 @@ export class PaymentsService implements OnApplicationBootstrap {
           txRepo.merge(r, {
             status,
             // Keeps the push ids (`stkPush`) next to the provider result.
-            // eslint-disable-next-line no-misused-spread -- DTO → plain JSON
-            rawCallback: { ...r.rawCallback, ...dto, ts: new Date().toISOString() },
+            rawCallback: { ...r.rawCallback, ...outcome, ts: new Date().toISOString() },
           }),
         ),
       );
@@ -751,12 +857,56 @@ export class PaymentsService implements OnApplicationBootstrap {
     }
   }
 
+  /** What the provider needs to look a payment's push up. */
+  private providerRefOf(legs: PaymentTransaction[]): ProviderPaymentRef | null {
+    const reference = legs[0]?.mpesaReference;
+    if (!reference) {
+      return null;
+    }
+    const pushes = legs.map(
+      (l) =>
+        (l.rawCallback?.stkPush ?? {}) as { checkoutRequestId?: string; providerReference?: string },
+    );
+    const first = (key: 'checkoutRequestId' | 'providerReference') =>
+      pushes.map((p) => p[key]).find((v): v is string => typeof v === 'string' && v.length > 0) ??
+      null;
+    return {
+      reference,
+      checkoutRequestId: first('checkoutRequestId'),
+      providerReference: first('providerReference'),
+    };
+  }
+
   /**
-   * Resolves a TIMEOUT payment with the provider (Daraja STK Query, row 52).
+   * Confirms a pending payment with the provider's status query and applies
+   * a final result. Used by the `payment-verify` job after a callback and by
+   * the TIMEOUT reconcile. Returns the provider state; `pending` leaves the
+   * payment unresolved.
+   */
+  async verifyPayment(paymentId: string): Promise<StkQueryResult['state'] | null> {
+    const payment = await this.payments.findOne({ where: { id: paymentId } });
+    if (!payment) {
+      return null;
+    }
+    if (payment.status !== PaymentStatus.PENDING) {
+      return payment.status === PaymentStatus.FAILED ? 'failed' : 'success';
+    }
+    const legs = await this.transactions.find({ where: { paymentId } });
+    const ref = this.providerRefOf(legs);
+    if (!ref || (!ref.checkoutRequestId && !ref.providerReference)) {
+      return 'pending';
+    }
+    const result = await this.provider.queryStatus(ref);
+    await this.applyResult(payment, legs, result, 'query');
+    return result.state;
+  }
+
+  /**
+   * Resolves a TIMEOUT payment with the provider (status query, row 52).
    * TIMEOUT is not FAILED: the payment stays unresolved (and blocks a new
-   * push) until the provider reports a final result, which is then applied
-   * exactly like a callback. Queries for one payment are spaced by
-   * payments.stkQueryIntervalSeconds. Returns the STK status afterwards.
+   * push) until the provider reports a final result. Queries for one payment
+   * are spaced by payments.stkQueryIntervalSeconds. Returns the STK status
+   * afterwards.
    */
   async resolvePending(paymentId: string): Promise<StkStatus | null> {
     const payment = await this.payments.findOne({ where: { id: paymentId } });
@@ -767,28 +917,14 @@ export class PaymentsService implements OnApplicationBootstrap {
     if (status !== StkStatus.TIMEOUT) {
       return status;
     }
-    const legs = await this.transactions.find({ where: { paymentId } });
-    const reference = legs[0]?.mpesaReference;
-    const checkout = legs
-      .map((l) => (l.rawCallback?.stkPush as { checkoutRequestId?: string } | undefined)?.checkoutRequestId)
-      .find((id): id is string => typeof id === 'string' && id.length > 0);
-    if (!reference || !checkout) {
-      return status;
-    }
     const interval = this.config.get<number>('payments.stkQueryIntervalSeconds', 30);
     if (!(await this.redis.setIfAbsent(`stk-query:${paymentId}`, '1', interval))) {
       return status;
     }
-    const result = await this.stk.query(checkout);
-    if (result.state === 'pending') {
+    const state = await this.verifyPayment(paymentId);
+    if (state === 'pending' || state === null) {
       return status;
     }
-    await this.handleCallback({
-      reference,
-      resultCode: result.state === 'success' ? 0 : Math.max(result.resultCode ?? 1, 1),
-      resultDesc: result.resultDesc ?? undefined,
-      mpesaType: 'STK',
-    });
     const after = await this.payments.findOne({ where: { id: paymentId } });
     return after ? this.stkStatus(after) : null;
   }
@@ -870,18 +1006,21 @@ export class PaymentsService implements OnApplicationBootstrap {
       return { errandId, settled: true, released: prior, previousStatus: ErrandStatus.SETTLED };
     }
     if (errand.status === ErrandStatus.DISPUTED) {
-      throw new ConflictException('Disputed errands are locked; resolve the dispute first');
+      throw conflict('errand_disputed', 'Disputed errands are locked; resolve the dispute first');
     }
     if (!ErrandStateMachine.canTransition(errand.status, ErrandStatus.SETTLED)) {
-      throw new ConflictException(`Cannot settle from ${errand.status}`);
+      throw conflict('errand_not_settleable', `Cannot settle from ${errand.status}`, {
+        status: errand.status,
+      });
     }
     if (!payment) {
-      throw new ConflictException('No payment to settle');
+      throw conflict('no_payment_to_settle', 'No payment to settle');
     }
     const legs = await this.transactions.find({ where: { paymentId: payment.id } });
     const incomplete = legs.filter((t) => t.status !== PaymentTransactionStatus.COMPLETED);
     if (incomplete.length > 0) {
-      throw new ConflictException(
+      throw conflict(
+        'payment_legs_incomplete',
         `Cannot settle: ${incomplete.length} payment leg(s) not completed ` +
           `(${incomplete.map((t) => `${t.paymentTypeId}:${t.status}`).join(', ')}).`,
       );
@@ -975,3 +1114,9 @@ const newReference = (): string =>
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const errandIdOf = (payment: Payment): string => payment.errandId;
+
+const isFinal = (rows: PaymentTransaction[]): boolean =>
+  rows.every(
+    (r) =>
+      r.status === PaymentTransactionStatus.COMPLETED || r.status === PaymentTransactionStatus.FAILED,
+  );

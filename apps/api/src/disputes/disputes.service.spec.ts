@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import {
   DisputeEventType,
@@ -83,7 +83,7 @@ describe('DisputesService.open (A-9)', () => {
     const { service, errands } = build({ existing: { id: 'd-0' } as Dispute });
     await expect(
       service.open({ errandId: 'e-1', reason: 'Again please' }, customer),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({ status: 409, code: 'dispute_already_exists' });
     expect(errands.transitionWith).not.toHaveBeenCalled();
   });
 });
@@ -128,5 +128,64 @@ describe('DisputesService.getForErrand', () => {
   it('404s when the errand has no dispute', async () => {
     const { service } = build();
     await expect(service.getForErrand('e-1', customer)).rejects.toThrow('No dispute for this task');
+  });
+});
+
+describe('DisputesService.closeWithin (N-6)', () => {
+  const resolution = {
+    errandId: 'e-1',
+    verdict: 'customer_favourable' as const,
+    rationale: 'Runner bought the wrong item; customer refunded.',
+    adminUserId: 'admin-1',
+  };
+
+  const managerWith = (row: Partial<Dispute> | null) => {
+    const writes: { dispute?: Partial<Dispute>; event?: Partial<DisputeEvent> } = {};
+    const manager = {
+      getRepository: (entity: unknown) => ({
+        findOne: vi.fn(() => Promise.resolve(row)),
+        create: (r: object) => r,
+        save: (r: object) => {
+          if (entity === Dispute) {
+            writes.dispute = r;
+          } else {
+            writes.event = r;
+          }
+          return Promise.resolve(r);
+        },
+      }),
+    };
+    return { manager, writes };
+  };
+
+  it('registers itself on the errands resolve-dispute hook', () => {
+    const errands = { onDisputeResolved: vi.fn() };
+    const service = new DisputesService({} as never, {} as never, errands as never);
+    service.onModuleInit();
+    expect(errands.onDisputeResolved).toHaveBeenCalledWith(expect.any(Function));
+  });
+
+  it('sets status, resolution and resolvedBy and appends a resolved event', async () => {
+    const { service } = build();
+    const { manager, writes } = managerWith({ id: 'd-1', errandId: 'e-1', status: DisputeStatus.OPEN });
+    await service.closeWithin(manager as never, resolution);
+    expect(writes.dispute).toMatchObject({
+      status: DisputeStatus.RESOLVED,
+      resolution: resolution.rationale,
+      resolvedBy: 'admin-1',
+    });
+    expect(writes.event).toMatchObject({
+      disputeId: 'd-1',
+      actorId: 'admin-1',
+      eventType: DisputeEventType.RESOLVED,
+      payload: { verdict: 'customer_favourable', resolution: resolution.rationale },
+    });
+  });
+
+  it('does nothing when the errand has no dispute row', async () => {
+    const { service } = build();
+    const { manager, writes } = managerWith(null);
+    await service.closeWithin(manager as never, resolution);
+    expect(writes).toEqual({});
   });
 });

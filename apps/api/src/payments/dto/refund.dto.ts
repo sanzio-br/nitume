@@ -29,6 +29,12 @@ export class ListRefundsQueryDto {
   limit?: number;
 }
 
+export class CountRefundsQueryDto {
+  @IsOptional()
+  @IsEnum(RefundStatus)
+  status?: RefundStatus;
+}
+
 export class DecideRefundDto {
   /** KES, 0 up to the amount the customer paid. 0 closes the review. */
   @IsNumber({ maxDecimalPlaces: 2 })

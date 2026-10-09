@@ -5,8 +5,11 @@ import { UserRole } from '../common/enums';
 import { RefundStatus, RefundTrigger } from './refund-review.entity';
 import { RefundsService } from './refunds.service';
 
-const build = (row: object | null, access: 'ok' | 'denied' = 'ok') => {
-  const reviews = { findOne: vi.fn(() => Promise.resolve(row)) };
+const build = (row: object | null, access: 'ok' | 'denied' = 'ok', rows: object[] = []) => {
+  const reviews = {
+    findOne: vi.fn(() => Promise.resolve(row)),
+    find: vi.fn(() => Promise.resolve(rows)),
+  };
   const errands = {
     onCancelled: vi.fn(),
     getById: vi.fn(() =>
@@ -40,6 +43,8 @@ describe('RefundsService.forCustomer (row 55)', () => {
     expect(view).toEqual({
       id: 'r-1',
       errandId: 'e-1',
+      trigger: RefundTrigger.CANCELLED_AFTER_PAYMENT,
+      priceChangeRequestId: null,
       status: RefundStatus.APPROVED,
       amountPaid: '500.00',
       refundAmount: '400.00',
@@ -62,5 +67,48 @@ describe('RefundsService.forCustomer (row 55)', () => {
     const { service, reviews } = build(null, 'denied');
     await expect(service.forCustomer('e-1', customer)).rejects.toBeInstanceOf(ForbiddenException);
     expect(reviews.findOne).not.toHaveBeenCalled();
+  });
+});
+
+describe('RefundsService with several reviews (row 71)', () => {
+  const decrease = {
+    id: 'r-2',
+    errandId: 'e-1',
+    priceChangeRequestId: 'pc-1',
+    trigger: RefundTrigger.PRICE_CHANGE_DECREASE,
+    status: RefundStatus.PENDING_REVIEW,
+    amountPaid: '80.00',
+    refundAmount: null,
+    payoutReference: null,
+    createdAt: new Date('2026-10-08T10:00:00Z'),
+    decidedAt: null,
+    paidAt: null,
+  };
+
+  it('GET /errands/:id/refunds lists every review in the customer shape', async () => {
+    const { service } = build(null, 'ok', [decrease]);
+    const out = await service.forCustomerAll('e-1', customer);
+    expect(out.items).toEqual([
+      {
+        id: 'r-2',
+        errandId: 'e-1',
+        trigger: RefundTrigger.PRICE_CHANGE_DECREASE,
+        priceChangeRequestId: 'pc-1',
+        status: RefundStatus.PENDING_REVIEW,
+        amountPaid: '80.00',
+        refundAmount: null,
+        payoutReference: null,
+        createdAt: decrease.createdAt,
+        decidedAt: null,
+        paidAt: null,
+      },
+    ]);
+  });
+
+  it('GET /errands/:id/refund falls back to the newest review without a cancellation review', async () => {
+    const { service, reviews } = build(null);
+    reviews.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(decrease);
+    const view = await service.forCustomer('e-1', customer);
+    expect(view.id).toBe('r-2');
   });
 });

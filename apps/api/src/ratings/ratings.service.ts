@@ -1,9 +1,9 @@
 import {
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { conflict } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ErrandStatus, UserRole } from '../common/enums';
@@ -52,19 +52,21 @@ export class RatingsService {
     }
 
     if (!RATEABLE.has(errand.status)) {
-      throw new ConflictException(
+      throw conflict(
+        'errand_not_rateable',
         `Tasks can only be rated once they are complete (current: ${errand.status})`,
+        { status: errand.status },
       );
     }
 
     const existing = await this.ratings.findOne({ where: { errandId } });
     if (existing) {
-      throw new ConflictException('This task has already been rated');
+      throw conflict('rating_already_exists', 'This task has already been rated');
     }
 
     const rateeUserId = await this.runnerUserIdFor(errandId);
     if (!rateeUserId) {
-      throw new ConflictException('No assigned runner to rate');
+      throw conflict('no_runner_to_rate', 'No assigned runner to rate');
     }
 
     const rating = this.ratings.create({

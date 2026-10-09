@@ -161,3 +161,59 @@ describe('NotificationsService.deliverPush (row 31)', () => {
     expect(push.send).not.toHaveBeenCalled();
   });
 });
+
+describe('Re-quote and merchant-details notifications (N-4, rows 42-44)', () => {
+  it('enqueues a quote_reissued feed job (never an inline write)', async () => {
+    const { service, queue, notifications } = build();
+    await service.onQuoteReissued({
+      errandId: 'e-1',
+      quoteId: 'q-2',
+      total: '700.00',
+      currency: 'KES',
+      expiresAt: null,
+      status: ErrandStatus.ACCEPTED,
+      acceptanceRequired: true,
+    });
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
+      kind: 'quote_reissued',
+      errandId: 'e-1',
+      quoteId: 'q-2',
+      total: '700.00',
+      expiresAt: null,
+      acceptanceRequired: true,
+    });
+    expect(notifications.save).not.toHaveBeenCalled();
+  });
+
+  it('enqueues a merchant_details feed job', async () => {
+    const { service, queue } = build();
+    await service.onMerchantDetails({
+      errandId: 'e-1',
+      merchantName: 'Naivas Nyali',
+      tillNumber: '123456',
+      paybillNumber: null,
+      accountReference: null,
+    });
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
+      kind: 'merchant_details',
+      errandId: 'e-1',
+      merchantName: 'Naivas Nyali',
+    });
+  });
+
+  it('has copy for both', () => {
+    expect(
+      copyFor({
+        kind: 'quote_reissued',
+        errandId: 'e',
+        quoteId: 'q',
+        total: '700.00',
+        expiresAt: null,
+        acceptanceRequired: true,
+      }),
+    ).toMatchObject({ eventType: 'quote.reissued', body: expect.stringContaining('Accept it') });
+    expect(copyFor({ kind: 'merchant_details', errandId: 'e', merchantName: null })).toMatchObject({
+      eventType: 'merchant_details.added',
+    });
+  });
+});

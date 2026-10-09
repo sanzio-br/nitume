@@ -160,6 +160,30 @@ describe('RealtimeGateway pushes (A-1, A-2)', () => {
     expect(emit).toHaveBeenCalledWith('price_change:requested', event);
   });
 
+  it('forwards quote re-issues and merchant details (N-4, rows 42-44)', () => {
+    const { gateway, emit } = build();
+    const quote = {
+      errandId: ERRAND_ID,
+      quoteId: 'q-2',
+      total: '700.00',
+      currency: 'KES',
+      expiresAt: null,
+      status: ErrandStatus.ACCEPTED,
+      acceptanceRequired: true,
+    };
+    gateway.onQuoteReissued(quote);
+    expect(emit).toHaveBeenCalledWith('quote:reissued', quote);
+    const merchant = {
+      errandId: ERRAND_ID,
+      merchantName: 'Naivas',
+      tillNumber: '123456',
+      paybillNumber: null,
+      accountReference: null,
+    };
+    gateway.onMerchantDetailsUpdated(merchant);
+    expect(emit).toHaveBeenCalledWith('merchant_details:updated', merchant);
+  });
+
   it('emits location:update with the §4.2 payload', () => {
     const { gateway, emit } = build();
     const payload = { errandId: ERRAND_ID, lat: -4.04, lng: 39.67, eta: 300, ts: 'x' };

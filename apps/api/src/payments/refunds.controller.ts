@@ -3,9 +3,14 @@ import { AuthContext, Roles } from '../common/decorators/auth.decorators';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { UserRole } from '../common/enums';
-import { DecideRefundDto, ListRefundsQueryDto, MarkRefundPaidDto } from './dto/refund.dto';
+import {
+  CountRefundsQueryDto,
+  DecideRefundDto,
+  ListRefundsQueryDto,
+  MarkRefundPaidDto,
+} from './dto/refund.dto';
 import { RefundReview } from './refund-review.entity';
-import { RefundsService } from './refunds.service';
+import { AdminRefundDetail, RefundsService } from './refunds.service';
 
 /** Admin refund reviews for tasks cancelled after payment. */
 @Controller('refunds')
@@ -19,9 +24,16 @@ export class RefundsController {
     return this.refunds.list(query);
   }
 
+  /** `{ count }`, optionally for one status (N-7, sidebar badge). */
+  @Get('count')
+  count(@Query() query: CountRefundsQueryDto): Promise<{ count: number }> {
+    return this.refunds.count(query.status);
+  }
+
+  /** Review + errand summary, admin names, customer M-Pesa phone, paid breakdown (N-1, N-2). */
   @Get(':id')
-  get(@Param('id', ParseUUIDPipe) id: string): Promise<RefundReview> {
-    return this.refunds.get(id);
+  get(@Param('id', ParseUUIDPipe) id: string): Promise<AdminRefundDetail> {
+    return this.refunds.detail(id);
   }
 
   @Patch(':id/decision')

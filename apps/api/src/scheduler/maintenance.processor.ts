@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { ErrandsService } from '../errands/errands.service';
-import { MAINTENANCE_QUEUE } from '../infra/queue/queues';
+import { MAINTENANCE_QUEUE, PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
 import { PaymentsService } from '../payments/payments.service';
 
 export const DISPUTE_WINDOW_JOB = 'dispute-window';
@@ -29,10 +29,25 @@ export class MaintenanceProcessor extends WorkerHost {
         return this.disputeWindow();
       case STK_RECONCILE_JOB:
         return { resolved: await this.payments.resolveTimedOut() };
+      case PAYMENT_VERIFY_JOB:
+        return this.verifyPayment((job.data as { paymentId: string }).paymentId);
       default:
         this.logger.warn(`Unknown maintenance job ${job.name}`);
         return null;
     }
+  }
+
+  /**
+   * Confirms a payment named by a provider callback with the provider's
+   * status query (row 73). Still pending -> throw, so BullMQ retries with
+   * backoff; after the last attempt the STK reconcile job takes over.
+   */
+  async verifyPayment(paymentId: string): Promise<{ paymentId: string; state: string | null }> {
+    const state = await this.payments.verifyPayment(paymentId);
+    if (state === 'pending') {
+      throw new Error(`Payment ${paymentId} still pending at the provider; retrying`);
+    }
+    return { paymentId, state };
   }
 
   /** COMPLETED past the dispute window -> CONFIRMED, then CONFIRMED -> SETTLED. */

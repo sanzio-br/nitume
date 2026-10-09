@@ -14,6 +14,12 @@ import { Errand } from '../errands/errand.entity';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { NOTIFICATIONS_QUEUE } from '../infra/queue/queues';
 import { DevicesService } from '../users/devices.service';
+import {
+  MERCHANT_DETAILS_UPDATED_EVENT,
+  MerchantDetailsUpdatedEvent,
+  QUOTE_REISSUED_EVENT,
+  QuoteReissuedEvent,
+} from '../errands/errands.service';
 import { AppNotification } from './app-notification.entity';
 import { NotificationLog } from './notification-log.entity';
 import { PUSH_SENDER, PushSender } from './push/push-sender';
@@ -46,7 +52,16 @@ interface PriceChangeRequested {
 export type FeedJob =
   | { kind: 'errand_status'; errandId: string; status: ErrandStatus }
   | { kind: 'price_change'; errandId: string; requestId: string; fromPrice: string; toPrice: string }
-  | { kind: 'refund'; errandId: string; refundId: string; status: string; refundAmount: string | null };
+  | { kind: 'refund'; errandId: string; refundId: string; status: string; refundAmount: string | null }
+  | {
+      kind: 'quote_reissued';
+      errandId: string;
+      quoteId: string;
+      total: string;
+      expiresAt: string | null;
+      acceptanceRequired: boolean;
+    }
+  | { kind: 'merchant_details'; errandId: string; merchantName: string | null };
 
 export const FEED_JOB = 'feed';
 export const PUSH_JOB = 'push';
@@ -151,6 +166,29 @@ export class NotificationsService {
       refundId: event.refundId,
       status: event.status,
       refundAmount: event.refundAmount,
+    });
+  }
+
+  /** Admin re-quote -> the customer must review (and, on ACCEPTED, accept) it. */
+  @OnEvent(QUOTE_REISSUED_EVENT, { async: true })
+  async onQuoteReissued(event: QuoteReissuedEvent): Promise<void> {
+    await this.enqueue({
+      kind: 'quote_reissued',
+      errandId: event.errandId,
+      quoteId: event.quoteId,
+      total: event.total,
+      expiresAt: event.expiresAt,
+      acceptanceRequired: event.acceptanceRequired,
+    });
+  }
+
+  /** Merchant Till/Paybill details added -> merchant_direct is now possible. */
+  @OnEvent(MERCHANT_DETAILS_UPDATED_EVENT, { async: true })
+  async onMerchantDetails(event: MerchantDetailsUpdatedEvent): Promise<void> {
+    await this.enqueue({
+      kind: 'merchant_details',
+      errandId: event.errandId,
+      merchantName: event.merchantName,
     });
   }
 
@@ -294,6 +332,22 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
       };
     case 'refund':
       return refundCopy(job.status, job.refundAmount);
+    case 'quote_reissued':
+      return {
+        eventType: NotificationEventType.QUOTE_REISSUED,
+        title: 'New quote for your task',
+        body: job.acceptanceRequired
+          ? `Your task has a new quote of KES ${job.total}. Accept it to continue to payment.`
+          : `Your task has a new quote of KES ${job.total}. Review it to continue.`,
+      };
+    case 'merchant_details':
+      return {
+        eventType: NotificationEventType.MERCHANT_DETAILS_ADDED,
+        title: 'Merchant payment details added',
+        body: job.merchantName
+          ? `You can now pay ${job.merchantName} directly for the items.`
+          : 'You can now pay the merchant directly for the items.',
+      };
   }
 };
 

@@ -63,6 +63,13 @@ describe('ErrandsService guarded transitions', () => {
     expect(errand.status).toBe(ErrandStatus.CANCELLED);
   });
 
+  it('409 illegal_transition with from/to on an impossible move (N-8)', async () => {
+    const { service } = build(ErrandStatus.DRAFT);
+    await expect(
+      service.transition('e-1', ErrandStatus.SETTLED, customer, undefined, subject),
+    ).rejects.toMatchObject({ status: 409, code: 'illegal_transition' });
+  });
+
   it('refuses a customer COMPLETED -> CONFIRMED (system-only now)', async () => {
     const { service } = build(ErrandStatus.COMPLETED);
     await expect(
@@ -87,11 +94,31 @@ describe('ErrandsService.resolveDispute', () => {
     expect(errand.status).toBe(ErrandStatus.CANCELLED);
   });
 
+  it('runs the dispute-resolution hooks in the same transaction (N-6)', async () => {
+    const { service, manager } = build(ErrandStatus.DISPUTED);
+    const hook = vi.fn(() => Promise.resolve());
+    service.onDisputeResolved(hook);
+    await service.resolveDispute('e-1', 'customer_favourable', `  ${rationale} `, admin as never);
+    expect(hook).toHaveBeenCalledWith(manager, {
+      errandId: 'e-1',
+      verdict: 'customer_favourable',
+      rationale,
+      adminUserId: 'admin-1',
+    });
+  });
+
+  it('409 errand_not_disputed outside DISPUTED (N-8)', async () => {
+    const { service } = build(ErrandStatus.COMPLETED);
+    await expect(
+      service.resolveDispute('e-1', 'runner_favourable', rationale, admin as never),
+    ).rejects.toMatchObject({ status: 409, code: 'errand_not_disputed' });
+  });
+
   it('requires a 20+ character rationale', async () => {
     const { service } = build(ErrandStatus.DISPUTED);
     await expect(
       service.resolveDispute('e-1', 'runner_favourable', 'too short', admin as never),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({ status: 409, code: 'rationale_too_short' });
   });
 });
 

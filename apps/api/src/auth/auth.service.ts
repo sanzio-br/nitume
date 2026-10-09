@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   HttpStatus,
   Injectable,
   Logger,
@@ -7,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { ApiError } from '../common/api-error';
+import { ApiError, conflict } from '../common/api-error';
 import { UserRole } from '../common/enums';
 import { CustomersService } from '../customers/customers.service';
 import { RunnersService } from '../runners/runners.service';
@@ -45,7 +44,7 @@ export class AuthService {
       throw new UnauthorizedException('Admin and business accounts cannot be self-registered');
     }
     if (await this.users.findByPhone(params.phone)) {
-      throw new ConflictException('An account with this phone number already exists');
+      throw conflict('phone_already_registered', 'An account with this phone number already exists');
     }
     const passwordHash = params.password
       ? await bcrypt.hash(params.password, this.passwordRounds())

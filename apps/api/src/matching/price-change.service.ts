@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   ForbiddenException,
   HttpStatus,
   Injectable,
@@ -15,10 +14,11 @@ import {
   StatusHistoryActor,
   UserRole,
 } from '../common/enums';
-import { ApiError } from '../common/api-error';
+import { ApiError, conflict } from '../common/api-error';
 import { ErrandStateMachine, TransitionGuard } from '../errands/errand-state-machine';
 import { MerchantRoute } from '../payments/payment-views';
 import { DifferencePaymentView, PaymentsService } from '../payments/payments.service';
+import { CustomerRefundView, RefundsService, toCustomerView } from '../payments/refunds.service';
 import { Errand } from '../errands/errand.entity';
 import { ErrandsService } from '../errands/errands.service';
 import { PriceChangeRequest } from './price-change-request.entity';
@@ -52,6 +52,13 @@ export type PriceChangeDecision = PriceChangeRequest & {
    * checkoutRequestId); for merchant_direct the Till/Paybill to pay.
    */
   differencePayment: DifferencePaymentView | null;
+  /**
+   * The refund review this decision opened, customer view (row 71): an
+   * approved DECREASE on a paid task opens its own review for the
+   * difference; a customer reject-and-cancel of a paid task returns the
+   * cancellation review. Null otherwise.
+   */
+  refundReview: CustomerRefundView | null;
 };
 
 @Injectable()
@@ -64,6 +71,7 @@ export class PriceChangeService {
     private readonly errandService: ErrandsService,
     private readonly events: EventEmitter2,
     private readonly payments: PaymentsService,
+    private readonly refunds: RefundsService,
   ) {}
 
   /**
@@ -81,8 +89,10 @@ export class PriceChangeService {
       throw new NotFoundException('Errand not found');
     }
     if (!PRICE_CHANGEABLE.has(errand.status)) {
-      throw new ConflictException(
+      throw conflict(
+        'price_change_not_allowed',
         `Price changes are not allowed in status ${errand.status}`,
+        { status: errand.status },
       );
     }
     if (actor.role !== UserRole.ADMIN) {
@@ -109,7 +119,11 @@ export class PriceChangeService {
       where: { errandId, status: PriceChangeStatus.REQUESTED },
     });
     if (open) {
-      throw new ConflictException('A price change request is already pending for this task');
+      throw conflict(
+        'price_change_already_pending',
+        'A price change request is already pending for this task',
+        { requestId: open.id },
+      );
     }
 
     const saved = await this.requests.save(
@@ -160,12 +174,20 @@ export class PriceChangeService {
       });
       const req = await this.lockPending(manager, errandId, requestId);
       if (!errand || !PRICE_CHANGEABLE.has(errand.status)) {
-        throw new ConflictException(
+        throw conflict(
+          'price_change_not_allowed',
           `Price changes cannot be approved in status ${errand?.status ?? 'unknown'}`,
+          { status: errand?.status ?? null },
         );
       }
       const difference = round2(Number(req.toPrice) - Number(req.fromPrice));
       let recorded: { paymentId: string; flow: PaymentFlow } | null = null;
+      // A decrease on a paid task opens its own refund review for the
+      // difference (rows 48, 71), committed with the approval.
+      const refund =
+        difference < 0 && POST_PAYMENT.has(errand.status)
+          ? await this.refunds.openForDecrease(manager, errandId, req.id, -difference)
+          : null;
       if (difference > 0 && POST_PAYMENT.has(errand.status)) {
         // Validates the route before anything is written.
         const { payment } = await this.payments.recordPriceDifference(
@@ -182,14 +204,17 @@ export class PriceChangeService {
       req.decidedByUserId = actor.userId;
       req.decidedAt = new Date();
       const saved = await manager.getRepository(PriceChangeRequest).save(req);
-      return { saved, recorded };
+      return { saved, recorded, refund };
     });
     // The STK charge for a send_to_runner difference goes out only after the
     // approval has committed (rows 44, 48).
     const differencePayment = decided.recorded
       ? await this.payments.chargeDifference(decided.recorded.paymentId)
       : null;
-    return Object.assign(decided.saved, { differencePayment });
+    return Object.assign(decided.saved, {
+      differencePayment,
+      refundReview: decided.refund ? toCustomerView(decided.refund) : null,
+    });
   }
 
   /**
@@ -216,7 +241,7 @@ export class PriceChangeService {
     };
     if (actor.role === UserRole.ADMIN) {
       const saved = await this.requests.manager.transaction(rejectWithin);
-      return Object.assign(saved, { differencePayment: null });
+      return Object.assign(saved, { differencePayment: null, refundReview: null });
     }
     const errand = await this.errands.findOne({ where: { id: errandId } });
     const status = errand?.status;
@@ -241,7 +266,12 @@ export class PriceChangeService {
       rejectWithin,
       guard,
     );
-    return Object.assign(extra, { differencePayment: null });
+    // A paid task gets its cancellation review in the same transaction.
+    const review = await this.refunds.cancellationReviewFor(errandId);
+    return Object.assign(extra, {
+      differencePayment: null,
+      refundReview: review ? toCustomerView(review) : null,
+    });
   }
 
   /**

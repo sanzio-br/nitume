@@ -1,12 +1,24 @@
 import { HttpStatus, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { ApiError } from '../common/api-error';
-import { ErrandStatus, PaymentTransactionStatus } from '../common/enums';
+import {
+  ErrandCategory,
+  ErrandStatus,
+  PaymentFlow,
+  PaymentMethodType,
+  PaymentStatus,
+  PaymentTransactionStatus,
+  PaymentTypeCode,
+} from '../common/enums';
+import { CustomerAccountsService } from '../customers/customer-accounts.service';
+import { CustomersService } from '../customers/customers.service';
 import { TransitionGuard } from '../errands/errand-state-machine';
 import { ErrandsService } from '../errands/errands.service';
+import { UsersService } from '../users/users.service';
 import { PaymentTransaction } from './payment-transaction.entity';
+import { PaymentType } from './payment-type.entity';
 import { Payment } from './payment.entity';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
 
@@ -14,9 +26,16 @@ import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entit
 export interface CustomerRefundView {
   id: string;
   errandId: string;
+  /** Why the review opened, e.g. `price_change_decrease` (row 71). */
+  trigger: RefundTrigger;
+  /** Set on a price-decrease review: the approved price-change request. */
+  priceChangeRequestId: string | null;
   /** pending_review | approved | no_refund | refunded */
   status: RefundStatus;
-  /** Everything the customer paid by STK for the task. */
+  /**
+   * Refund ceiling: everything the customer paid by STK for the task
+   * (cancellation review) or the decrease (price-decrease review).
+   */
   amountPaid: string;
   /** Null until an admin decides. */
   refundAmount: string | null;
@@ -26,6 +45,63 @@ export interface CustomerRefundView {
   decidedAt: Date | null;
   paidAt: Date | null;
 }
+
+/** Errand summary on admin refund items (N-1). */
+export interface RefundErrandSummary {
+  id: string;
+  reference: string;
+  title: string | null;
+  description: string;
+  category: ErrandCategory;
+  status: ErrandStatus;
+}
+
+/** An admin who decided or paid out a refund (N-2). */
+export interface AdminRef {
+  id: string;
+  displayName: string | null;
+}
+
+/** Admin list item: the review plus errand summary and admin names. */
+export type AdminRefundItem = RefundReview & {
+  errand: RefundErrandSummary | null;
+  decidedBy: AdminRef | null;
+  paidBy: AdminRef | null;
+};
+
+/**
+ * What the customer paid for the task, by flow (N-1). Amounts are completed
+ * STK legs to Nitume except `merchantDirectAmount`, which the customer pays
+ * the merchant's Till/Paybill directly (not refundable by Nitume, shown for
+ * context).
+ */
+export interface PaidBreakdown {
+  serviceAndRunnerFee: string;
+  itemAmountToNitume: string;
+  priceChangeDifferences: string;
+  totalPaidToNitume: string;
+  merchantDirectAmount: string;
+}
+
+/** Admin detail: list item + customer contact, paid breakdown, sibling reviews. */
+export type AdminRefundDetail = AdminRefundItem & {
+  customer: {
+    userId: string;
+    displayName: string | null;
+    /** First name and last initial, e.g. "Amina W.", or null. */
+    shortName: string | null;
+    /** Login phone. */
+    phone: string | null;
+    /**
+     * Where the manual M-Pesa refund goes: the default M-Pesa method's phone,
+     * else the login phone (same rule as the STK payer phone).
+     */
+    mpesaPhone: string | null;
+  } | null;
+  paid: PaidBreakdown;
+  /** Other refund reviews of the same task (e.g. cancellation + decreases). */
+  otherReviews: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
+};
 
 interface StatusChanged {
   errandId: string;
@@ -46,6 +122,9 @@ export class RefundsService implements OnModuleInit {
     private readonly transactions: Repository<PaymentTransaction>,
     private readonly errands: ErrandsService,
     private readonly events?: EventEmitter2,
+    private readonly users?: UsersService,
+    private readonly accounts?: CustomerAccountsService,
+    private readonly customers?: CustomersService,
   ) {}
 
   /** Tells the notifications module the customer-visible status changed. */
@@ -112,8 +191,10 @@ export class RefundsService implements OnModuleInit {
 
   /**
    * Same as `openIfPaid` for a caller that already runs a transaction on a
-   * CANCELLED errand. Upserts on the unique errandId, so concurrent opens
-   * never create a second review and never abort the caller's transaction.
+   * CANCELLED errand. Upserts on the errand's one cancellation review (the
+   * partial unique index on errandId where priceChangeRequestId is null), so
+   * concurrent opens never create a second one and never abort the caller's
+   * transaction.
    */
   async openWithin(
     manager: EntityManager,
@@ -127,19 +208,50 @@ export class RefundsService implements OnModuleInit {
     await manager.query(
       `INSERT INTO "refund_reviews" ("errandId", "trigger", "amountPaid")
        VALUES ($1, $2, $3)
-       ON CONFLICT ("errandId") DO UPDATE
+       ON CONFLICT ("errandId") WHERE "priceChangeRequestId" IS NULL DO UPDATE
          SET "amountPaid" = EXCLUDED."amountPaid", "updatedAt" = now()
          WHERE "refund_reviews"."status" = $4`,
       [errandId, trigger, amountPaid.toFixed(2), RefundStatus.PENDING_REVIEW],
     );
-    return manager.getRepository(RefundReview).findOne({ where: { errandId } });
+    return manager
+      .getRepository(RefundReview)
+      .findOne({ where: { errandId, priceChangeRequestId: IsNull() } });
+  }
+
+  /**
+   * Opens the refund review of an approved price DECREASE on a paid task
+   * (rows 48, 71): its own review, recorded independently of any other, for
+   * the difference (`amountPaid` = the decrease, the refund ceiling). Runs
+   * in the approval transaction; idempotent per price-change request.
+   */
+  async openForDecrease(
+    manager: EntityManager,
+    errandId: string,
+    priceChangeRequestId: string,
+    decrease: number,
+  ): Promise<RefundReview | null> {
+    if (decrease <= 0) {
+      return null;
+    }
+    await manager.query(
+      `INSERT INTO "refund_reviews" ("errandId", "priceChangeRequestId", "trigger", "amountPaid")
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT ("priceChangeRequestId") WHERE "priceChangeRequestId" IS NOT NULL DO NOTHING`,
+      [errandId, priceChangeRequestId, RefundTrigger.PRICE_CHANGE_DECREASE, decrease.toFixed(2)],
+    );
+    return manager.getRepository(RefundReview).findOne({ where: { priceChangeRequestId } });
+  }
+
+  /** The errand's cancellation review, if any (no access check). */
+  cancellationReviewFor(errandId: string): Promise<RefundReview | null> {
+    return this.reviews.findOne({ where: { errandId, priceChangeRequestId: IsNull() } });
   }
 
   async list(opts: {
     status?: RefundStatus;
     cursor?: string;
     limit?: number;
-  }): Promise<{ items: RefundReview[]; nextCursor: string | null }> {
+  }): Promise<{ items: AdminRefundItem[]; nextCursor: string | null }> {
     const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
     const qb = this.reviews
       .createQueryBuilder('r')
@@ -160,8 +272,143 @@ export class RefundsService implements OnModuleInit {
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return {
-      items: page,
+      items: await this.enrich(page),
       nextCursor: rows.length > limit && last ? encodeCursor(last) : null,
+    };
+  }
+
+  /** Number of refund reviews, optionally in one status (N-7, sidebar badge). */
+  async count(status?: RefundStatus): Promise<{ count: number }> {
+    return { count: await this.reviews.count({ where: status ? { status } : {} }) };
+  }
+
+  /**
+   * Admin detail (N-1, N-2): errand summary, admin names, the customer's
+   * name and M-Pesa phone for the manual payout, what they paid by flow,
+   * and the task's other refund reviews.
+   */
+  async detail(id: string): Promise<AdminRefundDetail> {
+    const row = await this.get(id);
+    const [item] = await this.enrich([row]);
+    const [customer, paid, siblings] = await Promise.all([
+      this.customerContact(item.errand ? row.errandId : null),
+      this.paidBreakdown(row.errandId),
+      this.reviews.find({ where: { errandId: row.errandId }, order: { createdAt: 'ASC' } }),
+    ]);
+    return Object.assign(item, {
+      customer,
+      paid,
+      otherReviews: siblings
+        .filter((r) => r.id !== row.id)
+        .map((r) => ({
+          id: r.id,
+          trigger: r.trigger,
+          status: r.status,
+          amountPaid: r.amountPaid,
+          refundAmount: r.refundAmount,
+        })),
+    });
+  }
+
+  /** Adds errand summaries and admin display names (batched). */
+  private async enrich(rows: RefundReview[]): Promise<AdminRefundItem[]> {
+    const [errands, names] = await Promise.all([
+      this.errands.findByIds(rows.map((r) => r.errandId)),
+      this.users
+        ? this.users.displayNames(
+            rows.flatMap((r) => [r.decidedByUserId, r.paidByUserId]).filter((v): v is string => !!v),
+          )
+        : Promise.resolve(new Map<string, string>()),
+    ]);
+    const byId = new Map(errands.map((e) => [e.id, e]));
+    const ref = (userId: string | null): AdminRef | null =>
+      userId ? { id: userId, displayName: names.get(userId) ?? null } : null;
+    return rows.map((row) => {
+      const e = byId.get(row.errandId);
+      return Object.assign(row, {
+        errand: e
+          ? {
+              id: e.id,
+              reference: e.reference,
+              title: e.title,
+              description: e.description,
+              category: e.category,
+              status: e.status,
+            }
+          : null,
+        decidedBy: ref(row.decidedByUserId),
+        paidBy: ref(row.paidByUserId),
+      });
+    });
+  }
+
+  private async customerContact(errandId: string | null): Promise<AdminRefundDetail['customer']> {
+    if (!errandId || !this.customers || !this.users || !this.accounts) {
+      return null;
+    }
+    const errand = await this.errands.getById(errandId);
+    const [profile] = await this.customers.findByIds([errand.customerId]);
+    if (!profile) {
+      return null;
+    }
+    const [user, methods] = await Promise.all([
+      this.users.findById(profile.userId),
+      this.accounts.listPaymentMethods(profile.userId),
+    ]);
+    const mpesa = methods.find(
+      (m) => m.type === PaymentMethodType.MPESA && m.isDefault && m.phoneNumber,
+    );
+    const displayName = user?.displayName ?? null;
+    return {
+      userId: profile.userId,
+      displayName,
+      shortName: shortNameOf(displayName),
+      phone: user?.phone ?? null,
+      mpesaPhone: mpesa?.phoneNumber ?? user?.phone ?? null,
+    };
+  }
+
+  /** Completed STK amounts by flow, plus the merchant_direct amount (N-1). */
+  async paidBreakdown(errandId: string): Promise<PaidBreakdown> {
+    const raw = await this.transactions
+      .createQueryBuilder('t')
+      .innerJoin(Payment, 'p', 'p.id = t."paymentId"')
+      .innerJoin(PaymentType, 'pt', 'pt.id = t."paymentTypeId"')
+      .select(
+        `COALESCE(SUM(CASE WHEN p."priceChangeRequestId" IS NULL AND pt.code IN (:...feeCodes) THEN t.amount ELSE 0 END), 0)`,
+        'fees',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN p."priceChangeRequestId" IS NULL AND pt.code = :merchant THEN t.amount ELSE 0 END), 0)`,
+        'item',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN p."priceChangeRequestId" IS NOT NULL THEN t.amount ELSE 0 END), 0)`,
+        'differences',
+      )
+      .where('p."errandId" = :errandId', { errandId })
+      .andWhere('t.status = :completed', { completed: PaymentTransactionStatus.COMPLETED })
+      .setParameters({
+        feeCodes: [PaymentTypeCode.SERVICE_FEE, PaymentTypeCode.RUNNER_FEE],
+        merchant: PaymentTypeCode.MERCHANT_PAYMENT,
+      })
+      .getRawOne<{ fees: string; item: string; differences: string }>();
+    const direct = await this.payments
+      .createQueryBuilder('p')
+      .select('COALESCE(SUM(p."merchantAmount"), 0)', 'total')
+      .where('p."errandId" = :errandId', { errandId })
+      .andWhere('p."paymentFlow" = :flow', { flow: PaymentFlow.MERCHANT_DIRECT })
+      .andWhere('p.status <> :failed', { failed: PaymentStatus.FAILED })
+      .getRawOne<{ total: string }>();
+    const fees = Number(raw?.fees ?? 0);
+    const item = Number(raw?.item ?? 0);
+    const differences = Number(raw?.differences ?? 0);
+    return {
+      serviceAndRunnerFee: fees.toFixed(2),
+      itemAmountToNitume: item.toFixed(2),
+      priceChangeDifferences: differences.toFixed(2),
+      totalPaidToNitume: (fees + item + differences).toFixed(2),
+      merchantDirectAmount: Number(direct?.total ?? 0).toFixed(2),
     };
   }
 
@@ -177,27 +424,31 @@ export class RefundsService implements OnModuleInit {
    * Customer-readable refund status of an errand (row 55): the owner
    * customer (or an admin) sees status and amounts; 404 `refund_not_found`
    * when no refund review exists. Internal admin notes are not exposed.
+   * With several reviews (row 71) this is the cancellation review when there
+   * is one, else the newest; `forCustomerAll` lists them all.
    */
   async forCustomer(
     errandId: string,
     viewer: { userId: string; role: string },
   ): Promise<CustomerRefundView> {
     await this.errands.getById(errandId, viewer);
-    const row = await this.reviews.findOne({ where: { errandId } });
+    const row =
+      (await this.reviews.findOne({ where: { errandId, priceChangeRequestId: IsNull() } })) ??
+      (await this.reviews.findOne({ where: { errandId }, order: { createdAt: 'DESC' } }));
     if (!row) {
       throw new ApiError(HttpStatus.NOT_FOUND, 'refund_not_found', 'No refund for this task');
     }
-    return {
-      id: row.id,
-      errandId: row.errandId,
-      status: row.status,
-      amountPaid: row.amountPaid,
-      refundAmount: row.refundAmount,
-      payoutReference: row.payoutReference,
-      createdAt: row.createdAt,
-      decidedAt: row.decidedAt,
-      paidAt: row.paidAt,
-    };
+    return toCustomerView(row);
+  }
+
+  /** Every refund review of the errand, newest first (row 71); may be empty. */
+  async forCustomerAll(
+    errandId: string,
+    viewer: { userId: string; role: string },
+  ): Promise<{ items: CustomerRefundView[] }> {
+    await this.errands.getById(errandId, viewer);
+    const rows = await this.reviews.find({ where: { errandId }, order: { createdAt: 'DESC' } });
+    return { items: rows.map(toCustomerView) };
   }
 
   /** Admin sets the refund amount: 0 (no refund) up to the full amount paid. */
@@ -266,6 +517,29 @@ export class RefundsService implements OnModuleInit {
     return Number(raw?.total ?? 0);
   }
 }
+
+export const toCustomerView = (row: RefundReview): CustomerRefundView => ({
+  id: row.id,
+  errandId: row.errandId,
+  trigger: row.trigger,
+  priceChangeRequestId: row.priceChangeRequestId ?? null,
+  status: row.status,
+  amountPaid: row.amountPaid,
+  refundAmount: row.refundAmount,
+  payoutReference: row.payoutReference,
+  createdAt: row.createdAt,
+  decidedAt: row.decidedAt,
+  paidAt: row.paidAt,
+});
+
+/** "Amina Wanjiru" -> "Amina W."; one word stays as is; null without a name. */
+export const shortNameOf = (displayName: string | null): string | null => {
+  const parts = (displayName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return null;
+  }
+  return parts.length === 1 ? parts[0] : `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
+};
 
 export const triggerFor = (
   from: ErrandStatus | null,

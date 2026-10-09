@@ -53,7 +53,7 @@ const build = (opts: {
   };
   const stk = {
     name: 'daraja',
-    query: vi.fn(() => Promise.resolve(opts.query ?? { state: 'pending', resultCode: null, resultDesc: null })),
+    queryStatus: vi.fn(() => Promise.resolve(opts.query ?? { state: 'pending', resultCode: null, resultDesc: null })),
   };
   const config = { get: vi.fn((_k: string, d: unknown) => d) };
   const redis = { setIfAbsent: vi.fn(() => Promise.resolve(opts.slot ?? true)) };
@@ -77,7 +77,7 @@ describe('PaymentsService.resolvePending (row 52)', () => {
   it('does not query before the STK timeout', async () => {
     const { service, stk } = build({ ageSeconds: 10 });
     await expect(service.resolvePending('p-1')).resolves.toBe(StkStatus.PENDING);
-    expect(stk.query).not.toHaveBeenCalled();
+    expect(stk.queryStatus).not.toHaveBeenCalled();
   });
 
   it('applies a provider success like a callback and confirms the errand', async () => {
@@ -86,7 +86,7 @@ describe('PaymentsService.resolvePending (row 52)', () => {
       query: { state: 'success', resultCode: 0, resultDesc: 'ok' },
     });
     await expect(service.resolvePending('p-1')).resolves.toBe(StkStatus.SUCCESS);
-    expect(stk.query).toHaveBeenCalledWith('ws_CO_1');
+    expect(stk.queryStatus).toHaveBeenCalledWith({ reference: 'NTM-1', checkoutRequestId: 'ws_CO_1', providerReference: null });
     expect(payment.status).toBe(PaymentStatus.COMPLETED);
     expect(legs[0].status).toBe(PaymentTransactionStatus.COMPLETED);
     // The push ids stay next to the provider result.
@@ -118,13 +118,13 @@ describe('PaymentsService.resolvePending (row 52)', () => {
   it('spaces queries for the same payment', async () => {
     const { service, stk } = build({ ageSeconds: 200, slot: false });
     await expect(service.resolvePending('p-1')).resolves.toBe(StkStatus.TIMEOUT);
-    expect(stk.query).not.toHaveBeenCalled();
+    expect(stk.queryStatus).not.toHaveBeenCalled();
   });
 
   it('cannot query a push without a checkout id', async () => {
     const { service, stk } = build({ ageSeconds: 200, checkout: null });
     await expect(service.resolvePending('p-1')).resolves.toBe(StkStatus.TIMEOUT);
-    expect(stk.query).not.toHaveBeenCalled();
+    expect(stk.queryStatus).not.toHaveBeenCalled();
   });
 
   it('resolveTimedOut counts payments that reached a final status', async () => {

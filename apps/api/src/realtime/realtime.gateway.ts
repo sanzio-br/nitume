@@ -13,7 +13,11 @@ import {
 import type { Server, Socket } from 'socket.io';
 import { AuthContext, Public } from '../common/decorators/auth.decorators';
 import { ErrandStatus, UserStatus } from '../common/enums';
-import { ErrandsService } from '../errands/errands.service';
+import {
+  ErrandsService,
+  MerchantDetailsUpdatedEvent,
+  QuoteReissuedEvent,
+} from '../errands/errands.service';
 import { UsersService } from '../users/users.service';
 import {
   DomainEvent,
@@ -144,6 +148,18 @@ export class RealtimeGateway implements OnGatewayConnection {
     this.server
       ?.to(errandRoom(event.errandId))
       .emit(SocketServerEvent.PRICE_CHANGE_REQUESTED, event);
+  }
+
+  @OnEvent(DomainEvent.QUOTE_REISSUED)
+  onQuoteReissued(event: QuoteReissuedEvent): void {
+    this.server?.to(errandRoom(event.errandId)).emit(SocketServerEvent.QUOTE_REISSUED, event);
+  }
+
+  @OnEvent(DomainEvent.MERCHANT_DETAILS_UPDATED)
+  onMerchantDetailsUpdated(event: MerchantDetailsUpdatedEvent): void {
+    this.server
+      ?.to(errandRoom(event.errandId))
+      .emit(SocketServerEvent.MERCHANT_DETAILS_UPDATED, event);
   }
 
   private async authenticate(client: AuthedSocket): Promise<AuthContext | null> {

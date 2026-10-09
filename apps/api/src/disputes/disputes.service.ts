@@ -1,10 +1,7 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { conflict } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   DisputeEventType,
   DisputeStatus,
@@ -12,7 +9,7 @@ import {
   StatusHistoryActor,
   UserRole,
 } from '../common/enums';
-import { ErrandsService } from '../errands/errands.service';
+import { DisputeResolutionInTx, ErrandsService } from '../errands/errands.service';
 import { DisputeEvent } from './dispute-event.entity';
 import { Dispute } from './dispute.entity';
 import { OpenDisputeDto } from './dto/dispute.dto';
@@ -27,7 +24,7 @@ interface Actor {
 }
 
 @Injectable()
-export class DisputesService {
+export class DisputesService implements OnModuleInit {
   constructor(
     @InjectRepository(Dispute)
     private readonly disputes: Repository<Dispute>,
@@ -35,6 +32,40 @@ export class DisputesService {
     private readonly events: Repository<DisputeEvent>,
     private readonly errands: ErrandsService,
   ) {}
+
+  /** Closes the dispute row in the resolve-dispute transaction (N-6). */
+  onModuleInit(): void {
+    this.errands.onDisputeResolved((manager, resolution) => this.closeWithin(manager, resolution));
+  }
+
+  /**
+   * Marks the errand's dispute resolved: `status=resolved`, the admin's
+   * rationale as `resolution`, `resolvedBy`, plus a `resolved` event with
+   * the verdict. An errand disputed without a dispute row (generic status
+   * endpoint) has nothing to close.
+   */
+  async closeWithin(manager: EntityManager, resolution: DisputeResolutionInTx): Promise<void> {
+    const repo = manager.getRepository(Dispute);
+    const dispute = await repo.findOne({
+      where: { errandId: resolution.errandId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!dispute || dispute.status === DisputeStatus.RESOLVED) {
+      return;
+    }
+    dispute.status = DisputeStatus.RESOLVED;
+    dispute.resolution = resolution.rationale;
+    dispute.resolvedBy = resolution.adminUserId;
+    await repo.save(dispute);
+    await manager.getRepository(DisputeEvent).save(
+      manager.getRepository(DisputeEvent).create({
+        disputeId: dispute.id,
+        actorId: resolution.adminUserId,
+        eventType: DisputeEventType.RESOLVED,
+        payload: { verdict: resolution.verdict, resolution: resolution.rationale },
+      }),
+    );
+  }
 
   /**
    * Customer opens a dispute ("report a problem"). The errand moves to
@@ -45,7 +76,7 @@ export class DisputesService {
   async open(dto: OpenDisputeDto, actor: Actor): Promise<DisputeView> {
     const existing = await this.disputes.findOne({ where: { errandId: dto.errandId } });
     if (existing) {
-      throw new ConflictException('A dispute already exists for this task');
+      throw conflict('dispute_already_exists', 'A dispute already exists for this task');
     }
     const reason = dto.reason.trim();
     const { extra } = await this.errands.transitionWith(

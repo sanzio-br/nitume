@@ -42,6 +42,14 @@ export class Quote {
   @Column({ type: 'timestamptz', nullable: true })
   expiresAt: Date | null;
 
+  /**
+   * When the customer accepted this quote (QUOTED -> ACCEPTED, or the
+   * explicit accept of an admin re-quote on an ACCEPTED errand, row 72).
+   * Payment is only taken against the newest quote once it is accepted.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  acceptedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

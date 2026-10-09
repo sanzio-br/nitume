@@ -134,6 +134,21 @@ export class ErrandsController {
     return this.errands.latestQuoteFor(id, { role: user.role, userId: user.userId });
   }
 
+  /**
+   * Customer accepts the newest quote (row 72). On QUOTED this is the
+   * QUOTED -> ACCEPTED step; on ACCEPTED it accepts an admin re-quote (no
+   * status change), which payment requires. Idempotent.
+   */
+  @Post(':id/quote/accept')
+  @HttpCode(200)
+  @Roles(UserRole.CUSTOMER)
+  acceptQuote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthContext,
+  ): Promise<{ errand: ErrandView; quote: Quote }> {
+    return this.errands.acceptQuote(id, { role: user.role, userId: user.userId });
+  }
+
   @Get(':id/history')
   history(@Param('id') id: string, @CurrentUser() user: AuthContext) {
     return this.errands.getById(id, { role: user.role, userId: user.userId }).then(() =>

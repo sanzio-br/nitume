@@ -234,4 +234,8 @@ export enum NotificationEventType {
   REFUND_APPROVED = 'refund.approved',
   REFUND_NO_REFUND = 'refund.no_refund',
   REFUND_REFUNDED = 'refund.refunded',
+  /** Admin re-quote (N-4, row 72). */
+  QUOTE_REISSUED = 'quote.reissued',
+  /** Merchant Till/Paybill details set on the errand (rows 42-44). */
+  MERCHANT_DETAILS_ADDED = 'merchant_details.added',
 }

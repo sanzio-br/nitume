@@ -32,8 +32,10 @@ const build = (opts: {
   assignments?: ErrandAssignment[];
   locations?: object[];
   items?: object[];
+  quotes?: object[];
 }) => {
   const locationsRepo = { find: vi.fn(() => Promise.resolve(opts.locations ?? [])) };
+  const quotesRepo = { find: vi.fn(() => Promise.resolve(opts.quotes ?? [])) };
   const itemsRepo = { find: vi.fn(() => Promise.resolve(opts.items ?? [])) };
   const errandsRepo = {
     findOne: vi.fn(({ where }: { where: { id: string } }) =>
@@ -72,7 +74,7 @@ const build = (opts: {
     {} as never,
     { emit: vi.fn() } as never,
     runners as never,
-    {} as never,
+    quotesRepo as never,
   );
   return { service, assignmentsRepo, runners };
 };
@@ -207,5 +209,30 @@ describe('ErrandsService derived view fields (rows 34, 42-44)', () => {
     const view = await service.getDetail('e-1', admin);
     expect(view.feeTotal).toBeNull();
     expect(view.merchantDetailsAvailable).toBe(false);
+  });
+});
+
+describe('ErrandsService quote fields on views (N-5, row 72)', () => {
+  const expires = new Date('2026-10-09T10:00:00Z');
+
+  it('exposes the newest quote expiry and whether a re-quote awaits acceptance', async () => {
+    const accepted = Object.assign(errand('e-1'), { status: ErrandStatus.ACCEPTED });
+    const { service } = build({
+      errands: [accepted],
+      quotes: [
+        { id: 'q-2', errandId: 'e-1', expiresAt: expires, acceptedAt: null },
+        { id: 'q-1', errandId: 'e-1', expiresAt: null, acceptedAt: new Date() },
+      ],
+    });
+    const view = await service.getDetail('e-1', admin);
+    expect(view.quoteExpiresAt).toEqual(expires);
+    expect(view.quoteAcceptanceRequired).toBe(true);
+  });
+
+  it('is null/false without a quote', async () => {
+    const { service } = build({ errands: [errand('e-1')] });
+    const view = await service.getDetail('e-1', admin);
+    expect(view.quoteExpiresAt).toBeNull();
+    expect(view.quoteAcceptanceRequired).toBe(false);
   });
 });
