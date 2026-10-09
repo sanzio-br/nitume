@@ -46,6 +46,15 @@ class NitumeApiException implements Exception {
   final Map<String, List<String>> fieldErrors;
   final bool isNetworkError;
 
+  /// True for [ApiErrorCodes.accountSuspended].
+  bool get isAccountSuspended => code == ApiErrorCodes.accountSuspended;
+
+  /// `expiresAt` of a `quote_expired` error, when sent.
+  DateTime? get quoteExpiresAt {
+    final v = details['expiresAt'];
+    return v is String ? DateTime.tryParse(v) : null;
+  }
+
   /// Session-level 401 (no [code]): the app signs the user out. Coded 401s
   /// such as `otp_incorrect` are not session failures.
   final bool isUnauthorized;
@@ -73,8 +82,13 @@ class NitumeApiException implements Exception {
       final rawCode = data['code'];
       if (rawCode is String && rawCode.isNotEmpty) code = rawCode;
       data.forEach((key, value) {
-        if (!const {'statusCode', 'code', 'message', 'error', 'errors'}
-            .contains(key)) {
+        if (!const {
+          'statusCode',
+          'code',
+          'message',
+          'error',
+          'errors',
+        }.contains(key)) {
           details[key.toString()] = value;
         }
       });
@@ -93,8 +107,9 @@ class NitumeApiException implements Exception {
       if (errors is Map) {
         errors.forEach((key, value) {
           if (value is List) {
-            fieldErrors[key.toString()] =
-                value.map((e) => e.toString()).toList();
+            fieldErrors[key.toString()] = value
+                .map((e) => e.toString())
+                .toList();
           } else if (value != null) {
             fieldErrors[key.toString()] = [value.toString()];
           }
@@ -146,4 +161,106 @@ abstract final class ApiErrorCodes {
   /// Price-change reject: the task can no longer be cancelled (409).
   static const priceChangeRejectNotCancellable =
       'price_change_reject_not_cancellable';
+
+  /// The request was already approved, rejected or withdrawn (409). Show
+  /// the "already answered" state (`v-price-auth`).
+  static const priceChangeAlreadyDecided = 'price_change_already_decided';
+
+  /// The errand is no longer IN_PROGRESS, so the price change cannot be
+  /// decided (409, row 49). Treated like [priceChangeAlreadyDecided].
+  static const priceChangeNotInProgress = 'price_change_not_in_progress';
+
+  /// Accepting (`PATCH /errands/:id/status` ACCEPTED) or paying
+  /// (`POST /payments/:id/initiate`) an errand whose quote has expired (409,
+  /// row 46). Details: `quoteId`, `expiresAt`. The customer needs a fresh
+  /// quote (`x-awaiting-quote`).
+  static const quoteExpired = 'quote_expired';
+
+  /// The account is suspended or banned (401 on OTP verify; the app clears
+  /// a running session the same way, `_shared.md` §7). Never show a reason.
+  static const accountSuspended = 'account_suspended';
+
+  /// Paying an ACCEPTED errand whose newest quote (an admin re-quote, row
+  /// 72) is not accepted yet (409). Details: `quoteId`, `total`. Accept it
+  /// with `ErrandRepository.acceptQuote`, then pay.
+  static const quoteNotAccepted = 'quote_not_accepted';
+
+  /// Accepting a quote while the task is no longer QUOTED / ACCEPTED (409).
+  /// Details: `status`. Reload the task.
+  static const quoteNotAcceptable = 'quote_not_acceptable';
+
+  /// A quote cannot be replaced because the customer already started paying
+  /// it (409, admin re-quote). Details: `paymentId`, `paymentStatus`.
+  static const paymentInProgress = 'payment_in_progress';
+
+  /// The task's state does not allow this transition (409).
+  static const illegalTransition = 'illegal_transition';
+
+  /// Someone else changed the task at the same time; reload and retry (409).
+  static const concurrentModification = 'concurrent_modification';
+
+  /// The task is not quoted yet (400).
+  static const errandNotQuoted = 'errand_not_quoted';
+
+  /// The task cannot be paid in its current state (409).
+  static const errandNotPayable = 'errand_not_payable';
+
+  /// The task is disputed; the action waits for the resolution (409).
+  static const errandDisputed = 'errand_disputed';
+
+  /// A dispute is already open for the task (409).
+  static const disputeAlreadyExists = 'dispute_already_exists';
+
+  /// The task cannot be rated in its current state (409).
+  static const errandNotRateable = 'errand_not_rateable';
+
+  /// The task is already rated (409).
+  static const ratingAlreadyExists = 'rating_already_exists';
+
+  /// The task has no runner to rate (409).
+  static const noRunnerToRate = 'no_runner_to_rate';
+
+  /// The phone number belongs to another account (409).
+  static const phoneAlreadyRegistered = 'phone_already_registered';
+
+  /// The signed-in user has no customer profile (409).
+  static const customerProfileMissing = 'customer_profile_missing';
+
+  /// Runner side (409): a price change is not allowed now.
+  static const priceChangeNotAllowed = 'price_change_not_allowed';
+
+  /// Runner side (409): a price change is already pending.
+  static const priceChangeAlreadyPending = 'price_change_already_pending';
+
+  /// Admin side (409): resolve-dispute on a task that is not disputed.
+  static const errandNotDisputed = 'errand_not_disputed';
+
+  /// Admin side (409): the decision rationale is too short.
+  static const rationaleTooShort = 'rationale_too_short';
+
+  /// System side (409): the task cannot be settled yet.
+  static const errandNotSettleable = 'errand_not_settleable';
+
+  /// System side (409): there is no payment to settle.
+  static const noPaymentToSettle = 'no_payment_to_settle';
+
+  /// System side (409): not every payment leg is complete.
+  static const paymentLegsIncomplete = 'payment_legs_incomplete';
+
+  /// `POST /errands`: Buy For Me / Get It For Me need a `budget` (0 allowed)
+  /// (400, row 45).
+  static const budgetRequired = 'budget_required';
+
+  /// `POST /errands`: a positive `budget` on a category without one (400,
+  /// row 45).
+  static const budgetNotApplicable = 'budget_not_applicable';
+
+  /// Retrying a price-change difference that is paid to the merchant
+  /// directly, not by STK (409).
+  static const differenceNotStk = 'difference_not_stk';
+
+  /// No refund review exists for the errand (404 on
+  /// `GET /errands/:id/refund`); `ErrandRepository.refund` maps it to
+  /// `null`.
+  static const refundNotFound = 'refund_not_found';
 }

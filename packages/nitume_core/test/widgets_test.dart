@@ -62,14 +62,16 @@ void main() {
   });
 
   group('StatusChip', () {
-    testWidgets('uses exact design-system tones and a dot', (tester) async {
+    testWidgets('uses design-system tints, a tone dot and high-contrast text',
+        (tester) async {
       await pumpThemed(
         tester,
         const StatusChip(label: 'Completed', tone: StatusTone.success),
       );
       expect(find.text('Completed'), findsOneWidget);
       final text = tester.widget<Text>(find.text('Completed'));
-      expect(text.style?.color, NitumeColors.green700);
+      // Row 33 (decided): blue label text on the tone tint.
+      expect(text.style?.color, NitumeColors.blue);
       expect(text.style?.fontSize, 12);
       expect(find.byKey(const ValueKey('status-chip-dot')), findsOneWidget);
       final box = tester.widget<DecoratedBox>(

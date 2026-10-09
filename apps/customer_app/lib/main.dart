@@ -14,6 +14,6 @@ Future<void> main() async {
   } on Object {
     // An empty or missing .env falls back to --dart-define / the default.
   }
-  final services = AppServices.create(baseUrl: resolveApiBaseUrl());
+  final services = await AppServices.create(baseUrl: resolveApiBaseUrl());
   runApp(NitumeCustomerApp(services: services));
 }

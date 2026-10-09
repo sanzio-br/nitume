@@ -18,27 +18,16 @@ Evidence photo(String id, int minute) => Evidence(
 
 void main() {
   group('x-legal', () {
-    testWidgets('plain text when no link can be opened (SQ-2)', (t) async {
+    testWidgets('plain text when no link can be opened', (t) async {
       final b = TestBackend(
         appConfig: AppConfig(termsUri: Uri.parse('https://nitume.test/terms')),
       );
       await b.pumpScreen(t, const PhoneScreen());
-      final rich = t.widget<RichText>(
-        find.byWidgetPredicate(
-          (w) =>
-              w is RichText &&
-              w.text.toPlainText().startsWith('By continuing you agree'),
-        ),
-      );
-      var links = 0;
-      rich.text.visitChildren((span) {
-        if (span is TextSpan && span.recognizer != null) links++;
-        return true;
-      });
-      expect(links, 0);
+      expect(find.text('Terms'), findsOneWidget);
+      expect(find.widgetWithText(NitumeButton, 'Terms'), findsNothing);
     });
 
-    testWidgets('configured links open through AppConfig', (t) async {
+    testWidgets('configured links open through AppConfig, 48dp', (t) async {
       final opened = <Uri>[];
       final b = TestBackend(
         appConfig: AppConfig(
@@ -51,7 +40,9 @@ void main() {
         ),
       );
       await b.pumpScreen(t, const PhoneScreen());
-      await t.tapOnText(find.textRange.ofSubstring('Privacy Policy'));
+      final link = find.widgetWithText(NitumeButton, 'Privacy Policy');
+      expect(t.getSize(link).height, greaterThanOrEqualTo(48));
+      await t.tap(link);
       await t.pumpAndSettle();
       expect(opened, [Uri.parse('https://nitume.test/privacy')]);
     });
@@ -64,7 +55,7 @@ void main() {
         ),
       );
       await b.pumpScreen(t, const PhoneScreen());
-      await t.tapOnText(find.textRange.ofSubstring('Terms'));
+      await t.tap(find.widgetWithText(NitumeButton, 'Terms'));
       await t.pumpAndSettle();
       expect(
         find.text("Couldn't open the page. Try again later."),
@@ -126,20 +117,23 @@ void main() {
     final b = TestBackend();
     await b.pumpScreen(
       t,
-      Builder(
-        builder: (context) => TextButton(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const MerchantPaymentScreen(errandId: 'e1'),
+      Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const MerchantPaymentScreen(errandId: 'e1'),
+              ),
             ),
+            child: const Text('open'),
           ),
-          child: const Text('open'),
         ),
       ),
     );
     await t.tap(find.text('open'));
     await t.pumpAndSettle();
     expect(find.byType(MerchantPaymentScreen), findsNothing);
+    expect(find.text('Nothing to pay right now.'), findsOneWidget);
     expect(
       find.textContaining("merchant's details aren't available"),
       findsNothing,

@@ -32,6 +32,10 @@ class Errand {
     this.runnerNotes,
     this.items,
     this.locations,
+    this.merchantDetailsAvailable,
+    this.feeTotal,
+    this.quoteAcceptanceRequired = false,
+    this.quoteExpiresAt,
   });
 
   final String id;
@@ -78,6 +82,28 @@ class Errand {
   /// Errand points: pickup + drop-off for Buy For Me / Get It For Me, task
   /// site otherwise (Q19); `null` when the response has no `locations` list.
   final List<ErrandLocation>? locations;
+
+  /// Whether the merchant's Till/Paybill details exist (row 43): `true`
+  /// enables `merchant_direct` at checkout; `false` shows the "details
+  /// pending" states. `null` when the response does not say: treat as
+  /// pending. The Till/Paybill numbers on the errand response are not
+  /// parsed: they are only ever shown from `MerchantPayment` on
+  /// `x-merchant-payment`. Older responses without the flag fall back to
+  /// whether `merchantTillNumber` / `merchantPaybillNumber` are set.
+  final bool? merchantDetailsAvailable;
+
+  /// Service + runner fee total as a decimal string, for the single
+  /// `Total (service + runner fee)` row (row 34); `null` until quoted.
+  /// Never split it or add the item amount to it.
+  final String? feeTotal;
+
+  /// True when the errand is ACCEPTED but an admin re-quote (row 72) has not
+  /// been accepted yet: the customer accepts it with
+  /// `ErrandRepository.acceptQuote` before paying (else `quote_not_accepted`).
+  final bool quoteAcceptanceRequired;
+
+  /// Expiry of the newest quote; `null` when not quoted or it never expires.
+  final DateTime? quoteExpiresAt;
 
   /// First pickup point in [locations], if any.
   ErrandLocation? get pickup => _point(ErrandPointType.pickup);
@@ -126,8 +152,20 @@ class Errand {
       runnerNotes: parseOptionalString(json['runnerNotes']),
       items: _tolerantList(json['items'], ErrandItem.fromJson),
       locations: _tolerantList(json['locations'], ErrandLocation.fromJson),
+      merchantDetailsAvailable: _merchantDetailsAvailable(json),
+      feeTotal: _nullableDecimalString(json['feeTotal']),
+      quoteAcceptanceRequired: json['quoteAcceptanceRequired'] == true,
+      quoteExpiresAt: _date(json['quoteExpiresAt']),
     );
   }
+}
+
+bool? _merchantDetailsAvailable(Map<String, dynamic> json) {
+  final flag = json['merchantDetailsAvailable'];
+  if (flag is bool) return flag;
+  const keys = ['merchantTillNumber', 'merchantPaybillNumber'];
+  if (!keys.any(json.containsKey)) return null;
+  return keys.any((k) => parseOptionalString(json[k]) != null);
 }
 
 /// One structured shopping-list line on an [Errand] (Q19): the API read
@@ -151,12 +189,12 @@ class ErrandItem {
   final String? notes;
 
   factory ErrandItem.fromJson(Map<String, dynamic> json) => ErrandItem(
-        id: parseOptionalString(json['id']),
-        name: json['name'] as String,
-        quantity: (json['quantity'] as num?)?.toInt(),
-        unit: parseOptionalString(json['unit']),
-        notes: parseOptionalString(json['notes']),
-      );
+    id: parseOptionalString(json['id']),
+    name: json['name'] as String,
+    quantity: (json['quantity'] as num?)?.toInt(),
+    unit: parseOptionalString(json['unit']),
+    notes: parseOptionalString(json['notes']),
+  );
 }
 
 /// Parses a list field leniently: `null` if absent or not a list; entries

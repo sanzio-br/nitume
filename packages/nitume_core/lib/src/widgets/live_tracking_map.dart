@@ -37,10 +37,10 @@ class EtaChip extends StatelessWidget {
 /// C-31. Map frame for live tracking (`.map-box`): 220px tall, rounded,
 /// ETA chip at (14, 14).
 ///
-/// The map itself is supplied by [mapBuilder]. `nitume_core` deliberately
-/// does not depend on a maps SDK (`google_maps_flutter` is an open owner
-/// question); without a builder the frame shows a slate placeholder. Markers,
-/// route and marker animation belong to the adapter that renders the map.
+/// The map itself is supplied by [mapBuilder]: pass
+/// `GoogleTrackingMap.builderFor(config, ...)` (Google Maps, row 30), which
+/// is `null` in builds without a maps key. Without a builder the frame shows
+/// the blue-050 placeholder (`v-track`: no grid, no image).
 class LiveTrackingMap extends StatelessWidget {
   const LiveTrackingMap({
     super.key,
@@ -77,7 +77,7 @@ class LiveTrackingMap extends StatelessWidget {
                 child: mapBuilder?.call(context) ??
                     const ColoredBox(
                       key: ValueKey('map-placeholder'),
-                      color: NitumeColors.slate,
+                      color: NitumeColors.blue050,
                     ),
               ),
               if (etaLabel != null)

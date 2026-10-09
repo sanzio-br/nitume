@@ -119,9 +119,8 @@ class DisputesRepository {
   }
 }
 
-/// Push-device registration (`/users/me/devices`). Obtaining the FCM token
-/// needs Firebase, which is not a dependency (owner question); the host app
-/// passes the token in.
+/// Push-device registration (`/users/me/devices`). Use it through
+/// `PushRegistration`, which gets the FCM token from a `PushService`.
 class DevicesRepository {
   DevicesRepository(this._api);
 

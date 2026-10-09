@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nitume_core/nitume_core.dart';
 
@@ -48,26 +50,44 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   static const _newTaskIndex = 1;
 
   /// States in which the API accepts a price-change request.
-  static const _priceChangeable = {
-    ErrandStatus.paymentConfirmed,
-    ErrandStatus.runnerAssigned,
-    ErrandStatus.runnerEnRoute,
-    ErrandStatus.arrived,
-    ErrandStatus.inProgress,
-  };
+  /// Runners can request a price change only in IN_PROGRESS (row 49).
+  static const _priceChangeable = {ErrandStatus.inProgress};
 
   bool _checkingPriceChange = false;
+  StreamSubscription<PriceChangeRequested>? _priceSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // App-level `price_change:requested` (row 23): open the blocking modal
+    // wherever the customer is.
+    _priceSub = context.services.live.priceChangeRequests.listen(_onLivePrice);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _priceSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _onLivePrice(PriceChangeRequested event) async {
+    if (_checkingPriceChange || !mounted) return;
+    _checkingPriceChange = true;
+    final services = context.services;
+    try {
+      final errand = await services.errands.get(event.errandId);
+      if (errand.status != ErrandStatus.inProgress || !mounted) return;
+      final pending = await services.priceChanges.pending(errand.id);
+      if (pending != null && mounted) {
+        await showPriceChangeDialog(context, errand: errand, request: pending);
+      }
+    } on Object {
+      // Track and the resume check still show the request.
+    } finally {
+      _checkingPriceChange = false;
+    }
   }
 
   @override
@@ -75,9 +95,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) _checkPendingPriceChange();
   }
 
-  /// On resume, open the blocking price-change modal for any active errand
-  /// with a pending request (v-price-auth entry; the live socket event is
-  /// pending row 29).
+  /// On resume, open the blocking price-change modal for an IN_PROGRESS
+  /// errand with a pending request (v-price-auth entry).
   Future<void> _checkPendingPriceChange() async {
     if (_checkingPriceChange) return;
     _checkingPriceChange = true;

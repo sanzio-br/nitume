@@ -5,6 +5,10 @@ import 'package:nitume_core/nitume_core.dart';
 import 'helpers/pump.dart';
 
 class _FakePlaces implements PlaceSearchService {
+  _FakePlaces({this.failDetails = false, this.failSearch = false});
+
+  final bool failDetails;
+  bool failSearch;
   final queries = <String>[];
   final sessions = <String>{};
 
@@ -15,6 +19,7 @@ class _FakePlaces implements PlaceSearchService {
   }) async {
     queries.add(query);
     sessions.add(sessionToken);
+    if (failSearch) throw Exception('offline');
     return const [
       PlaceSuggestion(
         placeId: 'p1',
@@ -30,6 +35,7 @@ class _FakePlaces implements PlaceSearchService {
     required String sessionToken,
   }) async {
     sessions.add(sessionToken);
+    if (failDetails) throw Exception('offline');
     return const PlaceDetails(
       placeId: 'p1',
       addressText: 'Nyali, Mombasa',
@@ -40,8 +46,9 @@ class _FakePlaces implements PlaceSearchService {
 }
 
 void main() {
-  testWidgets('debounces, searches once, resolves the picked place',
-      (tester) async {
+  testWidgets('debounces, searches once, resolves the picked place', (
+    tester,
+  ) async {
     final places = _FakePlaces();
     PlaceDetails? picked;
     await pumpThemed(
@@ -64,19 +71,113 @@ void main() {
     expect(places.sessions, hasLength(1), reason: 'one session per search');
   });
 
-  testWidgets('initialValue shows as field text and follows updates',
-      (tester) async {
+  testWidgets('a failed details lookup picks nothing and keeps the results', (
+    tester,
+  ) async {
+    PlaceDetails? picked;
+    await pumpThemed(
+      tester,
+      PlaceAutocompleteField(
+        service: _FakePlaces(failDetails: true),
+        onPlaceSelected: (p) => picked = p,
+      ),
+    );
+    await tester.enterText(find.byType(TextField), 'Nya');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+    await tester.tap(find.text('Nyali'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(picked, isNull);
+    expect(find.text('Nyali'), findsOneWidget);
+  });
+
+  testWidgets('initialValue shows as field text and follows updates', (
+    tester,
+  ) async {
     Widget build(String? v) => PlaceAutocompleteField(
-          service: _FakePlaces(),
-          onPlaceSelected: (_) {},
-          hint: 'Search a place',
-          initialValue: v,
-        );
+      service: _FakePlaces(),
+      onPlaceSelected: (_) {},
+      hint: 'Search a place',
+      initialValue: v,
+    );
     await pumpThemed(tester, build('Nyali, Mombasa'));
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller!.text, 'Nyali, Mombasa');
     expect(find.text('Nyali, Mombasa'), findsOneWidget);
     await pumpThemed(tester, build('Bamburi, Mombasa'));
     expect(field.controller!.text, 'Bamburi, Mombasa');
+  });
+
+  Future<void> search(WidgetTester tester, String text) async {
+    await tester.enterText(find.byType(TextField), text);
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+  }
+
+  testWidgets('editing after a pick clears the selection once', (tester) async {
+    var cleared = 0;
+    PlaceDetails? picked;
+    await pumpThemed(
+      tester,
+      PlaceAutocompleteField(
+        service: _FakePlaces(),
+        onPlaceSelected: (p) => picked = p,
+        onSelectionCleared: () => cleared++,
+      ),
+    );
+    await search(tester, 'Nya');
+    expect(cleared, 0, reason: 'nothing picked yet');
+    await tester.tap(find.text('Nyali'));
+    await tester.pump();
+    expect(picked, isNotNull);
+
+    await tester.enterText(find.byType(TextField), 'Nyali, Mombas');
+    await tester.pump();
+    expect(cleared, 1);
+    await tester.enterText(find.byType(TextField), 'Nyali, Momba');
+    await tester.pump();
+    expect(cleared, 1, reason: 'fires once per pick');
+  });
+
+  testWidgets('initialValue counts as a pick; saved addresses too', (
+    tester,
+  ) async {
+    var cleared = 0;
+    await pumpThemed(
+      tester,
+      PlaceAutocompleteField(
+        service: _FakePlaces(),
+        onPlaceSelected: (_) {},
+        onSelectionCleared: () => cleared++,
+        initialValue: 'Nyali, Mombasa',
+      ),
+    );
+    await tester.enterText(find.byType(TextField), 'Nyali, Mombasa ');
+    await tester.pump();
+    expect(cleared, 1);
+  });
+
+  testWidgets('a failed search shows the error copy, cleared on typing', (
+    tester,
+  ) async {
+    final places = _FakePlaces(failSearch: true);
+    await pumpThemed(
+      tester,
+      PlaceAutocompleteField(service: places, onPlaceSelected: (_) {}),
+    );
+    await search(tester, 'Nya');
+    final error = find.text("Couldn't search places. Check your connection.");
+    expect(error, findsOneWidget);
+    expect(
+      tester.widget<Text>(error).style?.color,
+      NitumeDesignChoices.fieldError,
+    );
+    expect(find.text('Nyali'), findsNothing);
+
+    places.failSearch = false;
+    await search(tester, 'Nyal');
+    expect(error, findsNothing);
+    expect(find.text('Nyali'), findsOneWidget);
   });
 }

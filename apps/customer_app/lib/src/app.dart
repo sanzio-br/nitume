@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nitume_core/nitume_core.dart';
 
+import 'navigation/nav.dart';
 import 'navigation/routes.dart';
 import 'screens/auth/name_capture_screen.dart';
 import 'screens/auth/phone_screen.dart';
@@ -35,6 +38,7 @@ class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
   late SessionStatus _status;
 
   SessionController get _session => widget.services.session;
+  final _pushSubs = <StreamSubscription<PushMessage>>[];
 
   @override
   void initState() {
@@ -42,12 +46,37 @@ class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
     _status = _session.status;
     _session.addListener(_onSession);
     if (widget.restoreOnStart) _session.restore();
+    if (_status == SessionStatus.signedIn) widget.services.live.start();
+    final push = widget.services.push;
+    _pushSubs.add(push.openedMessages.listen(_openPush));
+    push
+        .initialMessage()
+        .then((m) {
+          if (m != null) _openPush(m);
+        })
+        .catchError((Object _) {});
   }
 
   @override
   void dispose() {
     _session.removeListener(_onSession);
+    for (final s in _pushSubs) {
+      s.cancel();
+    }
     super.dispose();
+  }
+
+  /// A push tapped before the shell was ready (cold start).
+  PushMessage? _pendingPush;
+
+  /// Push tap → the `v-notifications` deep link (row 31).
+  void _openPush(PushMessage m) {
+    final context = _navigatorKey.currentContext;
+    if (_status != SessionStatus.signedIn || context == null) {
+      _pendingPush = m;
+      return;
+    }
+    Nav.openNotification(context, eventType: m.eventType, errandId: m.errandId);
   }
 
   void _onSession() {
@@ -55,10 +84,30 @@ class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
     if (next == _status) return;
     _navigatorKey.currentState?.popUntil((r) => r.isFirst);
     setState(() => _status = next);
-    if (next == SessionStatus.signedOut && _session.takeExpiredFlag()) {
+    final live = widget.services.live;
+    if (next == SessionStatus.signedIn) {
+      live.start();
+      final pending = _pendingPush;
+      if (pending != null) {
+        _pendingPush = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _openPush(pending));
+      }
+    } else if (next == SessionStatus.signedOut) {
+      live.stop();
+    }
+    if (next != SessionStatus.signedOut) return;
+    final String? message;
+    if (_session.takeSuspendedFlag()) {
+      message = "This account can't sign in. Contact support.";
+    } else if (_session.takeExpiredFlag()) {
+      message = 'Please sign in again.';
+    } else {
+      message = null;
+    }
+    if (message != null) {
       _messengerKey.currentState
         ?..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Please sign in again.')));
+        ..showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

@@ -51,6 +51,10 @@ enum OtpErrorKind {
   /// `NitumeApiException.retryAfter`.
   requestLimitReached('otp_rate_limited'),
 
+  /// `otp_ip_rate_limited`: too many requests from this network or device;
+  /// wait `NitumeApiException.retryAfter`.
+  ipRateLimited('otp_ip_rate_limited'),
+
   /// `otp_delivery_failed`: the SMS could not be sent; safe to retry now.
   deliveryFailed('otp_delivery_failed');
 

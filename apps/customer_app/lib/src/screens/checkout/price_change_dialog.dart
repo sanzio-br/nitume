@@ -7,9 +7,19 @@ import '../../util/display.dart';
 import '../../widgets/common.dart';
 import '../../widgets/task_widgets.dart';
 
-/// API code for a request another approve/reject already decided.
-/// TODO(core-ui): move into `ApiErrorCodes`.
-const kPriceChangeAlreadyDecided = 'price_change_already_decided';
+/// Codes answered with the already-answered state (409): decided by a
+/// concurrent approve/reject, or the errand left IN_PROGRESS (row 49).
+const _alreadyDecidedCodes = {
+  ApiErrorCodes.priceChangeAlreadyDecided,
+  ApiErrorCodes.priceChangeNotInProgress,
+};
+
+/// Approve answers that need the customer to choose the item route (row
+/// 61): no item payment yet, or merchant-direct without details.
+const _routeCodes = {
+  ApiErrorCodes.merchantRouteRequired,
+  ApiErrorCodes.merchantDetailsMissing,
+};
 
 /// What happened in the price-change modal.
 enum PriceChangeOutcome { approved, rejected, dismissed }
@@ -40,13 +50,22 @@ Future<PriceChangeOutcome> showPriceChangeDialog(
   final outcome = result?.outcome ?? PriceChangeOutcome.dismissed;
   if (!context.mounted) return outcome;
   if (outcome == PriceChangeOutcome.approved) {
-    showSnack(context, 'Price change approved.');
-    final diff = result!.decision?.differencePayment;
+    // A decrease may open an admin refund review (row 48); the refund
+    // status itself shows on v-task-detail once the API returns it.
+    final refund = result!.decision?.refundReview;
+    showSnack(
+      context,
+      refund == null
+          ? 'Price change approved.'
+          : "Price change approved. We'll review a refund of the difference.",
+    );
+    final diff = result.decision?.differencePayment;
     if (diff?.merchantPayment != null) {
       await Nav.toMerchantPayment(
         context,
         errand.id,
         approvedIncrease: diff!.payment.merchantAmount,
+        priceChangeRequestId: result.decision?.request.id,
       );
     }
   }
@@ -83,7 +102,11 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
   void initState() {
     super.initState();
     _request = widget.request;
-    if (_request != null) {
+    // Requests exist only in IN_PROGRESS (row 49).
+    if (widget.errand.status != ErrandStatus.inProgress) {
+      _loading = false;
+      _answered = true;
+    } else if (_request != null) {
       _loading = false;
       _answered = !_request!.isPending;
     } else {
@@ -132,7 +155,7 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
             .pop(_Result(PriceChangeOutcome.approved, decision));
       }
     } on NitumeApiException catch (e) {
-      if (e.code == ApiErrorCodes.merchantRouteRequired && mounted) {
+      if (_routeCodes.contains(e.code) && mounted) {
         setState(() {
           _busy = _Busy.none;
           _needsRoute = true;
@@ -147,10 +170,10 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
     final ok = await showNitumeConfirmDialog(
       context,
       title: 'Reject and cancel this task?',
-      // Second line pending row 37 / 48 (refunds).
+      // Rows 37, 54: a reject opens an admin refund review.
       body:
-          'The runner will stop work on this task.\n'
-          "We'll update you about anything you've already paid.",
+          "The runner will stop work on this task. We'll review a refund of "
+          "what you've paid, and you can follow it on the task.",
       confirmLabel: 'Reject & cancel',
       cancelLabel: 'Go back',
       barrierDismissible: false,
@@ -180,7 +203,7 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
       // A concurrent decision won (409 price_change_already_decided), or
       // the request was otherwise already answered: show the spec's
       // already-answered state; closing it lets the caller refresh.
-      if (e.code == kPriceChangeAlreadyDecided ||
+      if (_alreadyDecidedCodes.contains(e.code) ||
           (e.statusCode == 409 &&
               e.code != ApiErrorCodes.priceChangeRejectNotCancellable)) {
         _answered = true;
@@ -232,13 +255,17 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
       );
     }
     final diff = subtractDecimals(r.toPrice, r.fromPrice);
+    final decrease = diff.startsWith('-');
+    final change = decrease ? diff.substring(1) : diff;
     final name = runnerShortName(widget.errand.runner) ?? 'Your runner';
     final busy = _busy != _Busy.none;
     return NitumeDialog(
       title: 'Price change',
-      body:
-          '$name found the item priced higher than quoted. Approve the '
-          'difference to continue?',
+      body: decrease
+          ? '$name found the item priced lower than quoted. Approve the new '
+                'price to continue?'
+          : '$name found the item priced higher than quoted. Approve the '
+                'difference to continue?',
       error: _error,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -253,7 +280,9 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
             ),
           _Compare(from: r.fromPrice, to: r.toPrice),
           Text(
-            '${formatKes(diff, signed: true)} additional',
+            decrease
+                ? '\u2212 ${formatKes(change)} less'
+                : '${formatKes(change, signed: true)} additional',
             textAlign: TextAlign.center,
             style: NitumeTypography.numeric(
               fontSize: 13,
@@ -271,6 +300,8 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
             MerchantRouteRows(
               selected: _route,
               enabled: !busy,
+              merchantDetailsAvailable:
+                  widget.errand.merchantDetailsAvailable == true,
               onSelected: (r) => setState(() => _route = r),
             ),
           ],
@@ -278,14 +309,18 @@ class _PriceChangeDialogState extends State<_PriceChangeDialog> {
       ),
       actions: [
         NitumeButton.primary(
-          label: 'Approve ${formatKes(diff)} increase',
-          richLabel: TextSpan(
-            children: [
-              const TextSpan(text: 'Approve '),
-              NumSpan.kes(diff),
-              const TextSpan(text: ' increase'),
-            ],
-          ),
+          label: decrease
+              ? 'Approve new price'
+              : 'Approve ${formatKes(change)} increase',
+          richLabel: decrease
+              ? null
+              : TextSpan(
+                  children: [
+                    const TextSpan(text: 'Approve '),
+                    NumSpan.kes(change),
+                    const TextSpan(text: ' increase'),
+                  ],
+                ),
           loading: _busy == _Busy.approve,
           onPressed: busy || (_needsRoute && _route == null) ? null : _approve,
         ),

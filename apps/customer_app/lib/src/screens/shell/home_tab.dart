@@ -3,6 +3,7 @@ import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
+import '../../services/live_updates.dart';
 import '../../services/shell_controller.dart';
 import '../../util/display.dart';
 import '../../widgets/common.dart';
@@ -42,9 +43,30 @@ class _HomeTabState extends State<HomeTab> with ReloadOnReturn<HomeTab> {
     _poller = Poller(
       interval: const Duration(seconds: 30),
       enabled: _services.pollingEnabled,
-      isVisible: () => widget.active && mounted && isRouteVisible(context),
+      // Polling only while the socket is down (§10).
+      isVisible: () =>
+          widget.active &&
+          mounted &&
+          isRouteVisible(context) &&
+          !_services.live.isConnected,
       onTick: () async => _reload(),
     );
+  }
+
+  ErrandWatch? _watch;
+
+  /// Joins the active errand's room: status changes refresh the card, a
+  /// reconnect refetches once (§10).
+  void _watchActive(String? errandId) {
+    if (_watch?.errandId == errandId) return;
+    _watch?.cancel();
+    _watch = errandId == null
+        ? null
+        : _services.live.watch(
+            errandId,
+            onStatus: (_) => _reload(),
+            onReconnected: _reload,
+          );
   }
 
   @override
@@ -56,6 +78,7 @@ class _HomeTabState extends State<HomeTab> with ReloadOnReturn<HomeTab> {
   @override
   void dispose() {
     _poller?.dispose();
+    _watch?.cancel();
     super.dispose();
   }
 
@@ -86,7 +109,9 @@ class _HomeTabState extends State<HomeTab> with ReloadOnReturn<HomeTab> {
         limit: 2,
       ),
     ]);
-    return _HomeData(active: results[0].items, recent: results[1].items);
+    final active = results[0].items;
+    if (mounted) _watchActive(active.isEmpty ? null : active.first.id);
+    return _HomeData(active: active, recent: results[1].items);
   }
 
   @override

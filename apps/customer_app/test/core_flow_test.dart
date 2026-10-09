@@ -101,7 +101,14 @@ void main() {
       await t.pumpAndSettle();
 
       expect(find.text('Step 3 of 3'), findsOneWidget);
-      expect(find.textContaining("We couldn't estimate"), findsOneWidget);
+      // Variant A (row 47): no price, neutral notice.
+      expect(
+        find.textContaining("We'll send your final quote"),
+        findsOneWidget,
+      );
+      expect(find.textContaining("We couldn't estimate"), findsNothing);
+      // Check It For Me has no budget (row 45).
+      expect(find.text('Item budget'), findsNothing);
       await t.tap(find.text('Submit task →'));
       await t.pumpAndSettle();
 
@@ -111,6 +118,7 @@ void main() {
       expect(req.locations.single.addressText, 'Kilimani Rd, Nairobi');
       expect(req.toJson().containsKey('urgency'), isFalse);
       expect(req.deadlineAt, isNotNull);
+      expect(req.budget, 0);
       expect(b.errands.submitted, ['new1']);
       expect(find.text('Preparing your quote'), findsOneWidget);
     });
@@ -147,6 +155,25 @@ void main() {
         find.widgetWithText(TextField, 'Kilimani Rd, Nairobi'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('budget only for Buy For Me / Get It For Me', (t) async {
+      final b = TestBackend();
+      await b.pumpApp(t);
+      await t.tap(find.text('New task'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Go There For Me'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Continue →'));
+      await t.pumpAndSettle();
+      expect(find.text('BUDGET (IF A PURCHASE IS INVOLVED)'), findsNothing);
+      await t.tap(find.byType(NitumeBackButton));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Get It For Me'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Continue →'));
+      await t.pumpAndSettle();
+      expect(find.text('BUDGET (IF A PURCHASE IS INVOLVED)'), findsOneWidget);
     });
 
     testWidgets('back after entering details asks to discard', (t) async {
@@ -216,7 +243,7 @@ void main() {
       expect(find.text('Distance fee'), findsNothing);
       expect(find.text('Total (service + runner fee)'), findsOneWidget);
       expect(find.text('KSh 2,200'), findsOneWidget);
-      expect(find.text('Confirm & pay KSh 2,200 →'), findsOneWidget);
+      expect(find.text('Confirm & pay KSh 42,200 →'), findsOneWidget);
       expect(find.text('Item amount'), findsOneWidget);
       expect(find.text('Let runner advance the purchase'), findsNothing);
       final direct = t.widget<NitumeRadioRow>(
@@ -227,9 +254,11 @@ void main() {
       );
       expect(direct.onSelected, isNull);
 
-      await t.tap(find.text('Confirm & pay KSh 2,200 →'));
+      await t.tap(find.text('Confirm & pay KSh 42,200 →'));
       await t.pumpAndSettle();
-      expect(b.errands.transitions.single, ('e1', ErrandStatus.accepted));
+      // Accepted through POST /errands/:id/quote/accept (row 72).
+      expect(b.errands.quoteAccepts, ['e1']);
+      expect(b.errands.byId['e1']!.status, ErrandStatus.accepted);
       final init = b.payments.initiations.single;
       expect(init.$3, MerchantRoute.sendToRunner);
       expect(find.text('Check your phone'), findsOneWidget);
@@ -251,7 +280,7 @@ void main() {
     await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
     expect(find.text('Awaiting payment'), findsOneWidget);
     expect(find.text('Send purchase amount to runner'), findsOneWidget);
-    await t.tap(find.text('Confirm & pay KSh 2,200 →'));
+    await t.tap(find.text('Confirm & pay KSh 42,200 →'));
     await t.pumpAndSettle();
     expect(b.errands.transitions, isEmpty);
     expect(b.payments.initiations.single.$3, MerchantRoute.sendToRunner);
@@ -348,20 +377,86 @@ void main() {
   });
 
   group('x-merchant-payment', () {
-    testWidgets('send-to-runner shows the pending notice', (t) async {
+    ItemPayment diff(StkPaymentState state, PaymentStatus status) =>
+        ItemPayment(
+          payment: payment(
+            status: status,
+            merchantAmount: '5000.00',
+            flow: PaymentFlow.customerToRunner,
+          ),
+          stkStatus: state,
+          merchantPayment: const MerchantPayment(
+            route: MerchantRoute.sendToRunner,
+            amount: '5000.00',
+            paidTo: 'nitume',
+          ),
+        );
+
+    testWidgets('send-to-runner difference: STK states and retry', (t) async {
       final b = TestBackend();
-      b.payments.summary = const PaymentSummary(
-        merchantPayment: MerchantPayment(
-          route: MerchantRoute.sendToRunner,
+      b.payments.summary = PaymentSummary(
+        payment: payment(),
+        differencePayments: [
+          diff(StkPaymentState.failed, PaymentStatus.failed),
+        ],
+      );
+      await b.pumpScreen(
+        t,
+        const MerchantPaymentScreen(
+          errandId: 'e1',
+          priceChangeRequestId: 'pc1',
+        ),
+      );
+      expect(find.text('Pay the item amount'), findsOneWidget);
+      expect(find.text("Payment didn't go through"), findsOneWidget);
+      expect(find.text('KSh 5,000'), findsOneWidget);
+      await t.tap(find.text('Try again'));
+      await t.pumpAndSettle();
+      expect(b.payments.retried, ['pc1']);
+      expect(find.text('Check your phone'), findsOneWidget);
+    });
+
+    testWidgets('retry from Track uses the payment request id', (t) async {
+      final b = TestBackend();
+      b.payments.summary = PaymentSummary(
+        payment: payment(),
+        differencePayments: [
+          ItemPayment(
+            payment: const Payment(
+              id: 'p2',
+              errandId: 'e1',
+              serviceFee: '0.00',
+              runnerFee: '0.00',
+              merchantAmount: '5000.00',
+              paymentFlow: PaymentFlow.customerToRunner,
+              status: PaymentStatus.failed,
+              priceChangeRequestId: 'pc9',
+            ),
+            stkStatus: StkPaymentState.failed,
+          ),
+        ],
+      );
+      await b.pumpScreen(t, const MerchantPaymentScreen(errandId: 'e1'));
+      await t.tap(find.text('Try again'));
+      await t.pumpAndSettle();
+      expect(b.payments.retried, ['pc9']);
+    });
+
+    testWidgets('merchant-direct without details: pending notice', (t) async {
+      final b = TestBackend();
+      b.payments.summary = PaymentSummary(
+        payment: payment(),
+        merchantPayment: const MerchantPayment(
+          route: MerchantRoute.merchantDirect,
           amount: '40000.00',
         ),
       );
       await b.pumpScreen(t, const MerchantPaymentScreen(errandId: 'e1'));
-      expect(find.text('Pay your runner'), findsOneWidget);
       expect(find.text('KSh 40,000'), findsOneWidget);
       expect(
         find.text(
-          "We'll show you how to send this amount to your runner here.",
+          "The merchant's details aren't available yet. We'll notify you "
+          'when they are.',
         ),
         findsOneWidget,
       );

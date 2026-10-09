@@ -89,8 +89,8 @@ class _OtpScreenState extends State<OtpScreen> {
         _codeError = 'This code has expired. Request a new code.';
         _needsNewCode = true;
       default:
-        if (e.statusCode == 401 && e.code == null) {
-          // Uncoded 401 on verify = account suspended or banned.
+        if (e.isAccountSuspended || (e.statusCode == 401 && e.code == null)) {
+          // account_suspended (older API builds: an uncoded 401).
           _suspended = true;
           _otherError = const InlineError(
             "This account can't sign in. Contact support.",

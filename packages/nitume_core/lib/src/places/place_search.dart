@@ -30,9 +30,9 @@ class PlaceDetails {
 
 /// Place search used by `PlaceAutocompleteField`.
 ///
-/// Interface only: Google Places is named in the system design (§5) but no
-/// Places SDK/package is a dependency; adding one is an owner question. The
-/// host app supplies an implementation.
+/// `GooglePlaceSearchService` is the Google Places implementation (row 30).
+/// Every result a screen keeps must come from [details], which always has
+/// coordinates (row 60).
 abstract interface class PlaceSearchService {
   Future<List<PlaceSuggestion>> autocomplete(
     String query, {

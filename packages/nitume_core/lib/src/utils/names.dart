@@ -1,9 +1,9 @@
-/// Runner short name for display: first name + last-name initial
-/// (`Brian Kamau` → `Brian K.`), as drawn in the customer mockup (OA-2).
+/// First name + last-name initial (`Brian Kamau` → `Brian K.`).
 ///
-/// Use it only when the API gives no short form: whether the API or the
-/// client shortens names is open (SQ-3). Single names stay as they are
-/// (`Brian`); a name already in short form is unchanged (`Brian K.`).
+/// **Not for runner names**: the API computes those (row 40); render
+/// `RunnerSummary.shortName` as returned. Kept only for callers that still
+/// need a client-side short form. Single names stay as they are (`Brian`);
+/// a name already in short form is unchanged (`Brian K.`).
 /// Returns `null` for a null or blank name, so callers apply the fallback
 /// their spec gives (never a phone number).
 String? shortName(String? displayName) {

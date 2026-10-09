@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/customer_profile.dart';
 import '../places/place_search.dart';
 import '../theme/nitume_colors.dart';
+import '../theme/nitume_design_choices.dart';
 import '../theme/nitume_typography.dart';
 import 'nitume_field.dart';
 
@@ -12,6 +13,12 @@ import 'nitume_field.dart';
 /// a pin icon that searches [service] (debounced 300ms, one session token per
 /// search session) and lists results under the field. While the query is
 /// empty it offers [savedAddresses] (shortcut placement is v-new-details Q3).
+///
+/// A pick (place, saved address, or [initialValue]) holds only while the
+/// field text matches it: the first edit that changes the text calls
+/// [onSelectionCleared], and the screen must drop the picked place (row 60:
+/// only a picked place with coordinates is ever sent). A failed search shows
+/// [searchErrorText] under the field instead of an empty list.
 class PlaceAutocompleteField extends StatefulWidget {
   const PlaceAutocompleteField({
     super.key,
@@ -24,7 +31,13 @@ class PlaceAutocompleteField extends StatefulWidget {
     this.initialValue,
     this.errorText,
     this.debounce = const Duration(milliseconds: 300),
+    this.onSelectionCleared,
+    this.searchErrorText = defaultSearchErrorText,
   });
+
+  /// `v-new-details` / `x-address-form` copy for a failed search.
+  static const defaultSearchErrorText =
+      "Couldn't search places. Check your connection.";
 
   final PlaceSearchService service;
   final ValueChanged<PlaceDetails> onPlaceSelected;
@@ -40,6 +53,13 @@ class PlaceAutocompleteField extends StatefulWidget {
   final String? errorText;
   final Duration debounce;
 
+  /// Called once when the text stops matching the picked place or saved
+  /// address (or [initialValue]); the screen clears its selection.
+  final VoidCallback? onSelectionCleared;
+
+  /// Shown under the field when a search fails.
+  final String searchErrorText;
+
   @override
   State<PlaceAutocompleteField> createState() => _PlaceAutocompleteFieldState();
 }
@@ -51,12 +71,18 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
   String _session = newPlacesSessionToken();
   List<PlaceSuggestion> _results = const [];
   bool _loading = false;
+  bool _searchFailed = false;
   int _requestId = 0;
+
+  /// Text of the current pick; `null` when nothing is picked.
+  String? _selectedText;
 
   @override
   void initState() {
     super.initState();
     _controller.text = widget.initialValue ?? '';
+    final initial = widget.initialValue;
+    if (initial != null && initial.isNotEmpty) _selectedText = initial;
     _focus.addListener(() => setState(() {}));
   }
 
@@ -70,6 +96,12 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
         value != _controller.text) {
       _controller.text = value;
     }
+    if (value != oldWidget.initialValue &&
+        value != null &&
+        value.isNotEmpty &&
+        value == _controller.text) {
+      _selectedText = value;
+    }
   }
 
   @override
@@ -82,7 +114,13 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
 
   void _onChanged(String value) {
     _timer?.cancel();
+    if (_selectedText != null && value != _selectedText) {
+      _selectedText = null;
+      widget.onSelectionCleared?.call();
+    }
+    if (_searchFailed) setState(() => _searchFailed = false);
     if (value.trim().length < 2) {
+      _requestId++;
       setState(() {
         _results = const [];
         _loading = false;
@@ -94,7 +132,10 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
 
   Future<void> _search(String query) async {
     final id = ++_requestId;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _searchFailed = false;
+    });
     try {
       final results =
           await widget.service.autocomplete(query, sessionToken: _session);
@@ -102,25 +143,39 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
       setState(() => _results = results);
     } catch (_) {
       if (!mounted || id != _requestId) return;
-      setState(() => _results = const []);
+      setState(() {
+        _results = const [];
+        _searchFailed = true;
+      });
     } finally {
       if (mounted && id == _requestId) setState(() => _loading = false);
     }
   }
 
   Future<void> _pick(PlaceSuggestion s) async {
-    final details =
-        await widget.service.details(s.placeId, sessionToken: _session);
+    final PlaceDetails details;
+    try {
+      details =
+          await widget.service.details(s.placeId, sessionToken: _session);
+    } catch (_) {
+      // Keep the suggestions open; the user can pick again.
+      return;
+    }
     if (!mounted) return;
     _session = newPlacesSessionToken();
     _controller.text = details.addressText;
-    setState(() => _results = const []);
+    _selectedText = details.addressText;
+    setState(() {
+      _results = const [];
+      _searchFailed = false;
+    });
     _focus.unfocus();
     widget.onPlaceSelected(details);
   }
 
   void _pickSaved(SavedAddress a) {
     _controller.text = a.addressText;
+    _selectedText = a.addressText;
     _focus.unfocus();
     widget.onSavedAddressSelected?.call(a);
   }
@@ -162,6 +217,17 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
               subtitle: a.addressText,
               onTap: () => _pickSaved(a),
             ),
+        if (_searchFailed)
+          Padding(
+            key: const ValueKey('place-search-error'),
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+            child: Text(
+              widget.searchErrorText,
+              style: NitumeTextStyles.mutedSmall.copyWith(
+                color: NitumeDesignChoices.fieldError,
+              ),
+            ),
+          ),
         for (final s in _results)
           _ResultTile(
             icon: Icons.place_outlined,

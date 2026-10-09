@@ -220,6 +220,8 @@ void main() {
           createdAt: DateTime(2026, 10, 7, 10, 12),
         ),
       ];
+      // The resume check would open the modal for IN_PROGRESS; en route
+      // has no price change (row 49).
       b.priceChanges.pendingValue = priceChange();
       await b.pumpApp(t);
       await t.tap(find.text('Track'));
@@ -236,10 +238,53 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Review evidence'), findsNothing);
+      expect(find.text('Price change'), findsNothing);
+    });
 
+    testWidgets('IN_PROGRESS shows the price-change action', (t) async {
+      final b = TestBackend();
+      b.errands.put(errand(status: ErrandStatus.inProgress));
+      b.priceChanges.pendingValue = priceChange();
+      await b.pumpApp(t);
+      await t.tap(find.text('Track'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Price change').first);
       await t.pumpAndSettle();
       expect(find.text('Approve KSh 5,000 increase'), findsOneWidget);
+    });
+
+    testWidgets('AWAITING_CUSTOMER: no runner caption, Review evidence', (
+      t,
+    ) async {
+      final b = TestBackend();
+      b.errands.put(errand(status: ErrandStatus.awaitingCustomer));
+      await b.pumpApp(t);
+      await t.tap(find.text('Track'));
+      await t.pumpAndSettle();
+      expect(
+        find.text('Live location appears when your runner is on the way.'),
+        findsNothing,
+      );
+      expect(find.text('Review evidence'), findsOneWidget);
+    });
+
+    testWidgets('socket: joins the room and shows Reconnecting…', (t) async {
+      final rt = FakeRealtime();
+      final b = TestBackend(realtime: rt);
+      b.errands.put(errand(status: ErrandStatus.runnerEnRoute));
+      await b.pumpApp(t);
+      await t.tap(find.text('Track'));
+      await t.pumpAndSettle();
+      expect(rt.joined, contains('e1'));
+      expect(find.text('Reconnecting…'), findsNothing);
+      rt.setState(RealtimeConnectionState.reconnecting);
+      await t.pumpAndSettle();
+      expect(find.text('Reconnecting…'), findsOneWidget);
+      // Track leaves on hide; Home still watches the same errand, so the
+      // room stays joined (watches are reference-counted).
+      await t.tap(find.text('Home'));
+      await t.pumpAndSettle();
+      expect(rt.joined, contains('e1'));
     });
 
     testWidgets('empty state starts a task', (t) async {
@@ -286,11 +331,12 @@ void main() {
       expect(find.text('#NT-10482 · 7 Oct, 10:03 AM'), findsNothing);
       expect(find.text('Rate this task'), findsOneWidget);
       expect(find.text('Verified · 4.9 · 137 tasks'), findsOneWidget);
-      expect(find.text('KSh 700'), findsOneWidget);
-      expect(find.text('KSh 1,500'), findsOneWidget);
+      // Row 34: one fee total row, no Service fee / Runner fee lines.
+      expect(find.text('Service fee'), findsNothing);
+      expect(find.text('Total (service + runner fee)'), findsOneWidget);
       expect(find.text('KSh 2,200'), findsOneWidget);
       expect(find.text('KSh 40,000'), findsOneWidget);
-      expect(find.text('Sent to your runner'), findsOneWidget);
+      expect(find.text('Paid to Nitume for your runner'), findsOneWidget);
       expect(find.text('Report a problem with this task'), findsOneWidget);
     });
 
@@ -302,6 +348,56 @@ void main() {
       expect(find.text('Not paid yet.'), findsOneWidget);
       expect(find.text('Report a problem with this task'), findsNothing);
     });
+  });
+
+  testWidgets('v-task-detail: refund group after a cancellation', (t) async {
+    final b = TestBackend();
+    b.errands.put(errand(status: ErrandStatus.cancelled));
+    b.payments.summary = PaymentSummary(payment: payment());
+    b.errands.refundsValue = [
+      CustomerRefund(
+        status: RefundStatus.refunded,
+        refundAmount: '2200.00',
+        paidAt: DateTime(2026, 10, 7, 15, 30),
+      ),
+    ];
+    await b.pumpScreen(t, const TaskDetailScreen(errandId: 'e1'));
+    expect(find.text('Refund'), findsOneWidget);
+    expect(find.text('Refunded'), findsOneWidget);
+    expect(find.text('Refund amount'), findsOneWidget);
+    expect(find.textContaining('Sent', findRichText: true), findsWidgets);
+  });
+
+  testWidgets('v-task-detail: every refund review, newest first', (t) async {
+    final b = TestBackend();
+    b.errands.put(errand(status: ErrandStatus.cancelled));
+    b.payments.summary = PaymentSummary(payment: payment());
+    b.errands.refundsValue = const [
+      CustomerRefund(status: RefundStatus.pendingReview),
+      CustomerRefund(
+        status: RefundStatus.approved,
+        refundAmount: '5000.00',
+        trigger: RefundTrigger.priceChangeDecrease,
+        priceChangeRequestId: 'pc1',
+      ),
+    ];
+    await b.pumpScreen(t, const TaskDetailScreen(errandId: 'e1'));
+    expect(find.text('Refund'), findsNWidgets(2));
+    final under = t.getTopLeft(find.text('Refund under review'));
+    final approved = t.getTopLeft(find.text('Refund approved'));
+    expect(under.dy, lessThan(approved.dy));
+  });
+
+  testWidgets('v-task-detail: refund under review has no amount', (t) async {
+    final b = TestBackend();
+    b.errands.put(errand(status: ErrandStatus.cancelled));
+    b.payments.summary = PaymentSummary(payment: payment());
+    b.errands.refundsValue = const [
+      CustomerRefund(status: RefundStatus.pendingReview),
+    ];
+    await b.pumpScreen(t, const TaskDetailScreen(errandId: 'e1'));
+    expect(find.text('Refund under review'), findsOneWidget);
+    expect(find.text('Refund amount'), findsNothing);
   });
 
   group('v-evidence-confirm', () {

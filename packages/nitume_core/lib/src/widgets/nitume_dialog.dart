@@ -7,7 +7,7 @@ import 'nitume_button.dart';
 
 /// C-35. Modal card (design-system `.card-demo` + `.btn-*`): white, `--r-l`
 /// 20, padding 20, max width 335, centred over
-/// [NitumeDesignChoices.modalScrim] (SQ-1, open).
+/// [NitumeDesignChoices.modalScrim] (decided, BOARD row 38).
 ///
 /// Top to bottom: [title] 17/600 blue (`.t-h3`), [body] 13.5 slate-600,
 /// optional [content] (e.g. the price-change compare row or a skeleton), a

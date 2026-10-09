@@ -25,19 +25,32 @@ List<EvidenceThumbnail> evidenceThumbnails(List<Evidence> items) => [
     ),
 ];
 
-/// Opens `x-evidence-viewer` at [index]. Video playback is pending row 32,
-/// so video items show the poster and a note.
+/// Opens `x-evidence-viewer` at [index]. Signed links are short-lived
+/// (row 25): when one has expired the list is re-fetched once first (via
+/// [refetch]). Video is deferred from MVP (row 32): video items show the
+/// poster and a note.
 Future<void> openEvidenceViewer(
   BuildContext context,
   List<Evidence> items,
-  int index,
-) {
+  int index, {
+  Future<List<Evidence>> Function()? refetch,
+}) async {
+  if (refetch != null && items.any((e) => e.isUrlExpired())) {
+    try {
+      final fresh = await refetch();
+      if (fresh.length == items.length) items = fresh;
+    } on Object {
+      // Keep the old list; the tile shows its load-failure state.
+    }
+    if (!context.mounted) return;
+  }
+  final shown = items;
   return EvidenceViewer.show(
     context,
-    items: evidenceThumbnails(items),
+    items: evidenceThumbnails(shown),
     initialIndex: index,
     captionBuilder: (context, i) {
-      final e = items[i];
+      final e = shown[i];
       final t = _time(e);
       final white = NitumeTextStyles.body.copyWith(
         fontSize: 12,

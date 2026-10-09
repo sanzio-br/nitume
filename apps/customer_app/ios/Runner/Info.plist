@@ -47,6 +47,18 @@
 			</array>
 		</dict>
 	</dict>
+	<key>GMSApiKey</key>
+	<string>$(MAPS_API_KEY)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>tel</string>
+		<string>mailto</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -1,3 +1,4 @@
+import 'customer_refund.dart';
 import 'enums.dart';
 import 'errand_location.dart';
 import 'json_utils.dart';
@@ -5,14 +6,16 @@ import 'payment.dart';
 
 /// Evidence item, `GET /errands/:errandId/evidence`.
 ///
-/// [url] may be `null` (e.g. the console storage driver); show the
-/// placeholder tile in that case.
+/// [url] is a short-lived signed link (row 25) or `null`; show the
+/// placeholder tile when `null`. Re-fetch the list once [urlExpiresAt]
+/// passes or a load fails ([isUrlExpired]).
 class Evidence {
   const Evidence({
     required this.id,
     required this.errandId,
     required this.type,
     this.url,
+    this.urlExpiresAt,
     this.capturedAt,
     this.capturedAtLocation,
     this.uploadedBy,
@@ -23,6 +26,9 @@ class Evidence {
   final String errandId;
   final EvidenceType type;
   final String? url;
+
+  /// When the signed [url] stops working; `null` when unknown.
+  final DateTime? urlExpiresAt;
   final DateTime? capturedAt;
   final GeoPoint? capturedAtLocation;
   final String? uploadedBy;
@@ -30,16 +36,24 @@ class Evidence {
 
   bool get isVideo => type == EvidenceType.video;
 
+  /// True once [urlExpiresAt] has passed (at [now], default now).
+  bool isUrlExpired([DateTime? now]) {
+    final at = urlExpiresAt;
+    return at != null && !(now ?? DateTime.now()).isBefore(at);
+  }
+
   factory Evidence.fromJson(Map<String, dynamic> json) {
     final geo = parseGeoPoint(json['capturedAtLocation']);
     return Evidence(
       id: json['id'] as String,
       errandId: json['errandId'] as String,
       type: EvidenceType.fromWire(json['type'] as String),
-      url: json['url'] as String?,
+      url: parseOptionalString(json['url']),
+      urlExpiresAt: parseDate(json['urlExpiresAt']),
       capturedAt: parseDate(json['capturedAt']),
-      capturedAtLocation:
-          geo == null ? null : GeoPoint(lat: geo.lat, lng: geo.lng),
+      capturedAtLocation: geo == null
+          ? null
+          : GeoPoint(lat: geo.lat, lng: geo.lng),
       uploadedBy: json['uploadedBy'] as String?,
       createdAt: parseDate(json['createdAt']),
     );
@@ -69,14 +83,14 @@ class Rating {
   final DateTime? createdAt;
 
   factory Rating.fromJson(Map<String, dynamic> json) => Rating(
-        id: json['id'] as String,
-        errandId: json['errandId'] as String,
-        raterUserId: json['raterUserId'] as String,
-        rateeUserId: json['rateeUserId'] as String,
-        score: (json['score'] as num).toInt(),
-        comment: json['comment'] as String?,
-        createdAt: parseDate(json['createdAt']),
-      );
+    id: json['id'] as String,
+    errandId: json['errandId'] as String,
+    raterUserId: json['raterUserId'] as String,
+    rateeUserId: json['rateeUserId'] as String,
+    score: (json['score'] as num).toInt(),
+    comment: json['comment'] as String?,
+    createdAt: parseDate(json['createdAt']),
+  );
 }
 
 /// A runner's request to change the price
@@ -130,10 +144,24 @@ class PriceChangeRequest {
 /// task was recorded: the extra item amount and how to pay it
 /// (`x-merchant-payment`). A customer reject also cancels the task.
 class PriceChangeDecision {
-  const PriceChangeDecision({required this.request, this.differencePayment});
+  const PriceChangeDecision({
+    required this.request,
+    this.differencePayment,
+    this.refundReview,
+  });
 
   final PriceChangeRequest request;
+
+  /// Set when an approved increase on a paid task was recorded: an STK
+  /// charge to Nitume (`send_to_runner`, with `stkStatus`) or the
+  /// Till/Paybill amount (`merchant_direct`).
   final PriceChangeDifference? differencePayment;
+
+  /// Set when the decision opened an admin refund review (§11). The API
+  /// does not return it yet: decreases are not built (schema row 62 open)
+  /// and a reject's review is read with `ErrandRepository.refund`. Parsed
+  /// tolerantly; `null` until the API sends `refundReview`.
+  final CustomerRefund? refundReview;
 
   factory PriceChangeDecision.fromJson(Map<String, dynamic> json) =>
       PriceChangeDecision(
@@ -143,22 +171,33 @@ class PriceChangeDecision {
                 asJsonMap(json['differencePayment']),
               )
             : null,
+        refundReview: CustomerRefund.tryParse(json['refundReview']),
       );
 }
 
 /// The payment recorded for an approved price difference: no service or
 /// runner fee, only the extra merchant / item amount.
-class PriceChangeDifference {
-  const PriceChangeDifference({required this.payment, this.merchantPayment});
+class PriceChangeDifference extends ItemPayment {
+  const PriceChangeDifference({
+    required super.payment,
+    super.transactions,
+    super.stkStatus,
+    super.checkoutRequestId,
+    super.merchantPayment,
+    super.failureReason,
+  });
 
-  final Payment payment;
-  final MerchantPayment? merchantPayment;
-
-  factory PriceChangeDifference.fromJson(Map<String, dynamic> json) =>
-      PriceChangeDifference(
-        payment: Payment.fromJson(asJsonMap(json['payment'])),
-        merchantPayment: MerchantPayment.tryParse(json['merchantPayment']),
-      );
+  factory PriceChangeDifference.fromJson(Map<String, dynamic> json) {
+    final base = ItemPayment.fromJson(json);
+    return PriceChangeDifference(
+      payment: base.payment,
+      transactions: base.transactions,
+      stkStatus: base.stkStatus,
+      checkoutRequestId: base.checkoutRequestId,
+      merchantPayment: base.merchantPayment,
+      failureReason: base.failureReason,
+    );
+  }
 }
 
 /// One event in a dispute's audit trail.
@@ -178,12 +217,12 @@ class DisputeEvent {
   final DateTime? createdAt;
 
   factory DisputeEvent.fromJson(Map<String, dynamic> json) => DisputeEvent(
-        id: json['id'] as String,
-        eventType: DisputeEventType.fromWire(json['eventType'] as String),
-        actorId: json['actorId'] as String?,
-        payload: asJsonMapOrNull(json['payload']),
-        createdAt: parseDate(json['createdAt']),
-      );
+    id: json['id'] as String,
+    eventType: DisputeEventType.fromWire(json['eventType'] as String),
+    actorId: json['actorId'] as String?,
+    payload: asJsonMapOrNull(json['payload']),
+    createdAt: parseDate(json['createdAt']),
+  );
 }
 
 /// A dispute (`POST /disputes`, `GET /disputes/:id`).
@@ -213,17 +252,17 @@ class Dispute {
   final List<DisputeEvent> events;
 
   factory Dispute.fromJson(Map<String, dynamic> json) => Dispute(
-        id: json['id'] as String,
-        errandId: json['errandId'] as String,
-        openedBy: json['openedBy'] as String,
-        reason: json['reason'] as String,
-        status: DisputeStatus.fromWire(json['status'] as String),
-        resolution: json['resolution'] as String?,
-        resolvedBy: json['resolvedBy'] as String?,
-        createdAt: parseDate(json['createdAt']),
-        updatedAt: parseDate(json['updatedAt']),
-        events: asJsonList(json['events']).map(DisputeEvent.fromJson).toList(),
-      );
+    id: json['id'] as String,
+    errandId: json['errandId'] as String,
+    openedBy: json['openedBy'] as String,
+    reason: json['reason'] as String,
+    status: DisputeStatus.fromWire(json['status'] as String),
+    resolution: json['resolution'] as String?,
+    resolvedBy: json['resolvedBy'] as String?,
+    createdAt: parseDate(json['createdAt']),
+    updatedAt: parseDate(json['updatedAt']),
+    events: asJsonList(json['events']).map(DisputeEvent.fromJson).toList(),
+  );
 }
 
 /// A registered push device (`POST /users/me/devices`).
@@ -243,10 +282,10 @@ class Device {
   final DateTime? createdAt;
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
-        id: json['id'] as String,
-        platform: DevicePlatform.fromWire(json['platform'] as String),
-        pushToken: json['pushToken'] as String?,
-        lastSeenAt: parseDate(json['lastSeenAt']),
-        createdAt: parseDate(json['createdAt']),
-      );
+    id: json['id'] as String,
+    platform: DevicePlatform.fromWire(json['platform'] as String),
+    pushToken: json['pushToken'] as String?,
+    lastSeenAt: parseDate(json['lastSeenAt']),
+    createdAt: parseDate(json['createdAt']),
+  );
 }

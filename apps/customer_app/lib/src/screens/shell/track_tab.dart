@@ -3,6 +3,7 @@ import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
+import '../../services/live_updates.dart';
 import '../../util/display.dart';
 import '../../widgets/common.dart';
 import '../../widgets/schematic_map.dart';
@@ -16,6 +17,14 @@ const trackStatuses = {
   ErrandStatus.arrived,
   ErrandStatus.inProgress,
   ErrandStatus.awaitingCustomer,
+};
+
+/// Runner marker and ETA window (rows 27, 65; `_shared.md` §10).
+const runnerWindow = {
+  ErrandStatus.runnerAssigned,
+  ErrandStatus.runnerEnRoute,
+  ErrandStatus.arrived,
+  ErrandStatus.inProgress,
 };
 
 /// Happy path used for the "next expected" timeline step (v-track Q1).
@@ -62,6 +71,8 @@ class TrackTab extends StatefulWidget {
 class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
   late final AppServices _services = context.services;
   final _runner = ValueNotifier<GeoPoint?>(null);
+  final _eta = ValueNotifier<Duration?>(null);
+  ErrandWatch? _watch;
   List<Errand> _errands = const [];
   String? _selectedId;
   _Detail? _detail;
@@ -76,6 +87,9 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
 
   bool _visible() => widget.active && mounted && isRouteVisible(context);
 
+  /// Polling runs only while the socket is down (§10).
+  bool _shouldPoll() => _visible() && !_services.live.isConnected;
+
   @override
   void initState() {
     super.initState();
@@ -83,13 +97,13 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
     _fast = Poller(
       interval: const Duration(seconds: 10),
       enabled: _services.pollingEnabled,
-      isVisible: _visible,
+      isVisible: _shouldPoll,
       onTick: _refreshTracking,
     );
     _slow = Poller(
       interval: const Duration(seconds: 15),
       enabled: _services.pollingEnabled,
-      isVisible: _visible,
+      isVisible: _shouldPoll,
       onTick: _refreshSelected,
     );
     if (widget.active) _load();
@@ -99,6 +113,8 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
   void didUpdateWidget(TrackTab old) {
     super.didUpdateWidget(old);
     if (widget.active && !old.active) _load();
+    // Leave the room while the tab is hidden (§10).
+    if (!widget.active && old.active) _watchSelected(null);
   }
 
   @override
@@ -106,8 +122,48 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
     _services.shell.removeListener(_onShell);
     _fast?.dispose();
     _slow?.dispose();
+    _watch?.cancel();
     _runner.dispose();
+    _eta.dispose();
     super.dispose();
+  }
+
+  /// Joins the selected errand's room; live events update the marker or
+  /// refresh the errand, a reconnect refetches once.
+  void _watchSelected(String? id) {
+    if (_watch?.errandId == id) return;
+    _watch?.cancel();
+    _watch = id == null
+        ? null
+        : _services.live.watch(
+            id,
+            onLocation: (e) {
+              if (!_inWindow()) return;
+              _runner.value = e.point;
+              if (e.eta != null) _eta.value = e.eta;
+            },
+            onStatus: (_) => _refreshSelected(autoOpen: false),
+            onEvidence: (_) => _refreshSelected(autoOpen: false),
+            // The app-level listener opens the modal; Track only refreshes.
+            onPriceChange: (_) => _refreshSelected(autoOpen: false),
+            // New Till/Paybill details can make an item amount due.
+            onMerchantDetails: (_) => _refreshSelected(autoOpen: false),
+            onReconnected: () => _refreshSelected(autoOpen: false),
+          );
+  }
+
+  bool _inWindow() => runnerWindow.contains(_detail?.errand.status);
+
+  /// Shows the runner only inside the assignment window; never keeps a
+  /// position outside it.
+  void _applyTracking(ErrandStatus status, TrackingSnapshot? t) {
+    if (!runnerWindow.contains(status) || t == null) {
+      _runner.value = null;
+      _eta.value = null;
+      return;
+    }
+    _runner.value = t.runnerLocation?.point;
+    _eta.value = t.eta;
   }
 
   @override
@@ -148,6 +204,11 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
         _detail = detail;
         _loading = false;
       });
+      _watchSelected(detail?.errand.id);
+      if (_services.shell.takeOpenPriceChange() &&
+          detail?.priceChange != null) {
+        _openPriceChange();
+      }
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {
@@ -169,15 +230,19 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
       _services.evidence
           .list(id)
           .then<Object?>((v) => v, onError: (_) => <Evidence>[]),
-      _services.priceChanges
-          .pending(id)
-          .then<Object?>((v) => v, onError: (_) => null),
+      // Requests exist only in IN_PROGRESS (row 49).
+      if (errand.status == ErrandStatus.inProgress)
+        _services.priceChanges
+            .pending(id)
+            .then<Object?>((v) => v, onError: (_) => null)
+      else
+        Future<Object?>.value(),
       _services.payments
           .forErrand(id)
           .then<Object?>((v) => v, onError: (_) => null),
     ]);
     final tracking = results[0] as TrackingSnapshot?;
-    _runner.value = tracking?.runnerLocation?.point;
+    _applyTracking(errand.status, tracking);
     return _Detail(
       errand: errand,
       tracking: tracking,
@@ -191,26 +256,31 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
   Future<void> _refreshTracking() async {
     final id = _selectedId;
     if (id == null) return;
-    final t = await _services.errands.tracking(id);
+    TrackingSnapshot? t;
+    try {
+      t = await _services.errands.tracking(id);
+    } on NitumeApiException catch (e) {
+      // 403/404: not the current assignment any more (row 65).
+      if (e.statusCode != 403 && e.statusCode != 404) rethrow;
+    }
     if (!mounted || id != _selectedId) return;
     // Only the marker moves; the map is not rebuilt.
-    _runner.value = t.runnerLocation?.point;
-    if (t.eta != _detail?.tracking?.eta) {
-      setState(() => _detail?.tracking = t);
-    } else {
-      _detail?.tracking = t;
-    }
+    _detail?.tracking = t;
+    _applyTracking(_detail?.errand.status ?? ErrandStatus.inProgress, t);
   }
 
-  Future<void> _refreshSelected() async {
+  Future<void> _refreshSelected({bool autoOpen = true}) async {
     final id = _selectedId;
     if (id == null) return;
     final d = await _loadDetail(id);
     if (!mounted || id != _selectedId) return;
     final hadPriceChange = _detail?.priceChange?.id;
     setState(() => _detail = d);
-    // A new pending price change opens the blocking modal (OA-8).
-    if (d.priceChange != null && d.priceChange!.id != hadPriceChange) {
+    // While polling (socket down) a new pending price change opens the
+    // blocking modal here; with the socket the app-level listener does.
+    if (autoOpen &&
+        d.priceChange != null &&
+        d.priceChange!.id != hadPriceChange) {
       _openPriceChange();
     }
   }
@@ -220,6 +290,7 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
       _selectedId = id;
       _detail = null;
     });
+    _watchSelected(id);
     try {
       final d = await _loadDetail(id);
       if (mounted && id == _selectedId) setState(() => _detail = d);
@@ -259,6 +330,9 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
       content = _TrackBody(
         detail: _detail!,
         runner: _runner,
+        eta: _eta,
+        live: _services.live,
+        config: _services.appConfig,
         onPriceChange: _openPriceChange,
       );
     }
@@ -309,11 +383,17 @@ class _TrackBody extends StatelessWidget {
   const _TrackBody({
     required this.detail,
     required this.runner,
+    required this.eta,
+    required this.live,
+    required this.config,
     required this.onPriceChange,
   });
 
   final _Detail detail;
   final ValueNotifier<GeoPoint?> runner;
+  final ValueNotifier<Duration?> eta;
+  final LiveUpdates live;
+  final AppConfig config;
   final VoidCallback onPriceChange;
 
   static const _terminalCopy = {
@@ -355,19 +435,31 @@ class _TrackBody extends StatelessWidget {
 
     final tracking = detail.tracking;
     final finding = status == ErrandStatus.paymentConfirmed;
-    final eta = status == ErrandStatus.arrived
-        ? 'Arrived'
-        : (tracking?.eta == null || finding ? null : formatEta(tracking!.eta!));
-    final points = tracking?.points ?? errand.locations ?? const [];
-    final mp = detail.payment?.merchantPayment;
-    final itemDue =
-        mp != null &&
-        isPositiveAmount(mp.amount) &&
-        (mp.route == MerchantRoute.sendToRunner || mp.hasMerchantDetails);
+    final inWindow = runnerWindow.contains(status);
+    final allPoints = tracking?.points ?? errand.locations ?? const [];
+    // PAYMENT_CONFIRMED: the task pin only.
+    final points = finding
+        ? [
+            for (final p in allPoints)
+              if (p.pointType != ErrandPointType.pickup) p,
+          ]
+        : allPoints;
+    GeoPoint? pointOf(ErrandPointType type) {
+      for (final p in points) {
+        if (p.pointType == type) return p.point;
+      }
+      return null;
+    }
+
+    final start = pointOf(ErrandPointType.pickup);
+    final end =
+        pointOf(ErrandPointType.dropoff) ?? pointOf(ErrandPointType.taskSite);
+    final itemDue = itemAmountDue(detail.payment);
+    final due = itemDue ? itemAmountDueValue(detail.payment!) : null;
     final r = errand.runner ?? tracking?.runner;
 
     final actions = <Widget>[
-      if (detail.priceChange != null)
+      if (detail.priceChange != null && status == ErrandStatus.inProgress)
         NitumeButton.outline(
           label: 'Price change',
           icon: Icons.sell_outlined,
@@ -391,31 +483,49 @@ class _TrackBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              LiveTrackingMap(
-                etaLabel: eta,
-                semanticLabel: 'Map of your task',
-                mapBuilder: (_) => SchematicMap(
-                  points: finding
-                      ? [
-                          for (final p in points)
-                            if (p.pointType != ErrandPointType.pickup) p,
-                        ]
-                      : points,
-                  runner: runner,
-                ),
+              // Only the runner marker and ETA listen to live updates; the
+              // Google map animates the marker in place (§5).
+              ListenableBuilder(
+                listenable: Listenable.merge([runner, eta]),
+                builder: (context, _) {
+                  final pos = inWindow ? runner.value : null;
+                  final String? etaLabel;
+                  if (status == ErrandStatus.arrived) {
+                    etaLabel = 'Arrived';
+                  } else if (inWindow && eta.value != null) {
+                    etaLabel = formatEta(eta.value!);
+                  } else {
+                    etaLabel = null;
+                  }
+                  return LiveTrackingMap(
+                    etaLabel: etaLabel,
+                    semanticLabel: 'Map of your task',
+                    mapBuilder:
+                        GoogleTrackingMap.builderFor(
+                          config,
+                          start: start,
+                          end: end,
+                          runner: pos,
+                        ) ??
+                        (_) => SchematicMap(points: points, runner: runner),
+                  );
+                },
               ),
-              ValueListenableBuilder<GeoPoint?>(
-                valueListenable: runner,
-                builder: (context, pos, _) => pos != null
-                    ? const SizedBox.shrink()
-                    : Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
+              if (inWindow)
+                ValueListenableBuilder<GeoPoint?>(
+                  valueListenable: runner,
+                  builder: (context, pos, _) => pos != null
+                      ? const SizedBox.shrink()
+                      : const _MapCaption(
                           'Live location appears when your runner is on the '
                           'way.',
-                          style: NitumeTextStyles.muted.copyWith(fontSize: 12),
                         ),
-                      ),
+                ),
+              ValueListenableBuilder<RealtimeConnectionState>(
+                valueListenable: live.state,
+                builder: (context, _, _) => live.isReconnecting
+                    ? const _MapCaption('Reconnecting…')
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -444,15 +554,15 @@ class _TrackBody extends StatelessWidget {
                   ),
           ),
         ),
-        if (itemDue)
+        if (due != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
             child: NitumeNotice(
-              message: 'Pay the item amount: ${formatKes(mp.amount)}',
+              message: 'Pay the item amount: ${formatKes(due)}',
               richMessage: TextSpan(
                 children: [
                   const TextSpan(text: 'Pay the item amount: '),
-                  NumSpan.kes(mp.amount),
+                  NumSpan.kes(due),
                 ],
               ),
               action: NitumeButton.outline(
@@ -490,6 +600,48 @@ const _hiddenInTimeline = {
   ErrandStatus.confirmed,
   ErrandStatus.settled,
 };
+
+class _MapCaption extends StatelessWidget {
+  const _MapCaption(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Text(text, style: NitumeTextStyles.muted.copyWith(fontSize: 12)),
+  );
+}
+
+/// True when an item amount is still due after the fees (Track notice):
+/// a `merchant_direct` amount with merchant details, or an unpaid
+/// price-change difference. `send_to_runner`'s original item amount is
+/// part of the combined fee STK (row 76), so only differences remain.
+bool itemAmountDue(PaymentSummary? s) {
+  if (s == null || s.payment?.status != PaymentStatus.completed) return false;
+  final mp = s.merchantPayment;
+  if (mp != null &&
+      mp.route == MerchantRoute.merchantDirect &&
+      mp.hasMerchantDetails &&
+      isPositiveAmount(mp.amount)) {
+    return true;
+  }
+  return s.differencePayments.any(
+    (d) =>
+        d.payment.status != PaymentStatus.completed &&
+        isPositiveAmount(d.amount),
+  );
+}
+
+/// Amount shown in the Track notice for [itemAmountDue].
+String? itemAmountDueValue(PaymentSummary s) {
+  final mp = s.merchantPayment;
+  if (mp != null && mp.route == MerchantRoute.merchantDirect) return mp.amount;
+  for (final d in s.differencePayments) {
+    if (d.payment.status != PaymentStatus.completed) return d.amount;
+  }
+  return null;
+}
 
 /// Status history with `_shared.md` §6 labels, evidence uploads, and the
 /// next expected state as pending (v-track Q1 default).

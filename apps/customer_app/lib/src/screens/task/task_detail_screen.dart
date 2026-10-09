@@ -3,10 +3,12 @@ import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
+import '../../services/live_updates.dart';
 import '../../util/display.dart';
 import '../../widgets/common.dart';
 import '../../widgets/evidence.dart';
 import '../../widgets/task_widgets.dart';
+import '../shell/track_tab.dart' show itemAmountDue;
 
 class _TaskData {
   const _TaskData({
@@ -15,9 +17,14 @@ class _TaskData {
     required this.evidence,
     required this.rated,
     required this.hasReport,
+    this.refunds = const [],
   });
 
   final Errand errand;
+
+  /// Every refund review, newest first (`_shared.md` §11, row 71); empty
+  /// hides the group. Decrease reviews carry the price-change request.
+  final List<CustomerRefund> refunds;
 
   /// A dispute exists (DISPUTED, or resolved to COMPLETED / CANCELLED).
   final bool hasReport;
@@ -76,6 +83,26 @@ class _TaskDetailScreenState extends State<TaskDetailScreen>
   @override
   void onReturn() => _reload();
 
+  ErrandWatch? _watch;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Live status changes (refund and dispute outcomes ride on them).
+    _watch ??= _services.live.watch(
+      widget.errandId,
+      onStatus: (_) => _reload(),
+      onEvidence: (_) => _reload(),
+      onReconnected: _reload,
+    );
+  }
+
+  @override
+  void dispose() {
+    _watch?.cancel();
+    super.dispose();
+  }
+
   void _reload() {
     final f = _load();
     setState(() {
@@ -105,8 +132,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen>
             .then<Object?>((d) => d != null, onError: (_) => false)
       else
         Future<Object?>.value(false),
+      _services.errands
+          .refunds(id)
+          .then<Object?>((v) => v, onError: (_) => <CustomerRefund>[]),
     ]);
     return _TaskData(
+      refunds: results[4]! as List<CustomerRefund>,
       hasReport: errand.status == ErrandStatus.disputed || results[3]! as bool,
       errand: errand,
       payment: results[0] as PaymentSummary?,
@@ -175,7 +206,6 @@ class _Body extends StatelessWidget {
     final primary = _primary(context);
     final r = e.runner;
     final payment = data.payment?.payment;
-    final mp = data.payment?.merchantPayment;
     final paid = !_unpaid.contains(e.status) && payment != null;
     final canReport =
         e.status == ErrandStatus.inProgress ||
@@ -217,25 +247,52 @@ class _Body extends StatelessWidget {
           const SectionLabel('Evidence'),
           EvidenceGrid(
             items: evidenceThumbnails(data.evidence),
-            onTap: (i) => openEvidenceViewer(context, data.evidence, i),
+            onTap: (i) => openEvidenceViewer(
+              context,
+              data.evidence,
+              i,
+              refetch: () => context.services.evidence.list(e.id),
+            ),
           ),
         ],
         const SectionLabel('Payment'),
-        if (!paid)
+        if (!paid && data.refunds.isEmpty)
           const MutedLine('Not paid yet.')
+        else if (!paid)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+            child: NitumeCard(
+              border: NitumeCardBorder.dashed,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final r in data.refunds) RefundGroup(refund: r),
+                ],
+              ),
+            ),
+          )
         else
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ReceiptCard(
-                  rows: paidFeeRows(payment),
-                  separate: itemAmountGroup(payment),
+                NitumeCard(
+                  border: NitumeCardBorder.dashed,
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ...feeTotalRows(payment, feeTotal: e.feeTotal),
+                      ?itemAmountGroup(payment),
+                      for (final r in data.refunds) RefundGroup(refund: r),
+                    ],
+                  ),
                 ),
-                if (mp != null &&
-                    isPositiveAmount(mp.amount) &&
-                    ErrandRepository.activeStatuses.contains(e.status))
+                // Only while something is still due (Track's rule):
+                // send_to_runner items paid in the combined STK are not.
+                if (ErrandRepository.activeStatuses.contains(e.status) &&
+                    itemAmountDue(data.payment))
                   Align(
                     alignment: Alignment.centerLeft,
                     child: NitumeButton.link(

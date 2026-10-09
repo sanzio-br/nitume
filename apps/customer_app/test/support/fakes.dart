@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:customer_app/src/services/live_updates.dart';
 import 'package:customer_app/src/app.dart';
 import 'package:customer_app/src/navigation/routes.dart';
 import 'package:customer_app/src/services/app_services.dart';
@@ -30,6 +33,8 @@ RunnerSummary runner({String? name = 'Brian Kamau'}) => RunnerSummary(
   avgRating: '4.90',
   errandsCompleted: 137,
   displayName: name,
+  // The API computes the short name (row 40).
+  shortName: name == null ? null : 'Brian K.',
 );
 
 Errand errand({
@@ -43,6 +48,9 @@ Errand errand({
   bool withRunner = true,
   String? runnerNotes,
   DateTime? updatedAt,
+  bool? merchantDetailsAvailable,
+  String? feeTotal,
+  bool quoteAcceptanceRequired = false,
 }) => Errand(
   id: id,
   customerId: 'u1',
@@ -55,6 +63,9 @@ Errand errand({
   title: title,
   reference: reference,
   runnerNotes: runnerNotes,
+  merchantDetailsAvailable: merchantDetailsAvailable,
+  feeTotal: feeTotal,
+  quoteAcceptanceRequired: quoteAcceptanceRequired,
   createdAt: _epoch,
   updatedAt: updatedAt ?? _epoch,
   locations: const [
@@ -228,6 +239,34 @@ class FakeErrands extends ErrandRepository {
   @override
   Future<Quote?> quote(String errandId) async => quoteValue;
 
+  List<CustomerRefund> refundsValue = const [];
+  final quoteAccepts = <String>[];
+
+  @override
+  Future<CustomerRefund?> refund(String errandId) async =>
+      refundsValue.isEmpty ? null : refundsValue.first;
+
+  @override
+  Future<List<CustomerRefund>> refunds(String errandId) async => refundsValue;
+
+  /// Like the API: QUOTED moves to ACCEPTED; ACCEPTED stays.
+  @override
+  Future<QuoteAcceptanceResult> acceptQuote(
+    String errandId, {
+    bool fallbackToTransition = false,
+  }) async {
+    quoteAccepts.add(errandId);
+    final e = transitionError;
+    if (e != null) throw e;
+    final current = byId[errandId]!;
+    if (current.status == ErrandStatus.quoted) {
+      return QuoteAcceptanceResult(
+        errand: _withStatus(errandId, ErrandStatus.accepted),
+      );
+    }
+    return QuoteAcceptanceResult(errand: current);
+  }
+
   @override
   Future<TrackingSnapshot> tracking(String errandId) async =>
       trackingValue ??
@@ -259,6 +298,10 @@ class FakeErrands extends ErrandRepository {
       runnerNotes: e.runnerNotes,
       items: e.items,
       locations: e.locations,
+      merchantDetailsAvailable: e.merchantDetailsAvailable,
+      feeTotal: e.feeTotal,
+      quoteAcceptanceRequired: e.quoteAcceptanceRequired,
+      quoteExpiresAt: e.quoteExpiresAt,
     );
     put(next);
     return next;
@@ -321,6 +364,31 @@ class FakePayments extends PaymentsRepository {
     );
   }
 
+  final retried = <String>[];
+
+  @override
+  Future<ItemPayment> retryDifferencePayment(
+    String errandId,
+    String requestId,
+  ) async {
+    retried.add(requestId);
+    final d = ItemPayment(
+      payment: payment(
+        errandId: errandId,
+        status: PaymentStatus.pending,
+        merchantAmount: '5000.00',
+        flow: PaymentFlow.customerToRunner,
+      ),
+      stkStatus: StkPaymentState.pending,
+    );
+    summary = PaymentSummary(
+      payment: summary.payment,
+      merchantPayment: summary.merchantPayment,
+      differencePayments: [d],
+    );
+    return d;
+  }
+
   @override
   Future<PaymentSummary> forErrand(String errandId) async => summary;
 }
@@ -329,9 +397,13 @@ class FakeEvidence extends EvidenceRepository {
   FakeEvidence() : super(_api);
 
   List<Evidence> items = const [];
+  int calls = 0;
 
   @override
-  Future<List<Evidence>> list(String errandId) async => items;
+  Future<List<Evidence>> list(String errandId) async {
+    calls++;
+    return items;
+  }
 }
 
 class FakeRatings extends RatingsRepository {
@@ -367,12 +439,13 @@ class FakeRatings extends RatingsRepository {
 PriceChangeRequest priceChange({
   String errandId = 'e1',
   PriceChangeStatus status = PriceChangeStatus.requested,
+  String toPrice = '45000.00',
 }) => PriceChangeRequest(
   id: 'pc1',
   errandId: errandId,
   requestedByUserId: 'ru1',
   fromPrice: '40000.00',
-  toPrice: '45000.00',
+  toPrice: toPrice,
   status: status,
   reason: 'The shop raised the price.',
 );
@@ -386,6 +459,7 @@ class FakePriceChanges extends PriceChangeRepository {
 
   /// Answer MERCHANT_ROUTE_REQUIRED while no route is sent.
   bool requireRoute = false;
+  String routeCode = ApiErrorCodes.merchantRouteRequired;
   Object? pendingError;
   final rejected = <String>[];
   Object? decisionError;
@@ -405,10 +479,10 @@ class FakePriceChanges extends PriceChangeRepository {
     MerchantRoute? merchantRoute,
   }) async {
     if (requireRoute && merchantRoute == null) {
-      throw const NitumeApiException(
+      throw NitumeApiException(
         message: 'route',
         statusCode: 400,
-        code: ApiErrorCodes.merchantRouteRequired,
+        code: routeCode,
       );
     }
     approved.add(requestId);
@@ -617,8 +691,10 @@ class TestBackend {
   TestBackend({
     PlaceSearchService? placeSearch,
     AppConfig appConfig = const AppConfig(),
+    this.realtime,
   }) {
     services = AppServices(
+      live: LiveUpdates(realtime, accessToken: () async => 'a'),
       placeSearch: placeSearch,
       appConfig: appConfig,
       session: SessionController(auth: auth),
@@ -646,6 +722,9 @@ class TestBackend {
   final notifications = FakeNotifications();
   final account = FakeAccount();
   late final AppServices services;
+
+  /// Optional fake socket (live-update tests).
+  final FakeRealtime? realtime;
 
   /// Starts the app. With [signedIn] the session restores straight into the
   /// shell.
@@ -700,4 +779,84 @@ class FakePlaces implements PlaceSearchService {
     lat: -1.3,
     lng: 36.81,
   );
+}
+
+/// In-memory [RealtimeClient] for live-update tests.
+class FakeRealtime implements RealtimeClient {
+  final _state = StreamController<RealtimeConnectionState>.broadcast();
+  final _locations = StreamController<LocationUpdate>.broadcast();
+  final _statuses = StreamController<ErrandStatusChanged>.broadcast();
+  final _evidence = StreamController<EvidenceUploaded>.broadcast();
+  final _prices = StreamController<PriceChangeRequested>.broadcast();
+  final _quotes = StreamController<QuoteReissued>.broadcast();
+  final _merchants = StreamController<MerchantDetailsUpdated>.broadcast();
+
+  void emitQuoteReissued(String errandId) => _quotes.add(
+    QuoteReissued(errandId: errandId, quoteId: 'q2', total: '2500.00'),
+  );
+
+  void emitMerchantDetails(String errandId) => _merchants.add(
+    MerchantDetailsUpdated(errandId: errandId, tillNumber: '123456'),
+  );
+
+  @override
+  Stream<QuoteReissued> get quoteReissues => _quotes.stream;
+
+  @override
+  Stream<MerchantDetailsUpdated> get merchantDetailsUpdates =>
+      _merchants.stream;
+  RealtimeConnectionState _current = RealtimeConnectionState.disconnected;
+  final joined = <String>{};
+
+  void setState(RealtimeConnectionState s) {
+    _current = s;
+    _state.add(s);
+  }
+
+  void emitStatus(String errandId, ErrandStatus status) =>
+      _statuses.add(ErrandStatusChanged(errandId: errandId, status: status));
+
+  void emitLocation(String errandId, GeoPoint p) =>
+      _locations.add(LocationUpdate(errandId: errandId, point: p));
+
+  void emitPriceChange(String errandId) => _prices.add(
+    PriceChangeRequested(
+      errandId: errandId,
+      requestId: 'pc1',
+      fromPrice: '40000.00',
+      toPrice: '45000.00',
+    ),
+  );
+
+  @override
+  Future<void> connect({required String accessToken}) async =>
+      setState(RealtimeConnectionState.connected);
+
+  @override
+  Future<void> disconnect() async =>
+      setState(RealtimeConnectionState.disconnected);
+
+  @override
+  Stream<RealtimeConnectionState> get connectionState => _state.stream;
+
+  @override
+  RealtimeConnectionState get currentState => _current;
+
+  @override
+  Future<bool> joinErrand(String errandId) async => joined.add(errandId);
+
+  @override
+  Future<void> leaveErrand(String errandId) async => joined.remove(errandId);
+
+  @override
+  Stream<LocationUpdate> get locationUpdates => _locations.stream;
+
+  @override
+  Stream<ErrandStatusChanged> get statusChanges => _statuses.stream;
+
+  @override
+  Stream<EvidenceUploaded> get evidenceUploads => _evidence.stream;
+
+  @override
+  Stream<PriceChangeRequested> get priceChangeRequests => _prices.stream;
 }

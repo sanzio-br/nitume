@@ -1,7 +1,32 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Firebase (FCM, row 31): google-services.json is never committed (see the
+// app README). Without it the plugin is skipped and the app runs with push
+// disabled (core FcmPushService falls back to a no-op).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
+/**
+ * Google Maps SDK key (row 30) from, in order: the Gradle property or
+ * environment variable MAPS_API_KEY, or `--dart-define=NITUME_MAPS_API_KEY`.
+ * Empty when none is set: the app then keeps the map placeholder
+ * (`NITUME_MAPS_ENABLED` stays false). Never commit a real key.
+ */
+fun mapsApiKey(): String {
+    (project.findProperty("MAPS_API_KEY") as String?)?.let { return it }
+    System.getenv("MAPS_API_KEY")?.let { return it }
+    val defines = project.findProperty("dart-defines") as String? ?: return ""
+    return defines.split(",")
+        .map { String(Base64.getDecoder().decode(it)) }
+        .firstOrNull { it.startsWith("NITUME_MAPS_API_KEY=") }
+        ?.substringAfter("=") ?: ""
 }
 
 android {
@@ -27,6 +52,7 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["mapsApiKey"] = mapsApiKey()
     }
 
     buildTypes {

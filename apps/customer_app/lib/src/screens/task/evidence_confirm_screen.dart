@@ -3,6 +3,7 @@ import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
+import '../../services/live_updates.dart';
 import '../../widgets/common.dart';
 import '../../widgets/evidence.dart';
 import '../../widgets/task_widgets.dart';
@@ -41,18 +42,29 @@ class _EvidenceConfirmScreenState extends State<EvidenceConfirmScreen> {
   void initState() {
     super.initState();
     _load();
-    // Evidence-uploaded events need the socket client (row 29): poll.
+    // evidence:uploaded refreshes the grid; polling only while the socket
+    // is down (§10).
+    _watch = _services.live.watch(
+      widget.errandId,
+      onEvidence: (_) => _load(),
+      onStatus: (_) => _load(),
+      onReconnected: _load,
+    );
     _poller = Poller(
       interval: const Duration(seconds: 15),
       enabled: _services.pollingEnabled,
-      isVisible: () => mounted && isRouteVisible(context),
+      isVisible: () =>
+          mounted && isRouteVisible(context) && !_services.live.isConnected,
       onTick: _load,
     );
   }
 
+  ErrandWatch? _watch;
+
   @override
   void dispose() {
     _poller?.dispose();
+    _watch?.cancel();
     super.dispose();
   }
 
@@ -139,7 +151,12 @@ class _EvidenceConfirmScreenState extends State<EvidenceConfirmScreen> {
           else
             EvidenceGrid(
               items: evidenceThumbnails(d.evidence),
-              onTap: (i) => openEvidenceViewer(context, d.evidence, i),
+              onTap: (i) => openEvidenceViewer(
+                context,
+                d.evidence,
+                i,
+                refetch: () => _services.evidence.list(widget.errandId),
+              ),
             ),
           if (notes != null && notes.isNotEmpty) ...[
             const SectionLabel('Runner notes'),
@@ -150,7 +167,7 @@ class _EvidenceConfirmScreenState extends State<EvidenceConfirmScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
               child: ReceiptCard(
-                rows: paidFeeRows(payment),
+                rows: feeTotalRows(payment, feeTotal: d.errand.feeTotal),
                 separate: itemAmountGroup(payment),
               ),
             ),

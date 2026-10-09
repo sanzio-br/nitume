@@ -3,16 +3,16 @@ import '../models/errand_location.dart';
 
 /// Socket.IO contract names (path `/socket.io`, handshake `auth: {token}`).
 ///
-/// Only the room format and `location:update` are named by the system
-/// design (§4.2). Every other name is **proposed by api-contract and pending
-/// owner approval**; change them here only.
+/// The room format and `location:update` come from the system design
+/// (§4.2); the other names were approved by the owner (BOARD row 23). Use
+/// these constants only; never type an event name in a screen.
 abstract final class RealtimeEvents {
   static const path = '/socket.io';
 
   /// Room for one errand (`errand:{id}`), §4.2.
   static String errandRoom(String errandId) => 'errand:$errandId';
 
-  // client → server (pending owner approval)
+  // client → server (row 23)
   static const errandJoin = 'errand:join';
   static const errandLeave = 'errand:leave';
 
@@ -20,14 +20,20 @@ abstract final class RealtimeEvents {
   /// §4.2.
   static const locationUpdate = 'location:update';
 
-  /// Pending owner approval.
+  /// Row 23.
   static const errandStatusChanged = 'errand:status_changed';
 
-  /// Pending owner approval.
+  /// Row 23.
   static const evidenceUploaded = 'evidence:uploaded';
 
-  /// Pending owner approval.
+  /// Row 23.
   static const priceChangeRequested = 'price_change:requested';
+
+  /// An admin re-quoted the task (row 72).
+  static const quoteReissued = 'quote:reissued';
+
+  /// The merchant's Till/Paybill details were set or changed (row 43).
+  static const merchantDetailsUpdated = 'merchant_details:updated';
 }
 
 /// `location:update {errandId, lat, lng, eta, ts}`.
@@ -142,25 +148,132 @@ class PriceChangeRequested {
       );
 }
 
+/// `quote:reissued {errandId, quoteId, total, currency, expiresAt, status,
+/// acceptanceRequired}` (row 72). [total] is a decimal string.
+class QuoteReissued {
+  const QuoteReissued({
+    required this.errandId,
+    required this.quoteId,
+    required this.total,
+    this.currency = 'KES',
+    this.expiresAt,
+    this.status,
+    this.acceptanceRequired = false,
+  });
+
+  final String errandId;
+  final String quoteId;
+  final String total;
+  final String currency;
+  final DateTime? expiresAt;
+
+  /// The errand's state (QUOTED or ACCEPTED); `null` when unknown.
+  final ErrandStatus? status;
+
+  /// True on an ACCEPTED errand: the customer must accept the new quote
+  /// before paying (`ErrandRepository.acceptQuote`).
+  final bool acceptanceRequired;
+
+  factory QuoteReissued.fromJson(Map<String, dynamic> json) {
+    final status = json['status'];
+    return QuoteReissued(
+      errandId: json['errandId'] as String,
+      quoteId: json['quoteId'] as String,
+      total: '${json['total']}',
+      currency: json['currency'] is String ? json['currency'] as String : 'KES',
+      expiresAt: json['expiresAt'] is String
+          ? DateTime.tryParse(json['expiresAt'])
+          : null,
+      status: status is String ? _tryStatus(status) : null,
+      acceptanceRequired: json['acceptanceRequired'] == true,
+    );
+  }
+}
+
+ErrandStatus? _tryStatus(String wire) {
+  for (final s in ErrandStatus.values) {
+    if (s.wire == wire) return s;
+  }
+  return null;
+}
+
+/// `merchant_details:updated {errandId, merchantName, tillNumber,
+/// paybillNumber, accountReference}` (row 43). Screens refetch the payment
+/// summary; the Till/Paybill is still shown only on `x-merchant-payment`.
+class MerchantDetailsUpdated {
+  const MerchantDetailsUpdated({
+    required this.errandId,
+    this.merchantName,
+    this.tillNumber,
+    this.paybillNumber,
+    this.accountReference,
+  });
+
+  final String errandId;
+  final String? merchantName;
+  final String? tillNumber;
+  final String? paybillNumber;
+  final String? accountReference;
+
+  /// True when a Till or Paybill number is set.
+  bool get hasMerchantDetails => tillNumber != null || paybillNumber != null;
+
+  factory MerchantDetailsUpdated.fromJson(Map<String, dynamic> json) {
+    String? read(String key) {
+      final v = json[key];
+      return v is String && v.trim().isNotEmpty ? v : null;
+    }
+
+    return MerchantDetailsUpdated(
+      errandId: json['errandId'] as String,
+      merchantName: read('merchantName'),
+      tillNumber: read('tillNumber'),
+      paybillNumber: read('paybillNumber'),
+      accountReference: read('accountReference'),
+    );
+  }
+}
+
 /// Connection state of a [RealtimeClient].
-enum RealtimeConnectionState { disconnected, connecting, connected }
+///
+/// Screens poll their REST snapshot only while the state is not
+/// [connected] and show `Reconnecting…` for [reconnecting] where specced
+/// (`_shared.md` §10).
+enum RealtimeConnectionState {
+  /// Not connected and not trying (before `connect` or after `disconnect`).
+  disconnected,
+
+  /// First connection attempt in progress.
+  connecting,
+
+  /// Connected and authenticated; joined rooms are live.
+  connected,
+
+  /// The connection dropped or was refused; retrying with backoff.
+  reconnecting;
+
+  bool get isConnected => this == connected;
+}
 
 /// Live errand updates over Socket.IO.
 ///
-/// This is an interface only: no Socket.IO client package is a dependency
-/// of `nitume_core` (adding one, e.g. `socket_io_client`, is an open owner
-/// question under AGENT_BUILD_INSTRUCTIONS §3). An implementation parses
-/// payloads with the `fromJson` factories above and uses the names in
-/// [RealtimeEvents].
+/// `SocketIoRealtimeClient` is the implementation (row 29); tests use a
+/// fake. Implementations parse payloads with the `fromJson` factories above
+/// and use the names in [RealtimeEvents].
 abstract interface class RealtimeClient {
   /// Connects with the current access token (`auth: {token}`).
   Future<void> connect({required String accessToken});
 
   Future<void> disconnect();
 
+  /// State changes (broadcast). Read [currentState] for the value now.
   Stream<RealtimeConnectionState> get connectionState;
 
-  /// Emits `errand:join`; resolves with the ack's `ok`.
+  /// The state right now.
+  RealtimeConnectionState get currentState;
+
+  /// Emits `errand:join`; resolves with the ack's `ok`. Joined rooms are
+  /// re-joined after every reconnect until [leaveErrand].
   Future<bool> joinErrand(String errandId);
 
   /// Emits `errand:leave`.
@@ -170,4 +283,10 @@ abstract interface class RealtimeClient {
   Stream<ErrandStatusChanged> get statusChanges;
   Stream<EvidenceUploaded> get evidenceUploads;
   Stream<PriceChangeRequested> get priceChangeRequests;
+
+  /// `quote:reissued` (row 72).
+  Stream<QuoteReissued> get quoteReissues;
+
+  /// `merchant_details:updated` (row 43).
+  Stream<MerchantDetailsUpdated> get merchantDetailsUpdates;
 }

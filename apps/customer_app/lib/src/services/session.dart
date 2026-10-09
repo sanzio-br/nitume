@@ -117,6 +117,7 @@ class SessionController extends ChangeNotifier {
 
   /// Log out (`v-profile`): unregister push, revoke, clear tokens.
   Future<void> logout() async {
+    _loggingOut = true;
     try {
       await _push.unregisterBeforeSignOut();
     } on Object {
@@ -128,7 +129,40 @@ class SessionController extends ChangeNotifier {
       // `AuthRepository.logout` clears local tokens even when revoke fails.
     }
     _user = null;
+    _loggingOut = false;
     _set(SessionStatus.signedOut);
+  }
+
+  bool _suspended = false;
+
+  /// True once after a mid-session `account_suspended`, so the app can show
+  /// `This account can't sign in. Contact support.` (`_shared.md` §7).
+  bool takeSuspendedFlag() {
+    final s = _suspended;
+    _suspended = false;
+    return s;
+  }
+
+  /// The API refused the running session with `account_suspended`: tokens
+  /// are already cleared by the client; unregister push (best effort) and
+  /// return to `v-auth-phone`.
+  void suspend() {
+    if (_status == SessionStatus.signedOut) return;
+    // Push was unregistered in beforeTokensCleared, before the client
+    // cleared the tokens.
+    _user = null;
+    _suspended = true;
+    _set(SessionStatus.signedOut);
+  }
+
+  bool _loggingOut = false;
+
+  /// Runs before the API client clears the tokens (suspension, expiry):
+  /// unregister the push device while the tokens still work. Log out
+  /// already does this itself.
+  Future<void> beforeTokensCleared() async {
+    if (_loggingOut || _status == SessionStatus.signedOut) return;
+    await _push.unregisterBeforeSignOut();
   }
 
   /// The API rejected the session (refresh failed).

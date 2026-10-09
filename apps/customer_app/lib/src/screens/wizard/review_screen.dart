@@ -68,7 +68,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final budget = _d.budget ?? 0;
+    final budget = _d.hasBudget ? _d.budget ?? 0 : 0;
+    final preview = context.services.appConfig.quotePreviewEnabled;
+    const itemLine =
+        'Paid separately from the fees. You choose how after your quote is '
+        'ready.';
     return PopScope(
       canPop: !_submitting,
       child: PushedScaffold(
@@ -78,26 +82,55 @@ class _ReviewScreenState extends State<ReviewScreen> {
         body: ListView(
           children: [
             const StepProgressBar(total: 3, completed: 3),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
-              child: NitumeFormCard(
-                label: 'Estimated price',
+            if (!preview) ...[
+              // Variant A (row 47): no price and no preview call until
+              // pricing rates exist.
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
                 child: NitumeNotice(
                   message:
-                      "We couldn't estimate the price right now. You can "
-                      "still submit; we'll send you the final quote.",
+                      "We'll send your final quote after you submit. You "
+                      "won't pay anything until you accept it.",
                 ),
               ),
-            ),
-            if (budget > 0)
+              if (budget > 0)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                  child: NitumeFormCard(
+                    label: 'Item budget',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ReceiptRow(label: 'Item budget', amount: budget),
+                        const ReceiptCaption(itemLine),
+                      ],
+                    ),
+                  ),
+                ),
+            ] else
+              // Variant B: no preview endpoint exists yet (api-contract),
+              // so the card shows its "estimate unavailable" state.
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-                child: ReceiptCard(
-                  dashed: false,
-                  rows: [ReceiptRow(label: 'Item budget', amount: budget)],
-                  caption: const ReceiptCaption(
-                    'Paid separately from the fees. You choose how after '
-                    'your quote is ready.',
+                child: NitumeFormCard(
+                  label: 'Estimated price',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const NitumeNotice(
+                        message:
+                            "We couldn't estimate the price right now. You "
+                            "can still submit; we'll send you the final "
+                            'quote.',
+                      ),
+                      if (budget > 0)
+                        ReceiptSeparateGroup(
+                          rows: [
+                            ReceiptRow(label: 'Item budget', amount: budget),
+                          ],
+                          note: itemLine,
+                        ),
+                    ],
                   ),
                 ),
               ),

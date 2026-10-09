@@ -83,19 +83,18 @@ abstract final class NitumeDesignChoices {
 
   // ------------------------------------------------------------ modal scrim
 
-  /// **Open** (SQ-1, `_shared.md` §2 / §9). Barrier colour behind
-  /// `NitumeDialog` (C-35). The design system has no scrim token; the
-  /// proposal, used until the owner answers, is Deep Trust Blue `#0B2545`
-  /// at 50% opacity (alpha `0x80`), a derived tone of an existing colour.
-  /// Material's default black barrier is never used.
+  /// **Decided** (BOARD row 38, was SQ-1; value approved as a configurable
+  /// placeholder in row 63). Barrier colour behind `NitumeDialog` (C-35):
+  /// Deep Trust Blue `#0B2545` at 50% opacity (alpha `0x80`). Material's
+  /// default black barrier is never used.
   static const Color modalScrim = Color(0x800B2545);
 
-  // ------------------------------------------------------- accessibility (open)
+  // ------------------------------------------------- accessibility (decided)
 
-  /// **Open** (BOARD row 33). The design-system chip pairs measure below WCAG
-  /// AA 4.5:1 for 12px text: success 4.01, pending 2.95, danger 4.36 (info
-  /// 13.1 passes). `false` = design system exactly. `true` = blue label text
-  /// on the same tint (13.2–13.9:1), dot keeps the tone colour. Palette-only
-  /// either way.
-  static const bool chipHighContrastText = false;
+  /// **Decided** (BOARD row 33): high-contrast chip text. The design-system
+  /// chip pairs measure below WCAG AA 4.5:1 for 12px text (success 4.01,
+  /// pending 2.95, danger 4.36), so the success / pending / danger labels use
+  /// blue text on the same tint (13.2–13.9:1); the dot keeps the tone colour.
+  /// Info is already blue. Palette-only.
+  static const bool chipHighContrastText = true;
 }

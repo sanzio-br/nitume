@@ -16,6 +16,7 @@ class Payment {
     required this.status,
     this.createdAt,
     this.updatedAt,
+    this.priceChangeRequestId,
   });
 
   final String id;
@@ -28,17 +29,22 @@ class Payment {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  /// Set on a price-change difference payment: the approved request it pays
+  /// for. `null` on the main fee payment.
+  final String? priceChangeRequestId;
+
   factory Payment.fromJson(Map<String, dynamic> json) => Payment(
-        id: json['id'] as String,
-        errandId: json['errandId'] as String,
-        serviceFee: parseDecimalOrZero(json['serviceFee']),
-        runnerFee: parseDecimalOrZero(json['runnerFee']),
-        merchantAmount: parseDecimalOrZero(json['merchantAmount']),
-        paymentFlow: PaymentFlow.fromWire(json['paymentFlow'] as String),
-        status: PaymentStatus.fromWire(json['status'] as String),
-        createdAt: parseDate(json['createdAt']),
-        updatedAt: parseDate(json['updatedAt']),
-      );
+    id: json['id'] as String,
+    errandId: json['errandId'] as String,
+    serviceFee: parseDecimalOrZero(json['serviceFee']),
+    runnerFee: parseDecimalOrZero(json['runnerFee']),
+    merchantAmount: parseDecimalOrZero(json['merchantAmount']),
+    paymentFlow: PaymentFlow.fromWire(json['paymentFlow'] as String),
+    status: PaymentStatus.fromWire(json['status'] as String),
+    createdAt: parseDate(json['createdAt']),
+    updatedAt: parseDate(json['updatedAt']),
+    priceChangeRequestId: parseOptionalString(json['priceChangeRequestId']),
+  );
 }
 
 /// One M-Pesa leg of a [Payment] (`payment_transactions`).
@@ -88,6 +94,7 @@ class MerchantPayment {
     this.tillNumber,
     this.paybillNumber,
     this.accountReference,
+    this.paidTo,
   });
 
   final MerchantRoute route;
@@ -100,6 +107,15 @@ class MerchantPayment {
 
   /// Paybill account number.
   final String? accountReference;
+
+  /// Who receives the amount: `nitume` (`send_to_runner`, row 42, part of
+  /// the customer's STK charge) or `merchant` (`merchant_direct`, paid by
+  /// the customer to the Till/Paybill). `null` from older responses.
+  final String? paidTo;
+
+  /// True when the customer pays this amount to Nitume by STK (row 42).
+  bool get paidToNitume =>
+      paidTo == null ? route == MerchantRoute.sendToRunner : paidTo == 'nitume';
 
   /// True when a Till or Paybill number is known.
   bool get hasMerchantDetails => tillNumber != null || paybillNumber != null;
@@ -116,8 +132,67 @@ class MerchantPayment {
       tillNumber: parseOptionalString(json['tillNumber']),
       paybillNumber: parseOptionalString(json['paybillNumber']),
       accountReference: parseOptionalString(json['accountReference']),
+      paidTo: parseOptionalString(json['paidTo']),
     );
   }
+}
+
+/// A charge for the merchant / item amount only (no service or runner fee):
+/// the API's price-change difference view (rows 44, 48). One STK widget
+/// renders it on `x-merchant-payment`.
+class ItemPayment {
+  const ItemPayment({
+    required this.payment,
+    this.transactions = const [],
+    this.stkStatus,
+    this.checkoutRequestId,
+    this.merchantPayment,
+    this.failureReason,
+  });
+
+  final Payment payment;
+  final List<PaymentTransaction> transactions;
+
+  /// Provider failure reason when the charge FAILED; never shown raw (the
+  /// spec's copy applies).
+  final String? failureReason;
+
+  /// Server STK state for charges to Nitume (`send_to_runner`); `null` for
+  /// `merchant_direct`, which the customer pays to the merchant themselves.
+  final StkPaymentState? stkStatus;
+
+  /// Set right after a push; `null` on later reads.
+  final String? checkoutRequestId;
+
+  /// How the amount is paid (route, amount, Till/Paybill for
+  /// `merchant_direct`).
+  final MerchantPayment? merchantPayment;
+
+  /// The item amount of this charge, as a decimal string.
+  String get amount => payment.merchantAmount;
+
+  factory ItemPayment.fromJson(Map<String, dynamic> json) => ItemPayment(
+    payment: Payment.fromJson(asJsonMap(json['payment'])),
+    transactions: _tolerantTransactions(json['transactions']),
+    stkStatus: parseStkStatus(json['stkStatus']),
+    checkoutRequestId: parseOptionalString(json['checkoutRequestId']),
+    merchantPayment: MerchantPayment.tryParse(json['merchantPayment']),
+    failureReason: parseOptionalString(json['failureReason']),
+  );
+}
+
+List<PaymentTransaction> _tolerantTransactions(Object? value) {
+  if (value is! List) return const [];
+  final out = <PaymentTransaction>[];
+  for (final entry in value) {
+    if (entry is! Map) continue;
+    try {
+      out.add(PaymentTransaction.fromJson(entry.cast<String, dynamic>()));
+    } on Object {
+      // Tolerant: skip legs we cannot read.
+    }
+  }
+  return out;
 }
 
 /// Parses the server-computed `stkStatus` (`PENDING | SUCCESS | FAILED |
@@ -174,14 +249,18 @@ class PaymentInitiation {
 }
 
 /// `GET /payments/:errandId`: the errand's main (service + runner fee)
-/// payment (null if none yet), its legs, the server-computed [stkStatus]
-/// and the [merchantPayment] instructions.
+/// payment (null if none yet), its legs, the server-computed [stkStatus],
+/// the [merchantPayment] instructions and the price-change
+/// [differencePayments].
 class PaymentSummary {
   const PaymentSummary({
     this.payment,
     this.transactions = const [],
     this.stkStatus,
     this.merchantPayment,
+    this.differencePayments = const [],
+    this.failureReason,
+    this.merchantDetailsAvailable,
   });
 
   final Payment? payment;
@@ -193,14 +272,43 @@ class PaymentSummary {
   /// How the item amount is paid; `null` when there is none.
   final MerchantPayment? merchantPayment;
 
+  /// Price-change difference charges, newest first (rows 44, 48). Entries
+  /// that cannot be read are skipped.
+  final List<ItemPayment> differencePayments;
+
+  /// Provider failure reason of the main charge, when FAILED.
+  final String? failureReason;
+
+  /// Whether the merchant's Till/Paybill details exist (row 43).
+  final bool? merchantDetailsAvailable;
+
   factory PaymentSummary.fromJson(Map<String, dynamic> json) => PaymentSummary(
-        payment: json['payment'] == null
-            ? null
-            : Payment.fromJson(asJsonMap(json['payment'])),
-        transactions: asJsonList(json['transactions'])
-            .map(PaymentTransaction.fromJson)
-            .toList(),
-        stkStatus: parseStkStatus(json['stkStatus']),
-        merchantPayment: MerchantPayment.tryParse(json['merchantPayment']),
-      );
+    payment: json['payment'] == null
+        ? null
+        : Payment.fromJson(asJsonMap(json['payment'])),
+    transactions: asJsonList(json['transactions'])
+        .map(PaymentTransaction.fromJson)
+        .toList(),
+    stkStatus: parseStkStatus(json['stkStatus']),
+    merchantPayment: MerchantPayment.tryParse(json['merchantPayment']),
+    differencePayments: _tolerantItemPayments(json['differencePayments']),
+    failureReason: parseOptionalString(json['failureReason']),
+    merchantDetailsAvailable: json['merchantDetailsAvailable'] is bool
+        ? json['merchantDetailsAvailable'] as bool
+        : null,
+  );
+}
+
+List<ItemPayment> _tolerantItemPayments(Object? value) {
+  if (value is! List) return const [];
+  final out = <ItemPayment>[];
+  for (final entry in value) {
+    if (entry is! Map) continue;
+    try {
+      out.add(ItemPayment.fromJson(entry.cast<String, dynamic>()));
+    } on Object {
+      // Tolerant: skip entries we cannot read.
+    }
+  }
+  return out;
 }

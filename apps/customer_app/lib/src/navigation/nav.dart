@@ -57,7 +57,15 @@ class PaymentArgs {
 
 /// `x-merchant-payment` arguments.
 class MerchantPaymentArgs {
-  const MerchantPaymentArgs({required this.errandId, this.approvedIncrease});
+  const MerchantPaymentArgs({
+    required this.errandId,
+    this.approvedIncrease,
+    this.priceChangeRequestId,
+  });
+
+  /// The price-change request the difference belongs to (enables the
+  /// variant B retry, `retryDifferencePayment`).
+  final String? priceChangeRequestId;
 
   final String errandId;
 
@@ -118,9 +126,58 @@ abstract final class Nav {
   }
 
   /// Resets the stack to the shell with Track on [errandId] (OA-21).
-  static void resetToTrack(BuildContext context, String? errandId) {
-    context.services.shell.showTrack(errandId);
+  static void resetToTrack(
+    BuildContext context,
+    String? errandId, {
+    bool openPriceChange = false,
+  }) {
+    context.services.shell.showTrack(
+      errandId,
+      openPriceChange: openPriceChange,
+    );
     popToRoot(context);
+  }
+
+  /// Deep link for a notification row or a tapped push (`v-notifications`
+  /// table). Unknown types open Task detail when an errand is set.
+  static Future<void> openNotification(
+    BuildContext context, {
+    required String? eventType,
+    required String? errandId,
+  }) async {
+    final id = errandId;
+    if (id == null) return;
+    final event = eventType == null
+        ? null
+        : NotificationEventType.tryFromWire(eventType);
+    switch (event) {
+      case NotificationEventType.quoted:
+      case NotificationEventType.quoteReissued:
+        await toAwaitingQuote(context, id);
+      case NotificationEventType.merchantDetailsAdded:
+        // Checkout while QUOTED / ACCEPTED, else the item payment screen.
+        await _openMerchantDetails(context, id);
+      case NotificationEventType.runnerAssigned:
+      case NotificationEventType.runnerEnRoute:
+      case NotificationEventType.arrived:
+      case NotificationEventType.inProgress:
+        resetToTrack(context, id);
+      case NotificationEventType.priceChangeRequested:
+        // Track opens the blocking modal if the request is still pending.
+        resetToTrack(context, id, openPriceChange: true);
+      case NotificationEventType.awaitingCustomer:
+        // The screen switches to Task detail when no longer awaiting.
+        await toEvidenceConfirm(context, id);
+      case NotificationEventType.refundApproved:
+      case NotificationEventType.refundNoRefund:
+      case NotificationEventType.refundRefunded:
+      case NotificationEventType.completed:
+      case NotificationEventType.disputed:
+      case NotificationEventType.cancelled:
+      case NotificationEventType.failed:
+      case null:
+        await toTaskDetail(context, id);
+    }
   }
 
   // ---- wizard ---------------------------------------------------------------
@@ -136,10 +193,16 @@ abstract final class Nav {
   static Future<void> toAwaitingQuote(BuildContext context, String errandId) =>
       _push(context, Routes.awaitingQuote, errandId);
 
+  /// [quoteExpired]: the API answered `quote_expired` (row 46).
   static Future<void> replaceWithAwaitingQuote(
     BuildContext context,
-    String errandId,
-  ) => _replace(context, Routes.awaitingQuote, errandId);
+    String errandId, {
+    bool quoteExpired = false,
+  }) => _replace(
+    context,
+    Routes.awaitingQuote,
+    quoteExpired ? (errandId, true) : errandId,
+  );
 
   /// Shows the current payment state (Home / Task detail "Pay now").
   static Future<void> toPayment(BuildContext context, String errandId) =>
@@ -171,10 +234,15 @@ abstract final class Nav {
     BuildContext context,
     String errandId, {
     String? approvedIncrease,
+    String? priceChangeRequestId,
   }) => _push(
     context,
     Routes.merchantPayment,
-    MerchantPaymentArgs(errandId: errandId, approvedIncrease: approvedIncrease),
+    MerchantPaymentArgs(
+      errandId: errandId,
+      approvedIncrease: approvedIncrease,
+      priceChangeRequestId: priceChangeRequestId,
+    ),
   );
 
   // ---- task -----------------------------------------------------------------
@@ -233,6 +301,26 @@ abstract final class Nav {
         return toEvidenceConfirm(context, errand.id);
       default:
         return toTaskDetail(context, errand.id);
+    }
+  }
+
+  static Future<void> _openMerchantDetails(
+    BuildContext context,
+    String id,
+  ) async {
+    final Errand errand;
+    try {
+      errand = await context.services.errands.get(id);
+    } on Object {
+      if (context.mounted) await toTaskDetail(context, id);
+      return;
+    }
+    if (!context.mounted) return;
+    if (errand.status == ErrandStatus.quoted ||
+        errand.status == ErrandStatus.accepted) {
+      await toAwaitingQuote(context, id);
+    } else {
+      await toMerchantPayment(context, id);
     }
   }
 

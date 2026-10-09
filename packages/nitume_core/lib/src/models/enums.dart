@@ -97,8 +97,7 @@ enum ErrandStatus {
   static ErrandStatus fromWire(String value) =>
       ErrandStatus.values.firstWhere((e) => e.wire == value);
 
-  bool get isTerminal =>
-      this == cancelled || this == failed || this == expired;
+  bool get isTerminal => this == cancelled || this == failed || this == expired;
 
   bool get isActive => !isTerminal && this != settled;
 }
@@ -228,13 +227,16 @@ enum MerchantRoute {
   /// Pay the merchant's Till / Paybill directly (`PaymentFlow.merchantDirect`).
   merchantDirect('merchant_direct'),
 
-  /// Send the item amount to the runner (`PaymentFlow.customerToRunner`).
+  /// Platform-mediated (row 42): the customer pays the item amount to
+  /// Nitume by M-Pesa STK and Nitume passes it on for the purchase. Never a
+  /// direct customer-to-runner transfer (`PaymentFlow.customerToRunner`).
   sendToRunner('send_to_runner');
 
   const MerchantRoute(this.wire);
   final String wire;
 
-  static MerchantRoute fromWire(String v) => _fromWire(values, (e) => e.wire, v);
+  static MerchantRoute fromWire(String v) =>
+      _fromWire(values, (e) => e.wire, v);
 
   /// `null` for unknown values.
   static MerchantRoute? tryFromWire(String? v) {
@@ -283,8 +285,7 @@ enum EvidenceType {
   const EvidenceType(this.wire);
   final String wire;
 
-  static EvidenceType fromWire(String v) =>
-      _fromWire(values, (e) => e.wire, v);
+  static EvidenceType fromWire(String v) => _fromWire(values, (e) => e.wire, v);
 }
 
 enum PriceChangeStatus {
@@ -351,16 +352,75 @@ enum NotificationEventType {
   completed('errand.COMPLETED', ErrandStatus.completed),
   disputed('errand.DISPUTED', ErrandStatus.disputed),
   cancelled('errand.CANCELLED', ErrandStatus.cancelled),
-  failed('errand.FAILED', ErrandStatus.failed);
+  failed('errand.FAILED', ErrandStatus.failed),
 
-  const NotificationEventType(this.wire, this.status);
+  /// A runner asked to change the item price (`v-price-auth`).
+  priceChangeRequested('price_change.requested'),
+
+  /// Refund review outcomes (`_shared.md` §11; open `v-task-detail`).
+  refundApproved('refund.approved'),
+  refundNoRefund('refund.no_refund'),
+  refundRefunded('refund.refunded'),
+
+  /// An admin re-quoted the task (row 72); open the checkout
+  /// (`x-awaiting-quote`).
+  quoteReissued('quote.reissued'),
+
+  /// The merchant's Till/Paybill details were added (row 43).
+  merchantDetailsAdded('merchant_details.added');
+
+  const NotificationEventType(this.wire, [this.status]);
   final String wire;
 
-  /// The errand state the notification announces.
-  final ErrandStatus status;
+  /// The errand state the notification announces; `null` for non-status
+  /// events (price change, refund).
+  final ErrandStatus? status;
 
   /// `null` for values this client does not know yet (forward compatible).
   static NotificationEventType? tryFromWire(String v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
+/// Status of an admin refund review as the customer sees it (`_shared.md`
+/// §11, row 54).
+enum RefundStatus {
+  pendingReview('pending_review'),
+  approved('approved'),
+  noRefund('no_refund'),
+  refunded('refunded');
+
+  const RefundStatus(this.wire);
+  final String wire;
+
+  /// `null` for unknown values (the refund group stays hidden).
+  static RefundStatus? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
+/// What opened a refund review (rows 37, 48, 71). Unknown values parse as
+/// `null`.
+enum RefundTrigger {
+  priceChangeRejected('price_change_rejected'),
+  disputeCustomerFavourable('dispute_customer_favourable'),
+  cancelledAfterPayment('cancelled_after_payment'),
+
+  /// An approved price decrease of an already-paid amount (rows 48, 71);
+  /// the review carries `priceChangeRequestId`.
+  priceChangeDecrease('price_change_decrease');
+
+  const RefundTrigger(this.wire);
+  final String wire;
+
+  /// `null` for unknown or absent values.
+  static RefundTrigger? tryFromWire(Object? v) {
     for (final e in values) {
       if (e.wire == v) return e;
     }

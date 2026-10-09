@@ -51,24 +51,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         if (mounted) _load();
       }, onError: (Object _) {});
     }
-    final id = n.errandId;
-    if (id == null) return;
-    final event = n.event;
-    switch (event) {
-      case NotificationEventType.quoted:
-        await Nav.toAwaitingQuote(context, id);
-      case NotificationEventType.runnerAssigned:
-      case NotificationEventType.runnerEnRoute:
-      case NotificationEventType.arrived:
-      case NotificationEventType.inProgress:
-        Nav.resetToTrack(context, id);
-      case NotificationEventType.awaitingCustomer:
-        // The screen itself switches to Task detail when no longer
-        // awaiting the customer.
-        await Nav.toEvidenceConfirm(context, id);
-      case _:
-        await Nav.toTaskDetail(context, id);
-    }
+    await Nav.openNotification(
+      context,
+      eventType: n.eventType,
+      errandId: n.errandId,
+    );
   }
 
   static IconData _icon(NotificationEventType? e) => switch (e) {
@@ -82,6 +69,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     NotificationEventType.disputed => Icons.report_outlined,
     NotificationEventType.cancelled => Icons.cancel_outlined,
     NotificationEventType.failed => Icons.error_outline_rounded,
+    NotificationEventType.priceChangeRequested => Icons.sell_outlined,
+    NotificationEventType.quoteReissued => Icons.request_quote_outlined,
+    NotificationEventType.merchantDetailsAdded => Icons.storefront_outlined,
+    NotificationEventType.refundApproved ||
+    NotificationEventType.refundNoRefund ||
+    NotificationEventType.refundRefunded => Icons.receipt_long_outlined,
     null => Icons.notifications_none_rounded,
   };
 

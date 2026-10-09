@@ -50,6 +50,13 @@ class _DetailsScreenState extends State<DetailsScreen> {
     super.dispose();
   }
 
+  /// Row 60: typed text without a pick is never accepted.
+  static const _typedNotPicked = 'Choose a place from the list.';
+
+  /// Place fields whose text was edited after a pick (or typed without
+  /// one): the stored place was dropped until a new pick.
+  final _typed = <_F>{};
+
   Map<_F, String> _validate() {
     final e = <_F, String>{};
     final title = _d.title.trim();
@@ -62,7 +69,9 @@ class _DetailsScreenState extends State<DetailsScreen> {
     if (_d.description.trim().length < 5) {
       e[_F.description] = 'Tell the runner a bit more (at least 5 characters).';
     }
-    if (_d.first == null) {
+    if (_d.first == null && _typed.contains(_F.first)) {
+      e[_F.first] = _typedNotPicked;
+    } else if (_d.first == null) {
       e[_F.first] = switch (_d.category) {
         ErrandCategory.getItForMe => 'Choose where to pick up.',
         ErrandCategory.buyForMe => 'Choose where to buy.',
@@ -70,12 +79,14 @@ class _DetailsScreenState extends State<DetailsScreen> {
       };
     }
     if (_d.twoPoints && _d.dropoff == null) {
-      e[_F.dropoff] = 'Choose where to deliver.';
+      e[_F.dropoff] = _typed.contains(_F.dropoff)
+          ? _typedNotPicked
+          : 'Choose where to deliver.';
     }
     if (_d.isBuy && _d.namedItems.isEmpty) {
       e[_F.items] = 'Add at least one item.';
     }
-    final budget = _d.budget ?? 0;
+    final budget = _d.hasBudget ? _d.budget ?? 0 : 0;
     if (budget > 1000000) {
       e[_F.budget] = 'Enter an amount up to KSh 1,000,000.';
     } else if (_d.isBuy && budget <= 0) {
@@ -124,9 +135,18 @@ class _DetailsScreenState extends State<DetailsScreen> {
       required _F field,
       String? label,
       required DraftPlace? value,
-      required ValueChanged<DraftPlace> onPicked,
+      required ValueChanged<DraftPlace?> set,
     }) {
+      void onPicked(DraftPlace p) => _changed(() {
+        _typed.remove(field);
+        set(p);
+      });
       return PlaceAutocompleteField(
+        // The first edit after a pick drops the picked place (row 60).
+        onSelectionCleared: () => setState(() {
+          _typed.add(field);
+          set(null);
+        }),
         key: ValueKey('${_d.category}-$field'),
         service: search,
         label: label,
@@ -194,7 +214,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                 child: place(
                   field: _F.first,
                   value: _d.first,
-                  onPicked: (p) => _changed(() => _d.first = p),
+                  set: (p) => _d.first = p,
                 ),
               )
             else
@@ -209,7 +229,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                         field: _F.first,
                         label: firstLabel,
                         value: _d.first,
-                        onPicked: (p) => _changed(() => _d.first = p),
+                        set: (p) => _d.first = p,
                       ),
                       const SizedBox(height: 12),
                       KeyedSubtree(
@@ -218,7 +238,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                           field: _F.dropoff,
                           label: 'Deliver to',
                           value: _d.dropoff,
-                          onPicked: (p) => _changed(() => _d.dropoff = p),
+                          set: (p) => _d.dropoff = p,
                         ),
                       ),
                     ],
@@ -261,16 +281,17 @@ class _DetailsScreenState extends State<DetailsScreen> {
                 ],
               ),
             ),
-            _Card(
-              key: _keys[_F.budget],
-              label: 'Budget (if a purchase is involved)',
-              child: NitumeField.money(
-                controller: _budget,
-                hint: '0',
-                errorText: errors[_F.budget],
-                onChanged: (v) => _changed(() => _d.budget = int.tryParse(v)),
+            if (_d.hasBudget)
+              _Card(
+                key: _keys[_F.budget],
+                label: 'Budget (if a purchase is involved)',
+                child: NitumeField.money(
+                  controller: _budget,
+                  hint: '0',
+                  errorText: errors[_F.budget],
+                  onChanged: (v) => _changed(() => _d.budget = int.tryParse(v)),
+                ),
               ),
-            ),
           ],
         ),
       ),

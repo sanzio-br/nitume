@@ -26,13 +26,20 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
       return OtpScreen(phone: a.phone, initialCooldown: a.cooldown);
     }(),
     Routes.newTask => CategoryScreen(initialCategory: args as ErrandCategory?),
-    Routes.awaitingQuote => AwaitingQuoteScreen(errandId: args! as String),
+    Routes.awaitingQuote => switch (args) {
+      (final String id, final bool expired) => AwaitingQuoteScreen(
+        errandId: id,
+        quoteExpired: expired,
+      ),
+      _ => AwaitingQuoteScreen(errandId: args! as String),
+    },
     Routes.payment => PaymentScreen(args: args! as PaymentArgs),
     Routes.merchantPayment => () {
       final a = args! as MerchantPaymentArgs;
       return MerchantPaymentScreen(
         errandId: a.errandId,
         approvedIncrease: a.approvedIncrease,
+        priceChangeRequestId: a.priceChangeRequestId,
       );
     }(),
     Routes.taskDetail => TaskDetailScreen(errandId: args! as String),

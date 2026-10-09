@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:nitume_core/nitume_core.dart';
 
@@ -129,67 +128,41 @@ Widget rateLimitError(Duration? wait) {
   );
 }
 
-/// Legal line with `Terms` / `Privacy Policy` links (`x-legal`). A link is
-/// styled and tappable only when its URL and the launcher are configured
-/// (SQ-2); otherwise the line is plain text.
-class _LegalLine extends StatefulWidget {
+/// Legal line with `Terms` / `Privacy Policy` links (`x-legal`, row 39).
+/// A configured link is a C-04 link button (48dp hit area) opened through
+/// `AppConfig.open`; an unconfigured one is plain text.
+class _LegalLine extends StatelessWidget {
   const _LegalLine();
 
   @override
-  State<_LegalLine> createState() => _LegalLineState();
-}
-
-class _LegalLineState extends State<_LegalLine> {
-  final _recognizers = <TapGestureRecognizer>[];
-
-  @override
-  void dispose() {
-    for (final r in _recognizers) {
-      r.dispose();
-    }
-    super.dispose();
-  }
-
-  TextSpan _link(String text, Uri? uri, AppConfig config) {
-    if (uri == null) return TextSpan(text: text);
-    final r = TapGestureRecognizer()
-      ..onTap = () async {
-        final ok = await config.open(uri);
-        if (!ok && mounted) {
-          showSnack(context, "Couldn't open the page. Try again later.");
-        }
-      };
-    _recognizers.add(r);
-    return TextSpan(
-      text: text,
-      recognizer: r,
-      style: NitumeTextStyles.muted.copyWith(
-        fontSize: 12.5,
-        color: NitumeColors.green700,
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    for (final r in _recognizers) {
-      r.dispose();
-    }
-    _recognizers.clear();
     final config = context.services.appConfig;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Text.rich(
-        TextSpan(
-          text: "By continuing you agree to Nitume's ",
-          children: [
-            _link('Terms', config.termsLink, config),
-            const TextSpan(text: ' & '),
-            _link('Privacy Policy', config.privacyLink, config),
-            const TextSpan(text: '.'),
-          ],
-        ),
-        style: NitumeTextStyles.muted.copyWith(fontSize: 12.5),
+    final style = NitumeTextStyles.muted.copyWith(fontSize: 12.5);
+
+    Widget part(String text, Uri? uri) {
+      if (uri == null) return Text(text, style: style);
+      return NitumeButton.link(
+        label: text,
+        onPressed: () async {
+          final ok = await config.open(uri);
+          if (!ok && context.mounted) {
+            showSnack(context, "Couldn't open the page. Try again later.");
+          }
+        },
+      );
+    }
+
+    return Semantics(
+      container: true,
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text("By continuing you agree to Nitume's ", style: style),
+          part('Terms', config.termsLink),
+          Text(' & ', style: style),
+          part('Privacy Policy', config.privacyLink),
+          Text('.', style: style),
+        ],
       ),
     );
   }

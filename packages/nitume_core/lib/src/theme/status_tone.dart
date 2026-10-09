@@ -28,8 +28,8 @@ class StatusToneColors {
   ///
   /// When [NitumeDesignChoices.chipHighContrastText] is on, the text of the
   /// success / pending / danger chips switches to blue (the dot keeps the
-  /// tone colour) so 12px chip text reaches WCAG AA 4.5:1. Owner question,
-  /// see that constant.
+  /// tone colour) so 12px chip text reaches WCAG AA 4.5:1 (decided, BOARD
+  /// row 33).
   static StatusToneColors of(StatusTone tone) {
     final (bg, fg) = switch (tone) {
       StatusTone.success => (NitumeColors.green050, NitumeColors.green700),

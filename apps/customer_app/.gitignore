@@ -46,3 +46,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Firebase and Maps configuration: never committed (see README.md).
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+ios/Flutter/Maps.xcconfig

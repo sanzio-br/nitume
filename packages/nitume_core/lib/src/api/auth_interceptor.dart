@@ -1,20 +1,27 @@
 import 'package:dio/dio.dart';
 
 import '../models/auth_tokens.dart';
+import 'api_exception.dart';
 import '../storage/token_store.dart';
 
 /// Attaches the access token to every request and transparently refreshes it
 /// once on a `401`, retrying the original request.
+///
+/// When the API refuses the session with `account_suspended` (on a call or
+/// on the refresh) the session is cleared and [_onAccountSuspended] runs
+/// instead of [_onUnauthenticated] (falls back to it when not set).
 class AuthInterceptor extends Interceptor {
   AuthInterceptor({
     required this._tokenStore,
     required this._refreshTokens,
     this._onUnauthenticated,
+    this._onAccountSuspended,
   });
 
   final TokenStore _tokenStore;
   final Future<AuthTokens?> Function(String refreshToken) _refreshTokens;
   final void Function()? _onUnauthenticated;
+  final void Function()? _onAccountSuspended;
 
   Future<AuthTokens?>? _refreshInFlight;
 
@@ -60,6 +67,11 @@ class AuthInterceptor extends Interceptor {
       return handler.next(err);
     }
 
+    if (_isSuspended(err)) {
+      await _failSession(suspended: true);
+      return handler.next(err);
+    }
+
     if (status != 401 || alreadyRetried) {
       if (status == 401) await _failSession();
       return handler.next(err);
@@ -93,15 +105,17 @@ class AuthInterceptor extends Interceptor {
         sendTimeout: options.sendTimeout,
         receiveTimeout: options.receiveTimeout,
       );
-      
-      final retryDio = Dio(BaseOptions(
-        baseUrl: options.baseUrl,
-        connectTimeout: options.connectTimeout,
-        receiveTimeout: options.receiveTimeout,
-        sendTimeout: options.sendTimeout,
-        headers: options.headers,
-      ));
-      
+
+      final retryDio = Dio(
+        BaseOptions(
+          baseUrl: options.baseUrl,
+          connectTimeout: options.connectTimeout,
+          receiveTimeout: options.receiveTimeout,
+          sendTimeout: options.sendTimeout,
+          headers: options.headers,
+        ),
+      );
+
       final response = await retryDio.request<dynamic>(
         options.path,
         data: options.data,
@@ -109,14 +123,30 @@ class AuthInterceptor extends Interceptor {
         options: retryOptions,
       );
       handler.resolve(response);
+    } on NitumeApiException catch (e) {
+      await _failSession(suspended: e.isAccountSuspended);
+      handler.next(err);
+    } on DioException catch (e) {
+      await _failSession(suspended: _isSuspended(e));
+      handler.next(err);
     } catch (_) {
       await _failSession();
       handler.next(err);
     }
   }
 
-  Future<void> _failSession() async {
+  static bool _isSuspended(DioException err) {
+    final data = err.response?.data;
+    return data is Map && data['code'] == ApiErrorCodes.accountSuspended;
+  }
+
+  Future<void> _failSession({bool suspended = false}) async {
     await _tokenStore.clear();
-    _onUnauthenticated?.call();
+    final suspendedHook = _onAccountSuspended;
+    if (suspended && suspendedHook != null) {
+      suspendedHook();
+    } else {
+      _onUnauthenticated?.call();
+    }
   }
 }

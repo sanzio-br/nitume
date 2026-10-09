@@ -2,22 +2,12 @@ import 'package:nitume_core/nitume_core.dart';
 
 /// Display rules from `_shared.md` §7. Nothing here is stored or sent.
 
-/// Task title (OA-15, SQ-4 build default): `title` when set, else
-/// `<category display name> — <first locality>`, where the locality is the
-/// first comma-separated part of the first location's address.
+/// Task title (OA-15, row 41): `title` when set, else the category display
+/// name. The client never composes a title from addresses.
 String errandTitle(Errand errand) {
   final title = errand.title?.trim();
   if (title != null && title.isNotEmpty) return title;
-  final locality = firstLocality(errand.locations);
-  if (locality == null) return errand.category.label;
-  return '${errand.category.label} — $locality';
-}
-
-/// First comma-separated part of the first location's address, if any.
-String? firstLocality(List<ErrandLocation>? locations) {
-  if (locations == null || locations.isEmpty) return null;
-  final first = locations.first.addressText.split(',').first.trim();
-  return first.isEmpty ? null : first;
+  return errand.category.label;
 }
 
 /// `#NT-10482`, or `null` when the API sent no reference. Never derived.
@@ -36,10 +26,12 @@ String errandRefMeta(Errand errand, {DateTime? now}) {
   return parts.join(' · ');
 }
 
-/// Runner name as drawn (`Brian K.`, SQ-3 build default: the client
-/// shortens). `null` when the API has no name.
-String? runnerShortName(RunnerSummary? runner) =>
-    shortName(runner?.displayName);
+/// Runner short name exactly as the API computes it (`Brian K.`, row 40).
+/// `null` when the API has none (screens fall back to `Your runner`).
+String? runnerShortName(RunnerSummary? runner) {
+  final s = runner?.shortName?.trim();
+  return s == null || s.isEmpty ? null : s;
+}
 
 /// "Verified" = `2_id_verified` or higher (v-task-detail Q4 default).
 bool isVerified(VerificationLevel level) => level != VerificationLevel.basic;
@@ -169,3 +161,12 @@ String activeCardAction(ErrandStatus status) => switch (status) {
   ErrandStatus.awaitingCustomer => 'Review evidence →',
   _ => 'Track live →',
 };
+
+/// What the fee STK charges, from the API's legs: service + runner fee, plus
+/// the item amount for `send_to_runner` (one combined STK, row 76).
+String chargedAmount(Payment p) {
+  final fees = addDecimals(p.serviceFee, p.runnerFee);
+  return p.paymentFlow == PaymentFlow.customerToRunner
+      ? addDecimals(fees, p.merchantAmount)
+      : fees;
+}

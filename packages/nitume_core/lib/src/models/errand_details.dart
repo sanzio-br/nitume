@@ -244,3 +244,32 @@ class TrackingSnapshot {
     );
   }
 }
+
+/// Result of `ErrandRepository.acceptQuote` (`{errand, quote}`).
+class QuoteAcceptanceResult {
+  const QuoteAcceptanceResult({required this.errand, this.quote});
+
+  /// The errand after acceptance (ACCEPTED, `quoteAcceptanceRequired`
+  /// false).
+  final Errand errand;
+
+  /// The accepted quote; `null` when the response had none (or the
+  /// transition fallback ran).
+  final Quote? quote;
+
+  factory QuoteAcceptanceResult.fromJson(Map<String, dynamic> json) {
+    Quote? quote;
+    final q = json['quote'];
+    if (q is Map) {
+      try {
+        quote = Quote.fromJson(q.cast<String, dynamic>());
+      } on Object {
+        quote = null;
+      }
+    }
+    return QuoteAcceptanceResult(
+      errand: Errand.fromJson(asJsonMap(json['errand'])),
+      quote: quote,
+    );
+  }
+}

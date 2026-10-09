@@ -40,12 +40,17 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   /// Add mode needs a picked place (with coordinates); edit mode can save
   /// a name / default change without one.
-  bool get _canSave => _edit || _place != null;
+  bool get _canSave => (_edit && !_addressEdited) || _place != null;
+
+  /// The address text was edited after the saved / picked place: the
+  /// coordinates no longer match, so Save needs a new pick (row 60).
+  bool _addressEdited = false;
   bool get _wasDefault => widget.address?.isDefault ?? false;
 
   bool get _dirty =>
       _name.text != (widget.address?.label ?? '') ||
       _place != null ||
+      _addressEdited ||
       _default != _wasDefault;
 
   @override
@@ -176,11 +181,21 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                         hint: 'Search for a place',
                         initialValue:
                             _place?.addressText ?? widget.address?.addressText,
-                        onPlaceSelected: (p) => setState(
-                          () => _place = SavedPlaceSearch.isSavedId(p.placeId)
+                        errorText: _addressEdited && _place == null
+                            ? 'Choose an address from the list.'
+                            : null,
+                        onPlaceSelected: (p) => setState(() {
+                          _place = SavedPlaceSearch.isSavedId(p.placeId)
                               ? null
-                              : p,
-                        ),
+                              : p;
+                          _addressEdited = false;
+                        }),
+                        // Text and coordinates are only saved together from
+                        // a pick: an edit drops the pick until a new one.
+                        onSelectionCleared: () => setState(() {
+                          _place = null;
+                          _addressEdited = true;
+                        }),
                       )
                     else
                       NitumeField(

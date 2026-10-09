@@ -20,11 +20,23 @@ class ShellController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _openPriceChange = false;
+
   /// Switches to Track on [errandId] (OA-21, after payment; Home card).
-  void showTrack(String? errandId) {
+  /// [openPriceChange] asks Track to open the price-change modal when a
+  /// request is still pending (notification / push deep link).
+  void showTrack(String? errandId, {bool openPriceChange = false}) {
     _tab = ShellTab.track;
     _trackErrandId = errandId;
+    _openPriceChange = openPriceChange;
     notifyListeners();
+  }
+
+  /// Returns the price-change request flag once.
+  bool takeOpenPriceChange() {
+    final v = _openPriceChange;
+    _openPriceChange = false;
+    return v;
   }
 
   /// Returns the requested Track errand once and forgets it, so a later

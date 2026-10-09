@@ -4,6 +4,7 @@ import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
+import '../../services/live_updates.dart';
 import '../../services/shell_controller.dart';
 import '../../util/display.dart';
 import '../../widgets/common.dart';
@@ -29,9 +30,16 @@ class _QuoteData {
 /// the final quote, choose the item-amount route (OA-5) and the M-Pesa
 /// number, then pay.
 class AwaitingQuoteScreen extends StatefulWidget {
-  const AwaitingQuoteScreen({super.key, required this.errandId});
+  const AwaitingQuoteScreen({
+    super.key,
+    required this.errandId,
+    this.quoteExpired = false,
+  });
 
   final String errandId;
+
+  /// Opened because the API answered `quote_expired` (row 46).
+  final bool quoteExpired;
 
   @override
   State<AwaitingQuoteScreen> createState() => _AwaitingQuoteScreenState();
@@ -47,25 +55,37 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
   bool _accepting = false;
   bool _cancelling = false;
   bool _routed = false;
+  late bool _expiredByApi = widget.quoteExpired;
+  ErrandWatch? _watch;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Fallback only while the socket is down (§10): picks up the quote and
+    // merchant details as they arrive.
     _poller = Poller(
       interval: const Duration(seconds: 15),
       enabled: _services.pollingEnabled,
       isVisible: () =>
-          mounted &&
-          isRouteVisible(context) &&
-          _data?.errand.status == ErrandStatus.requested,
+          mounted && isRouteVisible(context) && !_services.live.isConnected,
       onTick: _refreshErrand,
+    );
+    _watch = _services.live.watch(
+      widget.errandId,
+      onStatus: (_) => _refreshErrand(),
+      // A re-quote (row 72) or new merchant details (row 43) change the
+      // checkout without a status change.
+      onQuoteReissued: (_) => _refreshErrand(force: true),
+      onMerchantDetails: (_) => _refreshErrand(force: true),
+      onReconnected: _refreshErrand,
     );
   }
 
   @override
   void dispose() {
     _poller?.dispose();
+    _watch?.cancel();
     super.dispose();
   }
 
@@ -114,7 +134,10 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     ]);
     final methods = results[1]! as List<PaymentMethod>;
     _method ??= _defaultMethod(methods);
-    _route ??= MerchantRoute.sendToRunner;
+    // Merchant-direct when available, else send-to-runner (spec default).
+    _route ??= errand.merchantDetailsAvailable == true
+        ? MerchantRoute.merchantDirect
+        : MerchantRoute.sendToRunner;
     return _QuoteData(
       errand: errand,
       quote: results[0] as Quote?,
@@ -130,11 +153,16 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     return methods.isEmpty ? null : methods.first;
   }
 
-  Future<void> _refreshErrand() async {
+  Future<void> _refreshErrand({bool force = false}) async {
     final errand = await _services.errands.get(widget.errandId);
     if (!mounted || _routeAway(errand)) return;
     final was = _data?.errand.status;
-    if (was == errand.status) return;
+    final detailsChanged =
+        _data?.errand.merchantDetailsAvailable !=
+        errand.merchantDetailsAvailable;
+    if (was == errand.status && !detailsChanged && !force) return;
+    // A fresh quote clears the expired state.
+    if (was == ErrandStatus.requested || force) _expiredByApi = false;
     final data = await _checkoutData(errand);
     if (!mounted) return;
     setState(() => _data = data);
@@ -147,9 +175,23 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     }
   }
 
-  static String? _total(_QuoteData d) => d.quote?.total ?? d.errand.quotedPrice;
+  /// The fee total (row 34): the errand's `feeTotal`, else the quote total.
+  static String? _feeTotal(_QuoteData d) =>
+      d.errand.feeTotal ?? d.quote?.total ?? d.errand.quotedPrice;
 
-  static String _ctaLabel(_QuoteData d) {
+  /// What the STK charges: the fee total, plus the item amount for
+  /// `send_to_runner` (one combined STK, row 76).
+  String? _total(_QuoteData d) {
+    final fee = _feeTotal(d);
+    if (fee == null) return null;
+    final item = d.errand.budget;
+    if (_route == MerchantRoute.sendToRunner && isPositiveAmount(item)) {
+      return addDecimals(fee, item);
+    }
+    return fee;
+  }
+
+  String _ctaLabel(_QuoteData d) {
     final total = _total(d);
     return total == null
         ? 'Confirm & pay →'
@@ -157,7 +199,7 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
   }
 
   /// Same wording with the amount in Fira Code (C-32).
-  static InlineSpan? _ctaRichLabel(_QuoteData d) {
+  InlineSpan? _ctaRichLabel(_QuoteData d) {
     final total = _total(d);
     if (total == null) return null;
     return TextSpan(
@@ -169,16 +211,28 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     );
   }
 
-  bool _expired(Quote? q) =>
-      q?.expiresAt != null && q!.expiresAt!.isBefore(DateTime.now());
+  bool _expired(_QuoteData d) {
+    if (d.errand.status != ErrandStatus.quoted &&
+        d.errand.status != ErrandStatus.accepted) {
+      return false;
+    }
+    final at = d.errand.quoteExpiresAt ?? d.quote?.expiresAt;
+    return _expiredByApi || (at != null && at.isBefore(DateTime.now()));
+  }
 
   Future<void> _accept() async {
     final data = _data!;
     final errand = data.errand;
     setState(() => _accepting = true);
     try {
-      if (errand.status == ErrandStatus.quoted) {
-        await _services.errands.transition(errand.id, ErrandStatus.accepted);
+      // QUOTED → ACCEPTED, or accept an admin re-quote while ACCEPTED
+      // (payment requires the newest quote accepted, row 72).
+      if (errand.status == ErrandStatus.quoted ||
+          errand.quoteAcceptanceRequired) {
+        await _services.errands.acceptQuote(
+          errand.id,
+          fallbackToTransition: true,
+        );
       }
       if (!mounted) return;
       setState(() => _accepting = false);
@@ -192,7 +246,11 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     } on NitumeApiException catch (e) {
       if (!mounted) return;
       setState(() => _accepting = false);
-      if (e.statusCode == 409) {
+      if (e.code == ApiErrorCodes.quoteExpired) {
+        setState(() => _expiredByApi = true);
+      } else if (e.statusCode == 409) {
+        // quote_not_acceptable (ApiErrorCodes.quoteNotAcceptable) or another
+        // state change: route per Entry.
         _load();
       } else {
         showSnack(context, "Couldn't accept the quote. Try again.");
@@ -252,28 +310,29 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
         onCancel: _cancel,
       );
     } else {
-      final expired = _expired(data.quote);
+      final expired = _expired(data);
       body = _Checkout(
         data: data,
+        expired: expired,
         route: _route,
         method: _method,
         onRoute: (r) => setState(() => _route = r),
         onChangeMethod: data.methods.isEmpty ? null : _changeMethod,
         onDecline: _cancelling ? null : _cancel,
       );
-      cta = FixedCta(
-        above: expired
-            ? const NitumeNotice(message: 'This quote has expired.')
-            : null,
-        child: NitumeButton.primary(
-          // quote.total is the service + runner total the STK push charges.
-          label: _ctaLabel(data),
-          richLabel: _ctaRichLabel(data),
-          expand: true,
-          loading: _accepting,
-          onPressed: expired || _cancelling ? null : _accept,
-        ),
-      );
+      // Expired (row 46): no CTA until a quote-request endpoint exists
+      // (SQ-9); the notice in the body explains what happens next.
+      cta = expired
+          ? null
+          : FixedCta(
+              child: NitumeButton.primary(
+                label: _ctaLabel(data),
+                richLabel: _ctaRichLabel(data),
+                expand: true,
+                loading: _accepting,
+                onPressed: _cancelling ? null : _accept,
+              ),
+            );
     }
     return PushedScaffold(
       title: 'Your quote',
@@ -354,6 +413,7 @@ class _Waiting extends StatelessWidget {
 class _Checkout extends StatelessWidget {
   const _Checkout({
     required this.data,
+    required this.expired,
     required this.route,
     required this.method,
     required this.onRoute,
@@ -362,6 +422,7 @@ class _Checkout extends StatelessWidget {
   });
 
   final _QuoteData data;
+  final bool expired;
   final MerchantRoute? route;
   final PaymentMethod? method;
   final ValueChanged<MerchantRoute> onRoute;
@@ -372,10 +433,12 @@ class _Checkout extends StatelessWidget {
   Widget build(BuildContext context) {
     final errand = data.errand;
     final quote = data.quote;
-    final hasItem = isPositiveAmount(errand.budget);
+    final hasItem = isPositiveAmount(errand.budget) && !expired;
+    final expiresAt = quote?.expiresAt;
     return ListView(
       children: [
-        TaskSummaryCard(errand: errand),
+        // Expired: no chip (it would read "Quote ready", no longer true).
+        TaskSummaryCard(errand: errand, showChip: !expired),
         _FormCard(
           label: 'Final quote',
           child: Column(
@@ -386,13 +449,13 @@ class _Checkout extends StatelessWidget {
               // total row is rendered; internal quote parts never are.
               ReceiptRow(
                 label: kFeeTotalLabel,
-                amount: quote?.total ?? errand.quotedPrice,
+                amount: errand.feeTotal ?? quote?.total ?? errand.quotedPrice,
                 isTotal: true,
               ),
-              if (quote?.expiresAt != null)
+              if (expiresAt != null)
                 ReceiptCaption(
-                  'Valid until ',
-                  number: formatClock(quote!.expiresAt!),
+                  expired ? 'Expired at ' : 'Valid until ',
+                  number: formatClock(expiresAt),
                 ),
             ],
           ),
@@ -406,38 +469,52 @@ class _Checkout extends StatelessWidget {
                 ReceiptRow(label: 'Item amount', amount: errand.budget),
                 const Divider(height: 1, color: NitumeColors.slateLine),
                 const SizedBox(height: 10),
-                MerchantRouteRows(selected: route, onSelected: onRoute),
+                MerchantRouteRows(
+                  selected: route,
+                  onSelected: onRoute,
+                  merchantDetailsAvailable:
+                      errand.merchantDetailsAvailable == true,
+                ),
               ],
             ),
           ),
-        _FormCard(
-          label: 'Pay with',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              PaymentMethodCard(
-                label: method?.label ?? PaymentMethodType.mpesa.label,
-                detail:
-                    method?.detail ??
-                    (data.phone == null ? null : maskPhone(data.phone!)),
-                trailing: onChangeMethod == null
-                    ? null
-                    : NitumeButton.link(
-                        label: 'Change',
-                        onPressed: onChangeMethod,
-                      ),
-              ),
-              if (method == null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    'Your sign-in number',
-                    style: NitumeTextStyles.mutedSmall,
-                  ),
-                ),
-            ],
+        if (expired)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
+            // No quote-request endpoint yet (SQ-9): the spec's fallback.
+            child: NitumeNotice(
+              message: "This quote has expired. We'll send you a new one.",
+            ),
           ),
-        ),
+        if (!expired)
+          _FormCard(
+            label: 'Pay with',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                PaymentMethodCard(
+                  label: method?.label ?? PaymentMethodType.mpesa.label,
+                  detail:
+                      method?.detail ??
+                      (data.phone == null ? null : maskPhone(data.phone!)),
+                  trailing: onChangeMethod == null
+                      ? null
+                      : NitumeButton.link(
+                          label: 'Change',
+                          onPressed: onChangeMethod,
+                        ),
+                ),
+                if (method == null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Your sign-in number',
+                      style: NitumeTextStyles.mutedSmall,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
           child: Center(

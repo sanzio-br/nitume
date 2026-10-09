@@ -6,6 +6,9 @@ import '../theme/nitume_typography.dart';
 /// C-09. Root-tab top bar (`.topbar`): slate background, 21/700 title, an
 /// optional 12px slate-600 greeting above it, and trailing actions (gap 10).
 ///
+/// An empty (or blank) [title] renders no title line and no header
+/// semantics node (BOARD Needs row 40), e.g. Home before the name loads.
+///
 /// It scrolls with the content (not pinned); place it as the first child of
 /// the scroll view inside a [SafeArea].
 class NitumeTopBar extends StatelessWidget {
@@ -17,6 +20,7 @@ class NitumeTopBar extends StatelessWidget {
     this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 14),
   });
 
+  /// Title text; empty or blank to omit the title line.
   final String title;
   final String? greeting;
   final List<Widget> actions;
@@ -43,15 +47,16 @@ class NitumeTopBar extends StatelessWidget {
                         style: NitumeTextStyles.muted.copyWith(fontSize: 12),
                       ),
                     ),
-                  Semantics(
-                    header: true,
-                    child: Text(
-                      title,
-                      style: NitumeTextStyles.topBarTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  if (title.trim().isNotEmpty)
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        title,
+                        style: NitumeTextStyles.topBarTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

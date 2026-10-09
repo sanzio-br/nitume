@@ -1,5 +1,6 @@
 import '../api/api_exception.dart';
 import '../api/nitume_api_client.dart';
+import '../models/customer_refund.dart';
 import '../models/enums.dart';
 import '../models/errand.dart';
 import '../models/errand_details.dart';
@@ -53,13 +54,12 @@ class ErrandRepository {
     String errandId,
     ErrandStatus to, {
     String? note,
-  }) async =>
-      ErrandTransitionResult.fromJson(
-        await _api.patchMap(
-          '/errands/$errandId/status',
-          data: {'to': to.wire, 'note': ?note},
-        ),
-      );
+  }) async => ErrandTransitionResult.fromJson(
+    await _api.patchMap(
+      '/errands/$errandId/status',
+      data: {'to': to.wire, 'note': ?note},
+    ),
+  );
 
   /// Sets or clears (`null`) the optional title (`PATCH /errands/:id`,
   /// 3–120 characters after trimming). Returns the updated errand.
@@ -74,22 +74,27 @@ class ErrandRepository {
     Set<ErrandStatus>? statuses,
     int? limit,
     String? cursor,
-  }) async =>
-      ErrandPage.fromJson(
-        await _api.getMap('/errands', query: {
-          if (statuses != null && statuses.isNotEmpty)
-            'status': statuses.map((s) => s.wire).join(','),
-          'limit': ?limit,
-          'cursor': ?cursor,
-        }),
-      );
+  }) async => ErrandPage.fromJson(
+    await _api.getMap(
+      '/errands',
+      query: {
+        if (statuses != null && statuses.isNotEmpty)
+          'status': statuses.map((s) => s.wire).join(','),
+        'limit': ?limit,
+        'cursor': ?cursor,
+      },
+    ),
+  );
 
   /// Number of errands visible to the caller (`GET /errands/count`).
   Future<int> count({Set<ErrandStatus>? statuses}) async {
-    final data = await _api.getMap('/errands/count', query: {
-      if (statuses != null && statuses.isNotEmpty)
-        'status': statuses.map((s) => s.wire).join(','),
-    });
+    final data = await _api.getMap(
+      '/errands/count',
+      query: {
+        if (statuses != null && statuses.isNotEmpty)
+          'status': statuses.map((s) => s.wire).join(','),
+      },
+    );
     return (data['count'] as num?)?.toInt() ?? 0;
   }
 
@@ -101,6 +106,65 @@ class ErrandRepository {
   Future<List<StatusHistoryEntry>> history(String errandId) async {
     final data = await _api.getList('/errands/$errandId/history');
     return asJsonList(data).map(StatusHistoryEntry.fromJson).toList();
+  }
+
+  /// Accepts the errand's newest quote (`POST /errands/:id/quote/accept`,
+  /// row 72): on QUOTED it is the QUOTED → ACCEPTED step; on ACCEPTED it
+  /// accepts an admin re-quote ([Errand.quoteAcceptanceRequired]), which
+  /// payment needs. Idempotent on the API.
+  ///
+  /// Fails with `quote_expired` (request a new quote) or
+  /// `quote_not_acceptable` (the task left QUOTED / ACCEPTED; reload).
+  ///
+  /// [fallbackToTransition]: against an API without the endpoint (an
+  /// uncoded 404), a QUOTED errand moves with `transition(..., accepted)`
+  /// and an ACCEPTED one needs nothing, as the app's
+  /// `TransitionQuoteAcceptance` does. [QuoteAcceptanceResult.quote] is `null`
+  /// then.
+  Future<QuoteAcceptanceResult> acceptQuote(
+    String errandId, {
+    bool fallbackToTransition = false,
+  }) async {
+    try {
+      return QuoteAcceptanceResult.fromJson(
+        await _api.postMap('/errands/$errandId/quote/accept'),
+      );
+    } on NitumeApiException catch (e) {
+      if (!fallbackToTransition || e.statusCode != 404 || e.code != null) {
+        rethrow;
+      }
+      final current = await get(errandId);
+      if (current.status == ErrandStatus.quoted) {
+        final moved = await transition(errandId, ErrandStatus.accepted);
+        return QuoteAcceptanceResult(errand: moved.errand);
+      }
+      return QuoteAcceptanceResult(errand: current);
+    }
+  }
+
+  /// Every refund review of the errand, newest first
+  /// (`GET /errands/:id/refunds`, row 71): the cancellation review and any
+  /// price-decrease reviews. Empty when there are none; unreadable entries
+  /// are skipped.
+  Future<List<CustomerRefund>> refunds(String errandId) async {
+    final data = await _api.getMap('/errands/$errandId/refunds');
+    final items = data['items'];
+    if (items is! List) return const [];
+    return [for (final item in items) ?CustomerRefund.tryParse(item)];
+  }
+
+  /// Customer-readable refund review of the errand
+  /// (`GET /errands/:id/refund`, `_shared.md` §11); `null` when there is
+  /// none (404 `refund_not_found`), so the refund group stays hidden.
+  Future<CustomerRefund?> refund(String errandId) async {
+    try {
+      return CustomerRefund.tryParse(
+        await _api.getMap('/errands/$errandId/refund'),
+      );
+    } on NitumeApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
   /// Quote breakdown (`GET /errands/:id/quote`); `null` while not quoted.

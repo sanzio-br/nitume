@@ -99,8 +99,12 @@ class TaskDraft {
     if (hadTwo != twoPoints) first = null;
     dropoff = null;
     items = const [ShoppingListItem()];
-    budget = null;
+    // Keep an entered budget only when the new category shows the field.
+    if (!hasBudget) budget = null;
   }
+
+  /// Budget only for Buy For Me and Get It For Me (row 45).
+  bool get hasBudget => twoPoints;
 
   List<ShoppingListItem> get namedItems => [
     for (final i in items)
@@ -118,7 +122,7 @@ class TaskDraft {
     return CreateErrandRequest(
       category: category!,
       description: description.trim(),
-      budget: budget ?? 0,
+      budget: hasBudget ? budget ?? 0 : 0,
       locations: locations,
       deadlineAt: deadline.deadlineFrom(now),
       items: isBuy

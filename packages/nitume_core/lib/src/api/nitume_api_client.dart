@@ -11,12 +11,15 @@ import 'auth_interceptor.dart';
 ///
 /// All failures surface as [NitumeApiException]. Auth is handled transparently
 /// by [AuthInterceptor]; `refresh`/`logout` intentionally bypass it to avoid
-/// refresh loops.
+/// refresh loops. `onUnauthenticated` runs when the session ends;
+/// `onAccountSuspended` (optional) runs instead when the API refused it with
+/// `account_suspended` (`_shared.md` §7).
 class NitumeApiClient {
   NitumeApiClient({
     required ApiConfig config,
     required TokenStore tokenStore,
     void Function()? onUnauthenticated,
+    void Function()? onAccountSuspended,
     @visibleForTesting HttpClientAdapter? httpClientAdapter,
   }) {
     final options = BaseOptions(
@@ -39,6 +42,7 @@ class NitumeApiClient {
       tokenStore: tokenStore,
       refreshTokens: refresh,
       onUnauthenticated: onUnauthenticated,
+      onAccountSuspended: onAccountSuspended,
     );
     _dio.interceptors.add(interceptor);
   }
@@ -71,14 +75,13 @@ class NitumeApiClient {
     String path, {
     Object? data,
     Map<String, String>? headers,
-  }) =>
-      _send(
-        () => _dio.post<dynamic>(
-          path,
-          data: data,
-          options: headers == null ? null : Options(headers: headers),
-        ),
-      );
+  }) => _send(
+    () => _dio.post<dynamic>(
+      path,
+      data: data,
+      options: headers == null ? null : Options(headers: headers),
+    ),
+  );
 
   Future<dynamic> patch(String path, {Object? data}) =>
       _send(() => _dio.patch<dynamic>(path, data: data));
@@ -106,8 +109,7 @@ class NitumeApiClient {
     String path, {
     Object? data,
     Map<String, String>? headers,
-  }) async =>
-      _asMap(await post(path, data: data, headers: headers));
+  }) async => _asMap(await post(path, data: data, headers: headers));
 
   Future<Map<String, dynamic>> patchMap(String path, {Object? data}) async =>
       _asMap(await patch(path, data: data));
