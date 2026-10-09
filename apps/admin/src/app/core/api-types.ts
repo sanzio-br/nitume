@@ -189,6 +189,11 @@ export interface Errand {
   merchantPaybillNumber?: string | null;
   merchantAccountReference?: string | null;
   merchantDetailsAvailable?: boolean;
+  /**
+   * When existing merchant details were last changed (row 80, N-14); set by
+   * the API on a change. TODO(owner-answers-4): optional until merged.
+   */
+  merchantDetailsUpdatedAt?: string | null;
   /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
   /** ACCEPTED with an unaccepted admin re-quote (row 72). */

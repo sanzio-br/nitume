@@ -4,9 +4,12 @@ import { API, errandFixture, flushAsync, setupHttp } from '../../../testing/admi
 import {
   buildMerchantBody,
   MerchantDetailsSectionComponent,
+  merchantEditable,
   MerchantForm,
   NAME_ERROR,
+  NOT_APPLICABLE_COPY,
   PAYBILL_ERROR,
+  savedCopy,
   showsMerchantSection,
   TILL_ERROR,
   validateMerchantForm,
@@ -140,6 +143,92 @@ describe('MerchantDetailsSectionComponent', () => {
     expect(s.detail()?.merchantTillNumber).toBe('5123456');
     expect(el.textContent).toContain(
       'Merchant details saved. The customer can now pay the merchant directly.',
+    );
+  });
+
+  it('other categories with legacy details: read-only with the explanation (row 80)', () => {
+    const fixture = render({
+      category: 'inspection',
+      status: 'QUOTED',
+      merchantName: 'Naivas',
+      merchantTillNumber: '5123456',
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain(NOT_APPLICABLE_COPY);
+    expect(el.textContent).toContain('5123456');
+    expect(button(el, 'Edit')).toBeUndefined();
+  });
+
+  it('Buy For Me and Get It For Me stay editable without the explanation', () => {
+    for (const category of ['buy_for_me', 'pickup_delivery']) {
+      const el = render({ category, status: 'QUOTED' }).nativeElement as HTMLElement;
+      expect(button(el, 'Add merchant details')).toBeDefined();
+      expect(el.textContent).not.toContain(NOT_APPLICABLE_COPY);
+    }
+  });
+
+  it('warns before changing details after payment, with the new copy', () => {
+    const fixture = render({
+      status: 'IN_PROGRESS',
+      merchantName: 'Naivas',
+      merchantTillNumber: '5123456',
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    button(el, 'Edit')!.click();
+    fixture.detectChanges();
+    const till = el.querySelectorAll('input')[1];
+    till.value = '5123457';
+    till.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    button(el, 'Save details')!.click();
+    fixture.detectChanges();
+    expect(el.textContent?.replace(/\s+/g, ' ')).toContain(
+      "The customer may already be paying the current Till 5123456. We'll tell them the details changed so they check before paying.",
+    );
+  });
+
+  it('400 merchant_details_not_applicable switches to read-only', async () => {
+    const fixture = render({ status: 'QUOTED' });
+    const el = fixture.nativeElement as HTMLElement;
+    button(el, 'Add merchant details')!.click();
+    fixture.detectChanges();
+    const inputs = el.querySelectorAll('input');
+    inputs[0].value = 'Naivas';
+    inputs[0].dispatchEvent(new Event('input'));
+    inputs[1].value = '5123456';
+    inputs[1].dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    button(el, 'Save details')!.click();
+    http
+      .expectOne(`${API}/errands/${errandFixture().id}/merchant-details`)
+      .flush(
+        { statusCode: 400, code: 'merchant_details_not_applicable', message: 'x' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+    await flushAsync();
+    fixture.detectChanges();
+    expect(el.textContent).toContain(NOT_APPLICABLE_COPY);
+    expect(el.querySelector('input')).toBeNull();
+    expect(button(el, 'Add merchant details')).toBeUndefined();
+  });
+});
+
+describe('merchant details rules (row 80)', () => {
+  it('editable only for the two categories in a non-terminal state', () => {
+    expect(merchantEditable(errandFixture({ category: 'buy_for_me' }))).toBe(true);
+    expect(merchantEditable(errandFixture({ category: 'pickup_delivery' }))).toBe(true);
+    expect(merchantEditable(errandFixture({ category: 'queue_admin' }))).toBe(false);
+    expect(merchantEditable(errandFixture({ status: 'SETTLED' }))).toBe(false);
+  });
+
+  it('tells the admin the customer was warned only when the API recorded the change', () => {
+    const e = errandFixture();
+    expect(savedCopy(false, true, { ...e, merchantDetailsUpdatedAt: '2026-10-08T09:00:00Z' })).toBe(
+      'Merchant details updated. The customer has been told to check them.',
+    );
+    expect(savedCopy(false, true, e)).toBe('Merchant details updated.');
+    expect(savedCopy(false, false, { ...e, merchantDetailsUpdatedAt: 'x' })).toBe(
+      'Merchant details updated.',
     );
   });
 });
