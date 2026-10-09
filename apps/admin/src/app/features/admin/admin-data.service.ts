@@ -418,18 +418,8 @@ export class AdminDataService {
     try {
       const { count } = await firstValueFrom(this.api.countRefunds('pending_review'));
       this.refundBadge.set({ count: Math.min(count, 99), more: count > 99 });
-    } catch (e) {
-      if (apiError(e).status !== 404) return;
-      // TODO(N-7): drop this fallback once GET /refunds/count is on main.
-      try {
-        const page = await firstValueFrom(this.api.listRefunds('pending_review', null, 100));
-        this.refundBadge.set({
-          count: Math.min(page.items.length, 99),
-          more: !!page.nextCursor || page.items.length > 99,
-        });
-      } catch {
-        /* the badge stays as it was */
-      }
+    } catch {
+      /* the badge keeps its last value; the Refunds panel shows its own error */
     }
   }
 

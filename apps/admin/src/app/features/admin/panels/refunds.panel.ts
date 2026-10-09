@@ -264,13 +264,9 @@ export class RefundsPanelComponent implements OnInit {
     return f === 'all' ? null : f;
   }
 
-  /**
-   * Errand title, else the description's first line, else the category.
-   * TODO(N-1): older APIs have no `errand` on the item: use the dashboard's
-   * last-100 errand window, never a per-row request.
-   */
+  /** Errand title, else the description's first line, else the category. */
   protected taskTitle(r: RefundListItem): string {
-    const e = r.errand ?? this.s.errands().find((x) => x.id === r.errandId);
+    const e = r.errand;
     if (!e) return 'Task';
     if (e.title) return e.title;
     const line = e.description?.split('\n')[0]?.trim();

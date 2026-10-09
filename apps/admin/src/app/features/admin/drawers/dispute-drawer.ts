@@ -401,17 +401,13 @@ export class DisputeDrawerComponent implements OnInit {
       this.serverError.set(RATIONALE_ERROR);
       return;
     }
-    if (err.status === 409) {
-      // N-8: `errand_not_disputed` on round 3; older APIs send no code.
+    if (err.code === 'errand_not_disputed') {
+      // Another admin resolved it first (N-8): reload to show their outcome.
       await this.s.loadErrandDetail(this.errandId(), { quiet: true });
-      if (this.s.detail()?.status !== 'DISPUTED') {
-        this.notice.set({
-          tone: 'info',
-          text: 'This dispute was already resolved. Showing the outcome.',
-        });
-      } else {
-        this.serverError.set(RATIONALE_ERROR);
-      }
+      this.notice.set({
+        tone: 'info',
+        text: 'This dispute was already resolved. Showing the outcome.',
+      });
       return;
     }
     if (err.status === 403) {

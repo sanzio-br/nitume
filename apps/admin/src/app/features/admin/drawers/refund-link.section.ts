@@ -1,35 +1,19 @@
 import { Component, effect, inject, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
-import { apiError } from '../../../core/api-error';
 import type { ErrandRefundView } from '../../../core/api-types';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { DrawerNavService } from '../drawer-nav.service';
 import { refundTriggerLabel } from '../refund-labels';
 import { formatKshExact } from '../shared-format';
 
-/**
- * Every refund review of a task: `GET /errands/:id/refunds` (row 71,
- * feat/api-owner-answers-3), else the single `GET /errands/:id/refund`.
- * Returns [] when there is none (404 `refund_not_found`).
- */
+/** Every refund review of a task, newest first (`GET /errands/:id/refunds`, row 71). */
 export async function loadErrandRefunds(
   api: ApiService,
   errandId: string,
 ): Promise<ErrandRefundView[]> {
-  try {
-    const res = await firstValueFrom(api.listErrandRefunds(errandId));
-    return res.items;
-  } catch (e) {
-    // TODO(N-3): drop the single-review fallback once GET /errands/:id/refunds is on main.
-    if (apiError(e).status !== 404) throw e;
-  }
-  try {
-    return [await firstValueFrom(api.getErrandRefund(errandId))];
-  } catch (e) {
-    if (apiError(e).status === 404) return [];
-    throw e;
-  }
+  const res = await firstValueFrom(api.listErrandRefunds(errandId));
+  return res.items;
 }
 
 /** `Refund` section of the task drawer for a CANCELLED task (drawer-refund "Task drawer link"). */

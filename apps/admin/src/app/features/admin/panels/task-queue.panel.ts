@@ -135,7 +135,7 @@ export class TaskQueuePanelComponent {
     return t.status === 'PAYMENT_CONFIRMED' ? 'Assign' : 'View';
   }
 
-  /** N-5 `quoteExpiresAt` (feat/api-owner-answers-3); no flag on older APIs. */
+  /** `Quote expired` flag from the list's `quoteExpiresAt` (N-5). */
   protected quoteExpired(t: ErrandListItem): boolean {
     return isQuoteExpired(t, this.now());
   }

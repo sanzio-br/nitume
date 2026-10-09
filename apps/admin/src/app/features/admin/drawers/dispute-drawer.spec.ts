@@ -120,6 +120,41 @@ describe('DisputeDrawerComponent (G-6, G-19..G-22)', () => {
     expect(buttons(el, 'Side with runner')[0].disabled).toBe(false);
   });
 
+  it('409 errand_not_disputed reloads and shows the other outcome (N-8)', async () => {
+    const fixture = await render('DISPUTED');
+    const el = fixture.nativeElement as HTMLElement;
+    type(fixture, NOTE);
+    buttons(el, 'Side with customer')[0].click();
+    fixture.detectChanges();
+    buttons(el, 'Side with customer').at(-1)!.click();
+    http
+      .expectOne(`${API}/errands/${ID}/resolve-dispute`)
+      .flush(
+        { code: 'errand_not_disputed', message: 'Only DISPUTED errands can be mediated' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await flushAsync();
+    http.expectOne(`${API}/errands/${ID}`).flush(errandFixture({ status: 'COMPLETED' }));
+    http.expectOne(`${API}/errands/${ID}/history`).flush([
+      {
+        id: 'h2',
+        errandId: ID,
+        fromStatus: 'DISPUTED',
+        toStatus: 'COMPLETED',
+        actorType: 'admin',
+        note: 'Resolved by another admin after checking the receipt.',
+        createdAt: '2026-10-08T08:00:00Z',
+      },
+    ]);
+    await flushAsync();
+    fixture.detectChanges();
+    const text = el.textContent as string;
+    expect(text).toContain('This dispute was already resolved. Showing the outcome.');
+    expect(text).toContain('Resolved by another admin after checking the receipt.');
+    expect(text).not.toMatch(/Refund customer/);
+    expect(el.querySelector('textarea')).toBeNull();
+  });
+
   it('builds the outcome from the response and links the refund review', async () => {
     const fixture = await render('DISPUTED');
     const el = fixture.nativeElement as HTMLElement;

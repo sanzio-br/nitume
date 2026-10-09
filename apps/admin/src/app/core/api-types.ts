@@ -189,9 +189,9 @@ export interface Errand {
   merchantPaybillNumber?: string | null;
   merchantAccountReference?: string | null;
   merchantDetailsAvailable?: boolean;
-  /** Newest quote expiry (N-5, feat/api-owner-answers-3); optional until merged. */
+  /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
-  /** ACCEPTED with an unaccepted admin re-quote (row 72); optional until merged. */
+  /** ACCEPTED with an unaccepted admin re-quote (row 72). */
   quoteAcceptanceRequired?: boolean;
 }
 
@@ -207,7 +207,7 @@ export interface ErrandListItem {
   deadlineAt?: string | null;
   runnerProfileId?: string | null;
   createdAt: string;
-  /** N-5 (feat/api-owner-answers-3); absent on older APIs. */
+  /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
 }
 
@@ -307,11 +307,12 @@ export interface RefundErrandSummary {
   status: ErrandStatusString;
 }
 
-/** `GET /refunds` item. N-1/N-2 fields are optional so older APIs still work. */
+/** `GET /refunds` item: the review plus errand summary and admin names (N-1, N-2). */
 export interface RefundListItem extends RefundReview {
-  errand?: RefundErrandSummary | null;
-  decidedBy?: AdminRef | null;
-  paidBy?: AdminRef | null;
+  /** Null only when the errand row is gone. */
+  errand: RefundErrandSummary | null;
+  decidedBy: AdminRef | null;
+  paidBy: AdminRef | null;
 }
 
 export interface PaidBreakdown {
@@ -322,17 +323,17 @@ export interface PaidBreakdown {
   merchantDirectAmount: string;
 }
 
-/** `GET /refunds/:id` (N-1/N-2 fields optional). */
+/** `GET /refunds/:id`: list item + customer contact, paid breakdown, sibling reviews. */
 export interface RefundDetail extends RefundListItem {
-  customer?: {
+  customer: {
     userId: string;
     displayName: string | null;
     shortName: string | null;
     phone: string | null;
     mpesaPhone: string | null;
   } | null;
-  paid?: PaidBreakdown;
-  otherReviews?: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
+  paid: PaidBreakdown;
+  otherReviews: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
 }
 
 export interface ListRefundsResult {

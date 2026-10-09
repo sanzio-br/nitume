@@ -47,6 +47,8 @@ function review(patch: Partial<RefundDetail> = {}): RefundDetail {
       merchantDirectAmount: '0.00',
     },
     otherReviews: [],
+    decidedBy: null,
+    paidBy: null,
     ...patch,
   };
 }
@@ -127,7 +129,7 @@ describe('RefundDrawerComponent', () => {
   it('keeps the three flows apart and shows where the refund goes', async () => {
     const fixture = await render(
       review({
-        paid: { ...review().paid!, merchantDirectAmount: '4000.00', itemAmountToNitume: '0.00' },
+        paid: { ...review().paid, merchantDirectAmount: '4000.00', itemAmountToNitume: '0.00' },
       }),
     );
     const text = (fixture.nativeElement.textContent as string).replace(/\s+/g, ' ');
@@ -170,18 +172,42 @@ describe('RefundDrawerComponent', () => {
     drawer.remove();
   });
 
-  it('falls back to the total when there is no breakdown (N-1)', async () => {
-    const fixture = await render(
-      review({ paid: undefined, customer: undefined, errand: undefined }),
-    );
-    http
-      .expectOne(`${API}/errands/${errandFixture().id}`)
-      .flush(errandFixture({ status: 'CANCELLED' }));
-    await flushAsync();
-    fixture.detectChanges();
+  it('reads the task and customer from the detail alone; no errand call (N-1)', async () => {
+    const fixture = await render(review());
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain("Breakdown by payment isn't available yet.");
+    expect(text).toContain('Weekly shopping');
+    expect(text).toContain('Amina W.');
+    expect(text).not.toContain("Breakdown by payment isn't available yet.");
+    // http.verify() in afterEach: no GET /errands/:id was made.
+  });
+
+  it('keeps going when the errand and customer are gone', async () => {
+    const fixture = await render(review({ customer: null, errand: null }));
+    const text = fixture.nativeElement.textContent as string;
+    expect(fixture.nativeElement.querySelector('.drawer-summary-title').textContent).toBe('Task');
     expect(text).toContain("Customer's M-Pesa number not available");
+  });
+
+  it("names the deciding admin, or masks the id when there's no name (N-2)", async () => {
+    const fixture = await render(
+      review({
+        status: 'no_refund',
+        refundAmount: '0.00',
+        decidedAt: '2026-10-08T07:00:00Z',
+        decidedByUserId: 'aaaaaaaa-0000-0000-0000-00000000beef',
+        decidedBy: { id: 'aaaaaaaa-0000-0000-0000-00000000beef', displayName: 'Otieno K.' },
+      }),
+    );
+    expect(fixture.nativeElement.textContent).toContain('Otieno K.');
+    const unnamed = await render(
+      review({
+        status: 'no_refund',
+        refundAmount: '0.00',
+        decidedByUserId: 'aaaaaaaa-0000-0000-0000-00000000beef',
+        decidedBy: { id: 'aaaaaaaa-0000-0000-0000-00000000beef', displayName: null },
+      }),
+    );
+    expect(unnamed.nativeElement.textContent).toContain('…beef');
   });
 
   it('Full refund fills the field; the button reads the amount; confirm sends a number', async () => {

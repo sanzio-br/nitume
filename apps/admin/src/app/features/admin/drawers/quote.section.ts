@@ -34,19 +34,12 @@ const COMPONENT_LABELS: Record<string, string> = {
 const NO_QUOTE: string[] = ['DRAFT', 'REQUESTED'];
 
 /**
- * Whether `Issue new quote` is offered (drawer-task-requote "Task states").
- * QUOTED with an expired quote; ACCEPTED with an expired quote only when
- * the API supports it (row 72, feat/api-owner-answers-3: detected by the
- * round-3 `quoteAcceptanceRequired` field on the errand).
+ * Whether `Issue new quote` is offered (drawer-task-requote "Task states"):
+ * QUOTED or ACCEPTED (row 72) with an expired quote, as the API allows.
  */
 export function canRequote(errand: Errand, quote: Quote | null, now: number): boolean {
   if (!quoteExpired(quote, now)) return false;
-  if (errand.status === 'QUOTED') return true;
-  return errand.status === 'ACCEPTED' && acceptedRequoteSupported(errand);
-}
-
-export function acceptedRequoteSupported(errand: Errand): boolean {
-  return typeof errand.quoteAcceptanceRequired === 'boolean';
+  return errand.status === 'QUOTED' || errand.status === 'ACCEPTED';
 }
 
 /**
@@ -128,11 +121,6 @@ export function acceptedRequoteSupported(errand: Errand): boolean {
               You can issue a new quote after this one expires at
               <span class="num">{{ formatDateTime(q.expiresAt) }}</span
               >.
-            </div>
-          } @else if (errand().status === 'ACCEPTED' && expired()) {
-            <div class="drawer-caption">
-              This quote expired after the customer accepted it. They can't pay until it is
-              re-quoted.
             </div>
           }
         }

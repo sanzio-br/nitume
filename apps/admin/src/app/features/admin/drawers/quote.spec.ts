@@ -10,7 +10,7 @@ import {
   TOTAL_ERROR,
   validateQuoteForm,
 } from './quote-dialog';
-import { acceptedRequoteSupported, canRequote, QuoteSectionComponent } from './quote.section';
+import { canRequote, QuoteSectionComponent } from './quote.section';
 import type { Quote } from '../../../core/api-types';
 import { AdminDataService } from '../admin-data.service';
 
@@ -110,12 +110,15 @@ describe('re-quote visibility (G-5)', () => {
     expect(canRequote(errandFixture({ status: 'PAYMENT_CONFIRMED' }), quote(), now)).toBe(false);
   });
 
-  it('offers it on ACCEPTED only when the API supports row 72', () => {
-    const old = errandFixture({ status: 'ACCEPTED' });
-    expect(acceptedRequoteSupported(old)).toBe(false);
-    expect(canRequote(old, quote(), now)).toBe(false);
-    const round3 = errandFixture({ status: 'ACCEPTED', quoteAcceptanceRequired: false });
-    expect(canRequote(round3, quote(), now)).toBe(true);
+  it('offers it on an expired ACCEPTED quote too (row 72)', () => {
+    expect(canRequote(errandFixture({ status: 'ACCEPTED' }), quote(), now)).toBe(true);
+    expect(
+      canRequote(
+        errandFixture({ status: 'ACCEPTED' }),
+        quote({ expiresAt: '2026-10-09T00:00:00Z' }),
+        now,
+      ),
+    ).toBe(false);
   });
 });
 

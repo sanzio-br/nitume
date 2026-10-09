@@ -14,7 +14,7 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
 import { apiError, ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
-import type { Errand, RefundDetail, RefundReview } from '../../../core/api-types';
+import type { RefundDetail, RefundReview } from '../../../core/api-types';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice.component';
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
@@ -136,30 +136,24 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
       <section class="drawer-section">
         <div class="drawer-label">What the customer paid</div>
         <div class="drawer-card">
-          @if (r.paid; as p) {
+          <div class="drawer-row">
+            <span>Service + runner fee</span><b>{{ formatKshExact(r.paid.serviceAndRunnerFee) }}</b>
+          </div>
+          @if (positive(r.paid.itemAmountToNitume)) {
             <div class="drawer-row">
-              <span>Service + runner fee</span><b>{{ formatKshExact(p.serviceAndRunnerFee) }}</b>
-            </div>
-            @if (positive(p.itemAmountToNitume)) {
-              <div class="drawer-row">
-                <span>Item amount (paid to Nitume)</span
-                ><b>{{ formatKshExact(p.itemAmountToNitume) }}</b>
-              </div>
-            }
-            @if (positive(p.priceChangeDifferences)) {
-              <div class="drawer-row">
-                <span>Price change difference</span
-                ><b>{{ formatKshExact(p.priceChangeDifferences) }}</b>
-              </div>
-            }
-            <div class="drawer-row drawer-row-total">
-              <span>Total paid to Nitume</span><b>{{ formatKshExact(p.totalPaidToNitume) }}</b>
-            </div>
-          } @else {
-            <div class="drawer-row drawer-row-total">
-              <span>Total paid to Nitume</span><b>{{ formatKshExact(r.amountPaid) }}</b>
+              <span>Item amount (paid to Nitume)</span
+              ><b>{{ formatKshExact(r.paid.itemAmountToNitume) }}</b>
             </div>
           }
+          @if (positive(r.paid.priceChangeDifferences)) {
+            <div class="drawer-row">
+              <span>Price change difference</span
+              ><b>{{ formatKshExact(r.paid.priceChangeDifferences) }}</b>
+            </div>
+          }
+          <div class="drawer-row drawer-row-total">
+            <span>Total paid to Nitume</span><b>{{ formatKshExact(r.paid.totalPaidToNitume) }}</b>
+          </div>
           <div class="drawer-row">
             <span>Refund to</span>
             @if (phone(); as ph) {
@@ -169,10 +163,7 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
             }
           </div>
         </div>
-        @if (!r.paid) {
-          <!-- TODO(N-1): breakdown arrives with feat/api-owner-answers-3. -->
-          <div class="drawer-caption">Breakdown by payment isn't available yet.</div>
-        } @else if (positive(r.paid.merchantDirectAmount)) {
+        @if (positive(r.paid.merchantDirectAmount)) {
           <div class="drawer-caption">
             The item amount (<span class="num">{{
               formatKshExact(r.paid.merchantDirectAmount)
@@ -415,8 +406,6 @@ export class RefundDrawerComponent implements OnInit {
   readonly reviewId = input.required<string>();
 
   readonly review = signal<RefundDetail | null>(null);
-  /** Task summary from `GET /errands/:id` when the API has no N-1 errand summary. */
-  private readonly errand = signal<Errand | null>(null);
   readonly loading = signal(true);
   readonly loadError = signal<{ tone: NoticeTone; text: string } | null>(null);
   readonly notice = signal<{ tone: NoticeTone; text: string } | null>(null);
@@ -470,7 +459,7 @@ export class RefundDrawerComponent implements OnInit {
   });
 
   protected readonly taskTitle = computed(() => {
-    const e = this.review()?.errand ?? this.errand();
+    const e = this.review()?.errand;
     if (e?.title) return e.title;
     const firstLine = e?.description?.split('\n')[0]?.trim();
     if (firstLine) return firstLine;
@@ -478,9 +467,7 @@ export class RefundDrawerComponent implements OnInit {
     return 'Task';
   });
 
-  protected readonly taskStatus = computed(
-    () => this.review()?.errand?.status ?? this.errand()?.status ?? null,
-  );
+  protected readonly taskStatus = computed(() => this.review()?.errand?.status ?? null);
 
   protected readonly phone = computed(() => {
     const c = this.review()?.customer;
@@ -493,7 +480,7 @@ export class RefundDrawerComponent implements OnInit {
     const parts: { text: string; num: boolean; prefix?: string }[] = [];
     const name = r.customer?.shortName;
     if (name) parts.push({ text: name, num: false });
-    const category = r.errand?.category ?? this.errand()?.category;
+    const category = r.errand?.category;
     if (category) parts.push({ text: categoryLabel(category), num: false });
     // Only the date/time is numeric: "Opened" stays Fira Sans.
     parts.push({ prefix: 'Opened ', text: formatDateTime(r.createdAt), num: true });
@@ -548,10 +535,6 @@ export class RefundDrawerComponent implements OnInit {
       const review = await firstValueFrom(this.api.getRefund(this.reviewId()));
       this.review.set(review);
       this.resetForms();
-      if (!review.errand) {
-        // TODO(N-1): the round-3 detail embeds the errand; older APIs need this call.
-        void this.loadErrand(review.errandId);
-      }
     } catch (e) {
       const err = apiError(e);
       this.loadError.set(
@@ -564,14 +547,6 @@ export class RefundDrawerComponent implements OnInit {
     } finally {
       this.loading.set(false);
       afterNextRender(() => this.focusForm(), { injector: this.injector });
-    }
-  }
-
-  private async loadErrand(id: string): Promise<void> {
-    try {
-      this.errand.set(await firstValueFrom(this.api.getErrand(id)));
-    } catch {
-      /* the summary falls back to `Task` */
     }
   }
 
@@ -624,7 +599,7 @@ export class RefundDrawerComponent implements OnInit {
     const id = ref?.id ?? userId;
     if (!id) return '—';
     if (id === this.s.me()?.id) return 'You';
-    // TODO(N-2): older APIs send only the user id.
+    // An admin with no name on file shows as a masked id.
     return ref?.displayName ?? maskedId(id);
   }
 
@@ -708,18 +683,18 @@ export class RefundDrawerComponent implements OnInit {
 
   /** The write endpoints return the bare review: keep the enriched parts. */
   private applySaved(saved: RefundReview): void {
-    const current = this.review();
+    const current = this.review()!;
     const me = this.s.me();
     const meRef = me ? { id: me.id, displayName: null } : null;
     this.review.set({
       ...current,
       ...saved,
-      errand: current?.errand,
-      customer: current?.customer,
-      paid: current?.paid,
-      otherReviews: current?.otherReviews,
-      decidedBy: saved.decidedByUserId ? (current?.decidedBy ?? meRef) : null,
-      paidBy: saved.paidByUserId ? (current?.paidBy ?? meRef) : null,
+      errand: current.errand,
+      customer: current.customer,
+      paid: current.paid,
+      otherReviews: current.otherReviews,
+      decidedBy: saved.decidedByUserId ? (current.decidedBy ?? meRef) : null,
+      paidBy: saved.paidByUserId ? (current.paidBy ?? meRef) : null,
     });
     this.resetForms();
     this.s.refundUpdated(saved);
