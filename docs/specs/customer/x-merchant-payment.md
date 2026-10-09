@@ -3,12 +3,13 @@
 - Mockup: **not drawn.** Required by §6 of the system design ("show merchant Till/Paybill for merchant_amount, paid separately"), OA-5 (Till/Paybill shown only when merchant-direct is selected) and rows 42–44, 48 (send-to-runner is platform-mediated; price-change differences). Built from design-system patterns (card, list rows, buttons) and the `.stk-wrap` / `.form-card` mockup components; copy is **(proposed)** unless marked approved.
 - Shared conventions: `_shared.md` (OA-n §0, rows §0.1, payment flows §8)
 - Implementation: `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` on branch `feat/customer-integrations`
-- Status: matches-design
+- Status: partial (spec updated 2026-10-09 for row 80; see Current vs design)
 
 ## Purpose
 Show the customer exactly what to pay for the item/merchant amount and how, kept separate from the service and runner fees (three flows separate).
-- `merchant_direct`: the customer pays the merchant's Till/Paybill from their own M-Pesa. Nitume does not collect this money.
-- `send_to_runner`: the customer pays the item amount **to Nitume by an M-Pesa STK push** (row 42), separate from the fee STK. There is no direct customer-to-runner transfer and no runner number is shown.
+- `merchant_direct`: the customer pays the merchant's Till/Paybill from their own M-Pesa. Nitume does not collect this money and never STK-pushes to a merchant; an approved increase is paid the same way, manually, to the same Till/Paybill (row 67).
+- `send_to_runner`: the customer pays the item amount **to Nitume** (rows 42, 66): the original amount inside the combined fee STK (row 76), an approved increase by its own STK (variant B). Nitume then pays the runner through the payout ledger. There is no direct customer-to-runner transfer and no runner number is shown.
+- Only Buy For Me and Get It For Me tasks carry an item amount (row 80); this screen never opens for other categories.
 
 ## Entry / exit
 - Entry:
@@ -29,10 +30,12 @@ Layout (top to bottom):
    - `Merchant` — merchant name (Fira Sans 15/600, no Copy button).
    - Till route: `Till number (Buy Goods)` — value Fira Code 16/600 + `Copy`.
    - Paybill route: `Paybill number` — value + `Copy`; `Account number` — value + `Copy`.
-   - `Amount` — `KSh 40,000` Fira Code 20/600 + `Copy` (copies digits only, `40000`). This is the outstanding item amount, including any approved increase.
-4. When an approved price change raised the amount: line under the card, 12.5, `amount` in **amber** Fira Code (OA-13 price-change accent): `Includes the KSh 5,000 increase you approved.` Paid to the **same** Till/Paybill (row 44; SQ-8 build default: the customer pays it from their own M-Pesa, no STK).
+   - `Amount` — `KSh 40,000` Fira Code 20/600 + `Copy` (copies digits only, `40000`). This is the outstanding item amount, including any approved increase, or the lower amount after an approved decrease (no refund review on this route, row 86).
+4. When an approved price change raised the amount: line under the card, 12.5, `amount` in **amber** Fira Code (OA-13 price-change accent): `Includes the KSh 5,000 increase you approved.` Paid to the **same** Till/Paybill (row 44), manually from the customer's own M-Pesa, never by STK (row 67, decided).
 5. Muted how-to, 12.5 slate-600, padding `0 20 14`: M-Pesa menu steps.
 6. Fixed primary CTA (C-01) `Done`.
+
+**Details changed** (row 80: warn, never block): when the merchant details were changed after this merchant-direct payment started (the API's `merchantDetailsUpdatedAt` is later than the fee payment's confirmation time), show a C-40 notice **above the card** (margin `0 20 14`), with a leading info icon: `The merchant's payment details changed on Today, 4:45 PM. Check the number below before you pay.` (proposed; date/time in Fira Code). If the customer already paid the old Till/Paybill: a second line in the same notice, `Already paid the old number? Contact support.` with the Support link (C-04, `AppConfig.supportUri`; omitted when Support isn't configured). The card always shows the current details; the old number is never shown. The notice stays while the item amount is shown on this screen. No red or amber: it is information, not an error.
 
 **Details pending** (route chosen while details existed, but they are no longer on the errand, or an increase arrived and details are missing): header and intro as above; the card shows only `Amount`; C-40 notice `The merchant's details aren't available yet. We'll notify you when they are.`; CTA `Done`. Details are supplied by the merchant or an admin (row 43); the customer never enters them.
 
@@ -82,15 +85,17 @@ Rules (same as `v-payment`): idempotency key per attempt, reused on resend of th
 - Loading: skeleton card. Error: C-33 `Couldn't load the payment details.` + `Try again`.
 - **Nothing due** (no item payment on the errand, or amount 0, on any route): the screen closes itself, returns to the previous screen and shows the snackbar **`Nothing to pay right now.`** (approved, BOARD Needs row 41).
 - Details pending (variant A): C-40 `The merchant's details aren't available yet. We'll notify you when they are.`
+- Details changed (variant A, row 80): C-40 `The merchant's payment details changed on Today, 4:45 PM. Check the number below before you pay.` + `Already paid the old number? Contact support.`
 - Banned here: "release", "hold", "escrow", "wallet", "balance" (OA-6). Never "send money to your runner" or a runner phone number (row 42).
 
 ## Numeric fields (Fira Code)
-- Till number, Paybill number, account number (when numeric), every amount (card, CTA span, STK block), the increase amount in the price-change line, the payer phone number.
+- Till number, Paybill number, account number (when numeric), every amount (card, CTA span, STK block), the increase amount in the price-change line, the payer phone number, the date/time in the details-changed notice.
 
 ## Data
 - Merchant payment: `GET /api/v1/payments/:errandId` (exists) → `merchantPayment` view `{ route, amount, merchantName?, tillNumber?, paybillNumber?, accountReference? }` (Till/Paybill only for `merchant_direct`). needs: api-contract — fill merchant details from the merchant/admin source (row 43; today `merchantDetailsFor` always returns null); report the **outstanding** item amount including approved differences; list price-change difference records with their own status.
 - Variant B: needs: api-contract — an STK initiation for the item amount to Nitume (row 42), e.g. `POST /api/v1/payments/:errandId/item/initiate` `{ paymentId?, paymentMethodId? }` + `Idempotency-Key`, and `stkStatus` (`PENDING | SUCCESS | FAILED | TIMEOUT`) for that payment on `GET /payments/:errandId`. Today the API records send-to-runner amounts and differences as `PENDING` rows with no STK ("the merchant amount never goes through Nitume's charge"), which contradicts row 42.
 - needs: api-contract — notification event type for "merchant details added" (not in `NotificationEventType`).
+- Details changed (row 80): needs: api-contract — `merchantDetailsUpdatedAt` on the `merchantPayment` view (and the payment's confirmation time, if not already there), and a customer notification + push when an admin changes details on a task whose merchant-direct payment has started, e.g. `merchant_details.changed`, body `The merchant's payment details for your task changed. Check them before you pay.` (proposed). The admin is warned before saving (`drawer-task-merchant-details`); the API allows the change (warn, not block).
 - Whether the customer confirms they paid the merchant in variant A (button, M-Pesa message, reconciliation) is open (Q1); the spec records nothing.
 - Live (rows 23, 29): `errand:status_changed` on `errand:{id}` closes the screen if the errand is CANCELLED and refreshes the merchant payment; variant B polls `GET /payments/:errandId` every 5 s (then 30 s, up to 10 minutes) while PENDING/TIMEOUT and visible, whether or not the socket is connected, because STK results have no socket event (accepted in the 2026-10-09 re-audit).
 
@@ -104,12 +109,17 @@ Rules (same as `v-payment`): idempotency key per attempt, reused on resend of th
 - Merchant details source (was SQ-6): merchant or admin (row 43).
 - Price-change difference route (rows 44, 48): same route as the original item payment.
 - Nothing-due snackbar (BOARD Needs row 41): approved.
+- System-design wording (was SQ-7): §2.2/§6 updated, platform-mediated send-to-runner (row 66).
+- Merchant-direct increase (was SQ-8): paid manually to the same Till/Paybill, no STK (row 67).
+- Details changed after the payment started: warn, never block (row 80).
+- Item amounts only for Buy For Me / Get It For Me (row 80).
 
 ## Open questions for the owner
 - Q1 (payments): should the customer confirm "I've paid the merchant" (and attach the M-Pesa message), or does the runner confirm at the counter? Default: no confirmation; `Done` only closes the screen.
-- SQ-7, SQ-8 (`_shared.md` §9): system-design wording vs row 42; merchant-direct increase without an STK.
 
 ## Current vs design
+Spec update 2026-10-09 (rows 66, 67, 80, 86), against `main` @ `c7675dc` (`merchant_payment_screen.dart`): no details-changed warning exists. Now required: the **Details changed** notice in variant A (with the optional Support line), driven by `merchantDetailsUpdatedAt`, and a refresh when the new notification arrives. Rows 66/67/86 need no client change (wording only). Status set to `partial` until re-audited. Depends on api-contract (`merchantDetailsUpdatedAt`, notification type) and core-ui (model field).
+
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Variant A with details-pending state; variant B now follows the price-change difference STK only (row 76; spec updated); nothing-due close with `Nothing to pay right now.`; shared `StkStatusView`.
 
 Re-audit round 3 (2026-10-08, `feat/customer-screens` @ `08f9b26`): PASS against the earlier spec. Spec update 2026-10-08 (rows 42–44, Needs row 41): variant B was a placeholder notice (`We'll show you how to send this amount to your runner here.`); it is now an STK payment to Nitume with the full state table; the nothing-due close must show `Nothing to pay right now.`; increases on both routes and the details-pending state are specced. Status set to `partial` until re-audited.

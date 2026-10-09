@@ -8,7 +8,7 @@
 ## Purpose
 The runner found the item priced differently from the agreed item amount. The customer approves the new amount or rejects it, which cancels the task (OA-8).
 - **Increase**: the customer pays the difference through the same route as the original item payment (row 44).
-- **Decrease** (row 48 clarification): the item amount goes down; anything already paid above the new amount goes to an admin refund review (`_shared.md` §11).
+- **Decrease** (row 48 clarification, row 86): the item amount goes down. On `send_to_runner` (Nitume received the item amount) the difference goes to an admin refund review (`_shared.md` §11). On `merchant_direct` no refund review opens; the customer pays the merchant the lower amount.
 
 ## Presentation (OA-8)
 A **blocking modal** (C-35 `NitumeDialog`, `barrierDismissible: false`, scrim blue at 50%, row 38) over whatever screen is open, not a pushed screen. System back does nothing while it is open. The mockup's pushed header is replaced by the dialog title.
@@ -20,7 +20,7 @@ A **blocking modal** (C-35 `NitumeDialog`, `barrierDismissible: false`, scrim bl
   - On app resume, if a request is pending for an IN_PROGRESS errand.
 - Approve success:
   - Increase → close the modal; snackbar `Price change approved.`; then, when the decision returns a difference to pay, push `x-merchant-payment` (variant A for `merchant_direct`, variant B STK for `send_to_runner`).
-  - Decrease → close the modal; snackbar `Price change approved.`, or, when the decision opened a refund review, `Price change approved. We'll review a refund of the difference.` (proposed). No navigation.
+  - Decrease → close the modal; snackbar `Price change approved.`, or, when the decision opened a refund review (only on `send_to_runner`, row 86), `Price change approved. We'll review a refund of the difference.` (proposed). The client keys this off the decision's `refundReview`, never off the route. No navigation.
 - Reject → second confirm (C-35) → on success close both; the errand moves to CANCELLED (backend, IN_PROGRESS → CANCELLED, customer, guarded) and Track shows the cancelled card.
 - `Not now` is **not** offered: the runner is waiting.
 
@@ -90,7 +90,7 @@ States (proposed):
 - Reject: `POST /api/v1/errands/:errandId/price-change/:requestId/reject` (exists; moves the errand to CANCELLED in the same transaction and opens the refund review).
 - needs: api-contract —
   - accept new requests only in IN_PROGRESS (row 49; the API still allows QUOTED … IN_PROGRESS in `PRICE_CHANGEABLE`);
-  - a decrease opens an admin refund review for any already-paid difference (row 48) and the decision says so (e.g. `refundReview: { status } | null`); today `refund_reviews` allows one review per errand and has no decrease trigger (schema row 62 open);
+  - a decrease opens an admin refund review for the difference **only on `send_to_runner`** (rows 48, 86; built for every route today, `price-change.service.ts:186-189`) and the decision says so (`refundReview: { status } | null`); schema approved (rows 62, 71, 94);
   - an increase on `send_to_runner` produces an STK-payable difference (row 42), see `x-merchant-payment` Data.
 - Live: `price_change:requested` on `errand:{id}` (row 23); push (§4.4).
 
@@ -108,11 +108,16 @@ States (proposed):
 - Route choice on `merchant_route_required` (was Q2): inside the modal (row 61).
 - Decrease: admin refund review of the difference (row 48 clarification).
 - When requests can arrive: IN_PROGRESS only (row 49 clarification).
+- Merchant-direct increase (was SQ-8): the customer pays the extra manually to the same Till/Paybill, no STK (row 67).
+- Decrease refund reviews only on `send_to_runner` (row 86).
+- Amounts in the approve button and difference line use `KSh` (row 82).
 
 ## Open questions for the owner
-- SQ-8 (`_shared.md` §9): merchant-direct increase paid without an STK push. Default: pay the same Till/Paybill from the customer's own M-Pesa.
+None.
 
 ## Current vs design
+Spec update 2026-10-09 (rows 67, 82, 86): wording only. The build already shows the refund snackbar only when the decision returns a refund review (`price_change_dialog.dart:56-60`), so a `merchant_direct` decrease reads `Price change approved.` once the API stops opening reviews there. Status unchanged.
+
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. IN_PROGRESS only, increase and decrease variants, route rows on `merchant_route_required` / `merchant_details_missing`, refund-review reject copy and decrease snackbar, already-answered codes.
 
 Round 2 (2026-10-07) and round 3 (2026-10-08, `08f9b26`): PASS against the earlier spec. Spec update 2026-10-08 (rows 37, 44, 48, 49, 55, 61): the build words every request as an increase (`priced higher`, `Approve KSh … increase`), uses the old reject body (`We'll update you about anything you've already paid.`), and shows the route rows only on `merchant_route_required`. It already opens `x-merchant-payment` from the decision's `differencePayment`. Now required: decrease copy and snackbar, the refund-review reject body, and the route rows also on `merchant_details_missing`. Status set to `partial` until re-audited.

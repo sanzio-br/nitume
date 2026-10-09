@@ -71,7 +71,7 @@ States (proposed):
 - `GET /api/v1/runners/:id/profile` (exists; `avgRating`, `errandsCompleted`, `verificationLevel`).
 - `GET /api/v1/errands/:errandId/evidence` (exists; signed short-lived URLs, row 25).
 - `GET /api/v1/payments/:errandId` (exists): fee total and item payment. The client shows only the fee total (row 34 clarification).
-- Refund status: needs: api-contract — customer-readable refund reviews for the errand (`[{ status, refundAmount, paidAt, trigger }]` without the decision note or payout reference), e.g. on `GET /payments/:errandId` or `GET /errands/:id`; today `/refunds` is admin-only. Depends on schema row 62 (open). Hidden while the API returns none.
+- Refund status: `GET /api/v1/errands/:errandId/refunds` (customer view, on `main`) → `[{ status, refundAmount, paidAt, trigger, … }]`. It never carries the decision note (row 69). needs: api-contract (minor) — drop `payoutReference` from the customer view too (`refunds.service.ts` `toCustomerView`); the client never shows it either way. Schema approved (rows 62, 94). Hidden while the API returns none.
 - `GET /api/v1/errands/:errandId/rating` to decide whether to show `Rate this task`.
 - "Verified" = `verificationLevel` ≥ `2_id_verified` (Q4 default).
 
@@ -83,13 +83,17 @@ States (proposed):
 - Report states: AWAITING_CUSTOMER added by OA-9 (was Q5); dispute screens specced in `x-report-problem` (was Q3).
 - Refund status visible to the customer (row 54); refund amount set by an admin (row 37); decrease refunds (row 48).
 - Fee display: total only (row 34 clarification).
+- Refund decision note never shown (row 69, was SQ-10); status and amount only.
+- Refund ceilings (rows 81, 87) are admin-side; nothing changes here. Several reviews per task are listed newest first, as specced.
+- Decrease reviews appear only on `send_to_runner` tasks (row 86). Amounts in `KSh` (row 82).
 
 ## Open questions (non-blocking; build default given)
 - Q2: Active tasks open this screen with a `Track live` button (default, as the table above).
 - Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
-- SQ-10 (`_shared.md` §9): whether the admin's refund decision note is shown. Default: no.
 
 ## Current vs design
+Spec update 2026-10-09 (rows 69, 81, 82, 86, 87): no client change; the build already hides the decision note. Status unchanged.
+
 Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: PASS. `View payment details` now uses Track's `itemAmountDue()` (round-1 minor closed).
 
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Total-only fee row, item amount with route line, refund groups (§11), `View your report` after a dispute, live refresh. Minor: `View payment details` also shows for a send_to_runner item already paid in the combined STK (opens and closes with `Nothing to pay right now.`).
