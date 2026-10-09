@@ -2,7 +2,7 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 529–539 (`#v-notifications`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/account/notifications_screen.dart` on branch `feat/customer-screens`
+- Implementation: `apps/customer_app/lib/src/screens/account/notifications_screen.dart` on branch `feat/customer-integrations`
 - Status: matches-design
 
 ## Purpose
@@ -78,4 +78,6 @@ States (proposed):
 - Q3: Fira Code inside sentence subtitles. Default: no (whole subtitle Fira Sans).
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Shared deep-link table for rows and push taps (`Nav.openNotification`), new event types routed; types the API does not send yet fall back to Task detail.
+
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `Mark all read` sits under the header, not in it (core header trailing slot, need open).

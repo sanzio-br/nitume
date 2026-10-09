@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 443–461 (`#v-evidence-confirm`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
-- Implementation: `apps/customer_app/lib/src/screens/task/evidence_confirm_screen.dart` on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: total-only fee row. See Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/task/evidence_confirm_screen.dart` on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 The runner has finished and uploaded evidence. The customer reviews photos/video, the runner's notes and the payment summary, then confirms completion, or reports a problem.
@@ -79,6 +79,8 @@ States (proposed):
 - Fee lines: total only until pricing rates exist (row 34 clarification).
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Total-only fee row, `Paid to Nitume for your runner`, evidence:uploaded live refresh with polling only while disconnected, expired-link re-fetch.
+
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. `Confirm completion` fires AWAITING_CUSTOMER → COMPLETED only; no escrow wording. Minor: the `(4)` count in the section label renders in Fira Sans (CC-2).
 
 Spec update 2026-10-08 (rows 34, 42): the build shows `Service fee` / `Runner fee` / `Total paid`. Now required: the single `Total (service + runner fee)` row and the `Paid to Nitume for your runner` route line. Status set to `partial` until re-audited.

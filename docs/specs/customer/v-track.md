@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 257–284 (`#v-track`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: live map, socket, location window, price-change gating; see Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 Watch the assigned runner on a map, see ETA and runner identity, follow the status timeline, and act on what the task needs (price change, item payment, evidence review).
@@ -100,6 +100,8 @@ States (proposed):
 - Q4: Show the action buttons only when relevant (default) or always (mockup).
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Google Maps body via core `GoogleTrackingMap` (schematic fallback without a key), socket with polling only while disconnected and `Reconnecting…`, runner marker/ETA only inside the assignment window and cleared on 403/404, Price change only in IN_PROGRESS, item notice only for a merchant-direct amount or an unpaid difference (row 76). Minor: core runner dot is 16 px including the ring (spec 16 px + 3 px ring).
+
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (map SDK row 30 and socket row 29 fallbacks). Minor: the item-payment notice amount renders in Fira Sans (core `NitumeNotice` is string-only, CC-2).
 
 Spec update 2026-10-08 (owner rows 23, 27, 29, 30, 40, 44, 49, 65): the build passed against the earlier fallbacks. Now required: Google Maps body for C-31; socket client with polling only as the disconnected fallback; runner marker and ETA removed outside the assignment window; runner name from the API short name; item-payment notice also for price-change differences. Status set to `partial` until re-audited.

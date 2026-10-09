@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Required by §6 of the system design ("show merchant Till/Paybill for merchant_amount, paid separately"), OA-5 (Till/Paybill shown only when merchant-direct is selected) and rows 42–44, 48 (send-to-runner is platform-mediated; price-change differences). Built from design-system patterns (card, list rows, buttons) and the `.stk-wrap` / `.form-card` mockup components; copy is **(proposed)** unless marked approved.
 - Shared conventions: `_shared.md` (OA-n §0, rows §0.1, payment flows §8)
-- Implementation: `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: variant B is now an STK payment to Nitume; price-change differences; approved snackbar. See Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 Show the customer exactly what to pay for the item/merchant amount and how, kept separate from the service and runner fees (three flows separate).
@@ -37,7 +37,7 @@ Layout (top to bottom):
 **Details pending** (route chosen while details existed, but they are no longer on the errand, or an increase arrived and details are missing): header and intro as above; the card shows only `Amount`; C-40 notice `The merchant's details aren't available yet. We'll notify you when they are.`; CTA `Done`. Details are supplied by the merchant or an admin (row 43); the customer never enters them.
 
 ## Variant B — pay Nitume for your runner (`send_to_runner`, row 42)
-Same STK pattern and state handling as `v-payment` (OA-21, row 52), for the item amount only.
+**Updated for row 76** (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit): the original `send_to_runner` item amount is paid in the combined fee STK on `v-payment`, so variant B now covers only an **approved price-change increase** on that route (row 44). The API starts that difference STK when the customer approves, so the READY step (2 below) is not shown: the screen opens on the STK block (step 3). Until the API returns the target number the body reads `…prompt sent to your phone…`. FAILED → `Try again` re-pushes the difference (`retryDifferencePayment`). Same STK pattern and state handling as `v-payment` (OA-21, row 52), for the difference only.
 
 Layout (top to bottom):
 1. Pushed header (C-10) `Pay the item amount`.
@@ -92,7 +92,7 @@ Rules (same as `v-payment`): idempotency key per attempt, reused on resend of th
 - Variant B: needs: api-contract — an STK initiation for the item amount to Nitume (row 42), e.g. `POST /api/v1/payments/:errandId/item/initiate` `{ paymentId?, paymentMethodId? }` + `Idempotency-Key`, and `stkStatus` (`PENDING | SUCCESS | FAILED | TIMEOUT`) for that payment on `GET /payments/:errandId`. Today the API records send-to-runner amounts and differences as `PENDING` rows with no STK ("the merchant amount never goes through Nitume's charge"), which contradicts row 42.
 - needs: api-contract — notification event type for "merchant details added" (not in `NotificationEventType`).
 - Whether the customer confirms they paid the merchant in variant A (button, M-Pesa message, reconciliation) is open (Q1); the spec records nothing.
-- Live (rows 23, 29): `errand:status_changed` on `errand:{id}` closes the screen if the errand is CANCELLED and refreshes the merchant payment; variant B fallback polling only while the socket is disconnected: `GET /payments/:errandId` every 5 s while PENDING/TIMEOUT and visible.
+- Live (rows 23, 29): `errand:status_changed` on `errand:{id}` closes the screen if the errand is CANCELLED and refreshes the merchant payment; variant B polls `GET /payments/:errandId` every 5 s (then 30 s, up to 10 minutes) while PENDING/TIMEOUT and visible, whether or not the socket is connected, because STK results have no socket event (accepted in the 2026-10-09 re-audit).
 
 ## Accessibility and mobile
 - Each Copy button labelled "Copy Till number"; snackbar announced.
@@ -110,4 +110,6 @@ Rules (same as `v-payment`): idempotency key per attempt, reused on resend of th
 - SQ-7, SQ-8 (`_shared.md` §9): system-design wording vs row 42; merchant-direct increase without an STK.
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Variant A with details-pending state; variant B now follows the price-change difference STK only (row 76; spec updated); nothing-due close with `Nothing to pay right now.`; shared `StkStatusView`.
+
 Re-audit round 3 (2026-10-08, `feat/customer-screens` @ `08f9b26`): PASS against the earlier spec. Spec update 2026-10-08 (rows 42–44, Needs row 41): variant B was a placeholder notice (`We'll show you how to send this amount to your runner here.`); it is now an STK payment to Nitume with the full state table; the nothing-due close must show `Nothing to pay right now.`; increases on both routes and the details-pending state are specced. Status set to `partial` until re-audited.

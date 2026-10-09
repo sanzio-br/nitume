@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 482–506 (`#v-task-detail`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
-- Implementation: `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: total-only fee row, refund status. See Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 Record of one task in any state: status, reference and time, runner, evidence, payment, **refund status** (row 54), the next action, and a way to report a problem.
@@ -90,6 +90,8 @@ States (proposed):
 - SQ-10 (`_shared.md` §9): whether the admin's refund decision note is shown. Default: no.
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Total-only fee row, item amount with route line, refund groups (§11), `View your report` after a dispute, live refresh. Minor: `View payment details` also shows for a send_to_runner item already paid in the combined STK (opens and closes with `Nothing to pay right now.`).
+
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `View your report` only in DISPUTED (spec: also after a dispute existed); `Rate this task` only in COMPLETED (spec updated for row 35 to include CONFIRMED/SETTLED; latent until the payout scheduler runs).
 
 Re-audit round 3 (2026-10-08): PASS against the earlier spec; the round-1 `View your report` and rating minors are fixed. Spec update 2026-10-08, rows 34, 36, 40, 50, 54: the build shows `Service fee` / `Runner fee` / `Total paid` from the payment record and no refund information. Now required: the single `Total (service + runner fee)` row, the refund group (once the API exposes it), the `send_to_runner` route line, and the report row hidden in COMPLETED after the dispute window. Status set to `partial` until re-audited.

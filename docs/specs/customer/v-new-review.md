@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 386–408 (`#v-new-review`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0; fees §8)
-- Implementation: `apps/customer_app/lib/src/screens/wizard/review_screen.dart` on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: no price shown until pricing rates exist; see Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/wizard/review_screen.dart` on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 Submit the task for its authoritative quote. A **preview** of the price, clearly labelled as an estimate (OA-3), appears here only once real pricing rates exist (row 47); until then the screen shows no price at all. Payment does **not** happen here; it happens after the customer accepts the final quote on `x-awaiting-quote` (checkout).
@@ -83,6 +83,8 @@ States (proposed):
 - Send-to-runner payment mechanics (was Q5): platform-mediated STK to Nitume (row 42), handled on `x-merchant-payment`.
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Variant A (preview off): notice, no price and no preview call; item budget card for Buy For Me / Get It For Me only. Variant B kept with the estimate-unavailable state.
+
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (preview endpoint pending row 47: always the estimate-unavailable state). Minor: the notice is a standalone card, not inside an `Estimated price` form card.
 
 Spec update 2026-10-08 (rows 34, 47): the build always shows the "estimate unavailable" notice (`We couldn't estimate the price right now…`), which reads as a failure. Now required: variant A (neutral notice, no price, no preview call, item budget card when budget > 0) behind `AppConfig.quotePreviewEnabled == false`; variant B keeps only the estimated total row. Status set to `partial` until re-audited.

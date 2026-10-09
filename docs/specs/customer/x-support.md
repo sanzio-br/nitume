@@ -2,8 +2,8 @@
 
 - Mockup: the `Support` menu row on `v-profile` (lines 296–305) has no target. OA-18: "a simple configurable Support entry point rather than separate WhatsApp/phone/chat/web systems". No screen is drawn and none is built: this spec covers the row's behaviour and configuration.
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/shell/profile_tab.dart` (Support row) + `screens/auth/otp_screen.dart` (Contact support) on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: `url_launcher` approved, row 39; links must now open when configured)
+- Implementation: `apps/customer_app/lib/src/screens/shell/profile_tab.dart` (Support row) + `screens/auth/otp_screen.dart` (Contact support) on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 One place for a customer to reach Nitume support, pointing at a single configurable target.
@@ -44,6 +44,8 @@ None.
 - Q1: The support target value (URL, WhatsApp number or phone number) for each environment.
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Row and OTP `Contact support` link open the configured URI externally; hidden when unconfigured.
+
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Row hidden while not configured / no opener (SQ-2 fallback).
 
 Spec update 2026-10-08 (row 39): the build hides the row because there is no opener. Now required: open `AppConfig.supportLink` with `url_launcher` when configured (row shown), with the open-failure snackbar. The target value per environment (Q1) is still needed. Status set to `partial`.
