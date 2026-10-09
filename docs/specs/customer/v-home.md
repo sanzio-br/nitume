@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 225–253 (`#v-home`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/home_tab.dart` (inside `home_shell.dart`)
-- Status: partial
+- Implementation: `apps/customer_app/lib/src/screens/shell/home_tab.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Landing screen after sign-in: greet the customer by name, start a new task by category, jump to the active task, and reopen recent tasks.
@@ -110,4 +110,4 @@ States (proposed):
 - Q8: Several active errands. Default: one card + `+N more in progress`.
 
 ## Current vs design
-See gap report. Summary: all content hard-coded; categories are a horizontal scroll of 56px squares with short labels (including Business); `SliverAppBar`; active-card tag uses green 20% tint + green text; full-width track button; chip colours via alpha; unregistered `'FiraCode'`; no navigation.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `+N more in progress` count renders in Fira Sans (core link label is string-only, CC-2); with no name the greeting is shown as the 21/700 title instead of the greeting line only. ETA in the active-card meta waits for rows 29/30.

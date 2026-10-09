@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 286–294 (`#v-history`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/history_tab.dart`
-- Status: partial
+- Implementation: `apps/customer_app/lib/src/screens/shell/history_tab.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 List of the customer's finished tasks with status, date, runner and amount paid.
@@ -60,4 +60,4 @@ States (proposed):
 - Q3: Amount = service + runner fee only. Default as stated.
 
 ## Current vs design
-See gap report. Summary: hard-coded sample cards; chips use `statusColor.withValues(alpha: 0.1)`; unregistered `'FiraCode'`; private `_HistoryCard`; no loading/empty/error, no pagination; taps inert.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: one `GET /payments/:errandId` per card for the amount (fee total missing on the list item, api-contract need open).

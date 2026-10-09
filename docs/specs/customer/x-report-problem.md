@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Referenced by the `v-task-detail` row "Report a problem with this task" and §3.2 `POST /disputes`. Built from design-system form patterns (card, field, primary button, chips) and mockup components (`.ov-header`, `.form-card`, `.cta-fixed`); copy is **(proposed)**.
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/task/report_problem_screen.dart` (write + read) on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Let the customer tell Nitume what went wrong with a task (opens a dispute, errand → DISPUTED), and later see the report and its status.
@@ -53,6 +53,7 @@ C-10, C-07, C-17 (multiline + counter), C-40, C-05, C-08, C-35, C-01. NEW: C-35,
 - Errors: 409 already reported `You've already reported this task.` + button `View your report`; 409/400 state not allowed `This task can't be reported right now.`; other `Couldn't send your report. Try again.`
 - Discard dialog: title `Discard your report?`, buttons `Discard` (outline, red text) / `Keep writing` (C-01).
 - Read-mode labels: `What you told us`, `Outcome`, `Reported …`, `Resolved …`
+- Read-mode load error: C-33 `Couldn't load your report.` + `Try again`; no dispute found for the errand: C-33 empty `No report for this task.` (builder copy, accepted in the 2026-10-07 re-audit)
 
 ## Numeric fields (Fira Code)
 - Reference, timestamps, character counter.
@@ -72,4 +73,4 @@ C-10, C-07, C-17 (multiline + counter), C-40, C-05, C-08, C-35, C-01. NEW: C-35,
 - Pending row 37: refund wording for customer-favourable outcomes; none shown until decided.
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Builder copy accepted: read-mode `Couldn't load your report.` and `No report for this task.` (see Copy).

@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Referenced by `v-payment-methods` "+ Add payment method". M-Pesa only (OA-10: no cards). Built from design-system form patterns and the `.form-card` / `.cta-fixed` mockup components; copy is **(proposed)**.
 - Shared conventions: `_shared.md`
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/account/payment_method_form_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Save an M-Pesa number that STK pushes can be sent to, optionally as the default; edit or delete an existing one.
@@ -34,6 +34,8 @@ C-10, C-17 (phone, text), C-36, C-05, C-04, C-35, C-01. NEW: C-35, C-36.
 - Labels: `M-Pesa number`, `Name on this number (optional)`, `Use as my default`
 - CTA: `Save`
 - Remove: `Remove this number`; dialog title `Remove this number?`, body `You can add it again later.`, buttons `Remove` (outline, red text) / `Keep` (C-01)
+- Discard dialog (back with changes): title `Discard your changes?`, buttons `Discard` (outline, red text) / `Keep editing` (C-01) (builder copy, accepted in the 2026-10-07 re-audit).
+- Remove error (proposed, re-audit): `Couldn't remove this number. Try again.`
 - Errors: invalid number `Enter a valid Kenyan number, e.g. +254 712 345 678`; duplicate (409) `This number is already saved.`; save error `Couldn't save. Try again.`; removing the default when others exist: allowed, the API picks or clears the default (show whatever the list returns).
 
 ## Numeric fields (Fira Code)
@@ -54,4 +56,4 @@ C-10, C-17 (phone, text), C-36, C-05, C-04, C-35, C-01. NEW: C-35, C-36.
 - Q1 (payments / security): should a new M-Pesa number be verified before use (OTP or a KSh 1 STK test)? Default: no verification; the STK PIN prompt on that phone is the check.
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: remove failure reuses `Couldn't save. Try again.` Builder copy `Discard your changes?` accepted (see Copy).

@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Required by OA-3 (authoritative REQUESTED → QUOTED → ACCEPTED flow after the wizard preview) and OA-5 (merchant payment route chosen at checkout). Built from design-system patterns and existing mockup components (`.stk-wrap`, `.form-card`, `.receipt-row`, `.chip` column, `.pm-card`, `.cta-fixed`). Copy is **(proposed)** unless marked "mockup".
 - Shared conventions: `_shared.md` (OA-n §0, fees and routes §8)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 One screen per errand with two states:
@@ -17,7 +17,7 @@ One screen per errand with two states:
   - Checkout CTA → errand ACCEPTED → push `v-payment`.
   - "Pay with … Change" → push `v-payment-methods` in select mode; selecting a card pops back with that method.
   - "Cancel task" / "Decline and cancel task" → C-35 confirm → CANCELLED → pop to Home with snackbar `Task cancelled.`
-- If the errand is already ACCEPTED when opened: replace with `v-payment`. If PAYMENT_CONFIRMED or later: replace with `v-track`. CANCELLED / EXPIRED: replace with `v-task-detail`.
+- If the errand is already ACCEPTED when opened: show the checkout state again with chip `Awaiting payment` (the route and payer must be chosen before the STK push; amended in the 2026-10-07 re-audit to match the build). The CTA skips the accept call and pushes `v-payment`. `v-payment` sends an ACCEPTED errand with an item amount and no route back here. If PAYMENT_CONFIRMED or later: replace with `v-track`. CANCELLED / EXPIRED: replace with `v-task-detail`.
 
 ## Task states
 REQUESTED (waiting), QUOTED (checkout). Transitions fired here: QUOTED → ACCEPTED (customer); REQUESTED → CANCELLED and QUOTED → CANCELLED (customer, §3.3).
@@ -85,7 +85,7 @@ States:
 
 ## Data
 - Errand: `GET /api/v1/errands/:id` (exists; `reference`, `title` need: api-contract per OA-15; merchant details need: api-contract per SQ-6).
-- Final quote: `GET /api/v1/errands/:id/quote` (exists on `feat/api-customer-gaps`). needs: api-contract — return customer-facing `serviceFee`, `runnerFee`, `itemAmount`, `total`, `expiresAt`. **TODO pending row 34**: mapping of quote components to the two fee lines; the client renders the fields only.
+- Final quote: `GET /api/v1/errands/:id/quote` (exists on `feat/api-customer-gaps`). needs: api-contract — return customer-facing `serviceFee`, `runnerFee`, `itemAmount`, `total`, `expiresAt`. **TODO pending row 34**: mapping of quote components to the two fee lines; the client renders the fields only. Build default until the API returns `serviceFee` / `runnerFee` (clarified in the 2026-10-07 re-audit): the Final quote card shows only the total row `Total (service + runner fee)` with `quote.total`, and the CTA reads `Confirm & pay KSh <quote.total> →`. The internal quote components (base, distance, time, urgency, complexity, premium) are never listed to the customer (OA-4).
 - Accept: `PATCH /api/v1/errands/:id/status { to: 'ACCEPTED' }` (exists).
 - Cancel: `PATCH /api/v1/errands/:id/status { to: 'CANCELLED' }` (exists for REQUESTED/QUOTED).
 - Route + payer: carried to `v-payment`, which calls `POST /payments/:errandId/initiate` with `{ flow, paymentMethodId?, idempotencyKey }` (A-6 and A-7 blocked; idempotency pending row 24).
@@ -103,4 +103,4 @@ States:
 - Q2: Should the checkout allow changing the route after payment (e.g. merchant details arrive later)? Default: no; route is fixed once the fees are paid.
 
 ## Current vs design
-Not built.
+Round 2 (2026-10-07, `feat/customer-screens` @ `ba45633`): PASS. Final quote shows only `Total (service + runner fee)` from `quote.total`; CTA `Confirm & pay KSh … →` (amount still Fira Sans, core CC-2); ACCEPTED shows checkout again. Round 1 FAIL details: `docs/audits/customer-reaudit-2026-10-07.md`.

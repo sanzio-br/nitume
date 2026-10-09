@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 317–327 (`#v-auth-phone`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
-- Implementation: `apps/customer_app/lib/src/screens/auth/otp_login_screen.dart` (phone step, `AuthFormStep.phone`)
-- Status: partial
+- Implementation: `apps/customer_app/lib/src/screens/auth/phone_screen.dart` (+ `auth_frame.dart`) on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 First screen for a signed-out user. Collects a Kenyan phone number and requests an OTP. Same screen for new and returning users.
@@ -72,4 +72,4 @@ States (proposed copy; OTP policy from OA-17):
 - Q2: Terms and Privacy URLs: see `x-legal.md`.
 
 ## Current vs design
-See `docs/audits/customer-gap-report.md#v-auth-phone`. Summary: phone and OTP are one stateful screen; copy differs ("Continue" vs "Send code", extra footer, missing legal line); brand is a blue rounded square with a handyman icon; field labelled "Phone number" with `0712 345 678` hint; auth calls bypass `AuthRepository`; the raw (not normalized) phone is sent; error text is red (now allowed, OA-13).
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Split from the OTP step; copy, states (invalid, cooldown, hourly limit, delivery failure) and Fira Code phone input match. Minor: legal link spans cannot get 48dp hit areas as `TextSpan`s (links are inactive until SQ-2).

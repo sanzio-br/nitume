@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Referenced by the legal line on `v-auth-phone` ("Terms & Privacy Policy"). No in-app screen is designed; the website mockup has no legal pages either.
 - Shared conventions: `_shared.md`
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/auth/phone_screen.dart` (`_LegalLine`) on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Let a user read the Terms of Service and Privacy Policy before signing in.
@@ -45,4 +45,4 @@ None.
 - SQ-2: approve `url_launcher`.
 
 ## Current vs design
-Not built. The current phone screen has no legal line at all.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Plain text while no opener/URLs (SQ-2 fallback). Minor: no widget test for the legal line.

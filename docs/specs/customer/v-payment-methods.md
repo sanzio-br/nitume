@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 519–527 (`#v-payment-methods`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: none (`profile_screen.dart` placeholder is unreachable)
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/account/payment_methods_screen.dart` (manage + select mode) on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Show and manage the customer's M-Pesa numbers used for STK pushes. **Cards are out of MVP** (OA-10): the mockup's Visa card is not built.
@@ -60,4 +60,4 @@ States (proposed):
 - Q3: Green fill for the M-Pesa badge (green outside actions/states). Default: keep as the payment-brand identifier, as drawn.
 
 ## Current vs design
-Not built. Profile row `Payment methods` has a TODO (`profile_tab.dart:80`).
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: the masked sign-in number in the empty line renders in Fira Sans (fixable in the app with a numeric span).

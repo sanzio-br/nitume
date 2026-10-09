@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 482–506 (`#v-task-detail`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Record of one task in any state: status, reference and time, runner, evidence, payment breakdown, the next action, and a way to report a problem.
@@ -26,10 +26,10 @@ Any. Primary action button (C-01, full width, margin `0 20 14`, under the summar
 | ACCEPTED | `Pay now` | `v-payment` |
 | PAYMENT_CONFIRMED … IN_PROGRESS | `Track live` | `v-track` |
 | AWAITING_CUSTOMER | `Review evidence` | `v-evidence-confirm` |
-| COMPLETED (no rating yet) | `Rate this task` | `v-rate` |
+| COMPLETED, CONFIRMED or SETTLED (no rating yet) | `Rate this task` | `v-rate` |
 | others | none | — |
 
-Report row visible in IN_PROGRESS, AWAITING_CUSTOMER and COMPLETED (§3.3 + OA-9). Hidden in all other states (including CONFIRMED/SETTLED, pending row 35). DISPUTED shows `View your report`.
+Report row visible in IN_PROGRESS, AWAITING_CUSTOMER and COMPLETED (§3.3 + OA-9). Hidden in all other states (including CONFIRMED/SETTLED: row 35 answered, they are system-only states after the dispute window and the customer sees them as `Completed`). DISPUTED shows `View your report`.
 
 ## Layout (top to bottom)
 1. Pushed header (C-10) `Task detail`.
@@ -83,4 +83,4 @@ States (proposed):
 - Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
 
 ## Current vs design
-Not built. Home recent rows and History cards have `// TODO: Navigate to task detail`.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `View your report` only in DISPUTED (spec: also after a dispute existed); `Rate this task` only in COMPLETED (spec updated for row 35 to include CONFIRMED/SETTLED; latent until the payout scheduler runs).

@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Required by OA-2 (`display_name` collected after first sign-in). Built only from design-system patterns and the `.auth-wrap` layout of `v-auth-phone`; all copy is **(proposed)**.
 - Shared conventions: `_shared.md`
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/auth/name_capture_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Collect the customer's display name once, right after the first successful sign-in, so the app can greet them and runners see who the task is for.
@@ -60,4 +60,4 @@ None.
 - SQ-3 (`_shared.md` §9): whether runners see the customer's full name or a short form is an API/privacy decision.
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: no `TextCapitalization.words` (core `NitumeField` has no parameter yet; flutter-customer need open).

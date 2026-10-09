@@ -2,8 +2,8 @@
 
 - Mockup: the `Support` menu row on `v-profile` (lines 296–305) has no target. OA-18: "a simple configurable Support entry point rather than separate WhatsApp/phone/chat/web systems". No screen is drawn and none is built: this spec covers the row's behaviour and configuration.
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: none (`profile_tab.dart` row is a TODO)
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/shell/profile_tab.dart` (Support row) + `screens/auth/otp_screen.dart` (Contact support) on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 One place for a customer to reach Nitume support, pointing at a single configurable target.
@@ -45,4 +45,4 @@ None.
 - SQ-2: approve `url_launcher`.
 
 ## Current vs design
-`profile_tab.dart` shows the row with a TODO handler.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Row hidden while not configured / no opener (SQ-2 fallback).

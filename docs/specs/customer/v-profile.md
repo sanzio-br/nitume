@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 296–305 (`#v-profile`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/profile_tab.dart` (`profile_screen.dart` is an unused placeholder)
-- Status: partial
+- Implementation: `apps/customer_app/lib/src/screens/shell/profile_tab.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Account hub: identity summary and links to addresses, payment methods, notifications, support, and log out.
@@ -63,4 +63,4 @@ States (proposed):
 - Q4: Edit-profile action (name, email)? Not drawn. Default: none (see `x-name-capture.md` Q1).
 
 ## Current vs design
-See gap report. Summary: static name/meta; private `_MenuRow`; Log out chevron red (should stay slate-400); "Recurring tasks" row present (now out of MVP); all taps TODO including Log out; unregistered `'FiraCode'` on the meta line.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS.

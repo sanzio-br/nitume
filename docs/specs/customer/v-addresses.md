@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 508–517 (`#v-addresses`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: none (`profile_screen.dart` is an unreachable placeholder)
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/account/addresses_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Manage the customer's saved places (Home, Office, …) offered as shortcuts when creating tasks.
@@ -49,4 +49,4 @@ States (proposed):
 - Edit / delete / set-default and the add form (was Q1): specced in `x-address-form.md`.
 
 ## Current vs design
-Not built. Profile row `Saved addresses` has a TODO (`profile_tab.dart:74`).
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS.

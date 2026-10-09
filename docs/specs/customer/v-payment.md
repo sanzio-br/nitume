@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 410–421 (`#v-payment`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/checkout/payment_screen.dart` on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Send the M-Pesa STK push for the **service fee + runner fee only** and follow it to a result: PENDING, SUCCESS, FAILED or TIMEOUT (OA-21).
@@ -54,6 +54,8 @@ Other states (proposed):
 | TIMEOUT | `Still checking your payment` | `M-Pesa hasn't confirmed yet. If you entered your PIN, don't pay again. We'll update this screen as soon as we hear back.` | primary `Check again`, outline `Send a new prompt` |
 | Initiate error (network / 5xx) | `Couldn't send the prompt` | `Check your connection and try again.` | primary `Try again`, outline `Back` |
 
+Load failure (errand or payment could not be read): C-33 `Couldn't load this payment.` + `Try again` (builder copy, accepted in the 2026-10-07 re-audit).
+
 TIMEOUT is **not** a failure (OA-21): the screen keeps listening; a late SUCCESS still moves to Track, and a late FAILED shows the FAILED state.
 
 ## Rules
@@ -87,4 +89,4 @@ TIMEOUT is **not** a failure (OA-21): the screen keeps listening; a late SUCCESS
 - Payer number: OA-21 (was Q3).
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: provider failure reason not shown as a second line; payer shown as the saved masked number. Builder copy `Couldn't load this payment.` accepted (see Copy).

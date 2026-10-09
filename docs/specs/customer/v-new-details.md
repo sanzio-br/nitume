@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 361–384 (`#v-new-details`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (+ `task_draft.dart`) on branch `feat/customer-screens`
+- Status: matches-design
 
 ## Purpose
 Collect what the runner must do, where, by when, the item budget, and (for Buy For Me) a structured shopping list.
@@ -67,6 +67,8 @@ Validation (proposed copy; shown on Continue, then live):
 - Budget over 1,000,000: `Enter an amount up to KSh 1,000,000.`
 - Buy For Me with budget 0: `Enter a budget for the items.`
 - Title over 60 characters: `Keep the title under 60 characters.`
+- Title of 1–2 characters (the API accepts 3–120): `Use at least 3 characters, or leave it empty.` (builder copy, accepted in the 2026-10-07 re-audit)
+- No Places client (pending row 30): C-40 notice under the location card `Place search isn't available yet. Choose one of your saved addresses that has a map location.` (builder copy, accepted in the 2026-10-07 re-audit); remove when Places ships.
 - Places error/offline: inside the suggestions `Couldn't search places. Check your connection.`
 - CTA is always enabled; tapping with errors scrolls to the first error.
 
@@ -102,4 +104,4 @@ Validation (proposed copy; shown on Continue, then live):
 - Q2: Is "end of day" right for Today/Tomorrow, or should those chips open a time picker? Default: 23:59 local.
 
 ## Current vs design
-Not built.
+Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (Places pending row 30, saved-address fallback). Minor: a chosen place shows as the field hint (slate-400) instead of a value (core `PlaceAutocompleteField` initial value, need open); budget placeholder `0` instead of `KSh 0`. Builder copy accepted: title minimum, no-Places notice (see Copy).
