@@ -358,7 +358,7 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
       return {
         eventType: NotificationEventType.PRICE_CHANGE_REQUESTED,
         title: 'Price change requested',
-        body: `Your runner asked to change the item price from KSh ${job.fromPrice} to KSh ${job.toPrice}. Review it to continue.`,
+        body: `Your runner asked to change the item price from ${formatKsh(job.fromPrice)} to ${formatKsh(job.toPrice)}. Review it to continue.`,
       };
     case 'refund':
       return refundCopy(job.status, job.refundAmount);
@@ -367,8 +367,8 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.QUOTE_REISSUED,
         title: 'New quote for your task',
         body: job.acceptanceRequired
-          ? `Your task has a new quote of KSh ${job.total}. Accept it to continue to payment.`
-          : `Your task has a new quote of KSh ${job.total}. Review it to continue.`,
+          ? `Your task has a new quote of ${formatKsh(job.total)}. Accept it to continue to payment.`
+          : `Your task has a new quote of ${formatKsh(job.total)}. Review it to continue.`,
       };
     case 'quote_requested':
       return {
@@ -387,13 +387,27 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
   }
 };
 
+/**
+ * App money format (row 82): `KSh 40,000`, `KSh 1,250.50`. Whole amounts
+ * drop the decimals; anything else keeps two.
+ */
+export const formatKsh = (value: string | number | null | undefined): string => {
+  const n = Number(value ?? 0);
+  const amount = Number.isFinite(n) ? n : 0;
+  const whole = Math.round(amount * 100) % 100 === 0;
+  return `KSh ${amount.toLocaleString('en-US', {
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  })}`;
+};
+
 const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
   switch (status) {
     case 'approved':
       return {
         eventType: NotificationEventType.REFUND_APPROVED,
         title: 'Refund approved',
-        body: `A refund of KSh ${amount ?? '0.00'} was approved for your task.`,
+        body: `A refund of ${formatKsh(amount)} was approved for your task.`,
       };
     case 'no_refund':
       return {
@@ -405,7 +419,7 @@ const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
       return {
         eventType: NotificationEventType.REFUND_REFUNDED,
         title: 'Refund sent',
-        body: `Your refund of KSh ${amount ?? '0.00'} has been sent to M-Pesa.`,
+        body: `Your refund of ${formatKsh(amount)} has been sent to M-Pesa.`,
       };
     default:
       return null;

@@ -9,6 +9,7 @@ import {
   NotificationsService,
   PUSH_JOB,
   copyFor,
+  formatKsh,
   notificationEventTypeFor,
 } from './notifications.service';
 
@@ -78,6 +79,12 @@ describe('NotificationEventType (A-14)', () => {
     }
   });
 
+  it('formats money as the app does (row 82)', () => {
+    expect(formatKsh('40000.00')).toBe('KSh 40,000');
+    expect(formatKsh('1250.50')).toBe('KSh 1,250.50');
+    expect(formatKsh(null)).toBe('KSh 0');
+  });
+
   it('uses KSh, never KES, in every amount copy (row 82)', () => {
     const bodies = [
       copyFor({ kind: 'price_change', errandId: 'e', requestId: 'r', fromPrice: '500.00', toPrice: '650.00' }),
@@ -104,7 +111,7 @@ describe('NotificationEventType (A-14)', () => {
     ).toMatchObject({ eventType: 'price_change.requested' });
     expect(
       copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'refunded', refundAmount: '400.00' }),
-    ).toMatchObject({ eventType: 'refund.refunded', body: expect.stringContaining('400.00') });
+    ).toMatchObject({ eventType: 'refund.refunded', body: expect.stringContaining('KSh 400') });
     expect(
       copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'pending_review', refundAmount: null }),
     ).toBeNull();
