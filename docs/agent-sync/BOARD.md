@@ -270,3 +270,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-09 | Customer re-audit round 4: all screens PASS (4 minors sent to flutter-customer); docs/owner-answers-3 and docs/customer-reaudit-3 merge cleanly; question 103 | 9095405 |
 | 2026-10-09 | design-auditor aligned x-report-problem with e8f4196 on docs/customer-reaudit-3; row 103 withdrawn | 786e21e |
 | 2026-10-09 | flutter-customer fixed the customer round-4 re-audit minors (stale comment, single Contact support link, deep-link and access-revoked tests); 110 app tests | aa9af77 |
+| 2026-10-09 | web-parity fixed p-refunds FAIL #1 (net ceiling in Refundable column) and m-6/m-7/m-9; 139 admin tests. p-refunds re-audit round 2 started | 0592e9f, d84b2aa, 1c87c75, c1630ec |
