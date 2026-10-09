@@ -5,7 +5,7 @@ Applies to every `docs/specs/customer/*.md`. Each view spec references the compo
 Sources (real paths):
 - Mockup: `docs/design/nitume_customer_app.html`
 - Design system: `docs/design/nitume_design_system.html`
-- System design: `docs/design/Nitume_System_Design.md`. §3.3 (state machine) was updated on 2026-10-08 per BOARD row 56; the copy at `docs/Nitume_System_Design.md` was not touched on this branch and is stale for §3.3 until someone syncs it
+- System design: `docs/design/Nitume_System_Design.md`, the only copy (canonical per row 70; the duplicate at `docs/Nitume_System_Design.md` was removed 2026-10-09). §3.3 (state machine) follows row 56; §2.2 and §6 (payments) follow rows 66 and 76
 - Owner answers: `docs/audits/customer-gap-report.md` → "Questions for the owner (consolidated)", answers 1–21 (= BOARD rows 2–22, cited as `OA-n`), plus BOARD rows 1 and 23–65 (answered 2026-10-07/08, cited as `row N`, index in §0.1). Rows 34, 48, 49 and 58 carry "Clarified 2026-10-08" notes; the clarified wording wins
 - Implementation: `apps/customer_app/lib/src/**`; shared package `packages/nitume_core/lib/src/**`
 - Shared widgets and data layer: core-ui branches `feat/core-customer-widgets`, `feat/core-owner-decisions`, `feat/core-spec-widgets` (merged into `feat/customer-screens`, not yet on `main`)

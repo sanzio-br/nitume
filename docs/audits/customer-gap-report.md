@@ -508,7 +508,7 @@ SQ-1 modal scrim colour; SQ-2 `url_launcher`; SQ-3 runner short names from API o
 
 ## Questions for the owner (new)
 
-- **SQ-7** (payments, system design): row 42 has the customer pay the item amount to Nitume for `send_to_runner`, but `Nitume_System_Design.md` §2.2 and §6 still say Nitume never takes customer purchase money. Confirm the settlement model so the text outside §3.3 can be corrected.
+- **SQ-7** (payments, system design): row 42 has the customer pay the item amount to Nitume for `send_to_runner`, but `docs/design/Nitume_System_Design.md` §2.2 and §6 still say Nitume never takes customer purchase money. Confirm the settlement model so the text outside §3.3 can be corrected.
 - **SQ-8** (payments): a `merchant_direct` increase cannot be pushed by STK on the merchant's own Till/Paybill without a merchant integration. Default: the customer pays the extra to the same Till/Paybill from their own M-Pesa.
 - **SQ-9** (state machine, payments): after `quote_expired`, does the customer request a new quote (default, new endpoint, errand stays QUOTED) or do ops re-quote automatically?
 - **SQ-10** (privacy): may the customer see the admin's refund decision note? Default: no.

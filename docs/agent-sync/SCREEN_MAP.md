@@ -8,7 +8,7 @@ View ids come from the `data-view` / `id="v-…"` / `data-p` / `page-…` attrib
 | What | Path |
 |---|---|
 | Mockups + design system | `docs/design/` (`nitume_customer_app.html`, `nitume_runner_app.html`, `nitume_admin_dashboard.html`, `nitume_website.html`, `nitume_design_system.html`) |
-| System design | `docs/design/Nitume_System_Design.md`. §3.3 updated 2026-10-08 (owner row 56) on `docs/customer-answers-2`; the copy at `docs/Nitume_System_Design.md` was not updated there and is stale for §3.3 until synced |
+| System design | `docs/design/Nitume_System_Design.md` (the only copy; canonical per owner row 70, 2026-10-09). The duplicate at `docs/Nitume_System_Design.md` had no content of its own (its §3.3 was the pre-row-56 version) and was removed on `docs/owner-answers-3`. Any reference to `Nitume_System_Design.md` without a folder means this file |
 | Business plan | `docs/Nitume_Business_Plan.docx` |
 | Specs | `docs/specs/<surface>/<view-id>.md`; customer shared conventions in `docs/specs/customer/_shared.md` |
 | Audits | `docs/audits/<surface>-gap-report.md` |
