@@ -81,6 +81,15 @@ abstract final class NitumeDesignChoices {
   /// slate-line hairline instead of the mockup's off-palette black shadow.
   static const bool overlayUsesHairline = true;
 
+  // ------------------------------------------------------------ modal scrim
+
+  /// **Open** (SQ-1, `_shared.md` §2 / §9). Barrier colour behind
+  /// `NitumeDialog` (C-35). The design system has no scrim token; the
+  /// proposal, used until the owner answers, is Deep Trust Blue `#0B2545`
+  /// at 50% opacity (alpha `0x80`), a derived tone of an existing colour.
+  /// Material's default black barrier is never used.
+  static const Color modalScrim = Color(0x800B2545);
+
   // ------------------------------------------------------- accessibility (open)
 
   /// **Open** (BOARD row 33). The design-system chip pairs measure below WCAG

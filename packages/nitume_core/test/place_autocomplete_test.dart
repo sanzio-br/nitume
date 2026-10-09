@@ -63,4 +63,20 @@ void main() {
     expect(picked?.addressText, 'Nyali, Mombasa');
     expect(places.sessions, hasLength(1), reason: 'one session per search');
   });
+
+  testWidgets('initialValue shows as field text and follows updates',
+      (tester) async {
+    Widget build(String? v) => PlaceAutocompleteField(
+          service: _FakePlaces(),
+          onPlaceSelected: (_) {},
+          hint: 'Search a place',
+          initialValue: v,
+        );
+    await pumpThemed(tester, build('Nyali, Mombasa'));
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, 'Nyali, Mombasa');
+    expect(find.text('Nyali, Mombasa'), findsOneWidget);
+    await pumpThemed(tester, build('Bamburi, Mombasa'));
+    expect(field.controller!.text, 'Bamburi, Mombasa');
+  });
 }

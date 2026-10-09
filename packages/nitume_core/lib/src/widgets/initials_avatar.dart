@@ -20,7 +20,8 @@ enum InitialsAvatarSize {
   final double fontSize;
 }
 
-/// C-12. Blue circle with white 700 initials.
+/// C-12. Blue circle with white 700 initials, or a white person glyph when
+/// there are no initials (no display name yet).
 class InitialsAvatar extends StatelessWidget {
   const InitialsAvatar({
     super.key,
@@ -30,15 +31,17 @@ class InitialsAvatar extends StatelessWidget {
     this.semanticLabel,
   });
 
-  /// Builds initials from a display name (`Brian K.` → `BK`).
+  /// Builds initials from a display name (`Brian K.` → `BK`). A `null` or
+  /// blank [name] shows the person glyph.
   InitialsAvatar.fromName(
-    String name, {
+    String? name, {
     super.key,
     this.size = InitialsAvatarSize.small,
     this.onTap,
     this.semanticLabel,
-  }) : initials = initialsFor(name);
+  }) : initials = initialsFor(name ?? '');
 
+  /// Up to two letters. Empty shows the person glyph.
   final String initials;
   final InitialsAvatarSize size;
   final VoidCallback? onTap;
@@ -64,14 +67,21 @@ class InitialsAvatar extends StatelessWidget {
         color: NitumeColors.blue,
         shape: BoxShape.circle,
       ),
-      child: Text(
-        initials,
-        style: NitumeTextStyles.rowTitle.copyWith(
-          fontSize: size.fontSize,
-          fontWeight: FontWeight.w700,
-          color: NitumeColors.white,
-        ),
-      ),
+      child: initials.trim().isEmpty
+          ? Icon(
+              Icons.person_outline_rounded,
+              key: const ValueKey('initials-avatar-glyph'),
+              color: NitumeColors.white,
+              size: size.diameter * 0.5,
+            )
+          : Text(
+              initials,
+              style: NitumeTextStyles.rowTitle.copyWith(
+                fontSize: size.fontSize,
+                fontWeight: FontWeight.w700,
+                color: NitumeColors.white,
+              ),
+            ),
     );
     if (onTap == null) {
       return Semantics(

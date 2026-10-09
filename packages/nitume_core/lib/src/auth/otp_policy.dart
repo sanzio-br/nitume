@@ -26,32 +26,56 @@ abstract final class OtpPolicy {
 /// Presentational OTP error states. The screen picks the copy and whether
 /// the code boxes stay enabled; [requiresNewCode] tells it when the current
 /// code can no longer succeed.
+///
+/// Mapped from the API's `code` (`OtpErrorCode` in
+/// `apps/api/src/auth/otp.service.ts`); see [fromApiException].
 enum OtpErrorKind {
-  /// Wrong code; more attempts remain.
-  incorrect,
+  /// `otp_incorrect`: wrong code; more attempts remain
+  /// (`NitumeApiException.intDetail('attemptsRemaining')`).
+  incorrect('otp_incorrect'),
 
-  /// The code expired (5 minutes) or no active code exists.
-  expired,
+  /// `otp_expired`: the code expired (5 minutes) or a newer one replaced it.
+  expired('otp_expired'),
 
-  /// All 5 attempts used on this code.
-  attemptsExhausted,
+  /// `otp_attempts_exhausted`: all 5 attempts used on this code.
+  attemptsExhausted('otp_attempts_exhausted'),
 
-  /// Resend asked for inside the 60s cooldown.
-  resendTooSoon,
+  /// `otp_not_requested`: no unused code exists for this phone.
+  notRequested('otp_not_requested'),
 
-  /// Hourly request limit reached.
-  requestLimitReached;
+  /// `otp_resend_cooldown`: resend inside the 60s cooldown. Restart the
+  /// countdown from `NitumeApiException.retryAfter`.
+  resendTooSoon('otp_resend_cooldown'),
+
+  /// `otp_rate_limited`: hourly request limit reached; wait
+  /// `NitumeApiException.retryAfter`.
+  requestLimitReached('otp_rate_limited'),
+
+  /// `otp_delivery_failed`: the SMS could not be sent; safe to retry now.
+  deliveryFailed('otp_delivery_failed');
+
+  const OtpErrorKind(this.code);
+
+  /// API error code.
+  final String code;
 
   /// True when the customer must request a new code before verifying again.
-  bool get requiresNewCode => this == expired || this == attemptsExhausted;
+  bool get requiresNewCode =>
+      this == expired || this == attemptsExhausted || this == notRequested;
 
   /// Classifies an API error from `/auth/otp/request` or `/auth/otp/verify`.
   /// Returns `null` for anything else (network, server errors).
   ///
-  /// The API sends no machine-readable code yet, so this matches the
-  /// messages in `apps/api/src/auth/otp.service.ts`. Fragile by design until
-  /// api-contract adds an error code; keep the two in sync.
+  /// Uses the API `code`. Responses without a code (older API builds) fall
+  /// back to matching the message text and status.
   static OtpErrorKind? fromApiException(NitumeApiException error) {
+    final code = error.code;
+    if (code != null) {
+      for (final kind in values) {
+        if (kind.code == code) return kind;
+      }
+      return null;
+    }
     final m = error.message.toLowerCase();
     if (error.statusCode == 429) {
       if (m.contains('please wait')) return resendTooSoon;
@@ -59,7 +83,10 @@ enum OtpErrorKind {
     }
     if (error.statusCode == 401) {
       if (m.contains('too many incorrect')) return attemptsExhausted;
-      if (m.contains('no active verification code')) return expired;
+      if (m.contains('expired') || m.contains('no active verification code')) {
+        return expired;
+      }
+      if (m.contains('no verification code')) return notRequested;
       if (m.contains('incorrect verification code')) return incorrect;
     }
     return null;

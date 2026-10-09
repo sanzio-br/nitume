@@ -66,8 +66,19 @@ class NitumeApiClient {
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
       _send(() => _dio.get<dynamic>(path, queryParameters: query));
 
-  Future<dynamic> post(String path, {Object? data}) =>
-      _send(() => _dio.post<dynamic>(path, data: data));
+  /// [headers] adds request headers (e.g. `Idempotency-Key`).
+  Future<dynamic> post(
+    String path, {
+    Object? data,
+    Map<String, String>? headers,
+  }) =>
+      _send(
+        () => _dio.post<dynamic>(
+          path,
+          data: data,
+          options: headers == null ? null : Options(headers: headers),
+        ),
+      );
 
   Future<dynamic> patch(String path, {Object? data}) =>
       _send(() => _dio.patch<dynamic>(path, data: data));
@@ -91,8 +102,12 @@ class NitumeApiClient {
     return _asList(data);
   }
 
-  Future<Map<String, dynamic>> postMap(String path, {Object? data}) async =>
-      _asMap(await post(path, data: data));
+  Future<Map<String, dynamic>> postMap(
+    String path, {
+    Object? data,
+    Map<String, String>? headers,
+  }) async =>
+      _asMap(await post(path, data: data, headers: headers));
 
   Future<Map<String, dynamic>> patchMap(String path, {Object? data}) async =>
       _asMap(await patch(path, data: data));

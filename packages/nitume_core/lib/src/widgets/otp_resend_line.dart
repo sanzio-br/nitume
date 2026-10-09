@@ -5,10 +5,11 @@ import '../theme/nitume_typography.dart';
 import '../utils/formatters.dart';
 import 'nitume_button.dart';
 
-/// Resend line under the OTP boxes (`.resend`, v-auth-otp): 12.5 slate-600,
-/// centred.
+/// C-38. Resend line under the OTP boxes (`.resend`, v-auth-otp): 12.5
+/// slate-600, centred.
 ///
-/// - Cooldown running: `Resend code in` + Fira Code countdown `0:42`.
+/// - Cooldown running: `Didn't get it? Resend code in` + Fira Code countdown
+///   `0:42`; nothing is tappable.
 /// - Otherwise: `Didn't get it?` + green-700 link `Resend code`.
 ///
 /// Drive [secondsRemaining] from a `ResendCooldown` (60s, Q17).
@@ -41,7 +42,7 @@ class OtpResendLine extends StatelessWidget {
           child: Center(
             child: Text.rich(
               TextSpan(
-                text: 'Resend code in ',
+                text: "Didn't get it? Resend code in ",
                 children: [
                   TextSpan(
                     text: countdown,

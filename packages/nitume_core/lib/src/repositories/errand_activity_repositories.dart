@@ -1,3 +1,4 @@
+import '../api/api_exception.dart';
 import '../api/nitume_api_client.dart';
 import '../models/enums.dart';
 import '../models/errand_activity.dart';
@@ -67,14 +68,28 @@ class PriceChangeRepository {
     return items.first;
   }
 
-  Future<PriceChangeRequest> approve(String errandId, String requestId) =>
+  /// Approves the new item amount. [merchantRoute] is only needed when the
+  /// task had no merchant amount before and the fees are already paid
+  /// (`merchant_route_required` otherwise). Show
+  /// [PriceChangeDecision.differencePayment] on `x-merchant-payment`.
+  Future<PriceChangeDecision> approve(
+    String errandId,
+    String requestId, {
+    MerchantRoute? merchantRoute,
+  }) =>
       _api
-          .postMap('/errands/$errandId/price-change/$requestId/approve')
-          .then(PriceChangeRequest.fromJson);
+          .postMap(
+            '/errands/$errandId/price-change/$requestId/approve',
+            data: {if (merchantRoute != null) 'merchantRoute': merchantRoute.wire},
+          )
+          .then(PriceChangeDecision.fromJson);
 
-  Future<PriceChangeRequest> reject(String errandId, String requestId) => _api
+  /// Rejects the request and, for the customer, cancels the task in the same
+  /// call (OA-8). 409 `price_change_reject_not_cancellable` when the task can
+  /// no longer be cancelled.
+  Future<PriceChangeDecision> reject(String errandId, String requestId) => _api
       .postMap('/errands/$errandId/price-change/$requestId/reject')
-      .then(PriceChangeRequest.fromJson);
+      .then(PriceChangeDecision.fromJson);
 }
 
 /// Disputes (`/disputes`). 409 on a wrong errand state or a duplicate.
@@ -91,6 +106,17 @@ class DisputesRepository {
 
   Future<Dispute> get(String disputeId) =>
       _api.getMap('/disputes/$disputeId').then(Dispute.fromJson);
+
+  /// The errand's dispute (`GET /errands/:errandId/dispute`), or `null` when
+  /// none was opened (API 404).
+  Future<Dispute?> forErrand(String errandId) async {
+    try {
+      return Dispute.fromJson(await _api.getMap('/errands/$errandId/dispute'));
+    } on NitumeApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
 }
 
 /// Push-device registration (`/users/me/devices`). Obtaining the FCM token

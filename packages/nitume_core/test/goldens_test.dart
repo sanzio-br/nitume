@@ -133,4 +133,127 @@ void main() {
       matchesGoldenFile('goldens/cards_rows.png'),
     );
   });
+
+  testWidgets('spec widgets', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            NitumeRadioRow(
+              label: 'Pay merchant directly (recommended)',
+              subtitle: "You'll see the merchant's Till or Paybill number.",
+              selected: true,
+              onSelected: () {},
+            ),
+            const SizedBox(height: 8),
+            NitumeRadioRow(
+              label: 'Send purchase amount to runner',
+              subtitle: "You'll get instructions after paying the fees.",
+              selected: false,
+              onSelected: () {},
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                NitumeCheckbox(value: true, onChanged: (_) {}),
+                NitumeCheckbox(
+                  value: false,
+                  label: 'Set as default',
+                  onChanged: (_) {},
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const NitumeNotice(message: 'This quote has expired.'),
+            const SizedBox(height: 10),
+            const ReceiptCard(
+              rows: [
+                ReceiptRow(label: 'Service fee', amount: 700),
+                ReceiptRow(label: 'Runner fee', amount: 1500),
+                ReceiptRow(
+                  label: 'Total (service + runner fee)',
+                  amount: 2200,
+                  isTotal: true,
+                ),
+              ],
+              caption: ReceiptCaption('Valid until ', number: '4:30 PM'),
+              separate: ReceiptSeparateGroup(
+                rows: [ReceiptRow(label: 'Item amount', amount: 40000)],
+                note: 'Paid to the merchant directly',
+              ),
+            ),
+          ],
+        ),
+      ),
+      surfaceSize: const Size(390, 560),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/spec_widgets.png'),
+    );
+  });
+
+  testWidgets('numeric spans, glyph avatar, money prefix', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            NitumeButton.primary(
+              label: 'Approve KSh 5,000 increase',
+              richLabel: TextSpan(children: [
+                const TextSpan(text: 'Approve '),
+                NumSpan.kes(5000),
+                const TextSpan(text: ' increase'),
+              ]),
+              onPressed: () {},
+            ),
+            NitumeButton.link(
+              label: '+3 more in progress',
+              richLabel: const TextSpan(children: [
+                TextSpan(text: '+'),
+                NumSpan('3'),
+                TextSpan(text: ' more in progress'),
+              ]),
+              onPressed: () {},
+            ),
+            const SectionLabel(
+              'Photos & video',
+              numericSuffix: '(4)',
+              padding: EdgeInsets.symmetric(vertical: 8),
+            ),
+            NitumeNotice(
+              message: 'Pay the item amount: KSh 40,000',
+              richMessage: TextSpan(children: [
+                const TextSpan(text: 'Pay the item amount: '),
+                NumSpan.kes(40000),
+              ]),
+            ),
+            const SizedBox(height: 10),
+            const Row(
+              children: [
+                InitialsAvatar(initials: ''),
+                SizedBox(width: 8),
+                InitialsAvatar(initials: '', size: InitialsAvatarSize.medium),
+                SizedBox(width: 8),
+                InitialsAvatar(initials: 'BK', size: InitialsAvatarSize.medium),
+              ],
+            ),
+            const SizedBox(height: 10),
+            NitumeField.money(label: 'Budget', hint: '0'),
+          ],
+        ),
+      ),
+      surfaceSize: const Size(390, 440),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/numeric_spans.png'),
+    );
+  });
 }

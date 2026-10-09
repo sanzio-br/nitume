@@ -55,6 +55,10 @@ enum ErrandCategory {
 
   static ErrandCategory fromWire(String value) =>
       ErrandCategory.values.firstWhere((e) => e.wire == value);
+
+  /// The five customer MVP categories in display order (OA-18), the name
+  /// the customer specs use. Same list as [mvpCustomerCategories].
+  static const List<ErrandCategory> customerMvp = mvpCustomerCategories;
 }
 
 /// The categories a customer can pick in the MVP: the six minus Business
@@ -217,6 +221,30 @@ enum PaymentFlow {
   static PaymentFlow fromWire(String v) => _fromWire(values, (e) => e.wire, v);
 }
 
+/// How the customer pays the merchant / item amount (OA-5), sent as
+/// `merchantRoute` on payment initiation and price-change approval. Runner
+/// advance is never a customer option.
+enum MerchantRoute {
+  /// Pay the merchant's Till / Paybill directly (`PaymentFlow.merchantDirect`).
+  merchantDirect('merchant_direct'),
+
+  /// Send the item amount to the runner (`PaymentFlow.customerToRunner`).
+  sendToRunner('send_to_runner');
+
+  const MerchantRoute(this.wire);
+  final String wire;
+
+  static MerchantRoute fromWire(String v) => _fromWire(values, (e) => e.wire, v);
+
+  /// `null` for unknown values.
+  static MerchantRoute? tryFromWire(String? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
 enum PaymentStatus {
   pending('pending'),
   authorized('authorized'),
@@ -310,7 +338,9 @@ enum DevicePlatform {
 }
 
 /// Published `notifications.eventType` values (`errand.<STATUS>`). Every
-/// value refers to the errand in the row's `errandId`.
+/// value refers to the errand in the row's `errandId`. CONFIRMED and SETTLED
+/// are not published (`apps/api/src/common/enums.ts`); unknown values parse
+/// as `null`.
 enum NotificationEventType {
   quoted('errand.QUOTED', ErrandStatus.quoted),
   runnerAssigned('errand.RUNNER_ASSIGNED', ErrandStatus.runnerAssigned),
@@ -319,8 +349,6 @@ enum NotificationEventType {
   inProgress('errand.IN_PROGRESS', ErrandStatus.inProgress),
   awaitingCustomer('errand.AWAITING_CUSTOMER', ErrandStatus.awaitingCustomer),
   completed('errand.COMPLETED', ErrandStatus.completed),
-  confirmed('errand.CONFIRMED', ErrandStatus.confirmed),
-  settled('errand.SETTLED', ErrandStatus.settled),
   disputed('errand.DISPUTED', ErrandStatus.disputed),
   cancelled('errand.CANCELLED', ErrandStatus.cancelled),
   failed('errand.FAILED', ErrandStatus.failed);

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../theme/nitume_colors.dart';
+import '../theme/nitume_design_choices.dart';
 import '../theme/nitume_theme.dart';
 import '../theme/nitume_typography.dart';
+import 'num_text.dart';
 
 /// Design-system button variants.
 enum NitumeButtonVariant {
@@ -37,65 +39,84 @@ class NitumeButton extends StatelessWidget {
   const NitumeButton({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.variant = NitumeButtonVariant.primary,
     this.size = NitumeButtonSize.regular,
     this.icon,
     this.expand = false,
     this.loading = false,
+    this.destructive = false,
   });
 
   const NitumeButton.primary({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.size = NitumeButtonSize.regular,
     this.icon,
     this.expand = false,
     this.loading = false,
-  }) : variant = NitumeButtonVariant.primary;
+  })  : variant = NitumeButtonVariant.primary,
+        destructive = false;
 
   const NitumeButton.secondary({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.size = NitumeButtonSize.regular,
     this.icon,
     this.expand = false,
     this.loading = false,
-  }) : variant = NitumeButtonVariant.secondary;
+  })  : variant = NitumeButtonVariant.secondary,
+        destructive = false;
 
   const NitumeButton.outline({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.size = NitumeButtonSize.regular,
     this.icon,
     this.expand = false,
     this.loading = false,
+    this.destructive = false,
   }) : variant = NitumeButtonVariant.outline;
 
   const NitumeButton.text({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.size = NitumeButtonSize.regular,
     this.icon,
     this.expand = false,
     this.loading = false,
+    this.destructive = false,
   }) : variant = NitumeButtonVariant.text;
 
   const NitumeButton.link({
     super.key,
     required this.label,
+    this.richLabel,
     required this.onPressed,
     this.icon,
   })  : variant = NitumeButtonVariant.link,
         size = NitumeButtonSize.small,
         expand = false,
-        loading = false;
+        loading = false,
+        destructive = false;
 
+  /// Plain-text label. Also the accessible label when [richLabel] is set,
+  /// so keep the two identical in wording.
   final String label;
+
+  /// Optional rich version of [label], drawn instead of it. Build numeric
+  /// parts with [NumSpan] so amounts and counts render in Fira Code
+  /// (`Approve KSh 5,000 increase`, `+3 more in progress`).
+  final InlineSpan? richLabel;
 
   /// `null` disables the button.
   final VoidCallback? onPressed;
@@ -109,17 +130,34 @@ class NitumeButton extends StatelessWidget {
   /// Shows a spinner and disables the button.
   final bool loading;
 
+  /// Destructive action ("Reject & cancel", "Log out", "Delete address"):
+  /// label in [NitumeDesignChoices.destructiveText] (red, OA-13). Only the
+  /// outline and text variants support it; fills never carry red.
+  final bool destructive;
+
   @override
   Widget build(BuildContext context) {
     final isFilled = variant == NitumeButtonVariant.primary ||
         variant == NitumeButtonVariant.secondary;
-    final spinnerColor = isFilled ? NitumeColors.white : NitumeColors.blue;
+    final spinnerColor = isFilled
+        ? NitumeColors.white
+        : destructive
+            ? NitumeDesignChoices.destructiveText
+            : NitumeColors.blue;
 
     var style = switch (variant) {
       NitumeButtonVariant.primary => NitumeTheme.primaryButtonStyle(),
       NitumeButtonVariant.secondary => NitumeTheme.secondaryButtonStyle(),
-      NitumeButtonVariant.outline => NitumeTheme.outlineButtonStyle(),
-      NitumeButtonVariant.text => NitumeTheme.textButtonStyle(),
+      NitumeButtonVariant.outline => NitumeTheme.outlineButtonStyle(
+          color: destructive
+              ? NitumeDesignChoices.destructiveText
+              : NitumeColors.blue,
+        ),
+      NitumeButtonVariant.text => NitumeTheme.textButtonStyle(
+          color: destructive
+              ? NitumeDesignChoices.destructiveText
+              : NitumeColors.blue,
+        ),
       NitumeButtonVariant.link =>
         NitumeTheme.textButtonStyle(color: NitumeColors.green700),
     };
@@ -153,7 +191,13 @@ class NitumeButton extends StatelessWidget {
               color: spinnerColor,
             ),
           )
-        : Text(label, textAlign: TextAlign.center);
+        : richLabel == null
+        ? Text(label, textAlign: TextAlign.center)
+        : Text.rich(
+            richLabel!,
+            textAlign: TextAlign.center,
+            semanticsLabel: label,
+          );
     final iconWidget = icon == null || loading
         ? null
         : Icon(icon, size: size == NitumeButtonSize.small ? 16 : 18);

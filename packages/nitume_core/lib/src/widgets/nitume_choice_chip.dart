@@ -68,3 +68,90 @@ class NitumeChoiceChip extends StatelessWidget {
     );
   }
 }
+
+/// C-16 radio-row variant (merchant payment route on `x-awaiting-quote`):
+/// full-width pill, slate fill, slate-line border, 12/600 left-aligned
+/// [label] and an optional 11.5 [subtitle]. Selected = blue fill, white
+/// label and subtitle; otherwise blue label, slate-600 subtitle.
+///
+/// [onSelected] `null` disables the row: slate-400 text, no tap; the
+/// [subtitle] should say why (it is part of the announced label). Stack rows
+/// with a gap of 8; they form one radio group.
+class NitumeRadioRow extends StatelessWidget {
+  const NitumeRadioRow({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+    this.subtitle,
+  });
+
+  final String label;
+  final String? subtitle;
+  final bool selected;
+  final VoidCallback? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onSelected != null;
+    final active = selected && enabled;
+    final labelColor = !enabled
+        ? NitumeColors.slate400
+        : active
+        ? NitumeColors.white
+        : NitumeColors.blue;
+    final subtitleColor = !enabled
+        ? NitumeColors.slate400
+        : active
+        ? NitumeColors.white
+        : NitumeColors.slate600;
+
+    return Semantics(
+      inMutuallyExclusiveGroup: true,
+      checked: active,
+      enabled: enabled,
+      button: true,
+      label: [label, ?subtitle].join('. '),
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onSelected,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: double.infinity,
+          constraints: const BoxConstraints(
+            minHeight: NitumeSpacing.minTapTarget,
+          ),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: active ? NitumeColors.blue : NitumeColors.slate,
+            borderRadius: BorderRadius.circular(NitumeRadii.pill),
+            border: Border.all(
+              color: active ? NitumeColors.blue : NitumeColors.slateLine,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: NitumeTextStyles.chip.copyWith(color: labelColor),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle!,
+                  style: NitumeTextStyles.mutedSmall.copyWith(
+                    color: subtitleColor,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

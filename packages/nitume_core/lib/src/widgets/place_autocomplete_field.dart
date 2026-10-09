@@ -21,6 +21,7 @@ class PlaceAutocompleteField extends StatefulWidget {
     this.savedAddresses = const [],
     this.label,
     this.hint,
+    this.initialValue,
     this.errorText,
     this.debounce = const Duration(milliseconds: 300),
   });
@@ -31,6 +32,11 @@ class PlaceAutocompleteField extends StatefulWidget {
   final List<SavedAddress> savedAddresses;
   final String? label;
   final String? hint;
+
+  /// Address shown in the field as a value (not a hint), e.g. the place the
+  /// customer already chose. When it changes and the field is not focused,
+  /// the field text is replaced with it.
+  final String? initialValue;
   final String? errorText;
   final Duration debounce;
 
@@ -50,7 +56,20 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
   @override
   void initState() {
     super.initState();
+    _controller.text = widget.initialValue ?? '';
     _focus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void didUpdateWidget(PlaceAutocompleteField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final value = widget.initialValue;
+    if (value != oldWidget.initialValue &&
+        value != null &&
+        !_focus.hasFocus &&
+        value != _controller.text) {
+      _controller.text = value;
+    }
   }
 
   @override
