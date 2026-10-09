@@ -90,6 +90,8 @@ States (proposed):
 - SQ-10 (`_shared.md` §9): whether the admin's refund decision note is shown. Default: no.
 
 ## Current vs design
+Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: PASS. `View payment details` now uses Track's `itemAmountDue()` (round-1 minor closed).
+
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Total-only fee row, item amount with route line, refund groups (§11), `View your report` after a dispute, live refresh. Minor: `View payment details` also shows for a send_to_runner item already paid in the combined STK (opens and closes with `Nothing to pay right now.`).
 
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `View your report` only in DISPUTED (spec: also after a dispute existed); `Rate this task` only in COMPLETED (spec updated for row 35 to include CONFIRMED/SETTLED; latent until the payout scheduler runs).

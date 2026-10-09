@@ -26,7 +26,7 @@ PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAIT
 2. Only when the customer has 2+ errands in the Track set: horizontal chip row (C-16), padding `0 20 12`, one chip per errand labelled with its title (§7 rule), selected = blue fill.
 3. Map (C-31), margin `0 20 14`, height 220, r 16:
    - ETA chip top-left (14,14): white pill, 1px slate-line border, no shadow (OA-14), Fira Code 11.5/700.
-   - Start pin (blue) = runner start / pickup; end pin (green) = task site / drop-off; runner dot 16px green with 3px white ring, animated between pings; dashed blue route.
+   - Start pin (blue) = runner start / pickup; end pin (green) = task site / drop-off; runner dot 16px overall (border-box: green fill inside a 3px white ring, mockup `nitume_customer_app.html:18, :98`), animated between pings; dashed blue route.
    - Map body: Google Maps (`google_maps_flutter`, row 30) through `LiveTrackingMap(mapBuilder:)`; map gestures on, no map-type or my-location controls; camera fits the pins and the runner marker with 40 padding and refits when the runner marker leaves the visible area. No extra map buttons (the mockup draws none).
    - Loading, or a build without a maps key: blue-050 `#E9EDF3` fill (replaces mockup `#EAEEF4`, OA-14); no grid, no image asset.
    - **Runner position window (rows 27, 65; `_shared.md` §10)**: the runner marker and ETA appear only in RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED and IN_PROGRESS, only for the current assignment, and only when the tracking snapshot or `location:update` provides a position. On AWAITING_CUSTOMER or any terminal state, on reassignment, or on a 403/404 from tracking, remove the marker and ETA immediately; never show a last-known position outside the window. Without a position, show only the task pins and the caption below.
@@ -100,6 +100,8 @@ States (proposed):
 - Q4: Show the action buttons only when relevant (default) or always (mockup).
 
 ## Current vs design
+Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: Runner marker confirmed: 16 px overall including the 3 px ring (the mockup sets `box-sizing: border-box`, `nitume_customer_app.html:18, :98`); the round-1 minor is withdrawn. Minor: the app's no-key fallback `SchematicMap` draws the dot at 22 px overall (`widgets/schematic_map.dart`, dev builds only).
+
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Google Maps body via core `GoogleTrackingMap` (schematic fallback without a key), socket with polling only while disconnected and `Reconnecting…`, runner marker/ETA only inside the assignment window and cleared on 403/404, Price change only in IN_PROGRESS, item notice only for a merchant-direct amount or an unpaid difference (row 76). Minor: core runner dot is 16 px including the ring (spec 16 px + 3 px ring).
 
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (map SDK row 30 and socket row 29 fallbacks). Minor: the item-payment notice amount renders in Fira Sans (core `NitumeNotice` is string-only, CC-2).

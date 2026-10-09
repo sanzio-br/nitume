@@ -573,3 +573,41 @@ Row taps and push taps share `Nav.openNotification`: quoted / quote reissued →
 ## Questions for the owner
 
 - No new questions. Row 91 (combined-STK copy) is accepted as proposed in the specs until the owner answers; row 68 (SQ-9) keeps the expired-quote fallback.
+
+---
+
+# Addendum — round 2 for the 2026-10-09 re-audit
+
+- Code audited: `feat/customer-integrations` @ `7192a77` (changes since `ca6f614`: core `adde9da`, app `7089d21`, `7192a77`), read only.
+- Build health: apps/customer_app `flutter analyze` no issues, `flutter test` 94 passed (incl. `test/reaudit_fix_test.dart`); packages/nitume_core `flutter analyze` no issues, `flutter test` 190 passed. Device builds still unverified (noted, not failed).
+
+| Screen / item | Verdict | SCREEN_MAP |
+|---|---|---|
+| v-new-details | **PASS** | partial → matches-design |
+| x-address-form | PASS (no regression) | matches-design |
+| v-task-detail | PASS (no regression; minor closed) | matches-design |
+| Suspension flow | PASS (no regression; minor closed) | — |
+
+All customer screens are now `matches-design`.
+
+## v-new-details — PASS
+
+1. Round-1 blocker fixed. Core `PlaceAutocompleteField` (`place_autocomplete_field.dart`) remembers the picked text (pick, saved address or `initialValue`) and calls `onSelectionCleared` on the first edit that changes it. `details_screen.dart` drops the draft place there (`set(null)`), marks the field as typed, and Continue shows `Choose a place from the list.` and scrolls to it. A new pick clears the mark. The wizard can no longer submit a place other than the field text.
+2. Round-1 minor fixed: a failed search shows `Couldn't search places. Check your connection.` under the field (red 11.5, inline error per OA-13) instead of an empty list; it clears on the next keystroke or search.
+3. Minor (new, non-blocking) — `details_screen.dart` `_validate`: text typed into an empty field without ever picking gets the generic missing-location copy (`Choose a location.` / `Choose where to …`) rather than `Choose a place from the list.`, because no pick existed to clear. Nothing unpicked is ever sent, so this is copy only. Fix: also mark the field as typed when its text is non-empty and nothing is picked.
+
+## Spot-checks
+
+- **x-address-form** — PASS. With Places, editing the address (`onSelectionCleared`) drops the pick, sets `_addressEdited`, shows `Choose an address from the list.` and disables Save until a new pick; edit mode still saves name/default when the address is untouched; text and coordinates are only ever saved together. The copy `Choose an address from the list.` is already the spec's validation copy (x-address-form Copy): **accepted**. The round-1 minor (keep a stale pick) is closed.
+- **v-task-detail** — PASS. `View payment details` now uses Track's `itemAmountDue()` (only a merchant-direct amount with details or an unpaid difference, active tasks only). Round-1 minor closed. Nothing else changed.
+- **Suspension flow** — PASS. `BeforeClearTokenStore` (`services/app_services.dart`) runs `session.beforeTokensCleared()` (push unregister, 5 s cap, re-entry guarded) before the API client clears the tokens; `suspend()` then resets to `v-auth-phone` with `This account can't sign in. Contact support.` Log out keeps its own order (`_loggingOut` avoids a double unregister). Round-1 minor closed. Note: the hook also runs before an expiry-driven clear; the unregister then usually fails harmlessly within the cap.
+
+## Runner marker — confirmed (round-1 v-track minor withdrawn)
+
+The mockup sets `*{box-sizing:border-box;}` (`nitume_customer_app.html:18`) and `.runner-dot{width:16px;height:16px;…;border:3px solid #fff}` (`:98`), so the dot is 16 px overall with the 3 px white ring inside it. Core `google_tracking_map.dart` (8 px white radius, 5 px green radius) matches. `v-track.md` now states "16 px overall (border-box)".
+
+New minor: the app's no-key fallback `widgets/schematic_map.dart` `_RunnerDot` is 22 × 22 with a 3 px border (22 px overall). Dev builds only; fix to 16 × 16 when convenient.
+
+## Minors closed by this round
+
+v-new-details 2 (search error copy), v-task-detail 1 (payment-details link), x-address-form stale pick, suspension push unregister, v-track runner marker (withdrawn as correct). Still open: v-new-details 3 (above), schematic dot size, v-payment provider failure reason (api-contract), and the event types the API does not send yet.

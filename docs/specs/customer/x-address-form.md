@@ -2,7 +2,7 @@
 
 - Mockup: **not drawn.** Referenced by `v-addresses` "+ Add new address" and card taps. Built from design-system form patterns (field, `.check`, buttons) and the mockup's `.form-card` / `.cta-fixed`; copy is **(proposed)**.
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/account/address_form_screen.dart` on branch `feat/customer-screens`
+- Implementation: `apps/customer_app/lib/src/screens/account/address_form_screen.dart` on branch `feat/customer-integrations`
 - Status: matches-design
 
 ## Purpose
@@ -58,6 +58,8 @@ None.
 - None. Places approved (row 30); picked place with coordinates required, no text-only addresses (row 60) — the spec as built stands.
 
 ## Current vs design
+Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: PASS. With Places, editing the address drops the pick and disables Save until a new pick, with `Choose an address from the list.` (already the spec's validation copy).
+
 Round 2 (2026-10-07, `feat/customer-screens` @ `ba45633`): PASS. Without Places the address field is read-only with the notice `Place search isn't available yet.`, Save is disabled in add mode, edit mode changes only name and default; address text is only sent with a picked place's coordinates. Round 1 FAIL details: `docs/audits/customer-reaudit-2026-10-07.md`.
 
 Spec update 2026-10-08 (rows 30, 60): the owner confirmed the built rule. Places search starts working when core-ui ships the Google client; no screen change. Status stays `matches-design`.

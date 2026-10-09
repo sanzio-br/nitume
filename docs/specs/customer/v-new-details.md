@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 361–384 (`#v-new-details`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
 - Implementation: `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (+ `task_draft.dart`) on branch `feat/customer-integrations`
-- Status: partial
+- Status: matches-design
 
 ## Purpose
 Collect what the runner must do, where, by when, the item budget (Buy For Me and Get It For Me only), and (for Buy For Me) a structured shopping list.
@@ -107,6 +107,8 @@ Validation (proposed copy; shown on Continue, then live):
 - Q2: Is "end of day" right for Today/Tomorrow, or should those chips open a time picker? Default: 23:59 local.
 
 ## Current vs design
+Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: PASS. An edit after a pick drops the place (core `onSelectionCleared`) and Continue shows `Choose a place from the list.`; search failures show `Couldn't search places. Check your connection.` Minor: text typed without any earlier pick gets the generic `Choose a location.` / `Choose where to …` message instead of `Choose a place from the list.`; nothing unpicked is ever sent.
+
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): FAIL. Blocker: editing the text of a chosen place does not clear the choice, so the wizard submits the previously picked place while the field shows other text; `Choose a place from the list.` never shows. Budget per category (row 45) and Google Places are in place.
 
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (Places pending row 30, saved-address fallback). Minor: a chosen place shows as the field hint (slate-400) instead of a value (core `PlaceAutocompleteField` initial value, need open); budget placeholder `0` instead of `KSh 0`. Builder copy accepted: title minimum, no-Places notice (see Copy).

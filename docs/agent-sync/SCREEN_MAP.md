@@ -20,7 +20,7 @@ Status values: `missing` · `partial` · `built` · `matches-design` (only after
 
 ## Customer app — `docs/design/nitume_customer_app.html` → `apps/customer_app`
 
-**Re-audit 2026-10-09** of `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): 11 of the 12 audited screens PASS; v-new-details FAIL (`partial`). Implementation paths below are on `feat/customer-integrations`.
+**Re-audit 2026-10-09** of `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): 11 of the 12 audited screens PASS; v-new-details FAIL (`partial`). Round 2 @ `7192a77`: v-new-details PASS; x-address-form, v-task-detail and the suspension flow re-checked, no regression. All customer screens `matches-design`. Implementation paths below are on `feat/customer-integrations`.
 
 Pre-build baseline: `docs/audits/customer-gap-report.md`. Post-build re-audit 2026-10-07 of `feat/customer-screens` @ `4312f49`: `docs/audits/customer-reaudit-2026-10-07.md` — round 1: 24 PASS, 3 FAIL (v-price-auth, x-awaiting-quote, x-address-form); round 2 @ `ba45633`: those 3 PASS; round 3 spot-check @ `08f9b26` (2026-10-08): 14 changed screens PASS, CC-1..CC-3 closed. All 27 were `matches-design` after round 3. **Owner answers round 2 (2026-10-08)** changed ten specs; those screens are `partial` until re-audited against the updated spec (addendum at the end of `docs/audits/customer-gap-report.md`). Implementation paths below exist on `feat/customer-screens` only (not yet on `main`).
 
@@ -30,7 +30,7 @@ Pre-build baseline: `docs/audits/customer-gap-report.md`. Post-build re-audit 20
 | v-auth-otp | OTP verify (OA-17 policy) | `docs/specs/customer/v-auth-otp.md` | `apps/customer_app/lib/src/screens/auth/otp_screen.dart` (branch `feat/customer-integrations`) | matches-design |
 | v-home | Home | `docs/specs/customer/v-home.md` | `apps/customer_app/lib/src/screens/shell/home_tab.dart` (branch `feat/customer-integrations`) | matches-design |
 | v-new-category | New task: category (5 MVP tiles) | `docs/specs/customer/v-new-category.md` | `apps/customer_app/lib/src/screens/wizard/category_screen.dart` (branch `feat/customer-integrations`) | matches-design |
-| v-new-details | New task: details | `docs/specs/customer/v-new-details.md` | `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (branch `feat/customer-integrations`) | partial |
+| v-new-details | New task: details | `docs/specs/customer/v-new-details.md` | `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (branch `feat/customer-integrations`) | matches-design |
 | v-new-review | New task: estimate + submit (OA-3) | `docs/specs/customer/v-new-review.md` | `apps/customer_app/lib/src/screens/wizard/review_screen.dart` (branch `feat/customer-integrations`) | matches-design |
 | v-price-auth | Price-change authorization (modal, OA-8) | `docs/specs/customer/v-price-auth.md` | `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` (branch `feat/customer-integrations`) | matches-design |
 | v-payment | Payment (M-Pesa STK) | `docs/specs/customer/v-payment.md` | `apps/customer_app/lib/src/screens/checkout/payment_screen.dart` (branch `feat/customer-integrations`) | matches-design |
