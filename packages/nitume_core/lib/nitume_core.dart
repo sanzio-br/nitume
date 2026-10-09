@@ -1,4 +1,5 @@
-/// Shared Nitume core: design tokens, API client, models, and auth.
+/// Shared Nitume core: design tokens, theme, shared widgets, API client,
+/// models, repositories and auth.
 ///
 /// Consumed by `apps/customer_app` and (later) `apps/runner_app`.
 library;
@@ -13,8 +14,52 @@ export 'src/models/auth_tokens.dart';
 export 'src/models/customer_profile.dart';
 export 'src/models/enums.dart';
 export 'src/models/errand.dart';
+export 'src/models/errand_activity.dart';
+export 'src/models/errand_details.dart';
+export 'src/models/errand_location.dart';
+export 'src/models/payment.dart';
+export 'src/models/runner.dart';
+export 'src/places/place_search.dart';
+export 'src/realtime/realtime_client.dart';
+export 'src/repositories/account_repositories.dart';
+export 'src/repositories/errand_activity_repositories.dart';
+export 'src/repositories/errand_repository.dart';
+export 'src/repositories/payments_repository.dart';
 export 'src/storage/token_store.dart';
 export 'src/theme/nitume_colors.dart';
+export 'src/theme/nitume_design_choices.dart';
 export 'src/theme/nitume_theme.dart';
 export 'src/theme/nitume_typography.dart';
+export 'src/theme/status_tone.dart';
+export 'src/utils/formatters.dart';
 export 'src/utils/phone.dart';
+export 'src/widgets/active_task_card.dart';
+export 'src/widgets/brand.dart';
+export 'src/widgets/category_tile.dart';
+export 'src/widgets/evidence_grid.dart';
+export 'src/widgets/initials_avatar.dart';
+export 'src/widgets/live_tracking_map.dart';
+export 'src/widgets/nitume_button.dart';
+export 'src/widgets/nitume_card.dart';
+export 'src/widgets/nitume_choice_chip.dart';
+export 'src/widgets/nitume_field.dart';
+export 'src/widgets/nitume_list_item.dart';
+export 'src/widgets/nitume_pushed_header.dart';
+export 'src/widgets/nitume_tab_bar.dart';
+export 'src/widgets/nitume_top_bar.dart';
+export 'src/widgets/notification_bell.dart';
+export 'src/widgets/notification_row.dart';
+export 'src/widgets/num_text.dart';
+export 'src/widgets/otp_code_field.dart';
+export 'src/widgets/place_autocomplete_field.dart';
+export 'src/widgets/receipt_card.dart';
+export 'src/widgets/runner_summary_tile.dart';
+export 'src/widgets/search_entry_row.dart';
+export 'src/widgets/section_label.dart';
+export 'src/widgets/star_rating_input.dart';
+export 'src/widgets/state_views.dart';
+export 'src/widgets/status_chip.dart';
+export 'src/widgets/status_presentation.dart';
+export 'src/widgets/status_timeline.dart';
+export 'src/widgets/step_progress_bar.dart';
+export 'src/widgets/task_rows.dart';
