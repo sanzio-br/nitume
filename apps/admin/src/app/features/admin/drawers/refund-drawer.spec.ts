@@ -353,4 +353,28 @@ describe('RefundDrawerComponent', () => {
     fixture.detectChanges();
     expect(el.textContent).toContain('Refund marked as sent.');
   });
+  it('shows a refunded payout read-only: no receipt input or edit control (row 82)', async () => {
+    const fixture = await render(
+      review({
+        status: 'refunded',
+        refundAmount: '1200.00',
+        decidedAt: '2026-10-08T07:00:00Z',
+        payoutReference: 'SLK4H7XQ2P',
+        paidAt: '2026-10-08T09:00:00Z',
+      }),
+    );
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('input, textarea')).toBeNull();
+    const labels = Array.from(el.querySelectorAll('button'), (b) => b.textContent?.trim());
+    expect(labels).toEqual(['Open task']);
+    expect(el.textContent).toContain('SLK4H7XQ2P');
+    expect(el.textContent).toContain('Refund sent');
+  });
+
+  it('writes every amount as KSh, never KES (row 82)', async () => {
+    const fixture = await render(review({ status: 'approved', refundAmount: '1200.50' }));
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('KSh 1,200.50');
+    expect(text).not.toMatch(/\bKES\b/);
+  });
 });

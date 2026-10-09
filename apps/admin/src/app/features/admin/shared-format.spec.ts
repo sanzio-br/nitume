@@ -1,10 +1,23 @@
 import {
   eatLocalInputToIso,
   formatDateTime,
+  formatKsh,
   formatKshExact,
   parseKsh,
   toEatLocalInput,
 } from './shared-format';
+
+describe('formatKsh (row 82)', () => {
+  it('rounds to whole shillings with the KSh prefix', () => {
+    expect(formatKsh('25000.00')).toBe('KSh 25,000');
+    expect(formatKsh(1450.6)).toBe('KSh 1,451');
+  });
+
+  it('shows a dash for empty values', () => {
+    expect(formatKsh(undefined)).toBe('—');
+    expect(formatKsh('')).toBe('—');
+  });
+});
 
 describe('formatKshExact (A-13)', () => {
   it('formats whole shillings without decimals', () => {
