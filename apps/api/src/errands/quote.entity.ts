@@ -1,5 +1,4 @@
 import {
-  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -8,7 +7,6 @@ import {
 } from 'typeorm';
 
 @Entity('quotes')
-@Check('CHK_quotes_expiry_required', `"expiresAt" IS NOT NULL OR "acceptedAt" IS NOT NULL`)
 export class Quote {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -42,9 +40,9 @@ export class Quote {
   currency: string;
 
   /**
-   * Every quote the API writes has an expiry (row 83, default 24h). Null
-   * only on legacy quotes the customer accepted before that rule
-   * (CHK_quotes_expiry_required).
+   * Every quote the API writes has an expiry (row 83, default 24h); legacy
+   * nulls are backfilled to createdAt + 24h by migration 1790100800000.
+   * The column stays nullable (no schema change).
    */
   @Column({ type: 'timestamptz', nullable: true })
   expiresAt: Date | null;

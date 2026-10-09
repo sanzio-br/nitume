@@ -180,9 +180,8 @@ export interface ListErrandViewsResponse {
 
 /**
  * 409 `quote_expired` when the quote has an expiry that has passed (BOARD
- * row 46). Every new quote has an expiry (row 83); only legacy quotes the
- * customer had already accepted before that rule may still have none, and
- * those never expire. The customer needs a fresh quote (admin re-quote)
+ * row 46). Every quote has an expiry (row 83; legacy nulls backfilled). A
+ * null expiry, should one appear, is treated as never expiring. The customer needs a fresh quote (admin re-quote)
  * before accepting or paying.
  */
 export const assertQuoteCurrent = (
