@@ -12,7 +12,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | customer/v-auth-otp | awaiting-owner | owner | feat/customer-screens | core-ui: NitumePushedHeader, OtpCodeField, link button variant; app-level session restore | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/v-home | awaiting-owner | owner | feat/customer-screens | core-ui: NitumeTopBar, NotificationBell, InitialsAvatar, SearchEntryRow, SectionLabel, CategoryTile, ActiveTaskCard, TaskRow, StatusChip, empty/error states; api-contract: A-1, A-2, A-4, A-10 | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/v-new-category | awaiting-owner | owner | feat/customer-screens | core-ui: NitumePushedHeader, StepProgressBar, CategoryTile; shell: New task pushes wizard | reviewed 2026-10-08: READY; merge in order (see session log) |
-| customer/v-new-details | built | design-auditor | feat/customer-integrations | core-ui: NitumeField (multiline/money), NitumeChoiceChip, PlaceAutocompleteField, NitumeCard; Google Places key/config | FAIL #1 fixed in 7089d21/7192a77; awaiting re-audit #2 |
+| customer/v-new-details | audited-pass | reviewer | feat/customer-integrations | core-ui: NitumeField (multiline/money), NitumeChoiceChip, PlaceAutocompleteField, NitumeCard; Google Places key/config | re-audit round 2 PASS 2026-10-09 (c8cd3d9) |
 | customer/v-new-review | audited-pass | reviewer | feat/customer-integrations | api-contract: A-5, A-6, A-2; core-ui: ReceiptCard, NitumeChoiceChip | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
 | customer/v-price-auth | audited-pass | reviewer | feat/customer-integrations | api-contract: A-8, A-2; core-ui: NitumeCard, StatusChip, NumText, non-dismissible route | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
 | customer/v-payment | audited-pass | reviewer | feat/customer-integrations | api-contract: A-7 idempotency key, A-2; core-ui: PulsingDots, NumText | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
@@ -95,6 +95,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | design-auditor | core-ui | PlaceAutocompleteField selection-cleared callback when the text stops matching the pick; places search error copy "Couldn't search places. Check your connection."; runner marker 16px + 3px ring | done: adde9da (onSelectionCleared, search error copy; 190 core tests). Runner marker unchanged: mockup uses box-sizing:border-box, so 16px overall; auditor to confirm |
 | design-auditor | flutter-customer | v-new-details: clear the draft place on edit and show "Choose a place from the list." (blocker); x-address-form same; v-task-detail "View payment details" via itemAmountDue(); suspension: unregister push before clearing tokens | done: 7089d21, 7192a77 (94 app + 190 core tests) |
 | flutter-customer | core-ui | (optional) run the push-unregister hook before tokenStore.clear() in the auth interceptor, replacing the app's BeforeClearTokenStore wrapper | open |
+| design-auditor | flutter-customer | (minor) v-new-details: "Choose a place from the list." also for text typed without any earlier pick; dev-only schematic map runner dot 22px → 16px overall | open |
 
 ## Questions for the project owner
 
@@ -232,3 +233,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-09 | design-auditor customer re-audit (feat/customer-integrations @ ca6f614): 11 PASS, v-new-details FAIL #1 (stale place on edit); specs updated for row 76 combined STK and STK polling | ca1b56a, fd4fb5a |
 | 2026-10-09 | core-ui fix for the v-new-details blocker: PlaceAutocompleteField.onSelectionCleared + search error copy | adde9da |
 | 2026-10-09 | flutter-customer fixed v-new-details FAIL #1 (stale place cleared on edit), x-address-form, task-detail payment link, suspension unregister order; 94 app tests | 7089d21, 7192a77 |
+| 2026-10-09 | design-auditor round 2: v-new-details PASS; all customer screens matches-design on feat/customer-integrations @ 7192a77 (94 app + 190 core tests). Sent to reviewer with API rounds 2–3 and admin ops | c8cd3d9 |
