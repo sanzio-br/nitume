@@ -3,7 +3,7 @@
 - Mockup: `#drawer-task` has no quote content; the queue's `Assign` / `View` row buttons are the only admin actions drawn. The current build already adds an `Admin actions` card with `Issue quote` (REQUESTED). **EXTENDS MOCKUP**: a `Quote` section showing the current quote and its expiry, and an `Issue new quote` action for a QUOTED task whose quote has expired (row 46). Built from `.drawer-section` / `.drawer-card` / `.drawer-row`, A-08 for the form dialog and the design-system form field. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/quote.section.ts`, `quote-dialog.ts` (in `task-drawer.ts`)
-- Status: partial (spec updated 2026-10-09 for rows 68, 72, 83, 88; see Current vs design)
+- Status: matches-design (re-audit 2026-10-09 round 4: PASS with minors m-6, m-7, m-8; see Current vs design)
 
 ## Purpose
 A customer cannot accept or pay an expired quote (`quote_expired`, row 46). Ops must see that a quote has expired and issue a fresh one. On a QUOTED or ACCEPTED errand with an expired newest quote, `POST /errands/:id/quote` writes a new quote and updates the quoted price **without a status change** (QUOTED stays QUOTED; ACCEPTED stays ACCEPTED and the customer must accept/pay the new quote, row 72). A quote that has not expired cannot be replaced (`quote_still_valid`, row 88). Every quote has an expiry, 24 h by default (row 83). After expiry the customer can ask for a new quote (row 68); the section shows that request.
@@ -19,7 +19,7 @@ A customer cannot accept or pay an expired quote (`quote_expired`, row 46). Ops 
 | QUOTED, quote valid | shown | none; hint line (Copy) |
 | QUOTED or ACCEPTED, legacy quote without expiry | shown, `No expiry` | none until the API backfills an expiry (N-11) |
 | QUOTED, quote expired | shown, flagged | `Issue new quote` (primary) |
-| ACCEPTED, quote expired | shown, flagged | `Issue new quote` (primary) once the API exposes row 72 (`quoteAcceptanceRequired`); otherwise the hint line. The task stays ACCEPTED |
+| ACCEPTED, quote expired | shown, flagged | `Issue new quote` (primary) plus the hint line (row 72; the round-3 API is on `main`, so no feature detection: the `quoteAcceptanceRequired` gate was removed in `1f24c63`, accepted). The task stays ACCEPTED. The API refuses with 409 `payment_in_progress` when the customer has started paying (see Errors) |
 | PAYMENT_CONFIRMED and later | shown read-only (the quote that was paid) | none |
 | CANCELLED / EXPIRED / FAILED | shown read-only if a quote exists | none |
 
@@ -34,7 +34,7 @@ A customer cannot accept or pay an expired quote (`quote_expired`, row 46). Ops 
 - Under the card:
   - QUOTED, not expired, with expiry: 12 slate-600 `You can issue a new quote after this one expires at {time}.`
   - QUOTED, expired: `.drawer-actions` with one full-width `.btn .btn-primary` `Issue new quote`.
-  - ACCEPTED, expired: `.drawer-actions` with `Issue new quote` (row 72), plus 12 slate-600 `This quote expired after the customer accepted it. They can't pay until it is re-quoted.` Until the API exposes row 72 only the line shows.
+  - ACCEPTED, expired: `.drawer-actions` with `Issue new quote` (row 72), plus 12 slate-600 `This quote expired after the customer accepted it. They can't pay until it is re-quoted.`
   - **Customer asked for a new quote** (row 68): when `quoteRequestedAt` is set and later than the newest quote's `createdAt`, a row above the actions: chip A-02 tone `pending`, text `New quote requested` (a flag, not a task state), and 12 slate-600 `Customer asked for a new quote {date, time}.` (time Fira Code). It clears once a new quote is issued.
 
 ### Issue new quote dialog
@@ -67,8 +67,10 @@ Body sent: `{ total: number, baseFee?: number, distanceFee?: number, timeFee?: n
 | Response | UI |
 |---|---|
 | 409 `quote_still_valid` (extra `expiresAt`) | Close the dialog, reload the quote, A-11 info `The current quote is still valid until {expiresAt}. You can replace it after it expires.` |
+| 409 `payment_in_progress` (ACCEPTED: the customer started paying this quote; row 72 re-quote guard, on `main`) | Close the dialog, reload the errand and quote; A-11 info `The customer has started paying this quote, so it can't be replaced now. Showing the latest.` (added 2026-10-09 round 4, m-7) |
 | 409 without code (status changed, e.g. customer accepted or cancelled meanwhile) | Reload the errand and quote; A-11 info `This task changed while you were editing. Showing the latest.` |
 | 403 (`ForbiddenException`: actor cannot re-quote) | `_shared.md` §2 |
+| 400 `quote_expiry_in_past` (row 83: the chosen `Valid until` passed while the dialog was open; `feat/api-owner-answers-4`) | Dialog stays open, inputs kept; A-11 danger `The expiry time has passed. Choose a later time.` and field error `Choose a time in the future.` on `Valid until` (2026-10-09 round 4, m-6: replaces the builder's generic `Check the amounts and the expiry time.`, because the amounts are fine) |
 | 400 validation (`message[]`) | A-11 danger in the dialog `Check the amounts and the expiry time.` plus field errors where the property name matches |
 | network / 5xx | A-11 danger in the dialog `Couldn't issue the quote. Try again.`; inputs kept |
 
@@ -96,7 +98,9 @@ Quoted total, every fee component (display and input values), `Issued` and `Vali
 - Queue flag: **needs: api-contract (N-5)** `quoteExpiresAt` on `GET /errands` items so the queue can show `Quote expired` under the `Quoted` / `Awaiting payment` chip and sort those first. With N-13, tasks with an open customer request show `New quote requested` instead and sort first. Until then the flags exist only in the drawer.
 - Expiry required: **needs: api-contract (N-11)** server default now + 24 h when `expiresAt` is omitted; backfill legacy nulls.
 - Customer notification: **needs: api-contract (N-4)**: a re-quote emits nothing (no status change, no history row), so the customer never learns of the new price. Needs a push + socket event (e.g. `quote.reissued`) and an audit row.
-- Customer request for a new quote (row 68): **needs: api-contract (N-13)** `quoteRequestedAt` on the errand (detail and list) and an ops notification/live-feed item. Shown as above; counted in the `Task queue` badge.
+- Customer request for a new quote (row 68): N-13 built on `feat/api-owner-answers-4` (not on `main` yet): `quoteRequestedAt` on the errand detail and list items (cleared by the next quote), `GET /errands?quoteRequested=true` and `GET /errands/count?quoteRequested=true`, an admin feed notification `quote_requested`, and a PROPOSED `quote:requested` socket to an `admins` room. The admin types `quoteRequestedAt` optional with `TODO(owner-answers-4)`.
+  - **Now (accepted 2026-10-09 round 4)**: the queue flag, the requested-first sort and the `Task queue` badge come from the dashboard's loaded window (the newest 100 tasks), the same source as every other shell badge. No filter, count or socket call: the filter/count params would be rejected by `main` (unknown query property), and the admin app has no socket client (manual refresh, as the other panels).
+  - **When `feat/api-owner-answers-4` is on `main`** (m-8, with the `TODO(owner-answers-4)` cleanup): load `GET /errands?quoteRequested=true&limit=100` on dashboard load and refresh, merge it into the queue (dedupe by id) so a request on a task older than the newest 100 is never missed, and take the requested part of the badge from `GET /errands/count?quoteRequested=true`. A live `quote:requested` push stays out of scope until the admin app gets a socket client.
 
 ## Accessibility
 - The `Quote expired` chip also changes the row label to `Expired`, so the state is not colour-only.
@@ -113,6 +117,15 @@ Quoted total, every fee component (display and input values), `Issued` and `Vali
 None.
 
 ## Current vs design
+Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de`: **PASS**, minors to fix on the next touch (the same branch is reopened for p-refunds):
+1. Row 68 built: `New quote requested` flag chip and `Customer asked for a new quote {date, time}.` when `quoteRequestedAt` is later than the newest quote, on QUOTED/ACCEPTED only (`quote.section.ts` `pendingQuoteRequest`); queue flag replaces `Quote expired`, requested rows sort first, the badge counts them (`task-queue.panel.ts` `queueRank`, `admin-data.service.ts` `pendingCount`). Tested. Source limited to the loaded window: accepted (Data).
+2. Row 83: `Valid until` required in both modes, default now + 24 h EAT; tested for the first-quote mode.
+3. Row 72: `1f24c63` removed the `quoteAcceptanceRequired` feature detection; `canRequote` now offers `Issue new quote` on an expired ACCEPTED quote. Accepted: the round-3 API (`REQUOTABLE` = QUOTED, ACCEPTED) is on `main`.
+4. m-6 (minor) `quote-dialog.ts:336-339`: 400 `quote_expiry_in_past` shows `Check the amounts and the expiry time.`; use `The expiry time has passed. Choose a later time.` (field error unchanged).
+5. m-7 (minor) `quote.section.ts:257-270`: 409 `payment_in_progress` falls through to `This task changed while you were editing.`; use the copy in Errors. Reachable on `main` now that the ACCEPTED gate is gone.
+6. m-8 (minor, deferred): adopt the `quoteRequested` filter and count once `feat/api-owner-answers-4` is on `main` (Data).
+
+Earlier update (spec, 2026-10-09):
 Spec update 2026-10-09 against `main` @ `c7675dc` (built and PASS in `docs/audits/admin-reaudit-2026-10-09.md`; now changed):
 1. Row 68: show the `New quote requested` flag and line from `quoteRequestedAt` (once N-13 lands); queue flag and badge as in Data.
 2. Row 83: confirm `Valid until` is required in the first `Issue quote` dialog too (`quote-dialog.ts` validates `expiresAt` in both modes; keep it, with a test for the first-quote mode).

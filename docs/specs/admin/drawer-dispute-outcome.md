@@ -3,7 +3,7 @@
 - Mockup: `#drawer-dispute` draws: chip `Open`, title, `Customer: … · Runner: … · Opened …`, `Customer's claim`, `Evidence on file`, `Timeline`, `Resolution` (textarea `Add a resolution note...`) and the actions `Side with runner` (`.btn-reject`, outline) / `Refund customer` (`.btn-approve`, green). This spec covers the **Resolution** section, the verdict actions and what the drawer shows afterwards. **EXTENDS MOCKUP**: outcome explanations, confirm step, rationale rules and the post-verdict result (incl. the link to the refund review). One **copy deviation**, approved: `Refund customer` → `Side with customer` (row 78).
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` (exists; see Current vs design)
-- Status: matches-design (re-audit 2026-10-09 PASS; the 2026-10-09 owner answers confirm the built defaults, no change)
+- Status: matches-design (re-audit 2026-10-09 PASS; round-4 re-audit 2026-10-09 PASS)
 
 ## Purpose
 Let an admin resolve a dispute with a written rationale and make the consequence of each verdict explicit (row 36, §3.3 as updated by row 56):
@@ -44,7 +44,7 @@ Replaces the Resolution section; the claim/evidence/timeline sections stay visib
   - Runner: success `Dispute resolved for the runner. The task is now Completed.`
   - Customer, refund review opened: success `Dispute resolved for the customer. The task is now Cancelled. A refund review is waiting in Refunds.` + `.btn .btn-outline` `Open refund review`.
   - Customer, no payment: info `Dispute resolved for the customer. The task is now Cancelled. The customer hadn't paid, so there is nothing to refund.`
-- Opening the drawer on a task that is no longer DISPUTED (resolved elsewhere): the same Outcome card built from the latest history row whose `fromStatus` is `DISPUTED`; no notice.
+- Opening the drawer on a task that is no longer DISPUTED (resolved elsewhere): the same Outcome card built from the latest history row whose `fromStatus` is `DISPUTED`; when no such row is loaded, from the dispute itself (`verdict` `runner_favourable` → `Completed`, `customer_favourable` → `Cancelled`; `resolvedAt` → `Decided`; `resolution` → note; `feat/api-owner-answers-4`, typed optional until merged); no notice.
 
 ## Validation
 | Field | Rule (mirrors `ResolveDisputeDto`: `@MinLength(20) @MaxLength(2000)` and the service's trimmed ≥ 20 check) | Message |
@@ -59,7 +59,8 @@ Replaces the Resolution section; the claim/evidence/timeline sections stay visib
 | Response | UI |
 |---|---|
 | 400 validation (`rationale must be longer than or equal to 20 characters`) | Field error (above) |
-| 409 (`ConflictException`, no code: not DISPUTED any more, or rationale < 20 after trim) | Reload errand + history; if no longer DISPUTED show the result view with A-11 info `This dispute was already resolved. Showing the outcome.`; otherwise the field error |
+| 409 `errand_not_disputed` (N-8, on `main`), or any 409 after which the task is no longer DISPUTED | Reload errand, history and dispute; show the result view with A-11 info `This dispute was already resolved. Showing the outcome.` |
+| 409 without a code while the task is still DISPUTED (rationale < 20 after trim) | Field error (Validation) |
 | 403 | `_shared.md` §2 |
 | 404 | A-11 info `This task no longer exists.` |
 | network / 5xx | A-11 danger `Couldn't record the decision. Try again.`; note kept |
@@ -107,6 +108,8 @@ Task id in titles/dialogs, `Decided` date/time, timeline times, the note counter
 None.
 
 ## Current vs design
+Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de`: **PASS**. `dispute-drawer.ts` reads `verdict`/`resolvedAt` as the Outcome fallback (`disputeOutcome`) and keys the 409 on `errand_not_disputed`; both tested. Row 79: the customer already sees the resolution note on `x-report-problem` (Outcome); the verdict itself needs no customer copy (see that spec).
+
 Re-audit 2026-10-09 (`docs/audits/admin-reaudit-2026-10-09.md`): PASS on `main`. The 2026-10-09 owner answers (rows 78, 79) confirm the built label and hint; no change. Minor m-4 (notice order) still applies on the next touch.
 
 Earlier record (2026-10-08, before the build):

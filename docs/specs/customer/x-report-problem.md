@@ -72,6 +72,7 @@ C-10, C-07, C-17 (multiline + counter), C-40, C-05, C-08, C-35, C-01. NEW: C-35,
 - Q1: Should customers attach photos to a report? Not supported by the API today. Default: text only.
 - Resolved: the resolution note is shown to the customer (and the runner) (row 79); internal admin notes stay separate.
 - Resolved: dispute targets (row 36). Refunds after a customer-favourable outcome are shown on `v-task-detail` (refund group, `_shared.md` §11), not here; read mode adds no refund copy.
+- Verdict (checked 2026-10-09 against row 79 and `feat/api-owner-answers-4`): row 79 makes the **resolution note** visible to the customer; it says nothing about naming the side the admin took. The API now also sends `verdict` (`runner_favourable` / `customer_favourable`) and `resolvedAt` on the customer's dispute. No verdict label or copy is added: the outcome is carried by the errand chip the screen already shows (`Completed` or `Cancelled`, row 36), the dispute chip `Resolved`, the resolution note under `Outcome`, and, for a customer-favourable outcome where the customer paid, the refund group on `v-task-detail`. `Resolved {date, time}` may use `resolvedAt` when the client reads it (Fira Code, as now).
 
 ## Current vs design
 Spec update 2026-10-09 (row 79): confirms what is built (`report_problem_screen.dart:290-294` shows `resolution`). Status unchanged.

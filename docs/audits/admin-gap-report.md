@@ -337,3 +337,66 @@ Applied on `docs/owner-answers-3` (from `main` @ `c7675dc`, which includes `feat
 - AQ-7 (minor): 12-hour `4:30 PM` times in East Africa Time, as drawn in the mockup? Built default: yes.
 - SQ-11 (payments; see the customer gap report addendum): when Nitume pays the runner the `send_to_runner` item amount through the payout ledger.
 
+
+## Addendum 2026-10-09: re-audit round 4 (owner answers round 3 build)
+
+Audited: `fix/angular-admin-owner-answers` @ `f1323de` (11 commits on `main` @ `c7675dc`: `9d1b2c8` … `f1323de`), against the specs on `docs/owner-answers-3` and the round-3 addendum above. API for the new fields: `feat/api-owner-answers-4` @ `124d81e` (read with `git show`; not on `main`). The admin types those fields as optional with `TODO(owner-answers-4)` markers, which is accepted for this round.
+
+Build health, from a `git archive` of the branch (worktree untouched): `ng test` 18 files, **137 tests pass**; `ng build` clean; Prettier clean on every changed file. Token scan: no hex value outside `_tokens.scss` in `apps/admin/src`; no `wallet`/`escrow`/`balance`/`held`/`release`/`credit`/`KES` in added lines (the only `KES` hits are the test asserting its absence).
+
+### Verdicts
+
+| View | Verdict | Findings |
+|---|---|---|
+| shell (`Payments` nav group) | PASS | none |
+| p-refunds | **FAIL** | 1 (blocker) |
+| drawer-refund (+ task drawer refund link) | PASS | none new (m-1, m-2 carried) |
+| drawer-task-requote (`New quote requested`, re-quote) | PASS | m-6, m-7, m-8 (minor) |
+| drawer-task-merchant-details | PASS | m-9 (minor, spec correction) |
+| drawer-dispute-outcome | PASS | none (m-4 carried) |
+
+### shell: PASS
+`admin-dashboard.component.ts:115-135`: new `.ops-nav-group` labelled `Payments` between `Network` and `Insights`, `Refunds` its only item, badge kept (`99+` past 99, from `GET /refunds/count`; keeps its last value on error, no list fallback). Tested (`admin-dashboard.component.spec.ts`). No permission tiers invented (row 77).
+
+### p-refunds: FAIL
+1. **Blocker** `apps/admin/src/app/features/admin/panels/refunds.panel.ts:127`. Spec (`p-refunds.md` Layout, corrected this round): the `Refundable` column shows the review's ceiling, net of earlier refunds on the task (row 87). On `feat/api-owner-answers-4` that is `refundCeiling` while `pending_review`; `amountPaid` stays the review's gross basis. Code: `formatKshExact(r.amountPaid)`, so a pending cancellation review on a task that already had a decrease refunded shows more than an admin can approve, under a header that says `Refundable`. Fix: show `reviewCeiling(r)` (move the helper from `refund-drawer.ts` to a shared module such as `refund-labels.ts` and import it in both places; no copy), keeping the `amountPaid` fallback with `TODO(owner-answers-4)`; add a test with `amountPaid` 1,500 / `refundCeiling` 1,200 → `KSh 1,200`. This follows the spec's own earlier wording ("`amountPaid` = the ceiling"), which assumed N-9 would net `amountPaid`; the API added a separate field instead.
+
+Everything else in the round-3 list is built: header `Refundable`, Needs-review empty text, the title from the embedded `errand` (no last-100 lookup).
+
+### drawer-refund (+ refund link): PASS
+- Rows 81/87, SA-1: `Already refunded on this task` (API `alreadyRefunded`, else summed from `otherReviews`, only when > 0) and `Refundable in this review` (600 weight, when the ceiling differs from `totalPaidToNitume` by a cent or more). Hint, `Full refund`, validation and the `refund_exceeds_amount_paid` field error use the ceiling with the spec copy `The refund can't be more than the KSh {x} refundable in this review.` Tested.
+- Row 82: refunded Payout card read-only, no input or edit control (tested); amounts `KSh` (tested); runner drawer's private formatter replaced by `formatKsh`.
+- SA-2: link from PAYMENT_CONFIRMED on, `GET /errands/:id/refunds` only, one row per review, hidden when empty, `Couldn't load refunds.` + `Try again` on error (tested, incl. no call before payment).
+
+Judgements requested by the orchestrator:
+- **`remainingRefundable` not displayed: accepted.** It is task-level and counts this review's own approved amount, so on a decided review it repeats `Already refunded` plus the decision; the admin acts on `refundCeiling`. It is the customer view's figure. Recorded in `drawer-refund.md` Layout 2.
+- **409 `refund_payout_locked` copy `This refund was already marked as sent. Its receipt can't be changed. Showing the latest.`: accepted** as written (matches the `refund_not_approved` / `refund_already_decided` pattern and row 82). Added to `drawer-refund.md` Error codes.
+- **EXPIRED tasks get the refund link: accepted; the spec was wrong.** §3.3 reaches EXPIRED only from RUNNER_ASSIGNED, so every EXPIRED task was paid; the spec's "EXPIRED tasks that never reached payment" described a transition that does not exist. `drawer-refund.md` now lists EXPIRED. This surfaced **AQ-8** (below): the API opens a refund review only on CANCELLED, so a paid EXPIRED or FAILED task gets none.
+
+### drawer-task-requote: PASS (minors)
+- Row 68: flag chip `New quote requested` + `Customer asked for a new quote {date, time}.` (time Fira Code) when `quoteRequestedAt` is later than the newest quote, QUOTED/ACCEPTED only; queue shows the flag instead of `Quote expired`, sorts requested rows first, the `Task queue` badge counts them. Store patch clears it after a quote. Tested.
+- Row 83: `Valid until` required in both modes, default now + 24 h EAT, always sent. Tested.
+- **Row-72 check removed in `1f24c63`: accepted.** The removed code feature-detected the round-3 API through `quoteAcceptanceRequired`; that API (`REQUOTABLE` = QUOTED, ACCEPTED, with the `payment_in_progress` guard) is on `main`, so `canRequote` offering `Issue new quote` on any expired ACCEPTED quote is correct. Tested.
+- **Quote-requested flag/sort/badge only from the loaded 100 tasks: accepted for this round.** It is the same source as every shell badge, the spec asked for no filter or count, `main` would reject the new `quoteRequested` query param (`forbidNonWhitelisted`), and the admin app has no socket client. Risk: a request on a task older than the newest 100 is not flagged. Deferred as m-8.
+
+6. m-6 (minor) `quote-dialog.ts:336-339`. **Builder copy for 400 `quote_expiry_in_past` replaced.** Spec now: A-11 danger `The expiry time has passed. Choose a later time.` with field error `Choose a time in the future.` on `Valid until`. Code shows `Check the amounts and the expiry time.`, which points at amounts that are fine. Fix: the new notice text; keep the field error. Update the test.
+7. m-7 (minor) `quote.section.ts:257-270`. Spec now lists 409 `payment_in_progress` (re-quote of an ACCEPTED task whose customer started paying; reachable on `main` since the gate was removed). Code shows `This task changed while you were editing. Showing the latest.` Fix: A-11 info `The customer has started paying this quote, so it can't be replaced now. Showing the latest.` after reloading; add a test.
+8. m-8 (minor, deferred to the `TODO(owner-answers-4)` cleanup after the API merges) `admin-data.service.ts` / `task-queue.panel.ts`: merge `GET /errands?quoteRequested=true&limit=100` into the queue (dedupe by id) and take the requested part of the badge from `GET /errands/count?quoteRequested=true` (`drawer-task-requote.md` Data).
+
+### drawer-task-merchant-details: PASS (minor)
+- Row 80 built: editable only for `buy_for_me` / `pickup_delivery` in non-terminal states; other categories with legacy data read-only with `Merchant details only apply to Buy For Me and Get It For Me.`; 400 `merchant_details_not_applicable` switches to read-only. Tested both category groups.
+
+9. m-9 (minor, spec correction) `merchant-details.section.ts:296-299` (dialog body) and `:110-117` (`savedCopy`). The API sends `merchant_details.changed` only when a `merchant_direct` payment has started (`merchant-details.watcher.ts`), and the admin can't see that. The spec copy the builder used ("We'll tell them…", "The customer has been told…") over-claims for a paid task whose customer hasn't paid the merchant. Spec now: body `… If they've started paying the merchant, we'll tell them the details changed so they check before paying.`; notice `Merchant details updated. If the customer had started paying the merchant, they've been told to check them.` Fix: those two strings and their tests.
+
+### drawer-dispute-outcome: PASS
+`dispute-drawer.ts`: Outcome falls back to the dispute's `verdict` / `resolvedAt` / `resolution` when no history row left DISPUTED; 409 `errand_not_disputed` (or a task no longer DISPUTED) reloads and shows the outcome with `This dispute was already resolved. Showing the outcome.`; a 409 without a code on a still-disputed task shows the note error. Tested. Spec updated to describe both.
+
+**Customer side of row 79**: the owner's answer is about the resolution **note**, which `x-report-problem` already shows under `Outcome`. It does not ask for the verdict to be named to the customer, so no customer copy is added; the outcome is carried by the errand chip (`Completed` / `Cancelled`), the dispute chip `Resolved`, the note, and the refund group on `v-task-detail`. Recorded in `docs/specs/customer/x-report-problem.md`.
+
+### Builder list (web-parity, same branch)
+1. p-refunds blocker 1 (required for PASS).
+2. m-6, m-7, m-9 now (small, same files are open).
+3. m-8 and every `TODO(owner-answers-4)` once `feat/api-owner-answers-4` is on `main`.
+
+### Questions for the owner (new)
+- **AQ-8 (payments, schema)**: a paid task can end EXPIRED (no runner accepts) or FAILED (RUNNER_EN_ROUTE → FAILED), but the API opens a refund review only on CANCELLED. Should EXPIRED and FAILED after payment open a refund review too (new trigger values: an enum change)? Nothing is built for it.
