@@ -11,6 +11,8 @@ import {
   validateQuoteForm,
 } from './quote-dialog';
 import { canRequote, QuoteSectionComponent } from './quote.section';
+import { QuoteDialogComponent } from './quote-dialog';
+import { eatLocalInputToIso } from '../shared-format';
 import type { Quote } from '../../../core/api-types';
 import { AdminDataService } from '../admin-data.service';
 
@@ -85,6 +87,60 @@ describe('quote form (G-15)', () => {
       EXPIRY_ERROR,
     );
     expect(validateQuoteForm(form({ expiresAt: '' }), NOW).expiresAt).toBe(EXPIRY_ERROR);
+  });
+});
+
+describe('QuoteDialogComponent expiry (row 83)', () => {
+  let http: HttpTestingController;
+  beforeEach(() => {
+    http = setupHttp();
+  });
+  afterEach(() => http.verify());
+
+  function open() {
+    const fixture = TestBed.createComponent(QuoteDialogComponent);
+    fixture.componentRef.setInput('errandId', errandFixture().id);
+    fixture.componentRef.setInput('open', true);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const expiry = el.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+    const confirm = Array.from(el.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Issue quote',
+    ) as HTMLButtonElement;
+    return { fixture, el, expiry, confirm };
+  }
+
+  it('defaults Valid until to 24 hours from now (EAT)', () => {
+    const { expiry } = open();
+    const iso = eatLocalInputToIso(expiry.value);
+    expect(iso).not.toBeNull();
+    const delta = new Date(iso!).getTime() - Date.now();
+    expect(Math.abs(delta - 24 * 3600 * 1000)).toBeLessThan(2 * 60 * 1000);
+  });
+
+  it('cannot be issued without an expiry; the body always carries expiresAt', async () => {
+    const { fixture, el, expiry, confirm } = open();
+    const total = el.querySelector('input[inputmode="decimal"]') as HTMLInputElement;
+    total.value = '1450';
+    total.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(confirm.disabled).toBe(false);
+
+    const kept = expiry.value;
+    expiry.value = '';
+    expiry.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(confirm.disabled).toBe(true);
+
+    expiry.value = kept;
+    expiry.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    confirm.click();
+    const req = http.expectOne(`${API}/errands/${errandFixture().id}/quote`);
+    expect(req.request.body.expiresAt).toMatch(/\+03:00$/);
+    req.flush(null, { status: 500, statusText: 'Server Error' });
+    await flushAsync();
   });
 });
 
