@@ -289,6 +289,16 @@ export interface RefundReview {
   paidAt?: string | null;
   createdAt: string;
   updatedAt?: string;
+  // Cumulative position on the task (rows 81, 87; N-9). Admin refund responses only.
+  // TODO(owner-answers-4): optional until feat/api-owner-answers-4 is on main.
+  /** Highest refund an admin may approve now; null once decided. */
+  refundCeiling?: string | null;
+  /** Refunds of the task's other approved/refunded reviews. */
+  alreadyRefunded?: string;
+  /** What is still refundable on the task after every approved/refunded review. */
+  remainingRefundable?: string;
+  /** Every completed STK amount paid to Nitume for the task. */
+  totalPaidToNitume?: string;
 }
 
 /** An admin who decided / paid a refund (N-2). */

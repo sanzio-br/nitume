@@ -29,15 +29,39 @@ export const AMOUNT_FORMAT = 'Enter an amount in KSh, up to 2 decimal places.';
 export const RECEIPT_ERROR = 'Enter the M-Pesa receipt code, letters and numbers only.';
 const RECEIPT_PATTERN = /^[A-Za-z0-9-]{4,64}$/;
 
-/** Refund amount rule (mirrors `DecideRefundDto` + `RefundsService.decide`). */
-export function validateRefundAmount(input: string, amountPaid: string | number): string | null {
+export function ceilingError(ceiling: string | number | null): string {
+  return `The refund can't be more than the ${formatKshExact(ceiling)} refundable in this review.`;
+}
+
+/**
+ * Refund amount rule (mirrors `DecideRefundDto` + `RefundsService.decide`).
+ * `ceiling` is the review's refund ceiling (rows 81, 87).
+ */
+export function validateRefundAmount(input: string, ceiling: string | number): string | null {
   if (isBlank(input)) return AMOUNT_REQUIRED;
   const value = parseKsh(input);
   if (value === null) return AMOUNT_FORMAT;
-  if (value > Number(amountPaid)) {
-    return `The refund can't be more than the ${formatKshExact(amountPaid)} the customer paid.`;
-  }
+  if (value > Number(ceiling)) return ceilingError(ceiling);
   return null;
+}
+
+/**
+ * What can be refunded in this review: the API's `refundCeiling` while
+ * pending (net of earlier refunds on the task, row 87), else `amountPaid`.
+ */
+export function reviewCeiling(
+  r: Pick<RefundDetail, 'status' | 'amountPaid' | 'refundCeiling'>,
+): string {
+  // TODO(owner-answers-4): `refundCeiling` is optional until N-9 is on main.
+  return r.status === 'pending_review' ? (r.refundCeiling ?? r.amountPaid) : r.amountPaid;
+}
+
+/** Refunds already approved or sent on the task's other reviews (row 87). */
+export function alreadyRefunded(r: Pick<RefundDetail, 'alreadyRefunded' | 'otherReviews'>): number {
+  if (r.alreadyRefunded !== undefined) return Number(r.alreadyRefunded);
+  return r.otherReviews
+    .filter((o) => o.status === 'approved' || o.status === 'refunded')
+    .reduce((sum, o) => sum + Number(o.refundAmount ?? 0), 0);
 }
 
 export function validateReceipt(input: string): string | null {
@@ -154,10 +178,15 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
           <div class="drawer-row drawer-row-total">
             <span>Total paid to Nitume</span><b>{{ formatKshExact(r.paid.totalPaidToNitume) }}</b>
           </div>
-          @if (differs(r.amountPaid, r.paid.totalPaidToNitume)) {
-            <!-- SA-1: this review's ceiling (e.g. a price decrease) is not the total paid. -->
+          @if (refunded() > 0) {
             <div class="drawer-row">
-              <span>Refundable in this review</span><b>{{ formatKshExact(r.amountPaid) }}</b>
+              <span>Already refunded on this task</span><b>{{ formatKshExact(refunded()) }}</b>
+            </div>
+          }
+          @if (differs(ceiling(), r.paid.totalPaidToNitume)) {
+            <!-- SA-1: this review's ceiling (e.g. a price decrease) is not the total paid. -->
+            <div class="drawer-row drawer-row-strong">
+              <span>Refundable in this review</span><b>{{ formatKshExact(ceiling()) }}</b>
             </div>
           }
           <div class="drawer-row">
@@ -209,7 +238,7 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
                 type="button"
                 class="btn btn-outline btn-sm"
                 [disabled]="saving()"
-                (click)="setAmount(plain(r.amountPaid))"
+                (click)="setAmount(plain(ceiling()))"
               >
                 Full refund
               </button>
@@ -246,7 +275,7 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
                 @if (amountValue(); as v) {
                   Approve refund · <span class="num">{{ formatKshExact(v) }}</span>
                 } @else {
-                  {{ decisionLabel(amount(), r.amountPaid) }}
+                  {{ decisionLabel(amount(), ceiling()) }}
                 }
               </button>
             </div>
@@ -430,9 +459,19 @@ export class RefundDrawerComponent implements OnInit {
   private readonly amountInput = viewChild<ElementRef<HTMLInputElement>>('amountInput');
   private readonly receiptInput = viewChild<ElementRef<HTMLInputElement>>('receiptInput');
 
+  /** The decision form's maximum (rows 81, 87). */
+  protected readonly ceiling = computed(() => {
+    const r = this.review();
+    return r ? reviewCeiling(r) : '0';
+  });
+  protected readonly refunded = computed(() => {
+    const r = this.review();
+    return r ? alreadyRefunded(r) : 0;
+  });
+
   readonly amountError = computed(() => {
     const r = this.review();
-    return r ? validateRefundAmount(this.amount(), r.amountPaid) : AMOUNT_REQUIRED;
+    return r ? validateRefundAmount(this.amount(), this.ceiling()) : AMOUNT_REQUIRED;
   });
   protected readonly amountShown = computed(
     () => this.amountServerError() ?? (this.amountTouched() ? this.amountError() : null),
@@ -452,7 +491,7 @@ export class RefundDrawerComponent implements OnInit {
   protected readonly amountHint = computed(() => {
     const r = this.review();
     return r
-      ? `Between KSh 0 and ${formatKshExact(r.amountPaid)}. KSh 0 closes the review with no refund.`
+      ? `Between KSh 0 and ${formatKshExact(this.ceiling())}. KSh 0 closes the review with no refund.`
       : '';
   });
 
@@ -728,16 +767,21 @@ export class RefundDrawerComponent implements OnInit {
         tone: 'info',
         text: "This refund isn't approved, so it can't be marked as sent. Showing the latest.",
       });
+    } else if (err.code === 'refund_payout_locked') {
+      // Row 82: a recorded receipt is final.
+      await this.reloadWith({
+        tone: 'info',
+        text: "This refund was already marked as sent. Its receipt can't be changed. Showing the latest.",
+      });
     } else if (err.code === 'refund_exceeds_amount_paid') {
-      const paid = (err.extra['amountPaid'] as string | undefined) ?? this.review()?.amountPaid;
+      // `amountPaid` in the error is the effective ceiling (N-9).
+      const ceiling = (err.extra['amountPaid'] as string | undefined) ?? this.ceiling();
       const amount = this.amount();
       const note = this.note();
       await this.load();
       this.amount.set(amount);
       this.note.set(note);
-      this.amountServerError.set(
-        `The refund can't be more than the ${formatKshExact(paid ?? null)} the customer paid.`,
-      );
+      this.amountServerError.set(ceilingError(ceiling));
     } else if (err.status === 400) {
       if (kind === 'decision') this.amountServerError.set(AMOUNT_FORMAT);
       else this.receiptServerError.set(RECEIPT_ERROR);

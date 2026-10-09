@@ -25,7 +25,7 @@ export const REFUND_FILTERS: { value: RefundFilter; label: string }[] = [
 const EMPTY: Record<RefundFilter, { title: string; text: string }> = {
   pending_review: {
     title: 'No refunds to review',
-    text: 'Tasks cancelled after the customer paid land here for a refund decision.',
+    text: 'Tasks cancelled after the customer paid, and price decreases on tasks paid to Nitume, land here for a refund decision.',
   },
   approved: {
     title: 'No payouts to record',
