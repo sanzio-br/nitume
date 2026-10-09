@@ -313,7 +313,7 @@ The three flows stay separate (§6 of the system design): service fee, runner fe
 - On the wizard estimate only (when shown at all, §8.3) the row reads `Estimated total (service + runner fee)`.
 - The **item amount** (merchant/item purchase) is shown separately, under a hairline, and never added into the fee total.
 - The API's internal commission split (20% / 30%) and the quote components (base, distance, time, urgency, complexity, premium) are never shown (OA-4).
-- The fee STK push amount = the fee total only.
+- The fee STK push amount = the fee total, **plus the item amount when the route is `send_to_runner`: one combined STK** (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit). The receipt still shows the item amount on its own line, never inside `Total (service + runner fee)`. The payment screen shows the combined amount with the line `Includes KSh 40,000 for your runner's purchase.` (amount in Fira Code; builder copy, accepted as proposed while BOARD row 91 is open).
 
 ### 8.2 Merchant/item amount routes (OA-5, rows 42–44, 48, 49, 61)
 
@@ -322,7 +322,7 @@ Wire values (`merchantRoute` on `POST /payments/:errandId/initiate`, core `Merch
 | Route | Customer label (checkout) | How the item amount is paid | Customer screen |
 |---|---|---|---|
 | `merchant_direct` | `Pay merchant directly (recommended)` | The customer pays the merchant's Till/Paybill from their own M-Pesa, after the fees are paid. Nitume does not collect it | `x-merchant-payment` variant A |
-| `send_to_runner` | `Send purchase amount to runner` | **Platform-mediated (row 42)**: the customer pays the item amount **to Nitume by a separate M-Pesa STK push** (never combined with the fee STK). Nitume passes it on for the purchase. No runner phone number is ever shown for paying, and the app never offers a direct transfer to the runner | `x-merchant-payment` variant B |
+| `send_to_runner` | `Send purchase amount to runner` | **Platform-mediated (row 42)**: the customer pays the item amount **to Nitume in the same M-Pesa STK as the fees** (one combined charge, (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit)). Nitume passes it on for the purchase. An approved price-change increase on this route is a separate STK for the difference (`x-merchant-payment` variant B). No runner phone number is ever shown for paying, and the app never offers a direct transfer to the runner | `x-merchant-payment` variant B |
 
 **Merchant details (row 43)**: the merchant or an admin supplies the Till/Paybill details; the customer never types them. Two customer states:
 - **Details pending** (none on the errand): at checkout `merchant_direct` is disabled with subtitle `Available once the merchant's details are added.`; `x-merchant-payment` variant A shows the notice `The merchant's details aren't available yet. We'll notify you when they are.`

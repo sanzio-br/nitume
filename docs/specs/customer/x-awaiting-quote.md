@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Required by OA-3 (authoritative REQUESTED → QUOTED → ACCEPTED flow after the wizard preview) and OA-5 (merchant payment route chosen at checkout). Built from design-system patterns and existing mockup components (`.stk-wrap`, `.form-card`, `.receipt-row`, `.chip` column, `.pm-card`, `.cta-fixed`). Copy is **(proposed)** unless marked "mockup".
 - Shared conventions: `_shared.md` (OA-n §0, fees and routes §8)
-- Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: expired-quote state, route copy and wire values, merchant-details states; see Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 One screen per errand with two main states (plus the expired-quote state of checkout):
@@ -42,12 +42,13 @@ REQUESTED (waiting), QUOTED (checkout, or expired quote), ACCEPTED (checkout re-
         - `Pay merchant directly (recommended)` (mockup) → `merchant_direct`. Merchant details come from the merchant or an admin, never from the customer (row 43):
           - **Details available**: enabled. Subtitle: `You'll see the merchant's Till or Paybill number after paying the fees.`
           - **Details pending**: **disabled** (slate-400 text, no tap), subtitle `Available once the merchant's details are added.` When they are added later (notification, or the live status refresh), the row enables in place without changing the customer's current selection.
-        - `Send purchase amount to runner` (mockup) → `send_to_runner`. Platform-mediated (row 42). Subtitle (proposed): `After the fees, you'll pay this amount to Nitume by M-Pesa for your runner's purchase.`
+        - `Send purchase amount to runner` (mockup) → `send_to_runner`. Platform-mediated (row 42). Subtitle (builder copy, accepted (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit)): `You'll pay this amount to Nitume by M-Pesa together with the fees, for your runner's purchase.`
         - The mockup's third option `Let runner advance the purchase` is **removed** (OA-5: runner advance is never a customer choice).
       - Default selection: merchant-direct when available, else send-to-runner.
    4. Form card "Pay with" (used for the fee STK and, for `send_to_runner`, the item-amount STK): C-30 payment method card of the selected method (default M-Pesa method; else the sign-in phone as `M-Pesa` / `+254 712 ••• 678` / tag-less with the 11.5 slate-600 note `Your sign-in number`). Trailing green-700 link `Change` (C-04) when the customer has saved M-Pesa methods.
    5. Text button (C-04) `Decline and cancel task`, red (destructive, OA-13), centred, margin `4 20 20`.
-3. Fixed primary CTA (C-01): mockup copy `Confirm & pay KSh 2,200 →` with the fee total (service + runner) in Fira Code.
+3. Fixed primary CTA (C-01): mockup copy `Confirm & pay KSh 2,200 →` with the amount in Fira Code: the fee total, or, when `send_to_runner` is selected, the fee total plus the item amount (one combined STK (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit)). The Final quote card still shows only the fee total.
+   - Expired quote: no CTA while no quote-request endpoint exists (row 68 / SQ-9 open; the fallback below). An admin re-quote (row 72, `quote:reissued`) switches the screen back to checkout.
 
 ## Components
 | Element | Component | Status |
@@ -114,6 +115,8 @@ States:
 - Q2: Should the checkout allow changing the route after payment (e.g. merchant details arrive later)? Default: no; route is fixed once the fees are paid.
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Total-only fee row, route rows with merchant-details states, CTA with the combined amount for send_to_runner (row 76), quote expiry without a CTA (row 68 fallback), admin re-quote and merchant-details live refresh.
+
 Round 2 (2026-10-07, `feat/customer-screens` @ `ba45633`): PASS. Final quote shows only `Total (service + runner fee)` from `quote.total`; CTA `Confirm & pay KSh … →` (amount still Fira Sans, core CC-2); ACCEPTED shows checkout again. Round 1 FAIL details: `docs/audits/customer-reaudit-2026-10-07.md`.
 
 Spec update 2026-10-08 (rows 34, 42, 43, 46): the build shows `This quote has expired.` with the CTA disabled and nothing else. Now required: the expired-quote state above (`quote_expired` handling, chip hidden, `Request a new quote` once the endpoint exists), the send-to-runner subtitle for the platform-mediated flow, the merchant-direct row enabling in place when details arrive. Status set to `partial` until re-audited.

@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 423–441 (`#v-price-auth`, drawn as an overlay screen)
 - Shared conventions: `_shared.md` (OA-n §0, rows §0.1, price changes §8.2, refunds §11)
-- Implementation: `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` (opened from `home_shell.dart` on resume and `track_tab.dart`) on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: decrease variant, refund-review copy, IN_PROGRESS only, route rules. See Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` (opened from `home_shell.dart` on resume and `track_tab.dart`) on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 The runner found the item priced differently from the agreed item amount. The customer approves the new amount or rejects it, which cancels the task (OA-8).
@@ -113,4 +113,6 @@ States (proposed):
 - SQ-8 (`_shared.md` §9): merchant-direct increase paid without an STK push. Default: pay the same Till/Paybill from the customer's own M-Pesa.
 
 ## Current vs design
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. IN_PROGRESS only, increase and decrease variants, route rows on `merchant_route_required` / `merchant_details_missing`, refund-review reject copy and decrease snackbar, already-answered codes.
+
 Round 2 (2026-10-07) and round 3 (2026-10-08, `08f9b26`): PASS against the earlier spec. Spec update 2026-10-08 (rows 37, 44, 48, 49, 55, 61): the build words every request as an increase (`priced higher`, `Approve KSh … increase`), uses the old reject body (`We'll update you about anything you've already paid.`), and shows the route rows only on `merchant_route_required`. It already opens `x-merchant-payment` from the decision's `differencePayment`. Now required: decrease copy and snackbar, the refund-review reject body, and the route rows also on `merchant_details_missing`. Status set to `partial` until re-audited.

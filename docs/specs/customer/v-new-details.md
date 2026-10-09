@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 361–384 (`#v-new-details`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
-- Implementation: `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (+ `task_draft.dart`) on branch `feat/customer-screens`
-- Status: partial (spec changed 2026-10-08: budget per category, Places client; see Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (+ `task_draft.dart`) on branch `feat/customer-integrations`
+- Status: matches-design
 
 ## Purpose
 Collect what the runner must do, where, by when, the item budget (Buy For Me and Get It For Me only), and (for Buy For Me) a structured shopping list.
@@ -71,6 +71,7 @@ Validation (proposed copy; shown on Continue, then live):
 - Title of 1–2 characters (the API accepts 3–120): `Use at least 3 characters, or leave it empty.` (builder copy, accepted in the 2026-10-07 re-audit)
 - No Places client (a build without a Places key; Places itself is approved, row 30): C-40 notice under the location card `Place search isn't available yet. Choose one of your saved addresses that has a map location.` (builder copy, accepted in the 2026-10-07 re-audit). Production builds always have the key, so this state is for dev builds only.
 - Places error/offline: inside the suggestions `Couldn't search places. Check your connection.`
+- Editing the text of a chosen place clears the choice at once (the draft location becomes empty, so Continue shows `Choose a place from the list.`); re-picking restores it. Clarified in the 2026-10-09 re-audit: the wizard never submits a place that differs from the field text.
 - CTA is always enabled; tapping with errors scrolls to the first error.
 
 ## Rules
@@ -106,6 +107,10 @@ Validation (proposed copy; shown on Continue, then live):
 - Q2: Is "end of day" right for Today/Tomorrow, or should those chips open a time picker? Default: 23:59 local.
 
 ## Current vs design
+Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: PASS. An edit after a pick drops the place (core `onSelectionCleared`) and Continue shows `Choose a place from the list.`; search failures show `Couldn't search places. Check your connection.` Minor: text typed without any earlier pick gets the generic `Choose a location.` / `Choose where to …` message instead of `Choose a place from the list.`; nothing unpicked is ever sent.
+
+Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): FAIL. Blocker: editing the text of a chosen place does not clear the choice, so the wizard submits the previously picked place while the field shows other text; `Choose a place from the list.` never shows. Budget per category (row 45) and Google Places are in place.
+
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (Places pending row 30, saved-address fallback). Minor: a chosen place shows as the field hint (slate-400) instead of a value (core `PlaceAutocompleteField` initial value, need open); budget placeholder `0` instead of `KSh 0`. Builder copy accepted: title minimum, no-Places notice (see Copy).
 
 Spec update 2026-10-08 (rows 30, 45, 60): the build shows the budget card for all five categories and has no Google Places client yet. Now required: budget only for Buy For Me / Get It For Me (others send 0); Places search through the core Google client; typed-but-unpicked text is never accepted. Status set to `partial` until re-audited.
