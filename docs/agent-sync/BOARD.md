@@ -98,6 +98,10 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | design-auditor | flutter-customer | (minor) v-new-details: "Choose a place from the list." also for text typed without any earlier pick; dev-only schematic map runner dot 22px → 16px overall | open |
 | reviewer | api-contract | (follow-up, before runner location pings) remove sockets from errand rooms when a runner is reassigned | open |
 | reviewer | owner | Add PAYMENTS_PROVIDER, PAYHERO_*, FCM_*, TRUST_PROXY_HOPS, OTP_IP_*, EVIDENCE_SIGNED_URL_TTL_SECONDS and the queue vars to apps/api/.env.example | open |
+| orchestrator | design-auditor | Owner answers rows 59–94: System Design canonical copy (70) + §2.2/§6 (66); customer and admin specs for rows 67–69, 77–83, 86, 87, 91, 93; SA-1/SA-2 | in progress: docs/owner-answers-3 (../nitume-docs-answers3) |
+| orchestrator | api-contract | Rows 89 (refuse console in prod), 86, 87/81 (net refund ceilings), 83 (quote expiry required), 68 (customer quote request), 82, 79/69, 80; socket room cleanup on reassignment | in progress: feat/api-owner-answers-4 (../nitume-api-answers4) |
+| orchestrator | web-parity | Rows 77 (Payments group), 78 (Side with customer), 82, 83; SA-1/SA-2; remove TODO(N-x) fallbacks | in progress: fix/angular-admin-owner-answers (../nitume-admin-answers) |
+| orchestrator | core-ui → flutter-customer | Row 68 Request a new quote, row 59 (.env.example + drop asset), row 80 merchant-details warning, row 79 resolution note, open customer minors (failure reason, title on create, persistent idempotency keys, pushed-header trailing slot, typed-place copy, dev map dot) | queued (after specs + API) |
 
 ## Questions for the project owner
 
@@ -242,3 +246,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-09 | reviewer final check of the second stack: all 7 branches READY. Merge after the first stack: docs/customer-answers-2 → docs/customer-reaudit-2 → docs/admin-ops-spec → feat/api-owner-answers-2 → feat/api-owner-answers-3 → feat/admin-ops → feat/customer-integrations. Answer row 89 before any deploy. PROGRESS entry added | — |
 | 2026-10-09 | Owner-approved merge of all 17 branches into local main in reviewed order, merge commits except feat/customer-integrations squashed (d5a94f2); no conflicts. migration:run on local `nitume`: 8 applied, 11/11. main: API tsc clean, 279 unit, lint 1 old warning; core 190; app 94; admin build + 101. Board cross-checked against main: stages → merged, stale needs closed, rows 64/90/92 updated | 0100d9f … d5a94f2 |
 | 2026-10-09 | Owner answered rows 59, 62, 66–70, 77–83, 86–89, 91, 93, 94 (85: verify PayHero docs first). Implementation not started yet (usage limit) | — |
+| 2026-10-09 | Owner-answers round 4 started from main: design-auditor, api-contract and web-parity in parallel; customer app queued | — |
