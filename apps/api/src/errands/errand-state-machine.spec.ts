@@ -3,6 +3,7 @@ import { ErrandStatus, StatusHistoryActor } from '../common/enums';
 import {
   ERRAND_TRANSITIONS,
   ErrandStateMachine,
+  TransitionGuard,
 } from './errand-state-machine';
 
 const C = StatusHistoryActor.CUSTOMER;
@@ -43,10 +44,20 @@ describe('ErrandStateMachine', () => {
     expect(ErrandStateMachine.isTerminal(ErrandStatus.SETTLED)).toBe(true);
   });
 
-  it('rejects every reverse transition', () => {
+  it('rejects every reverse transition except dispute resolution back to COMPLETED', () => {
+    // COMPLETED -> DISPUTED (customer, within the dispute window) and
+    // DISPUTED -> COMPLETED (admin, runner-favourable) is the one deliberate
+    // pair; DisputesService allows a single dispute per errand.
+    const allowedPairs = new Set([
+      `${ErrandStatus.COMPLETED}|${ErrandStatus.DISPUTED}`,
+      `${ErrandStatus.DISPUTED}|${ErrandStatus.COMPLETED}`,
+    ]);
     const all = Object.values(ErrandStatus);
     for (const from of all) {
       for (const to of all) {
+        if (allowedPairs.has(`${from}|${to}`)) {
+          continue;
+        }
         if (ErrandStateMachine.canTransition(from, to)) {
           expect(
             ErrandStateMachine.canTransition(to, from),
@@ -109,11 +120,14 @@ describe('ErrandStateMachine', () => {
       [ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS, [R]],
       [ErrandStatus.IN_PROGRESS, ErrandStatus.AWAITING_CUSTOMER, [R]],
       [ErrandStatus.IN_PROGRESS, ErrandStatus.DISPUTED, [C]],
+      [ErrandStatus.IN_PROGRESS, ErrandStatus.CANCELLED, [C]],
       [ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.COMPLETED, [C]],
       [ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.DISPUTED, [C]],
-      [ErrandStatus.COMPLETED, ErrandStatus.CONFIRMED, [C]],
+      [ErrandStatus.COMPLETED, ErrandStatus.CONFIRMED, [S]],
       [ErrandStatus.COMPLETED, ErrandStatus.DISPUTED, [C]],
       [ErrandStatus.CONFIRMED, ErrandStatus.SETTLED, [S]],
+      [ErrandStatus.DISPUTED, ErrandStatus.COMPLETED, [A]],
+      [ErrandStatus.DISPUTED, ErrandStatus.CANCELLED, [A]],
     ];
     for (const [from, to, actors] of expects) {
       const allowed = ErrandStateMachine.allowedActors(from, to);
@@ -151,5 +165,58 @@ describe('ErrandStateMachine', () => {
       .toEqual([R, S]);
     expect(ErrandStateMachine.allowedActors(ErrandStatus.RUNNER_EN_ROUTE, ErrandStatus.FAILED))
       .toEqual([R, S]);
+  });
+
+  it('matches the owner-approved transition table exactly', () => {
+    const table = ErrandStateMachine.allTransitions().map(
+      (t) => `${t.from}->${t.to}:${t.actors.join(',')}${t.guard ? `[${t.guard}]` : ''}`,
+    );
+    expect(table.sort()).toEqual(
+      [
+        'DRAFT->REQUESTED:customer',
+        'DRAFT->CANCELLED:customer',
+        'REQUESTED->QUOTED:admin,system',
+        'REQUESTED->CANCELLED:customer',
+        'QUOTED->ACCEPTED:customer',
+        'QUOTED->CANCELLED:customer',
+        'ACCEPTED->PAYMENT_CONFIRMED:admin,system',
+        'ACCEPTED->CANCELLED:customer',
+        'PAYMENT_CONFIRMED->RUNNER_ASSIGNED:admin,system',
+        'RUNNER_ASSIGNED->RUNNER_EN_ROUTE:runner',
+        'RUNNER_ASSIGNED->CANCELLED:admin',
+        'RUNNER_ASSIGNED->EXPIRED:system',
+        'RUNNER_EN_ROUTE->ARRIVED:runner,system',
+        'RUNNER_EN_ROUTE->FAILED:runner,system',
+        'ARRIVED->IN_PROGRESS:runner',
+        'IN_PROGRESS->AWAITING_CUSTOMER:runner',
+        'IN_PROGRESS->DISPUTED:customer',
+        'IN_PROGRESS->CANCELLED:customer[price_change_rejection]',
+        'AWAITING_CUSTOMER->COMPLETED:customer',
+        'AWAITING_CUSTOMER->DISPUTED:customer',
+        'COMPLETED->CONFIRMED:system',
+        'COMPLETED->DISPUTED:customer',
+        'CONFIRMED->SETTLED:system',
+        'DISPUTED->COMPLETED:admin',
+        'DISPUTED->CANCELLED:admin',
+      ].sort(),
+    );
+  });
+
+  it('has no DISPUTED -> CONFIRMED escape and no customer CONFIRMED step', () => {
+    expect(ErrandStateMachine.canTransition(ErrandStatus.DISPUTED, ErrandStatus.CONFIRMED)).toBe(
+      false,
+    );
+    expect(
+      ErrandStateMachine.actorCanPerform(ErrandStatus.COMPLETED, ErrandStatus.CONFIRMED, C),
+    ).toBe(false);
+  });
+
+  it('guards IN_PROGRESS -> CANCELLED behind the price-change rejection flow only', () => {
+    expect(ErrandStateMachine.guardFor(ErrandStatus.IN_PROGRESS, ErrandStatus.CANCELLED)).toBe(
+      TransitionGuard.PRICE_CHANGE_REJECTION,
+    );
+    const guarded = ErrandStateMachine.allTransitions().filter((t) => t.guard !== null);
+    expect(guarded).toHaveLength(1);
+    expect(ErrandStateMachine.guardFor(ErrandStatus.QUOTED, ErrandStatus.CANCELLED)).toBeNull();
   });
 });

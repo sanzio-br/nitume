@@ -9,6 +9,11 @@ import {
 import { PaymentFlow, PaymentStatus } from '../common/enums';
 
 @Entity('payments')
+// One non-failed main payment per errand (concurrent initiate guard).
+@Index('IDX_payments_errand_active_primary', ['errandId'], {
+  unique: true,
+  where: `"status" <> 'failed' AND "priceChangeRequestId" IS NULL`,
+})
 export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -40,6 +45,23 @@ export class Payment {
     default: PaymentStatus.PENDING,
   })
   status: PaymentStatus;
+
+  /**
+   * Client-supplied `Idempotency-Key` of the initiate call that created this
+   * payment. A retry with the same key returns this row (no new STK push).
+   */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  idempotencyKey: string | null;
+
+  /**
+   * Set on the record of a merchant/item price difference approved through
+   * a price-change request (no service or runner fee). Null for the main
+   * service + runner fee payment.
+   */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  priceChangeRequestId: string | null;
 
   @Index(['status', 'createdAt'])
   @CreateDateColumn({ type: 'timestamptz' })

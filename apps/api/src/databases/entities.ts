@@ -18,6 +18,7 @@ import { NotificationLog } from '../notifications/notification-log.entity';
 import { PaymentTransaction } from '../payments/payment-transaction.entity';
 import { PaymentType } from '../payments/payment-type.entity';
 import { Payment } from '../payments/payment.entity';
+import { RefundReview } from '../payments/refund-review.entity';
 import { Rating } from '../ratings/rating.entity';
 import { RunnerLocation } from '../runners/runner-location.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
@@ -49,6 +50,7 @@ export const ENTITY_LIST = [
   Payment,
   PaymentType,
   PaymentTransaction,
+  RefundReview,
   Evidence,
   Dispute,
   DisputeEvent,

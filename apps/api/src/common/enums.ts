@@ -213,7 +213,8 @@ export enum PriceChangeStatus {
 /**
  * Published `notifications.eventType` values (in-app feed). Clients choose
  * icon and deep link from this value; every value refers to the errand in
- * the row's `errandId`. Format: `errand.<ErrandStatus>`.
+ * the row's `errandId`. Format: `errand.<ErrandStatus>`. CONFIRMED and
+ * SETTLED are system-only payout states and never reach the customer feed.
  */
 export enum NotificationEventType {
   ERRAND_QUOTED = 'errand.QUOTED',
@@ -223,8 +224,6 @@ export enum NotificationEventType {
   ERRAND_IN_PROGRESS = 'errand.IN_PROGRESS',
   ERRAND_AWAITING_CUSTOMER = 'errand.AWAITING_CUSTOMER',
   ERRAND_COMPLETED = 'errand.COMPLETED',
-  ERRAND_CONFIRMED = 'errand.CONFIRMED',
-  ERRAND_SETTLED = 'errand.SETTLED',
   ERRAND_DISPUTED = 'errand.DISPUTED',
   ERRAND_CANCELLED = 'errand.CANCELLED',
   ERRAND_FAILED = 'errand.FAILED',

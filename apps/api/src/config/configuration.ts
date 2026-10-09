@@ -43,8 +43,14 @@ export interface AppConfig {
     serviceFeeRate: number;
     runnerFeeRate: number;
   };
+  errands: {
+    urgentWithinHours: number;
+    scheduledAfterHours: number;
+    disputeWindowHours: number;
+  };
   payments: {
     mpesaTransport: string;
+    stkTimeoutSeconds: number;
   };
   evidence: {
     storageDriver: 'console' | 'cloudinary';
@@ -90,10 +96,10 @@ export const configuration = (): AppConfig => ({
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
   },
   otp: {
-    ttlSeconds: int(process.env.OTP_TTL_SECONDS, 600),
+    ttlSeconds: int(process.env.OTP_TTL_SECONDS, 300),
     maxAttempts: int(process.env.OTP_MAX_ATTEMPTS, 5),
     resendCooldownSeconds: int(process.env.OTP_RESEND_COOLDOWN_SECONDS, 60),
-    rateLimitWindowSeconds: int(process.env.OTP_RATE_LIMIT_WINDOW_SECONDS, 900),
+    rateLimitWindowSeconds: int(process.env.OTP_RATE_LIMIT_WINDOW_SECONDS, 3600),
     rateLimitPerPhone: int(process.env.OTP_RATE_LIMIT_PER_PHONE, 5),
     senderTransport:
       (process.env.OTP_SENDER_TRANSPORT as AppConfig['otp']['senderTransport']) ??
@@ -122,6 +128,18 @@ export const configuration = (): AppConfig => ({
   },
   payments: {
     mpesaTransport: process.env.PAYMENTS_MPESA_TRANSPORT ?? 'console',
+    // After this long without a provider result an STK push reads TIMEOUT
+    // (not FAILED); a late callback still settles it.
+    stkTimeoutSeconds: int(process.env.PAYMENTS_STK_TIMEOUT_SECONDS, 120),
+  },
+  // TODO(owner): urgency thresholds are placeholders. Urgency is derived from
+  // deadlineAt (owner decision Q19) but no thresholds are defined anywhere.
+  errands: {
+    urgentWithinHours: Number.parseFloat(process.env.ERRANDS_URGENT_WITHIN_HOURS ?? '4'),
+    scheduledAfterHours: Number.parseFloat(process.env.ERRANDS_SCHEDULED_AFTER_HOURS ?? '72'),
+    // TODO(owner): dispute window length is not defined anywhere. After it,
+    // the system moves COMPLETED -> CONFIRMED (payout eligibility).
+    disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
   },
   // Evidence storage. `console` (dev default) logs uploads without storing;
   // `cloudinary` uploads to Cloudinary (needs CLOUDINARY_CLOUD_NAME/API_KEY/

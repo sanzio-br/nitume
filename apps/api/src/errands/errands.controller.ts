@@ -23,7 +23,9 @@ import {
   ErrandStatusFilterDto,
   ListErrandsQueryDto,
   ResolveDisputeDto,
+  RunnerNotesDto,
   TransitionErrandDto,
+  UpdateErrandDto,
 } from './dto/errand.dto';
 import {
   ErrandResult,
@@ -43,7 +45,7 @@ export class ErrandsController {
   create(
     @CurrentUser() user: AuthContext,
     @Body() dto: CreateErrandDto,
-  ): Promise<ErrandResult> {
+  ) {
     return this.errands.createDraft(user.userId, dto, {
       type: StatusHistoryActor.CUSTOMER,
       id: user.userId,
@@ -79,6 +81,34 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
   ): Promise<ErrandView> {
     return this.errands.getDetail(id, { role: user.role, userId: user.userId });
+  }
+
+  /** Owner customer (or admin) edits the optional title. */
+  @Patch(':id')
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
+  update(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthContext,
+    @Body() dto: UpdateErrandDto,
+  ): Promise<ErrandView> {
+    return this.errands.updateTitle(id, dto.title ?? null, {
+      role: user.role,
+      userId: user.userId,
+    });
+  }
+
+  /** Assigned runner writes the notes shown on the customer's evidence review. */
+  @Patch(':id/runner-notes')
+  @Roles(UserRole.RUNNER)
+  runnerNotes(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthContext,
+    @Body() dto: RunnerNotesDto,
+  ): Promise<ErrandView> {
+    return this.errands.setRunnerNotes(id, dto.runnerNotes ?? null, {
+      role: user.role,
+      userId: user.userId,
+    });
   }
 
   /** Customer-readable quote breakdown (latest `quotes` row). */
@@ -139,11 +169,10 @@ export class ErrandsController {
   }
 
   /**
-   * Admin-mediated dispute resolution (§3.3 mediation, §A.6 audit). ADMIN only.
-   * The verdict is written through the state machine's DISPUTED→CONFIRMED
-   * (runner-favourable, split ledger still settles) or DISPUTED→CANCELLED
-   * (customer-favourable, escrow legs reversed) transition, so this escapes the
-   * otherwise-terminal DISPUTED deadlock my settlement-guard audit flagged (§A.4).
+   * Admin-mediated dispute resolution. ADMIN only, with a written rationale.
+   * `verdict: runner` → DISPUTED→COMPLETED (normal payout process follows);
+   * `verdict: customer` → DISPUTED→CANCELLED (opens a refund review if the
+   * customer had paid).
    */
   @Roles(UserRole.ADMIN)
   @Patch(':id/resolve-dispute')

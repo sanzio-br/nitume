@@ -1,6 +1,6 @@
 import {
   IsBoolean,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   Matches,
@@ -9,7 +9,8 @@ import {
 import { PaymentMethodType } from '../../common/enums';
 
 export class CreatePaymentMethodDto {
-  @IsEnum(PaymentMethodType)
+  /** Only M-Pesa in the MVP (cards are out of scope); other enum values stay in the DB. */
+  @IsIn([PaymentMethodType.MPESA], { message: 'type must be mpesa' })
   type: PaymentMethodType;
 
   @IsString()

@@ -22,6 +22,23 @@ export class Errand {
   @Column({ type: 'uuid' })
   customerId: string;
 
+  /**
+   * Human-readable, backend-generated reference (`NT-10001`, `NT-10002`, …)
+   * from the `errand_reference_seq` sequence. Never set by clients.
+   */
+  @Column({
+    type: 'varchar',
+    length: 16,
+    unique: true,
+    default: () => `('NT-' || nextval('errand_reference_seq'))`,
+    update: false,
+  })
+  reference: string;
+
+  /** Optional customer-provided short title (editable by the owner). */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  title: string | null;
+
   @Column({
     type: 'enum',
     enum: ErrandCategory,
@@ -31,6 +48,10 @@ export class Errand {
 
   @Column({ type: 'text' })
   description: string;
+
+  /** Notes written by the assigned runner, shown on evidence review. */
+  @Column({ type: 'text', nullable: true })
+  runnerNotes: string | null;
 
   @Column({
     type: 'enum',

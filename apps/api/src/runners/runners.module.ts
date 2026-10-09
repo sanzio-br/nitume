@@ -5,9 +5,11 @@ import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification } from './runner-verification.entity';
 import { RunnersController } from './runners.controller';
 import { RunnersService } from './runners.service';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
+    UsersModule,
     TypeOrmModule.forFeature([
       RunnerProfile,
       RunnerVerification,

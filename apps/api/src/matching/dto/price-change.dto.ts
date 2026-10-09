@@ -9,6 +9,7 @@ import {
   Min,
 } from 'class-validator';
 import { PriceChangeStatus } from '../../common/enums';
+import { MerchantRoute } from '../../payments/payment-views';
 import { PriceChangeRequest } from '../price-change-request.entity';
 
 export class RequestPriceChangeDto {
@@ -21,6 +22,16 @@ export class RequestPriceChangeDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+export class ApprovePriceChangeDto {
+  /**
+   * Only needed when the task had no merchant amount before and the
+   * customer already paid: how the new merchant amount is paid.
+   */
+  @IsOptional()
+  @IsEnum(MerchantRoute)
+  merchantRoute?: MerchantRoute;
 }
 
 export class PriceChangeRequestParamsDto {
