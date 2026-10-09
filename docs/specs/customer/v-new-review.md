@@ -1,78 +1,82 @@
-# v-new-review — New task, step 3: review, quote and payment method
+# v-new-review — New task, step 3: review the estimate and submit
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 386–408 (`#v-new-review`, overlay)
-- Shared conventions: `_shared.md`
+- Shared conventions: `_shared.md` (OA-n = owner answers, §0; fees §8)
 - Implementation: none
 - Status: missing
 
 ## Purpose
-Show the quote breakdown, let the customer choose how any purchase is paid (merchant payment flow), and confirm & pay the service + runner fee.
+Show a **preview** of the price, clearly labelled as an estimate (OA-3), and submit the task for its authoritative quote. Payment does **not** happen here any more; it happens after the customer accepts the final quote on `x-awaiting-quote` (checkout).
+
+## Flow change from the mockup (OA-3, OA-5)
+- Mockup: instant quote → choose merchant payment route → "Confirm & pay" → STK.
+- Now: estimate (synchronous preview) → **Submit** (DRAFT → REQUESTED) → `x-awaiting-quote` (REQUESTED, then QUOTED) → customer accepts the final quote and picks the merchant payment route (checkout) → ACCEPTED → `v-payment`.
+- The "How should this be paid?" card moves to the checkout state of `x-awaiting-quote`, because route availability depends on merchant details that exist only on a submitted errand (OA-5, SQ-6).
 
 ## Entry / exit
-- Entry: "Continue →" on `v-new-details`. Also (recommended) from Home / task detail when an errand is QUOTED.
-- Back → `v-new-details`.
-- "Confirm & pay KSh 2,200 →" → push `v-payment`.
+- Entry: "Continue →" on `v-new-details`.
+- Back → `v-new-details` (values kept).
+- "Submit task →" success → replace the wizard stack with `x-awaiting-quote` for the new errand (Back from there goes to the screen that opened the wizard, normally Home).
 
 ## Task states
-The mockup shows a quote instantly. In the §3.3 state machine and the API, a quote only exists after DRAFT → REQUESTED (customer submits) → QUOTED (admin/system prices it). Confirming moves QUOTED → ACCEPTED, then payment moves ACCEPTED → PAYMENT_CONFIRMED. This screen therefore spans DRAFT/REQUESTED (waiting for quote) and QUOTED (quote shown). See Q1 — this is the biggest flow ambiguity in the customer app.
+None → DRAFT → REQUESTED during submit. The screen itself shows no state chip.
 
 ## Layout (top to bottom)
 1. Pushed header (C-10): title + `Step 3 of 3`.
 2. Stepper (C-14): all three segments done.
 3. Scrollable body:
-   1. Form card "Quote breakdown": receipt rows (C-18) label left / amount right 13px, padding 6 0; total row with top hairline, 700.
-   2. Form card "How should this be paid?": three full-width selectable rows stacked (C-16 choice chips in a column, left-aligned text), first selected.
-4. Fixed primary CTA with the total in Fira Code.
+   1. Form card (C-17 `NitumeFormCard`, heading style from the mockup) **"Estimated price"** containing receipt rows (C-18): label left 13 blue, amount right Fira Code 13, padding 6 0.
+      - `Service fee` — amount
+      - `Runner fee` — amount
+      - Total row (top hairline slate-line, 700): `Estimated total (service + runner fee)` — amount
+      - Caption under the total, 12 slate-600, margin-top 8: estimate note (see Copy).
+   2. Only when the budget is > 0: a second group inside the same card, separated by a slate-line hairline and 10 spacing (C-18 "paid separately" group): `Item budget` — amount (Fira Code), with a 12 slate-600 line under it: `Paid separately from the fees. You choose how after your quote is ready.` The item budget is never added to the total (§8).
+4. Fixed primary CTA (C-01).
 
 ## Components
 | Element | Component | Status |
 |---|---|---|
-| Quote breakdown | C-07 + C-18 `ReceiptRow` | NEW |
-| Payment-flow choice | C-16 in column layout (radio group) | NEW |
-| Waiting-for-quote state | C-33 loading variant + muted copy | NEW |
-| CTA with amount | C-01 + C-32 | core / NEW |
+| Header / stepper | C-10 / C-14 | built |
+| Estimate card + rows + caption + separate group | C-17 form card, C-18 | built; **change**: caption slot and separate group |
+| Loading rows | C-33 `SkeletonCard` (inside the card) | built |
+| Submit | C-01 | built |
 
-## Copy (exact)
-- Header: `Review & pay`, `Step 3 of 3`
-- Card label: `Quote breakdown`
-  - `Base fee` `KSh 1,000`
-  - `Report & evidence` `KSh 700`
-  - `Transport` `KSh 500`
-  - Total: `Total (service + runner fee)` `KSh 2,200`
-- Card label: `How should this be paid?`
-  - `Pay merchant directly (recommended)` (selected)
-  - `Send purchase amount to runner`
-  - `Let runner advance the purchase`
-- CTA: `Confirm & pay KSh 2,200 →`
+## Copy
+- Header (proposed; the mockup's `Review & pay` no longer fits because nothing is paid here): `Review`, counter `Step 3 of 3`
+- Card heading (proposed, replaces mockup `Quote breakdown`): `Estimated price`
+- Rows: `Service fee`, `Runner fee` (wording from the mockup's payment summaries, OA-4). The mockup lines `Base fee` / `Report & evidence` / `Transport` are not used.
+- Total: `Estimated total (service + runner fee)` (mockup: `Total (service + runner fee)`)
+- Caption (proposed): `This is an estimate. We'll send your final quote after you submit, and you won't pay anything until you accept it.`
+- Item group (proposed): `Item budget`; `Paid separately from the fees. You choose how after your quote is ready.`
+- CTA (proposed; replaces `Confirm & pay KSh 2,200 →`): `Submit task →`
 
-Implied states (recommended copy):
-- Waiting for quote (REQUESTED): `We're preparing your quote. This usually takes a few minutes.` + spinner; CTA disabled `Waiting for quote…`. Push `Task quoted` (§4.4) or status socket event moves to QUOTED.
-- Quote expired (`quotes.expiresAt` passed): `This quote has expired.` + `Request a new quote`.
-- Submit error: `Couldn't send your task. Try again.`
-- No purchase involved (budget 0): hide the "How should this be paid?" card (flow = `platform_only`).
+States (proposed):
+- Estimating: skeleton rows inside the card; CTA enabled (the authoritative quote comes later anyway).
+- Estimate unavailable (preview call failed or returned no price): the card shows C-40 notice `We couldn't estimate the price right now. You can still submit; we'll send you the final quote.` CTA enabled.
+- Submitting: CTA spinner, disabled; back disabled.
+- Submit error: snackbar `Couldn't send your task. Try again.`; CTA re-enabled. If the DRAFT was created but the submit call failed, retry only `POST /errands/:id/submit` with the same id (never create a second draft).
+- Validation error from the API (400): snackbar with the API message, and Back returns to step 2.
 
 ## Numeric fields (Fira Code)
-- Every amount in the breakdown and total.
-- Amount inside the CTA label (`KSh 2,200`).
+- Every amount (fees, total, item budget).
 - Step counter.
 
 ## Data
-- `POST /api/v1/errands` (creates DRAFT, exists) → `POST /api/v1/errands/:id/submit` (DRAFT → REQUESTED, exists).
-- Quote: `POST /errands/:id/quote` is admin-only (exists). The customer needs to **read** the quote breakdown (`quotes` row: `baseFee`, `distanceFee`, `timeFee`, `urgencyFee`, `complexityFee`, `premiumFee`, `total`, `expiresAt`). No customer-readable quote endpoint exists → needs: api-contract (`GET /errands/:id/quote` or embed in `GET /errands/:id`).
-- Accept: `PATCH /errands/:id/status` `{ to: 'ACCEPTED' }` (exists; customer actor allowed QUOTED → ACCEPTED).
-- Payment flow choice: `payments.payment_flow` enum `merchant_direct | customer_to_runner | runner_advance | platform_only` (ERD). `POST /payments/:errandId/initiate` takes **no body** and picks `merchant_direct` or `platform_only` automatically (`payments.service.ts:127`) → needs: api-contract to accept the chosen flow (and validate `runner_advance` against `max_purchase_advance`).
-- Socket: status change on `errand:{id}` for REQUESTED → QUOTED (event name undefined, needs: api-contract). Push "Task requested / quoted" (§4.4).
+- Preview: needs: api-contract — **new** synchronous preview endpoint (proposed `POST /api/v1/errands/quote-preview`, body = the `CreateErrandDto` built in step 2, response `{ serviceFee, runnerFee, itemAmount, total, isEstimate: true }`). It writes nothing and must not create a `quotes` row (OA-3: preview ≠ final quote). Which pricing components feed `serviceFee` vs `runnerFee` is **TODO, pending row 34**; the client only renders the returned fields.
+- Submit: `POST /api/v1/errands` (creates DRAFT) → `POST /api/v1/errands/:id/submit` (DRAFT → REQUESTED). Both exist.
+- Abandoning after a DRAFT exists (user backs out of the wizard after a failed submit): `PATCH /api/v1/errands/:id/status { to: 'CANCELLED' }` (DRAFT → CANCELLED approved by OA-9).
+- No socket events on this screen.
 
 ## Accessibility and mobile
-- Payment-flow options are a radio group; announce "recommended".
-- The CTA amount must match the quote total exactly.
+- The caption is part of the card's semantics so screen readers hear "estimate" with the total.
+- CTA above the bottom safe area.
 
-## Questions for owner
-- Q1 (flow / state machine): The mockup shows an instant quote in the wizard; §3.3 and the API require submit → admin/system quote → customer accept. Recommended: step 3 submits the task and shows "Waiting for quote" until QUOTED, then the breakdown and CTA appear (same screen, also reachable later from Home/Task detail). Alternative: auto-quote synchronously from the pricing engine so the screen behaves like the mockup.
-- Q2 (payments): Quote line items differ between screens. Here: Base fee / Report & evidence / Transport = "service + runner fee". On `v-evidence-confirm` and `v-task-detail`: Service fee KSh 700 + Runner fee KSh 1,500. The API quote has base / distance / time / urgency / complexity / premium fees, and the payments module splits the quote 20% service / 30% runner (`pricing.serviceFeeRate`, `runnerFeeRate`), which does not add up to the quote total. Which breakdown does the customer see, and what are the real split rules?
-- Q3 (payments): Should the customer choose among the three merchant-payment flows (mockup), and what are the runner-advance limits? (Business plan gives indicative ranges only.)
-- Q4: For "Pay merchant directly", §6 says show the merchant Till/Paybill for the merchant amount after payment. Where is that shown? Not drawn in the mockup (see SCREEN_MAP implied view `x-merchant-payment`).
-- Q5: For "Send purchase amount to runner", how is that amount paid — a separate STK push to the runner's number, or outside the app? It must stay separate from the service/runner fee push.
+## Resolved by owner answers
+- Instant quote vs wait: OA-3 (was Q1) — preview here, authoritative quote on `x-awaiting-quote`.
+- Fee lines shown: OA-4 (was Q2) — Service fee + Runner fee + item amount; the component mapping is pending row 34.
+- Merchant route choice: OA-5 (was Q3) — at checkout on `x-awaiting-quote`; no runner advance.
+- Till/Paybill display: OA-5 (was Q4) — `x-merchant-payment`.
+- Send-to-runner payment mechanics (was Q5): still open, SQ-5.
 
 ## Current vs design
 Not built.

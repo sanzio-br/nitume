@@ -1,55 +1,63 @@
-# v-payment-methods — Payment methods
+# v-payment-methods — Payment methods (M-Pesa only)
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 519–527 (`#v-payment-methods`, overlay)
-- Shared conventions: `_shared.md`
+- Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: none (`profile_screen.dart` placeholder is unreachable)
 - Status: missing
 
 ## Purpose
-Show and manage the customer's payment methods (default M-Pesa number; card in the mockup).
+Show and manage the customer's M-Pesa numbers used for STK pushes. **Cards are out of MVP** (OA-10): the mockup's Visa card is not built.
 
 ## Entry / exit
-- Entry: "Payment methods" on `v-profile`.
-- Back → `v-profile`.
-- "+ Add payment method" → add form (not drawn; implied view `x-payment-method-form`).
+- Entry (manage mode): "Payment methods" on `v-profile`.
+- Entry (select mode): "Change" on the checkout "Pay with" card (`x-awaiting-quote`). Header title stays the same; tapping a card returns that method and pops.
+- Back → previous screen.
+- Manage mode card tap → `x-payment-method-form` (edit).
+- "+ Add payment method" → `x-payment-method-form` (add).
 
 ## Task states
 None.
 
 ## Layout (top to bottom)
 1. Pushed header (C-10) `Payment methods`.
-2. List of payment method cards (C-30): white, r 12, padding 14 15, margin `0 20 10`, gap 12.
-   - Badge 38×26 r 5, white 10/700 text: green fill for M-Pesa, blue fill for Visa. Mockup badge text uses Fira Code — it is a brand word, not numeric → Fira Sans (Q2).
-   - Label 13.5/600; detail Fira Code 11 slate-600.
-   - "Default" tag (C-05 info small) right-aligned.
-3. Outline button (C-03), margin `0 20 20`.
+2. List of payment method cards (C-30): white, r-m 14 (mockup 12), padding 14 15, margin `0 20 10`, gap 12.
+   - Badge 38×26 r 5, green fill, white 10/700 `M-PESA` (brand word, Fira Sans).
+   - Label 13.5/600; detail Fira Code 11 slate-600 (masked number).
+   - "Default" tag (C-05 info, small) right-aligned on the default method.
+   - Select mode: the currently selected card shows a C-36 checked box on the right instead of the tag position (tag moves before it).
+3. Outline button (C-03), margin `0 20 20` (manage mode only).
 
 ## Components
-C-10, C-30, C-05, C-03, C-33.
+C-10, C-30 (M-Pesa badge only), C-05 small info, C-36 (select mode), C-03, C-33.
 
-## Copy (exact)
+## Copy
 - Header: `Payment methods`
-- M-Pesa card: badge `M-PESA`, label `M-Pesa`, detail `+254 712 ••• 678`, tag `Default`
-- Card: badge `VISA`, label `Visa •••• 4471`, detail `Expires 09/28`
-- Button: `+ Add payment method`
+- M-Pesa card (mockup): badge `M-PESA`, label `M-Pesa`, detail `+254 712 ••• 678`, tag `Default`
+- Button (mockup): `+ Add payment method`
+- **Removed** (OA-10): the Visa card (`VISA`, `Visa •••• 4471`, `Expires 09/28`).
 
-Implied states: empty `No payment methods yet.`; loading skeletons; error + retry.
+States (proposed):
+- Empty: muted 13 slate-600 `No M-Pesa numbers saved. We'll charge your sign-in number, +254 712 ••• 678.` above the add button.
+- Loading: two skeleton cards. Error: C-33 `Couldn't load your payment methods.` + `Try again`.
+- API returns a non-M-Pesa method (legacy `card` / `bank`): do not render it.
 
 ## Numeric fields (Fira Code)
-- Masked phone `+254 712 ••• 678`, card digits `•••• 4471`, expiry `09/28`.
+- Masked phone numbers.
 
 ## Data
-- `GET /api/v1/customers/me/payment-methods` (exists) → core `PaymentMethod` (`type: mpesa | card | bank`, `label`, `detail`, `isDefault`).
-- `POST`, `PATCH /:id`, `DELETE /:id` (exist). `payment_methods` is not in the ERD diagram.
+- `GET /api/v1/customers/me/payment-methods` (exists) → core `PaymentMethod`. Filter `type == 'mpesa'`.
+- needs: api-contract — reject `card` and `bank` on `POST /customers/me/payment-methods` for MVP (OA-10).
+- No socket events.
 
 ## Accessibility and mobile
-- Green M-Pesa badge with white text is compliant (white on green). Is green here "decorative"? It is a brand badge, not a primary action (Q3).
+- Card label: "M-Pesa, +254 712 ending 678, default". Select mode: radio semantics.
 
-## Questions for owner
-- Q1 (payments / security / third-party): The system design only describes M-Pesa (STK push, B2C) and says no card credentials touch Nitume servers. The mockup shows a Visa card and the API enum allows `card` and `bank`. Is card payment in MVP scope, and through which provider? Recommended: M-Pesa only at MVP; hide card/bank.
-- Q2: Badge text font — Fira Sans (brand word) instead of mockup Fira Code.
-- Q3: Green fill for the M-Pesa badge is a decorative use of green under the design-system rule. Recommended: allow as payment-brand identifier, or use blue-050 with blue text.
-- Q4: Add-payment-method form is not drawn. For M-Pesa: phone number entry + OTP? Recommended: phone number field only; whether to verify the number (e.g. by a test STK push) is a payments decision for the owner.
+## Resolved by owner answers
+- Card payments out of MVP: OA-10 (was Q1).
+
+## Open questions (non-blocking; build default given)
+- Q2: Badge text font. Default: Fira Sans (a brand word, not numeric data).
+- Q3: Green fill for the M-Pesa badge (green outside actions/states). Default: keep as the payment-brand identifier, as drawn.
 
 ## Current vs design
 Not built. Profile row `Payment methods` has a TODO (`profile_tab.dart:80`).

@@ -1,12 +1,12 @@
 # v-profile — Profile
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 296–305 (`#v-profile`, root tab view)
-- Shared conventions: `_shared.md`
+- Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/profile_tab.dart` (`profile_screen.dart` is an unused placeholder)
 - Status: partial
 
 ## Purpose
-Account hub: identity summary and links to addresses, payment methods, notifications, recurring tasks, support, log out.
+Account hub: identity summary and links to addresses, payment methods, notifications, support, and log out.
 
 ## Entry / exit
 - Entry: tab bar "Profile"; avatar on `v-home`.
@@ -14,48 +14,53 @@ Account hub: identity summary and links to addresses, payment methods, notificat
   - `Saved addresses` → push `v-addresses`
   - `Payment methods` → push `v-payment-methods`
   - `Notifications` → push `v-notifications`
-  - `Recurring tasks` → no target in mockup (implied `x-recurring-tasks`, Q2)
-  - `Support` → no target in mockup (implied `x-support`, Q3)
-  - `Log out` → revoke session, go to `v-auth-phone` (stack reset)
+  - `Support` → `x-support` (opens the configured target; row hidden when not configured)
+  - `Log out` → C-35 confirm → revoke session → reset to `v-auth-phone`
+- **Removed**: `Recurring tasks` (OA-18, out of MVP).
 
 ## Task states
 None.
 
 ## Layout (top to bottom)
 1. Top bar (C-09) `Profile`.
-2. Profile head, centred, padding `10 20 20`: avatar 70 (C-12, 24/700), name 18/700 (h3, browser default bold), meta Fira Code 12 slate-600 margin-top 4.
-3. Menu rows (C-24): white r 12 padding 13 15 margin `0 20 8`, 13.5/500, chevron `›` slate-400. Log out = destructive variant (red text, Q-RED).
+2. Profile head, centred, padding `10 20 20`: avatar 70 (C-12, 24/700, initials from `displayName`), name 18/700, meta Fira Code 12 slate-600 margin-top 4.
+3. Menu rows (C-24): white, r-m 14 (mockup 12), padding 13 15, margin `0 20 8`, 13.5/500, chevron `›` slate-400. Log out = destructive variant: **red text** (OA-13), chevron stays slate-400.
 
 ## Components
-C-09, C-12, C-24, C-33. All NEW.
+C-09, C-12, C-24 (destructive red change), C-35, C-33. NEW: C-35.
 
 ## Copy (exact)
 - Title: `Profile`
-- Name: `Achieng Otieno` (Q-NAME)
+- Name: `Achieng Otieno` (full `displayName`, OA-2)
 - Meta: `Customer since Feb 2026 · 42 tasks`
-- Rows: `Saved addresses`, `Payment methods`, `Notifications`, `Recurring tasks`, `Support`, `Log out`
+- Rows: `Saved addresses`, `Payment methods`, `Notifications`, `Support`, `Log out`
 
-Implied states:
-- Log out confirm (recommended): `Log out of Nitume?` `Log out` / `Cancel`.
-- Log out failure still clears local tokens (core `AuthRepository.logout` already does this).
-- Profile load error: show phone number instead of name, rows still usable.
+States (proposed):
+- Log out dialog: title `Log out of Nitume?`, buttons `Log out` (outline, red text) / `Cancel` (C-01).
+- Log out failure still clears local tokens (`AuthRepository.logout` already does) and unregisters the FCM device when available (pending row 31).
+- Profile load error: avatar shows the person glyph, name and meta lines hidden, 12.5 slate-600 line `Couldn't load your profile.` with a C-04 `Try again` link; rows stay usable.
+- Count unavailable: meta shows `Customer since Feb 2026` only.
 
 ## Numeric fields (Fira Code)
-- Meta line: month-year and task count (`Feb 2026`, `42`). Mockup renders the whole line in Fira Code (`.li-meta` rule).
+- Meta line (whole line, `.li-meta` rule): month-year and task count.
 
 ## Data
-- `GET /api/v1/users/me` (exists; `phone`, `createdAt` — no name), `GET /api/v1/customers/me` (exists).
-- Task count: no count endpoint; `GET /errands` is paginated (needs: api-contract — `GET /customers/me` could include `errandsCount`).
-- Log out: `POST /auth/logout` via `AuthRepository.logout` (exists).
+- `GET /api/v1/users/me` (`displayName` needs: api-contract, OA-2; `createdAt`, `phone`), `GET /api/v1/customers/me`.
+- Task count: `GET /api/v1/errands/count` (exists on `feat/api-customer-gaps`).
+- Log out: `POST /auth/logout` via `AuthRepository.logout`; `DELETE /users/me/devices/:id` (exists on `feat/api-customer-gaps`).
+- Support target: `x-support.md`.
 
 ## Accessibility and mobile
-- Rows 48dp+; chevron is decorative.
+- Rows ≥ 48dp; chevron decorative.
 
-## Questions for owner
-- Q-NAME.
-- Q2 (scope): "Recurring tasks" — §3.1 lists recurring tasks under `customers/`, but the business plan positions them as later-phase / business. Build at MVP? Recommended: hide the row until scoped.
-- Q3: "Support" — WhatsApp deep link, phone call, in-app chat, or a web page? Third-party choice (§3).
-- Q4: Is there an edit-profile action (name, email)? Not drawn.
+## Resolved by owner answers
+- Name: OA-2 (was Q-NAME).
+- Recurring tasks: removed, OA-18 (was Q2).
+- Support: one configurable entry point, OA-18 (was Q3).
+- Red destructive row: OA-13.
+
+## Open questions (non-blocking; build default given)
+- Q4: Edit-profile action (name, email)? Not drawn. Default: none (see `x-name-capture.md` Q1).
 
 ## Current vs design
-See gap report. Summary: static name/meta; menu rows are a private `_MenuRow`; Log out chevron is red (mockup chevron stays slate-400 inside a red row — `.menu-row .arrow` colour applies); all row taps are TODOs including Log out; `'FiraCode'` family string on the meta line.
+See gap report. Summary: static name/meta; private `_MenuRow`; Log out chevron red (should stay slate-400); "Recurring tasks" row present (now out of MVP); all taps TODO including Log out; unregistered `'FiraCode'` on the meta line.

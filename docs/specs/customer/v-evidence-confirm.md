@@ -1,77 +1,81 @@
 # v-evidence-confirm — Review evidence and confirm completion
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 443–461 (`#v-evidence-confirm`, overlay)
-- Shared conventions: `_shared.md`
+- Shared conventions: `_shared.md` (OA-n §0, fees §8)
 - Implementation: none
 - Status: missing
 
 ## Purpose
-The runner has finished and uploaded evidence. The customer reviews photos/video, notes and the payment summary, then confirms completion.
+The runner has finished and uploaded evidence. The customer reviews photos/video, the runner's notes and the payment summary, then confirms completion, or reports a problem.
 
 ## Entry / exit
-- Entry: "📋 Review evidence" on `v-track`; push "Task completed" / evidence uploaded; notification row.
+- Entry: "Review evidence" on `v-track`; push "Task completed" / evidence uploaded; notification row; `v-task-detail` while AWAITING_CUSTOMER.
 - Back → previous screen.
-- "Confirm completion…" → push `v-rate`.
-- Problem with the evidence → "Report a problem" (not drawn here; exists on `v-task-detail`, Q3).
+- "Confirm completion" success → replace this screen with `v-rate`.
+- "Report a problem" → push `x-report-problem` (AWAITING_CUSTOMER → DISPUTED, approved by OA-9).
+- Thumbnail → push `x-evidence-viewer` at that index.
 
 ## Task states
-AWAITING_CUSTOMER (runner moved IN_PROGRESS → AWAITING_CUSTOMER). Customer actions per §3.3: AWAITING_CUSTOMER → COMPLETED, then COMPLETED → CONFIRMED (both customer-actor in the API). Which transition(s) this button fires is ambiguous (Q1).
+AWAITING_CUSTOMER. Confirm fires **AWAITING_CUSTOMER → COMPLETED only** (OA-7). COMPLETED is terminal for the customer; the screen never fires CONFIRMED or SETTLED (pending row 35 decides whether those remain as system-only states). If opened in any other state: COMPLETED or later → replace with `v-task-detail`; earlier states → CTA hidden, evidence still viewable.
 
 ## Layout (top to bottom)
 1. Pushed header (C-10) `Review evidence`.
 2. Scrollable body:
-   1. Section label `Photos & video (4)` (top padding 0).
-   2. Evidence grid (C-25): 3 columns, gap 8, square thumbs r 10, padding `0 20 14`. Tap opens full-screen viewer (implied, Q4).
-   3. Section label `Caretaker notes`.
-   4. Card (C-07) with the quoted note text, 13.5 body.
-   5. Section label `Payment summary`.
-   6. Receipt card (C-18): white, **dashed** slate-line border, r 14, padding 16; rows + total.
+   1. Section label `Photos & video (4)`, top padding 0.
+   2. Evidence grid (C-25): 3 columns, gap 8, square thumbs r-s 8 (mockup 10), padding `0 20 14`. Video thumbs show a play glyph.
+   3. Section label `Runner notes` + card (C-07) with the note text 13.5 blue, in quotes. Hidden when `runnerNotes` is empty.
+   4. Section label `Payment summary`.
+   5. Receipt card (C-18, **dashed** slate-line border, r-m 14, padding 16): `Service fee`, `Runner fee`, total `Total paid`. When there is an item amount: separate group under a hairline (§8), `Item amount` + 12 slate-600 route line (`Paid to the merchant directly` / `Sent to your runner`).
+   6. Text link (C-04), red (destructive, OA-13), centred, margin `4 20 16`: `Report a problem`.
 3. Fixed primary CTA (C-01).
 
 ## Components
 | Element | Component | Status |
 |---|---|---|
-| Evidence grid + viewer | C-25 + NEW `EvidenceViewer` (photo zoom, video player) | NEW |
-| Notes card | C-07 | app-only |
-| Receipt | C-18 (dashed variant) | NEW |
-| CTA | C-01 | core |
+| Evidence grid | C-25 `EvidenceGrid` | built (URLs pending row 25) |
+| Notes card | C-07 | built |
+| Receipt (dashed + separate group) | C-18 | built (separate group change) |
+| Report link | C-04 | built |
+| CTA | C-01 | built |
 
-## Copy (exact)
-- Header: `Review evidence`
-- Section: `Photos & video (4)` (count is dynamic)
-- Section: `Caretaker notes` (task-specific label; see Q2)
-- Note sample: `"Water leak in the kitchen has been reported to the landlord; repair scheduled for next week."`
-- Section: `Payment summary`
-- Rows: `Service fee` `KSh 700`; `Runner fee` `KSh 1,500`; total `Total paid` `KSh 2,200`
-- CTA: `Confirm completion & release payment` — contains escrow-style wording (Q-RELEASE). Recommended copy pending owner: `Confirm completion`.
+## Copy
+- Header (mockup): `Review evidence`
+- Section (mockup): `Photos & video (4)` (count is dynamic)
+- Section: `Runner notes` (replaces the mockup's task-specific `Caretaker notes`; the field is `runner_notes`, OA-16)
+- Note sample (mockup): `"Water leak in the kitchen has been reported to the landlord; repair scheduled for next week."`
+- Section (mockup): `Payment summary`
+- Rows: `Service fee` `KSh 700`; `Runner fee` `KSh 1,500`; total `Total paid` `KSh 2,200` (mockup sample); `Item amount` (proposed, OA-4)
+- CTA: **`Confirm completion`** (OA-6). The mockup's `Confirm completion & release payment` must not ship.
+- Link (proposed): `Report a problem`
 
-Implied states (recommended):
-- Loading evidence: grey thumbs (C-33 skeleton).
-- No evidence yet: `The runner hasn't uploaded evidence yet.` and CTA disabled.
-- Thumbnail load failure: slate tile with a broken-image icon and `Retry`.
-- Confirm in flight / error: spinner; `Couldn't confirm. Try again.`
+States (proposed):
+- Loading evidence: skeleton thumbs (C-33).
+- No evidence yet: 13 slate-600 `The runner hasn't uploaded evidence yet.`; CTA disabled.
+- Thumbnail load failure: slate tile with a broken-image icon; tap retries.
+- Confirming: CTA spinner. Error: snackbar `Couldn't confirm. Try again.` 409 (state changed): reload and route per Task states.
+- Banned: "release", "escrow", "hold", "wallet", "balance" (OA-6).
 
 ## Numeric fields (Fira Code)
-- Evidence count `(4)` (counter), all receipt amounts.
+- Evidence count `(4)`, all receipt amounts.
 
 ## Data
-- Evidence: `GET /api/v1/errands/:errandId/evidence` (exists; returns `type`, `url` nullable, `s3Key`, `capturedAt`, location). §3.2 names `POST /evidence/:errandId/upload-url` + `confirm` (signed URL flow, runner side); the API instead accepts base64 uploads at `POST /errands/:errandId/evidence`. Customer viewing needs a resolvable URL (signed GET) for each item — confirm `url` is populated and time-limited (needs: api-contract).
-- Notes: no notes/report field on evidence or errand in the ERD (evidence types: photo, video, receipt, document, signature). Q2.
-- Payment summary: `GET /api/v1/payments/:errandId` (exists; `serviceFee`, `runnerFee`, `merchantAmount`, status).
-- Confirm: `PATCH /api/v1/errands/:id/status` `{ to: 'COMPLETED' }` and/or `{ to: 'CONFIRMED' }` (exists).
-- Socket: evidence-uploaded event on `errand:{id}` (§4.4 "live timeline update", name undefined).
+- Evidence: `GET /api/v1/errands/:errandId/evidence` (exists). Viewable URLs pending row 25 (signed links); A-12 partial on `feat/api-customer-gaps`.
+- Notes: needs: api-contract — `runner_notes` on the errand (OA-16), returned on `GET /errands/:id`.
+- Payment summary: `GET /api/v1/payments/:errandId` (exists; `serviceFee`, `runnerFee`, `merchantAmount`, `paymentFlow`). Fee-line mapping TODO pending row 34.
+- Confirm: `PATCH /api/v1/errands/:id/status { to: 'COMPLETED' }` (exists).
+- Live: evidence-uploaded on `errand:{id}` refreshes the grid (name pending row 23).
 
 ## Accessibility and mobile
-- Thumbnails need alt text from evidence type + time (`Photo, 10:41 AM`).
-- Video thumbnails show a play glyph.
+- Thumbnail alt text from type + time (`Photo, 10:41 AM`).
+- Report link ≥ 48dp hit area.
 
-## Questions for owner
-- Q-RELEASE (payments / no escrow): "release payment" implies Nitume holds funds until confirmation, which conflicts with the no-escrow rule. The API also refers to "escrow legs" in comments (`errands.controller.ts`, state machine). What does confirming actually trigger for the runner payout (B2C batch eligibility)? Recommended copy: `Confirm completion`, with a muted line `Brian K. is paid after you confirm.` if accurate.
-- Q1 (state machine): One button, two customer transitions (AWAITING_CUSTOMER → COMPLETED → CONFIRMED). Recommended: this button moves to COMPLETED; CONFIRMED happens on rating submit or automatically after a dispute window. Needs owner decision.
-- Q2 (schema): Runner notes ("Caretaker notes") have no field in the ERD. Add a runner report/notes field, or reuse `evidence` type `document`?
-- Q3: Should "Report a problem" (dispute) also be offered here, before confirming? (AWAITING_CUSTOMER → DISPUTED is allowed in the API but **not** in §3.3, which only allows IN_PROGRESS → DISPUTED and COMPLETED → DISPUTED.)
-- Q4: Full-screen evidence viewer is not drawn — confirm it is expected.
-- Q5 (payments): Payment summary shows Service fee 700 + Runner fee 1,500, which differs from the quote breakdown on `v-new-review` (see Q2 there). Should the merchant amount appear here as a separate, clearly-labelled line (three flows separate)?
+## Resolved by owner answers
+- CTA wording and no escrow: OA-6 (was Q-RELEASE).
+- Which transition: AWAITING_CUSTOMER → COMPLETED only (OA-7, was Q1).
+- Runner notes field: `runner_notes` (OA-16, was Q2).
+- Report a problem here: offered, since AWAITING_CUSTOMER → DISPUTED is approved (OA-9, was Q3).
+- Full-screen viewer: `x-evidence-viewer` (was Q4).
+- Merchant amount in the summary: separate line (OA-4, was Q5).
 
 ## Current vs design
 Not built. `track_tab.dart:283` has a "📋 Review evidence" button with a TODO.
