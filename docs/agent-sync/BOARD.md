@@ -211,6 +211,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 99 | api-contract (round 4) | Socket names (proposed): room `admins`; events quote:requested, merchant_details:changed, errand:access_revoked. Approve? | open |
 | 100 | api-contract (round 4) | Payout receipt corrections (row 82, spec N-15): receipts now lock (409 refund_payout_locked). An auditable correction/reversal record needs a schema. Build it now, or later? | open |
 | 101 | api-contract (round 4) | Breaking API changes in round 4: customers/runners get resolvedBy: null on disputes; payoutReference removed from customer refund views; price changes on categories other than Buy For Me / Get It For Me now 400. FYI (clients updated in this round) | open |
+| 102 | design-auditor (admin re-audit round 4) | AQ-8 (payments/schema): a paid task can end EXPIRED (RUNNER_ASSIGNED→EXPIRED) or FAILED (RUNNER_EN_ROUTE→FAILED), but the API opens a refund review only on CANCELLED. Should EXPIRED and FAILED also open a refund review (new trigger enum values)? | open |
 
 ## Session log
 
@@ -264,3 +265,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-09 | core-ui round 4 on feat/customer-owner-answers: round-4 models, dispute verdict, requestNewQuote, title on create, realtime merchant_details:changed / access_revoked / quote:requested, header trailing slot, persistent idempotency keys, beforeSessionCleared hook; 221 core tests. App analyze broken (3) until flutter-customer adopts (dispatched) | 380084f … e304160 |
 | 2026-10-09 | flutter-customer round 4: request a new quote (row 68), merchant-details-changed notice (80), resolvedAt on disputes (79), .env.example + dart-define-from-file (59), core session hook + persisted checkout keys, title on create, Mark all read, failure reason, pick copy, dot size; 107 app tests | e283201 … a55402f |
 | 2026-10-09 | core-ui onTextChanged (da5e58a) + app switch (c420265); 108 app + 223 core tests. Customer re-audit started on docs/customer-reaudit-3; admin re-audit running | da5e58a, c420265 |
+| 2026-10-09 | Admin re-audit round 4: p-refunds FAIL #1 (Refundable column shows gross amountPaid, not refundCeiling); shell, drawer-refund, re-quote, merchant details, dispute outcome PASS; minors m-6/m-7/m-9 sent with the fix; question 102 | e8f4196 |
