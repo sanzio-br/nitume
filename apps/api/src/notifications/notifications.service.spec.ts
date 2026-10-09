@@ -12,7 +12,9 @@ import {
   notificationEventTypeFor,
 } from './notifications.service';
 
-const build = (opts: { pushEnabled?: boolean; tokens?: string[]; results?: object[] } = {}) => {
+const build = (
+  opts: { pushEnabled?: boolean; tokens?: string[]; results?: object[]; admins?: string[] } = {},
+) => {
   const notifications = {
     create: vi.fn((row: object) => row),
     save: vi.fn((row: object) => Promise.resolve({ id: 'n-1', ...row })),
@@ -48,8 +50,9 @@ const build = (opts: { pushEnabled?: boolean; tokens?: string[]; results?: objec
     queue as never,
     devices as never,
     push as never,
+    { activeAdminIds: vi.fn(() => Promise.resolve(opts.admins ?? ['admin-1', 'admin-2'])) } as never,
   );
-  return { service, notifications, queue, devices, push, logs };
+  return { service, notifications, queue, devices, push, logs, customers };
 };
 
 describe('NotificationEventType (A-14)', () => {
@@ -235,5 +238,55 @@ describe('Re-quote and merchant-details notifications (N-4, rows 42-44)', () => 
     expect(copyFor({ kind: 'merchant_details', errandId: 'e', merchantName: null })).toMatchObject({
       eventType: 'merchant_details.added',
     });
+  });
+});
+
+describe('Quote request admin feed (row 68)', () => {
+  it('queues a quote_requested job on the domain event (no inline write)', async () => {
+    const { service, queue, notifications } = build();
+    await service.onQuoteRequested({
+      errandId: 'e-1',
+      reference: 'NT-10001',
+      quoteId: 'q-1',
+      status: ErrandStatus.QUOTED,
+      quoteRequestedAt: '2026-10-09T10:00:00.000Z',
+    });
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
+      kind: 'quote_requested',
+      errandId: 'e-1',
+      reference: 'NT-10001',
+    });
+    expect(notifications.save).not.toHaveBeenCalled();
+  });
+
+  it('writes one feed row per active admin, never to the customer', async () => {
+    const { service, notifications, queue, customers } = build();
+    const first = await service.deliverFeed({
+      kind: 'quote_requested',
+      errandId: 'e-1',
+      reference: 'NT-10001',
+    });
+    expect(first).not.toBeNull();
+    expect(customers.findOne).not.toHaveBeenCalled();
+    expect(notifications.save).toHaveBeenCalledTimes(2);
+    expect(notifications.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'admin-1',
+        errandId: 'e-1',
+        eventType: 'quote.requested',
+        title: 'New quote requested',
+        body: expect.stringContaining('NT-10001'),
+      }),
+    );
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'admin-2' }));
+    expect(queue.add).toHaveBeenCalledTimes(2);
+  });
+
+  it('writes nothing when there is no active admin', async () => {
+    const { service, notifications } = build({ admins: [] });
+    expect(
+      await service.deliverFeed({ kind: 'quote_requested', errandId: 'e-1', reference: 'NT-10001' }),
+    ).toBeNull();
+    expect(notifications.save).not.toHaveBeenCalled();
   });
 });

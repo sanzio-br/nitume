@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsISO8601,
@@ -25,6 +26,9 @@ import {
   ErrandUrgency,
   ResolveDisputeVerdict,
 } from '../../common/enums';
+
+const toBoolean = ({ value }: { value: unknown }): unknown =>
+  value === 'true' ? true : value === 'false' ? false : value;
 
 const trimString = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
@@ -192,6 +196,15 @@ export class ErrandStatusFilterDto {
   @ArrayMaxSize(17)
   @IsEnum(ErrandStatus, { each: true })
   status?: ErrandStatus[];
+
+  /**
+   * `quoteRequested=true`: only errands where the customer asked for a new
+   * quote (row 68, admin queue); `false`: only those without.
+   */
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  quoteRequested?: boolean;
 }
 
 export class ListErrandsQueryDto extends ErrandStatusFilterDto {

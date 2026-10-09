@@ -14,8 +14,15 @@
  *  - server -> client `price_change:requested`
  *  - server -> client `quote:reissued` (admin re-quote, N-4 / row 72)
  *  - server -> client `merchant_details:updated` (Till/Paybill set)
+ *  - room `admins` + server -> client `quote:requested` (row 68)
  */
 export const errandRoom = (errandId: string): string => `errand:${errandId}`;
+
+/**
+ * PROPOSED: every authenticated admin socket joins this room on connect
+ * (admin-wide pushes such as `quote:requested`, row 68).
+ */
+export const ADMIN_ROOM = 'admins';
 
 export const SocketClientEvent = {
   ERRAND_JOIN: 'errand:join',
@@ -29,6 +36,8 @@ export const SocketServerEvent = {
   PRICE_CHANGE_REQUESTED: 'price_change:requested',
   QUOTE_REISSUED: 'quote:reissued',
   MERCHANT_DETAILS_UPDATED: 'merchant_details:updated',
+  /** PROPOSED (row 68): to `admins` and `errand:{id}`. */
+  QUOTE_REQUESTED: 'quote:requested',
 } as const;
 
 /** In-process domain events (EventEmitter2) the realtime module listens to. */
@@ -38,6 +47,7 @@ export const DomainEvent = {
   PRICE_CHANGE_REQUESTED: 'price_change.requested',
   QUOTE_REISSUED: 'quote.reissued',
   MERCHANT_DETAILS_UPDATED: 'errand.merchant_details_updated',
+  QUOTE_REQUESTED: 'quote.requested',
 } as const;
 
 export interface EvidenceUploadedEvent {

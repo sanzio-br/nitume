@@ -97,7 +97,10 @@ describe('Admin re-quote (row 46)', () => {
     expect(out.history).toBeNull();
     expect(out.quote).toMatchObject({ id: 'q-new', total: '650' });
     expect(errand.status).toBe(ErrandStatus.QUOTED);
-    expect(errandRepo.update).toHaveBeenCalledWith('e-1', { quotedPrice: '650.00' });
+    expect(errandRepo.update).toHaveBeenCalledWith('e-1', {
+      quotedPrice: '650.00',
+      quoteRequestedAt: null,
+    });
     expect(quoteRepo.save).toHaveBeenCalledTimes(1);
     expect(historyRepo.save).not.toHaveBeenCalled();
   });
@@ -266,5 +269,92 @@ describe('Every quote expires (row 83)', () => {
     await service.quote('e-1', { total: 700 }, admin);
     const saved = quoteRepo.create.mock.calls[0][0] as { expiresAt: Date | null };
     expect(saved.expiresAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('ErrandsService.requestNewQuote (row 68)', () => {
+  const setup = (status: ErrandStatus, latest: Partial<Quote> | null, requestedAt: Date | null = null) => {
+    const built = build(status, latest);
+    Object.assign(built.errand, { reference: 'NT-10001', quoteRequestedAt: requestedAt });
+    const getById = vi.spyOn(built.service, 'getById').mockResolvedValue(built.errand);
+    vi.spyOn(built.service, 'getDetail').mockResolvedValue(built.errand as never);
+    return { ...built, getById };
+  };
+
+  it('records the request on an expired quote without a status change and notifies admins', async () => {
+    const { service, errand, errandRepo, emit, historyRepo, getById } = setup(ErrandStatus.QUOTED, {
+      id: 'q-1',
+      expiresAt: past,
+    });
+    await service.requestNewQuote('e-1', subject);
+    expect(getById).toHaveBeenCalledWith('e-1', subject);
+    expect(errandRepo.update).toHaveBeenCalledWith('e-1', { quoteRequestedAt: expect.any(Date) });
+    expect(errand.status).toBe(ErrandStatus.QUOTED);
+    expect(historyRepo.save).not.toHaveBeenCalled();
+    await new Promise((r) => setImmediate(r));
+    expect(emit).toHaveBeenCalledWith('quote.requested', {
+      errandId: 'e-1',
+      reference: 'NT-10001',
+      quoteId: 'q-1',
+      status: ErrandStatus.QUOTED,
+      quoteRequestedAt: expect.any(String),
+    });
+  });
+
+  it('works on an ACCEPTED errand whose quote expired', async () => {
+    const { service, errandRepo } = setup(ErrandStatus.ACCEPTED, {
+      id: 'q-1',
+      expiresAt: past,
+      acceptedAt: past,
+    });
+    await service.requestNewQuote('e-1', subject);
+    expect(errandRepo.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('409 quote_still_valid while the quote is valid (or has no expiry)', async () => {
+    for (const expiresAt of [future, null]) {
+      const { service, errandRepo, emit } = setup(ErrandStatus.QUOTED, { id: 'q-1', expiresAt });
+      expect(await codeOf(service.requestNewQuote('e-1', subject))).toBe('quote_still_valid');
+      expect(errandRepo.update).not.toHaveBeenCalled();
+      await new Promise((r) => setImmediate(r));
+      expect(emit).not.toHaveBeenCalled();
+    }
+  });
+
+  it('409 quote_request_pending on a repeat request (idempotent, no second notification)', async () => {
+    const { service, errandRepo, emit } = setup(
+      ErrandStatus.QUOTED,
+      { id: 'q-1', expiresAt: past },
+      new Date('2026-10-09T10:00:00Z'),
+    );
+    const err = await service.requestNewQuote('e-1', subject).catch((e: unknown) => e);
+    expect((err as ApiError).code).toBe('quote_request_pending');
+    expect((err as ApiError).getResponse()).toMatchObject({
+      quoteRequestedAt: '2026-10-09T10:00:00.000Z',
+    });
+    expect(errandRepo.update).not.toHaveBeenCalled();
+    await new Promise((r) => setImmediate(r));
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('409 quote_request_not_allowed outside QUOTED/ACCEPTED or without a quote', async () => {
+    const paid = setup(ErrandStatus.PAYMENT_CONFIRMED, { id: 'q-1', expiresAt: past });
+    expect(await codeOf(paid.service.requestNewQuote('e-1', subject))).toBe('quote_request_not_allowed');
+    const none = setup(ErrandStatus.QUOTED, null);
+    expect(await codeOf(none.service.requestNewQuote('e-1', subject))).toBe('quote_request_not_allowed');
+  });
+
+  it('the admin re-quote clears the pending request', async () => {
+    const { service, errand, errandRepo } = setup(
+      ErrandStatus.QUOTED,
+      { id: 'q-1', expiresAt: past },
+      new Date(),
+    );
+    await service.quote('e-1', { total: 700 }, admin);
+    expect(errandRepo.update).toHaveBeenCalledWith('e-1', {
+      quotedPrice: '700.00',
+      quoteRequestedAt: null,
+    });
+    expect(errand.quoteRequestedAt).toBeNull();
   });
 });

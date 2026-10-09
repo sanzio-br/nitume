@@ -63,7 +63,12 @@ export class ErrandsController {
   ): Promise<ListErrandViewsResponse> {
     return this.errands.listViewsFor(
       { role: user.role, userId: user.userId },
-      { status: query.status, limit: query.limit, cursor: query.cursor },
+      {
+        status: query.status,
+        limit: query.limit,
+        cursor: query.cursor,
+        quoteRequested: query.quoteRequested,
+      },
     );
   }
 
@@ -76,6 +81,7 @@ export class ErrandsController {
     return this.errands.countFor(
       { role: user.role, userId: user.userId },
       query.status,
+      query.quoteRequested,
     );
   }
 
@@ -147,6 +153,22 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
   ): Promise<{ errand: ErrandView; quote: Quote }> {
     return this.errands.acceptQuote(id, { role: user.role, userId: user.userId });
+  }
+
+  /**
+   * Customer "Request a new quote" after quote_expired (row 68). Records
+   * `quoteRequestedAt` and notifies admins; no status change. 409
+   * `quote_still_valid`, `quote_request_pending`, `quote_request_not_allowed`.
+   * `quote-request` is the path named in the specs (N-13); both work.
+   */
+  @Post([':id/quote/request', ':id/quote-request'])
+  @HttpCode(200)
+  @Roles(UserRole.CUSTOMER)
+  requestNewQuote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthContext,
+  ): Promise<ErrandView> {
+    return this.errands.requestNewQuote(id, { role: user.role, userId: user.userId });
   }
 
   @Get(':id/history')

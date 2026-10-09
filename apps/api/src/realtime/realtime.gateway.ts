@@ -12,14 +12,16 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import { AuthContext, Public } from '../common/decorators/auth.decorators';
-import { ErrandStatus, UserStatus } from '../common/enums';
+import { ErrandStatus, UserRole, UserStatus } from '../common/enums';
 import {
   ErrandsService,
   MerchantDetailsUpdatedEvent,
   QuoteReissuedEvent,
+  QuoteRequestedEvent,
 } from '../errands/errands.service';
 import { UsersService } from '../users/users.service';
 import {
+  ADMIN_ROOM,
   DomainEvent,
   EvidenceUploadedEvent,
   JoinAck,
@@ -80,6 +82,9 @@ export class RealtimeGateway implements OnGatewayConnection {
       return;
     }
     client.data.user = user;
+    if (user.role === UserRole.ADMIN) {
+      await client.join(ADMIN_ROOM);
+    }
   }
 
   @SubscribeMessage(SocketClientEvent.ERRAND_JOIN)
@@ -160,6 +165,14 @@ export class RealtimeGateway implements OnGatewayConnection {
     this.server
       ?.to(errandRoom(event.errandId))
       .emit(SocketServerEvent.MERCHANT_DETAILS_UPDATED, event);
+  }
+
+  /** Customer asked for a new quote (row 68): admins and the errand room. */
+  @OnEvent(DomainEvent.QUOTE_REQUESTED)
+  onQuoteRequested(event: QuoteRequestedEvent): void {
+    this.server
+      ?.to([ADMIN_ROOM, errandRoom(event.errandId)])
+      .emit(SocketServerEvent.QUOTE_REQUESTED, event);
   }
 
   private async authenticate(client: AuthedSocket): Promise<AuthContext | null> {

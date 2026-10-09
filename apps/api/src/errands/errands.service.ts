@@ -165,6 +165,14 @@ export const toItemView = (row: ErrandItem): ErrandItemView => ({
   notes: row.notes,
 });
 
+export interface ListOptions {
+  status?: ErrandStatus | ErrandStatus[];
+  limit?: number;
+  cursor?: string | null;
+  /** true: only errands with a pending "Request a new quote" (row 68). */
+  quoteRequested?: boolean;
+}
+
 export interface ListErrandViewsResponse {
   items: ErrandView[];
   nextCursor: string | null;
@@ -235,6 +243,18 @@ export interface QuoteReissuedEvent {
   status: ErrandStatus;
   /** True on an ACCEPTED errand: the customer must accept the new quote. */
   acceptanceRequired: boolean;
+}
+
+/** Domain event emitted after a customer asks for a new quote (row 68). */
+export const QUOTE_REQUESTED_EVENT = 'quote.requested';
+
+export interface QuoteRequestedEvent {
+  errandId: string;
+  reference: string;
+  /** The expired quote the customer wants replaced. */
+  quoteId: string;
+  status: ErrandStatus;
+  quoteRequestedAt: string;
 }
 
 /** Domain event emitted after merchant Till/Paybill details are set. */
@@ -428,7 +448,7 @@ export class ErrandsService {
   /** `listFor` with each item carrying its current assignment (batched). */
   async listViewsFor(
     viewer: ViewerContext,
-    opts: { status?: ErrandStatus | ErrandStatus[]; limit?: number; cursor?: string | null },
+    opts: ListOptions,
   ): Promise<ListErrandViewsResponse> {
     const page = await this.listFor(viewer, opts);
     return {
@@ -662,12 +682,9 @@ export class ErrandsService {
     return current !== null && current.runnerProfileId === runnerProfile.id;
   }
 
-  async listFor(
-    viewer: ViewerContext,
-    opts: { status?: ErrandStatus | ErrandStatus[]; limit?: number; cursor?: string | null },
-  ): Promise<ListErrandsResponse> {
+  async listFor(viewer: ViewerContext, opts: ListOptions): Promise<ListErrandsResponse> {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
-    const qb = await this.scopedQuery(viewer, opts.status);
+    const qb = await this.scopedQuery(viewer, opts.status, opts.quoteRequested);
 
     qb.orderBy('e."createdAt"', 'DESC').addOrderBy('e.id', 'DESC').limit(limit + 1);
 
@@ -697,8 +714,9 @@ export class ErrandsService {
   async countFor(
     viewer: ViewerContext,
     status?: ErrandStatus | ErrandStatus[],
+    quoteRequested?: boolean,
   ): Promise<{ count: number }> {
-    const qb = await this.scopedQuery(viewer, status);
+    const qb = await this.scopedQuery(viewer, status, quoteRequested);
     return { count: await qb.getCount() };
   }
 
@@ -706,6 +724,7 @@ export class ErrandsService {
   private async scopedQuery(
     viewer: ViewerContext,
     status?: ErrandStatus | ErrandStatus[],
+    quoteRequested?: boolean,
   ): Promise<SelectQueryBuilder<Errand>> {
     const statuses = normalizeStatuses(status);
     const qb = this.errands.createQueryBuilder('e');
@@ -743,6 +762,12 @@ export class ErrandsService {
       qb.andWhere('e.status = :status', { status: statuses[0] });
     } else if (statuses.length > 1) {
       qb.andWhere('e.status IN (:...statuses)', { statuses });
+    }
+    // Admin queue (row 68): errands with / without a pending quote request.
+    if (quoteRequested === true) {
+      qb.andWhere('e."quoteRequestedAt" IS NOT NULL');
+    } else if (quoteRequested === false) {
+      qb.andWhere('e."quoteRequestedAt" IS NULL');
     }
     return qb;
   }
@@ -1086,7 +1111,11 @@ export class ErrandsService {
         }
         const row = await this.saveQuote(manager, errandId, quote);
         current.quotedPrice = quote.total.toFixed(2);
-        await manager.getRepository(Errand).update(errandId, { quotedPrice: current.quotedPrice });
+        // The re-quote answers any pending "Request a new quote" (row 68).
+        current.quoteRequestedAt = null;
+        await manager
+          .getRepository(Errand)
+          .update(errandId, { quotedPrice: current.quotedPrice, quoteRequestedAt: null });
         return { errand: current, history: null, quote: row, reissued: true };
       }
       const done = await this.performTransition(
@@ -1115,6 +1144,66 @@ export class ErrandsService {
       setImmediate(() => this.events.emit(QUOTE_REISSUED_EVENT, event));
     }
     return { errand: out.errand, history: out.history, quote: out.quote };
+  }
+
+  /**
+   * Customer "Request a new quote" (row 68). Allowed on the owner's QUOTED
+   * or ACCEPTED errand whose newest quote has expired; records
+   * `quoteRequestedAt` (no status change) and emits `quote.requested` after
+   * commit so admins are notified (feed + socket). Errors:
+   * - 409 `quote_request_not_allowed` in any other status or without a quote
+   * - 409 `quote_still_valid` while the newest quote is still valid
+   * - 409 `quote_request_pending` when a request is already waiting
+   * The admin re-quote clears the request.
+   */
+  async requestNewQuote(errandId: string, viewer: ViewerContext): Promise<ErrandView> {
+    await this.getById(errandId, viewer);
+    const event = await this.inTx(async (manager) => {
+      const errand = await manager.getRepository(Errand).findOne({
+        where: { id: errandId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!errand) {
+        throw new NotFoundException('Errand not found');
+      }
+      const latest = await this.currentQuote(errandId, manager);
+      if (!REQUOTABLE.has(errand.status) || !latest) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'quote_request_not_allowed',
+          `A new quote cannot be requested while the task is ${errand.status}`,
+          { status: errand.status },
+        );
+      }
+      if (errand.quoteRequestedAt) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'quote_request_pending',
+          'A new quote has already been requested for this task',
+          { quoteRequestedAt: errand.quoteRequestedAt.toISOString() },
+        );
+      }
+      if (!latest.expiresAt || latest.expiresAt.getTime() > Date.now()) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'quote_still_valid',
+          'The current quote is still valid; a new one can be requested once it expires',
+          { quoteId: latest.id, expiresAt: latest.expiresAt?.toISOString() ?? null },
+        );
+      }
+      const at = new Date();
+      await manager.getRepository(Errand).update(errandId, { quoteRequestedAt: at });
+      const out: QuoteRequestedEvent = {
+        errandId,
+        reference: errand.reference,
+        quoteId: latest.id,
+        status: errand.status,
+        quoteRequestedAt: at.toISOString(),
+      };
+      return out;
+    });
+    setImmediate(() => this.events.emit(QUOTE_REQUESTED_EVENT, event));
+    return this.getDetail(errandId, viewer);
   }
 
   /**

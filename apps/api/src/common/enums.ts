@@ -238,4 +238,6 @@ export enum NotificationEventType {
   QUOTE_REISSUED = 'quote.reissued',
   /** Merchant Till/Paybill details set on the errand (rows 42-44). */
   MERCHANT_DETAILS_ADDED = 'merchant_details.added',
+  /** Admin feed: a customer asked for a new quote after expiry (row 68). */
+  QUOTE_REQUESTED = 'quote.requested',
 }

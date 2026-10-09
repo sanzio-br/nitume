@@ -191,3 +191,33 @@ describe('RealtimeGateway pushes (A-1, A-2)', () => {
     expect(emit).toHaveBeenCalledWith('location:update', payload);
   });
 });
+
+describe('RealtimeGateway admin room (row 68)', () => {
+  it('puts admin sockets in the admins room on connect, not customers', async () => {
+    const admin = build({
+      user: { id: 'a-1', role: UserRole.ADMIN, phone: '+254700000001', status: UserStatus.ACTIVE },
+    });
+    const adminSocket = socket();
+    await admin.gateway.handleConnection(adminSocket as never);
+    expect(adminSocket.join).toHaveBeenCalledWith('admins');
+
+    const customer = build();
+    const customerSocket = socket();
+    await customer.gateway.handleConnection(customerSocket as never);
+    expect(customerSocket.join).not.toHaveBeenCalled();
+  });
+
+  it('pushes quote:requested to the admins and the errand room', () => {
+    const { gateway, to, emit } = build();
+    const event = {
+      errandId: ERRAND_ID,
+      reference: 'NT-10001',
+      quoteId: 'q-1',
+      status: ErrandStatus.QUOTED,
+      quoteRequestedAt: '2026-10-09T10:00:00.000Z',
+    };
+    gateway.onQuoteRequested(event);
+    expect(to).toHaveBeenCalledWith(['admins', `errand:${ERRAND_ID}`]);
+    expect(emit).toHaveBeenCalledWith('quote:requested', event);
+  });
+});

@@ -14,11 +14,14 @@ import { Errand } from '../errands/errand.entity';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { NOTIFICATIONS_QUEUE } from '../infra/queue/queues';
 import { DevicesService } from '../users/devices.service';
+import { UsersService } from '../users/users.service';
 import {
   MERCHANT_DETAILS_UPDATED_EVENT,
   MerchantDetailsUpdatedEvent,
   QUOTE_REISSUED_EVENT,
+  QUOTE_REQUESTED_EVENT,
   QuoteReissuedEvent,
+  QuoteRequestedEvent,
 } from '../errands/errands.service';
 import { AppNotification } from './app-notification.entity';
 import { NotificationLog } from './notification-log.entity';
@@ -61,7 +64,12 @@ export type FeedJob =
       expiresAt: string | null;
       acceptanceRequired: boolean;
     }
-  | { kind: 'merchant_details'; errandId: string; merchantName: string | null };
+  | { kind: 'merchant_details'; errandId: string; merchantName: string | null }
+  /** Admin-facing (row 68): written to every active admin's feed. */
+  | { kind: 'quote_requested'; errandId: string; reference: string };
+
+/** Feed jobs whose recipients are the admins, not the errand's customer. */
+const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested']);
 
 export const FEED_JOB = 'feed';
 export const PUSH_JOB = 'push';
@@ -97,6 +105,7 @@ export class NotificationsService {
     private readonly devices: DevicesService,
     @Inject(PUSH_SENDER)
     private readonly push: PushSender,
+    private readonly users?: UsersService,
   ) {}
 
   async listForUser(
@@ -192,6 +201,16 @@ export class NotificationsService {
     });
   }
 
+  /** Customer asked for a new quote -> admin feed (row 68). */
+  @OnEvent(QUOTE_REQUESTED_EVENT, { async: true })
+  async onQuoteRequested(event: QuoteRequestedEvent): Promise<void> {
+    await this.enqueue({
+      kind: 'quote_requested',
+      errandId: event.errandId,
+      reference: event.reference,
+    });
+  }
+
   private async enqueue(job: FeedJob): Promise<void> {
     try {
       await this.queue.add(FEED_JOB, job);
@@ -203,7 +222,11 @@ export class NotificationsService {
     }
   }
 
-  /** Worker step 1: writes the customer's feed row, then queues its push. */
+  /**
+   * Worker step 1: writes the feed row of each recipient (the errand's
+   * customer, or every active admin for admin kinds), then queues the push.
+   * Returns the first row written, or null.
+   */
   async deliverFeed(job: FeedJob): Promise<AppNotification | null> {
     const copy = copyFor(job);
     if (!copy) {
@@ -213,23 +236,30 @@ export class NotificationsService {
     if (!errand) {
       return null;
     }
-    const profile = await this.customers.findOne({ where: { id: errand.customerId } });
-    if (!profile) {
-      return null;
+    let recipients: string[];
+    if (ADMIN_FEED_KINDS.has(job.kind)) {
+      recipients = this.users ? await this.users.activeAdminIds() : [];
+    } else {
+      const profile = await this.customers.findOne({ where: { id: errand.customerId } });
+      recipients = profile ? [profile.userId] : [];
     }
-    const row = await this.notifications.save(
-      this.notifications.create({
-        userId: profile.userId,
-        errandId: errand.id,
-        eventType: copy.eventType,
-        title: copy.title,
-        body: copy.body,
-      }),
-    );
-    if (this.push.enabled) {
-      await this.queue.add(PUSH_JOB, { notificationId: row.id }, { jobId: `push-${row.id}` });
+    let first: AppNotification | null = null;
+    for (const userId of recipients) {
+      const row = await this.notifications.save(
+        this.notifications.create({
+          userId,
+          errandId: errand.id,
+          eventType: copy.eventType,
+          title: copy.title,
+          body: copy.body,
+        }),
+      );
+      if (this.push.enabled) {
+        await this.queue.add(PUSH_JOB, { notificationId: row.id }, { jobId: `push-${row.id}` });
+      }
+      first ??= row;
     }
-    return row;
+    return first;
   }
 
   /**
@@ -339,6 +369,12 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         body: job.acceptanceRequired
           ? `Your task has a new quote of KSh ${job.total}. Accept it to continue to payment.`
           : `Your task has a new quote of KSh ${job.total}. Review it to continue.`,
+      };
+    case 'quote_requested':
+      return {
+        eventType: NotificationEventType.QUOTE_REQUESTED,
+        title: 'New quote requested',
+        body: `The customer asked for a new quote on ${job.reference} after their quote expired.`,
       };
     case 'merchant_details':
       return {
