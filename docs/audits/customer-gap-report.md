@@ -508,8 +508,62 @@ SQ-1 modal scrim colour; SQ-2 `url_launcher`; SQ-3 runner short names from API o
 
 ## Questions for the owner (new)
 
+- **SQ-7 … SQ-10 answered 2026-10-09** (rows 66–69); see the addendum below. Original wording kept for the record.
 - **SQ-7** (payments, system design): row 42 has the customer pay the item amount to Nitume for `send_to_runner`, but `docs/design/Nitume_System_Design.md` §2.2 and §6 still say Nitume never takes customer purchase money. Confirm the settlement model so the text outside §3.3 can be corrected.
 - **SQ-8** (payments): a `merchant_direct` increase cannot be pushed by STK on the merchant's own Till/Paybill without a merchant integration. Default: the customer pays the extra to the same Till/Paybill from their own M-Pesa.
 - **SQ-9** (state machine, payments): after `quote_expired`, does the customer request a new quote (default, new endpoint, errand stays QUOTED) or do ops re-quote automatically?
 - **SQ-10** (privacy): may the customer see the admin's refund decision note? Default: no.
 - Carried over, still unanswered at screen level: `x-merchant-payment` Q1 (customer confirms paying the merchant), `x-payment-method-form` Q1 (number verification), `x-report-problem` Q1 (dispute photos), `x-legal` Q1 and `x-support` Q1 (URL values per environment), `v-new-details` Q2 (end-of-day deadlines).
+
+## Addendum 2026-10-09: owner answers round 3 (BOARD rows 59–94)
+
+Applied on `docs/owner-answers-3` (from `main` @ `c7675dc`). The customer app and API are on `main`, so the references below are to `main`.
+
+### What changed in the docs
+
+| Row | Decision | Docs changed | Screen status |
+|---|---|---|---|
+| 70 | `docs/design/Nitume_System_Design.md` is canonical; the root copy is removed (it had no content of its own) | system design, SCREEN_MAP, `_shared.md` | — |
+| 66, 67, 76, 91 | §2.2/§6 rewritten: send-to-runner is platform-mediated (customer pays Nitume in one combined STK; Nitume pays the runner through the payout ledger); merchant-direct stays customer to merchant, increases paid manually to the same Till; approved copy `Includes KSh … for your runner's purchase.` | system design §2.2, §6; `_shared.md` §8; v-payment; x-merchant-payment; v-price-auth | v-payment, v-price-auth unchanged |
+| 68, 72, 83, 88 | `Request a new quote` after expiry, then an admin re-quotes (also while ACCEPTED); every quote has an expiry (24 h default); re-quote only after expiry | `_shared.md` §8.3; x-awaiting-quote | x-awaiting-quote → **partial** |
+| 69 | The refund decision note is never shown to the customer | `_shared.md` §11; v-task-detail | unchanged |
+| 79 | The dispute resolution note is shown to customer and runner; internal notes separate | x-report-problem; `_shared.md` §11 | unchanged |
+| 80 | Item amounts only for Buy For Me / Get It For Me; warn (never block) when merchant details change after a merchant-direct payment started | `_shared.md` §8.2; x-awaiting-quote; x-merchant-payment; v-notifications | x-merchant-payment → **partial** |
+| 82 | `KSh` everywhere, notifications included | `_shared.md` §7; v-notifications | unchanged (API change) |
+| 86, 87, 81 | Decrease refund reviews only on send_to_runner; cancellation ceiling net of earlier refunds; ceiling includes item amount paid to Nitume | `_shared.md` §8.2, §11; v-price-auth; v-task-detail | unchanged (API change) |
+| 62, 94, 59 | Schema approved and closed; `.env.example` setup | `_shared.md` §0 | — |
+
+### Builder lists
+
+#### api-contract (`apps/api`)
+
+1. **Quote request (row 68)**: `POST /errands/:id/quote-request` (customer, own errand; QUOTED or ACCEPTED with an expired newest quote; idempotent; `quote_still_valid` 409 otherwise; no state change). Expose `quoteRequestedAt` on `GET /errands/:id` and the list; clear it (or leave it older than the newest quote) on re-quote. Notify ops. If storage needs a new column, raise it as a schema change for the owner first.
+2. **Quote expiry (row 83)**: server default `expiresAt` = now + 24 h when the admin sends none; no new quote with `null`. Backfill legacy null-expiry quotes to `createdAt + 24 h` so they can be replaced (data fix).
+3. **Decrease refunds (row 86)**: `price-change.service.ts:186-189` opens a decrease review on every route; open it only when the item route is `send_to_runner`. The decision's `refundReview` stays null otherwise.
+4. **Cumulative refund cap (row 87)**: the cancellation review's `amountPaid` is net of the errand's other approved/refunded reviews (`refunds.service.ts:508` sums every completed leg today); at decision time cap every review at `min(amountPaid, totalPaidToNitume − Σ other approved/refunded refundAmount)` and answer `refund_exceeds_amount_paid` with the effective ceiling.
+5. **KSh in notifications (row 82)**: `notifications.service.ts:331, 340-341, 360, 372` write `KES ${raw}`; use `KSh` and the app's money format (`KSh 40,000`, `KSh 1,250.50`).
+6. **Merchant details (row 80)**: refuse `PUT /errands/:id/merchant-details` for categories other than `buy_for_me` / `pickup_delivery` (`merchant_details_not_applicable`); when details change on a task whose `merchant_direct` payment has started, set `merchantDetailsUpdatedAt` (on the `merchantPayment` view) and send `merchant_details.changed` to the customer (push + in-app).
+7. **Customer refund view (minor, rows 54, 69)**: drop `payoutReference` from `toCustomerView` (the decision note is already excluded).
+
+#### core-ui (`packages/nitume_core`)
+
+1. Errand model: `quoteRequestedAt` (nullable). Repository: `requestNewQuote(errandId)` for item 1 above.
+2. Merchant payment model: `merchantDetailsUpdatedAt` (nullable) and, if not already there, the fee payment's confirmation time.
+3. Notification event constant `merchant_details.changed` (`NotificationEventType`; `quote.reissued` and `merchant_details.added` exist). Error code `quote_still_valid` in `ApiErrorCodes` (not there today).
+
+#### flutter-customer (`apps/customer_app`)
+
+1. **x-awaiting-quote** (spec "Current vs design" 1–2): replace the expired fallback (`awaiting_quote_screen.dart:486`) with the notice `This quote has expired. Ask for a new quote to continue.` and the CTA `Request a new quote` (QUOTED and ACCEPTED), the snackbar and error copy, and the **New quote requested** waiting state restored from `quoteRequestedAt`; switch to checkout when the new quote arrives. Tests for expired → requested → re-quoted.
+2. **x-merchant-payment**: the **Details changed** notice in variant A (C-40, Fira Code date/time, optional Support line), refreshed on `merchant_details.changed` and on the existing `merchant_details:updated` socket event. Test with and without the change.
+3. **v-notifications**: deep link for `merchant_details.changed` → `x-merchant-payment` (`navigation/nav.dart`; `quote.reissued` is already routed at `:155`).
+4. No change, confirmations only: v-payment (row 91 copy approved as built), v-price-auth (refund snackbar already keyed off `refundReview`), v-task-detail (decision note already hidden), x-report-problem (resolution note already shown).
+
+#### web-parity
+
+See the "Owner answers round 3" addendum in `docs/audits/admin-gap-report.md`.
+
+### Questions for the owner (new)
+
+- **SQ-11 (payments, no customer UI impact)**: on `send_to_runner`, when does Nitume pay the runner the item amount through the payout ledger: before the purchase (so the runner has the money to buy) or as a reimbursement after the receipt is uploaded? System design §6 now says "Nitume pays the runner through the payout ledger" without a timing. Needed by the runner app and the payout worker.
+- Carried over, still unanswered at screen level: `x-merchant-payment` Q1 (customer confirms paying the merchant), `x-awaiting-quote` Q2 (route change after payment), `x-payment-method-form` Q1, `x-report-problem` Q1, `x-legal` Q1, `x-support` Q1, `v-new-details` Q2.
+

@@ -24,7 +24,7 @@ In-app feed of task events (quote ready, runner en route, price change, completi
 | item payment confirmed / failed, `send_to_runner` (types missing, row 42) | `x-merchant-payment` |
 | merchant details added (type missing, row 43) | `x-awaiting-quote` while QUOTED/ACCEPTED, else `x-merchant-payment` |
 | merchant details changed after a merchant-direct payment started (type missing, row 80) | `x-merchant-payment` |
-| new quote issued after a request or expiry (`quote.reissued`, rows 68, 72) | `x-awaiting-quote` |
+| new quote issued after a request or expiry (`quote.reissued`, rows 68, 72; already routed in `navigation/nav.dart:155`) | `x-awaiting-quote` |
 | quote expired (type missing, row 46; optional) | `x-awaiting-quote` |
 | refund status changed (type missing, rows 54, 62) | `v-task-detail` |
 | rate your last task (type missing) | `v-rate` if not yet rated |
@@ -82,7 +82,7 @@ States (proposed):
 - Q3: Fira Code inside sentence subtitles. Default: no (whole subtitle Fira Sans).
 
 ## Current vs design
-Spec update 2026-10-09 (rows 68, 72, 80, 82): two more deep-link rows; `KSh` in bodies is an API change. Unknown types already fall back to Task detail, so the new rows are a small routing addition (minor, flutter-customer). Status unchanged.
+Spec update 2026-10-09 (rows 68, 72, 80, 82): one new deep-link row (`merchant_details.changed`; `quote.reissued` is already routed); `KSh` in bodies is an API change. Unknown types already fall back to Task detail, so the new row is a small routing addition (minor, flutter-customer). Status unchanged.
 
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Shared deep-link table for rows and push taps (`Nav.openNotification`), new event types routed; types the API does not send yet fall back to Task detail.
 

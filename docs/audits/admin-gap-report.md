@@ -289,3 +289,51 @@ Build these first, in `shared/` (components) and `core/` (helpers). A per-screen
 | drawer-task (existing) | FAIL (partial) | G-15, G-16, G-17, G-18, G-28, G-29 |
 | drawer-dispute (existing) | FAIL (partial) | G-19..G-23, G-28 |
 | app-wide | FAIL | G-24, G-25, G-26, G-27, G-30, G-31 |
+
+## Addendum 2026-10-09: owner answers round 3 (BOARD rows 66–94)
+
+Applied on `docs/owner-answers-3` (from `main` @ `c7675dc`, which includes `feat/admin-ops` and its PASS re-audit, `docs/audits/admin-reaudit-2026-10-09.md`). AQ-1 … AQ-6, AQ-R1 and AQ-R2 are answered; `docs/specs/admin/_shared.md` §1 quotes the rows and §8 records the answers. Only AQ-7 (12-hour EAT times, default yes) remains, as a minor.
+
+### Screen status after the spec changes
+
+| View | Rows | Status |
+|---|---|---|
+| p-refunds | 77, 86, 87, SA-1 | matches-design → **partial** |
+| drawer-refund (+ task drawer refund link) | 69, 77, 81, 82, 86, 87, SA-1, SA-2 | matches-design → **partial** |
+| drawer-task-requote | 68, 72, 83, 88 | matches-design → **partial** |
+| drawer-task-merchant-details | 67, 80 | matches-design → **partial** |
+| drawer-dispute-outcome | 78, 79 | matches-design (built defaults confirmed, no change) |
+| app-wide tokens | 93 | G-30 closed: the four admin tones are approved admin palette tokens (`_shared.md` §4.1) |
+
+### Builder lists
+
+#### web-parity (`apps/admin`)
+
+1. **p-refunds, nav (row 77)**: move `Refunds` out of the `Network` group (`admin-dashboard.component.ts:74-128`) into a new `.ops-nav-group` labelled `Payments`, between `Network` and `Insights`; keep the badge. Update the shell test.
+2. **p-refunds, column (SA-1)**: header `Paid to Nitume` → `Refundable` (same `amountPaid` value). Needs-review empty-state text per the spec.
+3. **drawer-refund, paid card (SA-1, row 87)**: under `Total paid to Nitume`, add `Already refunded on this task` (sum of `otherReviews` approved/refunded `refundAmount`, only when > 0) and `Refundable in this review` (`amountPaid`, when it differs from `paid.totalPaidToNitume`). Validation message → `The refund can't be more than the KSh {amountPaid} refundable in this review.` Map `refund_exceeds_amount_paid` with the returned ceiling as before.
+4. **Task drawer refund link (SA-2)**: `refund-link.section.ts:76` gates on CANCELLED and falls back to `/refund`. Call `GET /errands/:id/refunds` for every task from PAYMENT_CONFIRMED on; one row per review (reason, chip, amount, `Open refund review`); hide when empty; load-error line with `Try again`. Remove the `/refund` fallback. Tests for an active task with a decrease review and for the empty case.
+5. **drawer-refund, receipts (row 82)**: no edit control after `refunded` (already true; add a test asserting none renders). Corrections are spec only: build nothing.
+6. **drawer-task-requote (row 68)**: once api-contract ships `quoteRequestedAt` (N-13), show the `New quote requested` flag chip and `Customer asked for a new quote {date, time}.`; in the queue, show the flag and sort those rows first; count them in the `Task queue` badge. Until then nothing renders.
+7. **drawer-task-requote (row 83)**: keep `Valid until` required in both dialog modes; add a test for the first-quote (`Issue quote`) mode.
+8. **drawer-task-merchant-details (row 80)**: `merchant-details.section.ts:54-60`: editable only for `buy_for_me` / `pickup_delivery`; other categories hidden, or read-only with `Merchant details only apply to Buy For Me and Get It For Me.` when legacy fields exist. Warning dialog body `The customer may already be paying the current {Till|Paybill} {number}. We'll tell them the details changed so they check before paying.`; success notice for that case per the spec; map `merchant_details_not_applicable` (N-14). Tests for both category groups.
+9. Re-audit minors m-1 … m-5 still apply on the next touch of those files.
+
+#### api-contract (`apps/api`)
+
+`_shared.md` §7 N-9 … N-14 (the customer gap report addendum lists the same items with file references):
+
+1. N-9 (row 87) refund ceiling net of earlier approved/refunded reviews, enforced cumulatively at decision time.
+2. N-10 (row 86) decrease refund reviews only on `send_to_runner`.
+3. N-11 (row 83) quote `expiresAt` defaults to now + 24 h and is never null for new quotes; backfill legacy nulls.
+4. N-12 (row 82) `KSh` and the app money format in notification bodies.
+5. N-13 (row 68) customer quote request endpoint, `quoteRequestedAt` on errand detail and list items, ops notification/live-feed item.
+6. N-14 (row 80) merchant details only for the two categories; `merchantDetailsUpdatedAt` and a `merchant_details.changed` customer notification on a change after a merchant-direct payment started.
+7. Row 77: no change; every `admin` user is authorized. If a refund/payout permission is ever added, the 403 path is already specced.
+8. N-15 (row 82): correction/reversal record. Spec only; it needs an owner-approved schema before anyone builds it.
+
+### Questions for the owner (new)
+
+- AQ-7 (minor): 12-hour `4:30 PM` times in East Africa Time, as drawn in the mockup? Built default: yes.
+- SQ-11 (payments; see the customer gap report addendum): when Nitume pays the runner the `send_to_runner` item amount through the payout ledger.
+
