@@ -1,9 +1,9 @@
 # drawer-dispute-outcome — Resolution section and outcome of the dispute drawer
 
-- Mockup: `#drawer-dispute` draws: chip `Open`, title, `Customer: … · Runner: … · Opened …`, `Customer's claim`, `Evidence on file`, `Timeline`, `Resolution` (textarea `Add a resolution note...`) and the actions `Side with runner` (`.btn-reject`, outline) / `Refund customer` (`.btn-approve`, green). This spec covers the **Resolution** section, the verdict actions and what the drawer shows afterwards. **EXTENDS MOCKUP**: outcome explanations, confirm step, rationale rules and the post-verdict result (incl. the link to the refund review). One **copy deviation**: `Refund customer` → `Side with customer` (AQ-2).
+- Mockup: `#drawer-dispute` draws: chip `Open`, title, `Customer: … · Runner: … · Opened …`, `Customer's claim`, `Evidence on file`, `Timeline`, `Resolution` (textarea `Add a resolution note...`) and the actions `Side with runner` (`.btn-reject`, outline) / `Refund customer` (`.btn-approve`, green). This spec covers the **Resolution** section, the verdict actions and what the drawer shows afterwards. **EXTENDS MOCKUP**: outcome explanations, confirm step, rationale rules and the post-verdict result (incl. the link to the refund review). One **copy deviation**, approved: `Refund customer` → `Side with customer` (row 78).
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` (exists; see Current vs design)
-- Status: missing (the drawer and a verdict control exist, but none of this spec's outcome copy, rules, confirm or result is built; see Current vs design)
+- Status: matches-design (re-audit 2026-10-09 PASS; the 2026-10-09 owner answers confirm the built defaults, no change)
 
 ## Purpose
 Let an admin resolve a dispute with a written rationale and make the consequence of each verdict explicit (row 36, §3.3 as updated by row 56):
@@ -26,7 +26,7 @@ Only DISPUTED tasks show the verdict form. Results: COMPLETED (runner) or CANCEL
 2. Outcome explainer `.drawer-card` (EXTENDS MOCKUP), two `.drawer-row`-like blocks separated by a hairline, each: 13/600 blue lead + 12.5 slate-600 line:
    - `Side with runner` — `The task moves to Completed. The runner is paid through the normal payout.`
    - `Side with customer` — `The task moves to Cancelled. If the customer paid, a refund review opens in Refunds, where you set the amount.`
-3. Field A-06 (label hidden visually, `aria-label="Resolution note"`): textarea 4 rows, `.field-input`, placeholder `Add a resolution note...` (mockup), max 2000; under it a row: hint left 12 slate-600 `At least 20 characters. The customer and runner can see this note.` (AQ-3), counter right Fira Code 11 slate-600 `0/2000` (turns `.field-error` red text below 20 once the field has been touched).
+3. Field A-06 (label hidden visually, `aria-label="Resolution note"`): textarea 4 rows, `.field-input`, placeholder `Add a resolution note...` (mockup), max 2000; under it a row: hint left 12 slate-600 `At least 20 characters. The customer and runner can see this note.` (row 79, decided). This is the **resolution note**; it is not an internal note. Internal admin-only notes are a separate thing (none in this drawer today); if one is added later it gets its own field labelled as internal and is never sent with the verdict, counter right Fira Code 11 slate-600 `0/2000` (turns `.field-error` red text below 20 once the field has been touched).
 4. `.drawer-actions` (mockup order and variants): left `.btn .btn-outline` `Side with runner`; right `.btn .btn-primary` `Side with customer`. Both flex 1, both disabled until the trimmed note has ≥ 20 characters. No amber or red fills.
 5. Click → A-08 confirm:
    - Runner: title `Side with runner?` · body `#NT-10441 moves to Completed and the runner is paid as normal. This can't be undone.` · buttons `Back` / `Side with runner`.
@@ -78,7 +78,7 @@ Replaces the Resolution section; the claim/evidence/timeline sections stay visib
 
 ## Copy
 - Mockup: `Resolution`, `Add a resolution note...`, `Side with runner`, `Customer's claim`, `Evidence on file`, `Timeline`, `Dispute #NT-XXXXX`.
-- Changed from mockup (AQ-2): `Refund customer` → `Side with customer`.
+- Changed from mockup, approved (row 78): `Refund customer` → `Side with customer`.
 - Proposed: the explainer lines, hint, dialog, `Outcome`, `Task status`, `Decided`, notices and errors above, `Open refund review`.
 - Never: "refund issued", "money returned", "release", "held", "wallet", "escrow" (the verdict moves no money; `_shared.md` §3).
 
@@ -99,11 +99,17 @@ Task id in titles/dialogs, `Decided` date/time, timeline times, the note counter
 - Dialog focus starts on `Back` (destructive-ish, irreversible action).
 - Result notice `role="status"`.
 
+## Resolved by owner answers
+- `Side with customer` label (AQ-2, row 78): the verdict only opens a refund review, which may end at KSh 0.
+- Resolution note visible to customer and runner, separate from internal notes (AQ-3, row 79). N-6 is done on `main`, so the customer's `Your report` shows it.
+
 ## Open questions for the owner
-- AQ-2: `Side with customer` instead of the mockup's `Refund customer`.
-- AQ-3: the resolution note is visible to both customer and runner.
+None.
 
 ## Current vs design
+Re-audit 2026-10-09 (`docs/audits/admin-reaudit-2026-10-09.md`): PASS on `main`. The 2026-10-09 owner answers (rows 78, 79) confirm the built label and hint; no change. Minor m-4 (notice order) still applies on the next touch.
+
+Earlier record (2026-10-08, before the build):
 `dispute-drawer.ts` (and the shell, data service):
 1. Labels: `Admin verdict`, `Rule for runner`, `Rule for customer` instead of the mockup's `Resolution`, `Side with runner` and (AQ-2) `Side with customer`; placeholder `Resolution note (shown to both parties)…` instead of `Add a resolution note...`. No outcome explanation.
 2. `.btn-verdict.customer` is an **amber filled button** (`_ops.scss` `background: var(--nitume-amber)`), which the design system forbids (amber only as a chip accent). `.btn-verdict.runner` is green filled; the mockup draws the runner action as the outline button.

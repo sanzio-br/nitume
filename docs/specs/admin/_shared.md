@@ -20,26 +20,44 @@
 | 50 | Dispute window restarts after a dispute resolves to COMPLETED where applicable | drawer-dispute-outcome |
 | 54 | Refund payout recorded manually for MVP; customer sees refund status; B2C/reversal later | drawer-refund |
 | 56 | §3.3 updated: DISPUTED → COMPLETED / CANCELLED (admin, with written rationale) | drawer-dispute-outcome |
+| 62, 71, 94 | Schema approved: several `refund_reviews` per errand, trigger `price_change_decrease`, `payments.priceChangeRequestId` | p-refunds, drawer-refund |
+| 66 | System design §2.2/§6: send-to-runner is platform-mediated; the customer pays Nitume and Nitume pays the runner through the payout ledger | drawer-refund (§3 flows) |
+| 67 | A `merchant_direct` price increase is paid manually by the customer to the same Till | drawer-task-merchant-details |
+| 68 | After `quote_expired` the customer taps "Request a new quote"; the task is then available for an admin to re-quote | drawer-task-requote |
+| 69 | "Admin refund decision notes remain internal and are not exposed to the customer." | drawer-refund |
+| 72 | Admin re-quote while the task stays ACCEPTED (no ACCEPTED → QUOTED); the customer must accept/pay the new quote | drawer-task-requote |
+| 77 | "Any authorized admin with the appropriate refund/payout permission may approve refunds and record payouts. No second-admin approval threshold is required for now. Put Refunds under Payments." | §2, p-refunds, drawer-refund |
+| 78 | "Rename 'Refund customer' to 'Side with customer'" | drawer-dispute-outcome |
+| 79 | "Both the customer and runner may see the dispute resolution note. Internal admin-only notes remain separate." | drawer-dispute-outcome |
+| 80 | "Merchant amounts apply to Buy For Me and Get It For Me. If merchant details change after a merchant-direct payment has started, warn the customer rather than blocking the change." | drawer-task-merchant-details |
+| 81 | "Include the item amount already paid to Nitume in the refund ceiling even when the runner has already purchased the item." | drawer-refund |
+| 82 | "Use KSh in notifications. A payout receipt cannot be edited after the task reaches refunded; any correction must use an auditable correction/reversal process." | §3, drawer-refund |
+| 83 | "Every quote requires an expiry, defaulting to 24 hours. expiresAt = null is not valid for quotes that can be replaced." | drawer-task-requote |
+| 86 | Decrease refund reviews only on `send_to_runner` tasks; an admin can still record KSh 0 where applicable | §6, p-refunds, drawer-refund |
+| 87 | "The cancellation refund ceiling must be based on the customer's remaining refundable exposure after all previous refunds, including approved decrease refunds, so cumulative refunds cannot exceed the amount actually paid." | drawer-refund, p-refunds |
+| 88 | Admin re-quote only after the existing quote has expired; a still-valid quote is never silently replaced | drawer-task-requote |
+| 93 | The four admin tones `#DCE3EE`, `#C3CADC`, `#7E8CA8`, `#EEF1F5` are approved admin palette tokens in `_tokens.scss` | §4.1 |
 
-Still open on the BOARD and relevant here: row 62 (schema approval for `refund_reviews`), row 68 / SQ-9 (how a fresh quote is requested), row 69 / SQ-10 (customer sees the admin refund note? default no).
+Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94 (AQ-1 … AQ-6, AQ-R1, AQ-R2). Still open on the BOARD and relevant here: row 85 (PayHero contract, no admin UI impact).
 
 ## 2. Access
 
 - Every endpoint in this set is `@Roles(UserRole.ADMIN)` (refunds controller at class level; `PUT /errands/:id/merchant-details`, `POST /errands/:id/quote`, `PATCH /errands/:id/resolve-dispute` per route). `GET /errands/:errandId/refund` allows customer and admin.
 - The admin app already gates the whole dashboard with `authGuard` + `adminOnlyGuard` (`apps/admin/src/app/app.routes.ts`) and sends `x-nitume-acting-role: admin` on every call. No new guard is needed and no screen in this set has a non-admin variant.
 - A 401 is handled by the existing auth interceptor (refresh, then `/login`). A 403 on any call in this set shows the inline error notice (A-11) `You don't have access to this. Sign in with an ops admin account.` and leaves the form disabled.
-- No client-side role tiers (e.g. "Ops Lead only") are implemented; see question AQ-1.
+- **Refund approval and payout recording (row 77, decided)**: any authorized admin may approve refunds and record payouts; **no second approver** and no amount threshold. Today every user with the `admin` role is authorized (`@Roles(UserRole.ADMIN)`); if the API later adds a refund/payout permission, the drawer hides the decision and payout forms for admins without it and shows the 403 copy above. No client-side role tiers are invented.
 
 ## 3. Money and the three payment flows
 
 - Display format: `KSh 1,250` for whole shillings, `KSh 1,250.50` when there are cents. Thousands separator `,` (en-KE). Never round a refund or paid amount: refunds are stored with 2 decimals and an admin must see the exact figure they are approving. The existing `formatKsh` (`features/admin/shared-format.ts`) rounds to whole shillings, so it is **not** usable for refund amounts: needs `formatKshExact` (A-13). `—` for null.
-- The mockup writes `KSh` everywhere (`.drawer-row b`, `.rep-stat-row b`); the API's customer notification body writes `KES` (`refundCopy` in `notifications.service.ts`). Admin UI uses `KSh`. See question AQ-6.
+- `KSh` everywhere (mockup `.drawer-row b`, `.rep-stat-row b`), and in the customer notifications the API writes (row 82, decided; the API still writes `KES`, needs N-12). `KES` is only the wire currency code.
 - Every amount, count, id, receipt, Till/Paybill/account number, phone number and timestamp is Fira Code (`.num` / `b` inside `.drawer-row`). Labels next to them are Fira Sans.
 - Money inputs: `<input type="text" inputmode="decimal">` in a `.field-input` with Fira Code value text, a static `KSh` prefix label in Fira Sans 13 slate-600 inside the field's left padding. Accept digits and one `.`, max 2 decimals; strip `,` and spaces before sending; send a JSON **number** (the DTOs use `@IsNumber`).
 - The three flows stay separate in every label:
   - **Service + runner fee**: one STK charge to Nitume (row 34 hides the split from the customer; the admin may see components where the API gives them).
-  - **Item amount, paid to Nitume** (`send_to_runner`, row 42): part of the STK charge to Nitume; the runner is reimbursed through the payout ledger.
-  - **Item amount, paid to the merchant** (`merchant_direct`): the customer pays the merchant's Till/Paybill; Nitume never holds it and can't refund it.
+  - **Item amount, paid to Nitume** (`send_to_runner`, rows 42, 66, 76): part of the combined STK charge to Nitume; Nitume pays the runner through the payout ledger. It counts toward the refund ceiling even when the runner already bought the item (row 81).
+  - **Item amount, paid to the merchant** (`merchant_direct`): the customer pays the merchant's Till/Paybill, including any increase, manually (row 67); Nitume never holds it and can't refund it; a decrease opens no refund review (row 86).
+- **Refund ceiling (rows 37, 81, 87)**: what the customer paid **to Nitume** on the task (fees, item amount on `send_to_runner`, completed differences), **minus refunds already approved or sent** on the same task. Cumulative refunds never exceed what was paid. The API returns the ceiling as the review's `amountPaid` (needs N-9 for the net rule) and enforces it again at decision time.
 - Forbidden words in this surface (copy, tooltips, code identifiers shown to users): wallet, balance, escrow, held, hold, release, credit, top up. Use "paid to Nitume", "paid to the merchant", "refund", "payout".
 
 ## 4. Layout tokens (from the mockup CSS, already ported to `styles/_ops.scss`)
@@ -56,6 +74,19 @@ Still open on the BOARD and relevant here: row 62 (schema approval for `refund_r
 | Drawer actions | flex, gap 10, margin-top 6; mockup buttons `.btn-reject` (outline) and `.btn-approve` (green) 12.5/700, padding 9, radius 9, flex 1 |
 | Form field (design system) | label 12.5/600 slate-600; input 14.5, padding 11 14, radius 8, 1px slate-line; focus 2px green outline; invalid border red |
 | Chip | 11–12/600–700, padding 5 10–11, radius 999 |
+
+### 4.1 Admin palette tokens (row 93, approved)
+
+Besides the design-system palette and derived tones, the admin surface has four approved **admin palette tokens**, promoted from the mockup's sidebar and map values. They live only in `apps/admin/src/styles/_tokens.scss` and are used through `var(...)`; no other surface uses them, and no hex value appears outside `_tokens.scss`.
+
+| Token | Hex | Use |
+|---|---|---|
+| `--nitume-sidebar-text` | `#DCE3EE` | sidebar body text on blue |
+| `--nitume-sidebar-item` | `#C3CADC` | inactive nav item on blue |
+| `--nitume-sidebar-muted` | `#7E8CA8` | nav group labels, sidebar footer role |
+| `--nitume-map-bg` | `#EEF1F5` | ops map canvas |
+
+An audit treats these four as palette, not as violations. Any other new hex is still a FAIL.
 
 ## 5. Shared components (A-ids)
 
@@ -97,7 +128,7 @@ API `RefundTrigger` → `Reason` label:
 | `price_change_rejected` | `Price change rejected` |
 | `dispute_customer_favourable` | `Dispute: sided with customer` |
 | `cancelled_after_payment` | `Cancelled after payment` |
-| (row 48, not in the API yet) | `Price decrease` |
+| `price_change_decrease` (rows 48, 71; `send_to_runner` tasks only, row 86) | `Price decrease` |
 
 Unknown values: show the raw value title-cased (never hide a row).
 
@@ -107,18 +138,33 @@ Collected here; each spec repeats the ones it depends on.
 
 - N-1 `GET /refunds` and `GET /refunds/:id` return the bare `RefundReview` row. The panel and drawer need, per review: errand `{ id, title/description, category, status }`, customer `{ shortName, phone }` (the phone is where the manual refund is sent), and a paid breakdown by flow `{ serviceAndRunnerFee, itemAmountToNitume, priceChangeDifferences, merchantDirectAmount }`. Today `GET /payments/:errandId` returns transactions with a `paymentTypeId` uuid only, so the client cannot split by flow.
 - N-2 `decidedByUserId` / `paidByUserId` are user ids; the drawer wants the admin's display name (or the client keeps showing `…a1b2`).
-- N-3 Row 48 decrease refunds are not implemented: `refund_reviews.errandId` is unique and reviews only open on CANCELLED. Needs a `price_decrease` trigger and more than one review per errand (schema change: owner, row 62).
+- N-3 Done on `main`: `price_change_decrease` reviews, several per errand (rows 71, 94). Remaining: open them only on `send_to_runner` tasks (N-10).
 - N-4 A re-quote (`POST /errands/:id/quote` on an expired QUOTED errand) writes no history row and emits no event, so the customer is not notified and the drawer timeline does not show it. Needs a notification/socket event (e.g. `quote.reissued`) and ideally an audit row.
 - N-5 The errand list has no quote expiry, so the queue can't flag expired quotes without one request per row. Needs `quoteExpiresAt` on `GET /errands` items (and the detail).
-- N-6 `PATCH /errands/:id/resolve-dispute` does not update the `disputes` row (`status` stays `open`, `resolution` null), so the customer's `x-report-problem` read mode never shows an outcome. Needs: set `status=resolved`, `resolution=rationale`, `resolvedBy`, and add a `resolved` dispute event in the same transaction.
+- N-6 Done on `main` (`disputes.service.ts` `closeWithin`): the verdict sets `status`, `resolution`, `resolvedBy` and a `resolved` event. The resolution is readable by customer and runner (`GET /errands/:errandId/dispute`), as row 79 allows.
 - N-7 Optional: a count endpoint (`GET /refunds/count?status=`) for the sidebar badge; until then the client counts a `limit=100` page (§ p-refunds).
+- N-9 (row 87) The cancellation review's `amountPaid` (its ceiling) must be **net of refunds already approved or refunded** on the errand; at decision time every review is checked against `min(amountPaid, totalPaidToNitume − Σ refundAmount of the errand's other approved/refunded reviews)`, answering `refund_exceeds_amount_paid` with the effective ceiling in `amountPaid`. Today `amountPaid()` sums every completed STK leg (`refunds.service.ts:508`).
+- N-10 (row 86) `openForDecrease` only when the item payment route is `send_to_runner` (`price-change.service.ts:186-189` opens it on every route).
+- N-11 (row 83) `QuoteErrandDto.expiresAt` required in effect: when omitted the server sets now + 24 h; no new quote has `expiresAt = null`. Legacy null-expiry quotes: backfill to `createdAt + 24 h` (data fix) so they can be replaced; until then the drawer shows `No expiry`.
+- N-12 (row 82) Customer notification bodies use `KSh` with the app's money format (`notifications.service.ts:331, 340-341, 360, 372` write `KES ${raw}`).
+- N-13 (row 68) Customer `POST /errands/:id/quote-request` (QUOTED or ACCEPTED with an expired quote; idempotent; no state change), `quoteRequestedAt` on `GET /errands/:id` and on `GET /errands` items, and an admin notification/live-feed item `Customer asked for a new quote`. If storing it needs a new column, that is a schema change for the owner.
+- N-14 (row 80) `PUT /errands/:id/merchant-details` refuses categories other than `buy_for_me` / `pickup_delivery` (e.g. 400 `merchant_details_not_applicable`); a change on a task whose `merchant_direct` payment has started records `merchantDetailsUpdatedAt` and notifies the customer (`merchant_details.changed`).
+- N-15 (row 82, spec only, not for this build) A payout-receipt correction/reversal record: append-only, linked to the refund review, with the original receipt, the corrected receipt or reversal, reason, admin and time. Needs an owner-approved schema before anyone builds it (see `drawer-refund` "Corrections").
 - N-8 Non-`ApiError` conflicts (`ConflictException` in `performDisputeResolution`, state-machine 409s) have no `code`; the client can only switch on status 409. A code such as `errand_not_disputed` would let the UI word it precisely.
 
-## 8. Open questions for the owner (AQ-n)
+## 8. Owner questions (AQ-n)
 
-- **AQ-1 (security/payments)**: Can every admin approve refunds and record payouts, or only some roles (e.g. Ops Lead), and is there an amount above which a second admin must approve? Build default: every admin, single approval.
-- **AQ-2 (copy, mockup deviation)**: The mockup's dispute button reads `Refund customer`. Under row 36 that verdict cancels the task and only opens a refund review (amount decided later, can be KSh 0). Proposed label `Side with customer`. OK?
-- **AQ-3 (privacy)**: The dispute resolution note: is it shown to the customer and the runner? The current drawer says "shown to both parties" and the customer `x-report-problem` spec shows it as the Outcome. Build default: yes, both parties see it.
-- **AQ-4 (scope)**: Which categories can carry a merchant/item amount (and so need Till/Paybill details)? Build default: Buy For Me and Get It For Me (row 45 budget categories), plus any errand that already has details.
-- **AQ-5 (payments)**: The refund ceiling is "everything the customer paid Nitume by STK", which includes an item amount the runner may already have spent at the merchant (send_to_runner). Is that intended, or should the item amount be excluded once the runner bought the item? Build default: follow the API (full amount paid).
-- **AQ-6 (copy)**: `KSh` (mockup) in admin vs `KES` in the API's customer notification text. Align the notifications to `KSh`? And 12-hour `4:30 PM` times as in the mockup?
+All answered 2026-10-09:
+
+| AQ | BOARD row | Answer |
+|---|---|---|
+| AQ-1 | 77 | Any authorized admin approves refunds and records payouts; no second approver; `Refunds` moves to a new `Payments` nav group |
+| AQ-2 | 78 | `Side with customer` replaces the mockup's `Refund customer` |
+| AQ-3 | 79 | The resolution note is visible to customer and runner; internal admin-only notes stay separate |
+| AQ-4 | 80 | Merchant amounts only for Buy For Me and Get It For Me; detail changes after a merchant-direct payment started warn the customer, never block |
+| AQ-5 | 81 | The ceiling includes the item amount paid to Nitume, even after the runner bought the item |
+| AQ-6 | 82 | `KSh` in notifications; no receipt edits after `refunded`, corrections through an auditable correction/reversal |
+| AQ-R1 | 72 | Re-quote while ACCEPTED, no state change |
+| AQ-R2 | 83 | Every quote requires an expiry, default 24 h |
+
+Still open (minor, build default stays): **AQ-7** (left over from AQ-6, not covered by row 82): 12-hour `4:30 PM` times as drawn in the mockup, East Africa Time? Default: yes.
