@@ -16,7 +16,18 @@ export async function loadErrandRefunds(
   return res.items;
 }
 
-/** `Refund` section of the task drawer for a CANCELLED task (drawer-refund "Task drawer link"). */
+/** States before payment: no refund review can exist yet (§3.3). */
+const BEFORE_PAYMENT = new Set(['DRAFT', 'REQUESTED', 'QUOTED', 'ACCEPTED']);
+
+/** True from PAYMENT_CONFIRMED on (incl. CANCELLED, FAILED, DISPUTED, EXPIRED). */
+export function refundLinkApplies(status: string): boolean {
+  return !BEFORE_PAYMENT.has(status);
+}
+
+/**
+ * `Refund` section of the task drawer (drawer-refund "Task drawer link",
+ * SA-2): shown for any task from PAYMENT_CONFIRMED on that has reviews.
+ */
 @Component({
   selector: 'app-refund-link-section',
   imports: [StatusChipComponent],
@@ -57,10 +68,10 @@ export class RefundLinkSectionComponent {
   constructor() {
     effect(() => {
       const id = this.errandId();
-      const cancelled = this.status() === 'CANCELLED';
+      const applies = refundLinkApplies(this.status());
       untracked(() => {
         this.items.set([]);
-        if (cancelled) void this.load(id);
+        if (applies) void this.load(id);
       });
     });
   }
