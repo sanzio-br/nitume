@@ -27,6 +27,21 @@ export function rationaleValid(note: string): boolean {
   return n >= RATIONALE_MIN && n <= RATIONALE_MAX;
 }
 
+/**
+ * Outcome from the dispute row itself (`verdict`, `resolvedAt`, `resolution`),
+ * for when no history row that left DISPUTED is available.
+ */
+export function disputeOutcome(
+  d: Pick<Dispute, 'verdict' | 'resolvedAt' | 'resolution'> | null,
+): { status: string; decidedAt: string; note: string | null } | null {
+  if (!d?.verdict || !d.resolvedAt) return null;
+  return {
+    status: d.verdict === 'runner_favourable' ? 'COMPLETED' : 'CANCELLED',
+    decidedAt: d.resolvedAt,
+    note: d.resolution,
+  };
+}
+
 /** The latest history row that left DISPUTED (the recorded verdict), if any. */
 export function verdictEntry(history: ErrandStatusHistoryEntry[]): ErrandStatusHistoryEntry | null {
   const rows = history.filter((h) => h.fromStatus === 'DISPUTED');
@@ -304,7 +319,7 @@ export class DisputeDrawerComponent implements OnInit {
     const entry = verdictEntry(this.s.history());
     return entry
       ? { status: entry.toStatus, decidedAt: entry.createdAt, note: entry.note ?? null }
-      : null;
+      : disputeOutcome(this.dispute());
   });
 
   ngOnInit(): void {
@@ -401,13 +416,18 @@ export class DisputeDrawerComponent implements OnInit {
       this.serverError.set(RATIONALE_ERROR);
       return;
     }
-    if (err.code === 'errand_not_disputed') {
-      // Another admin resolved it first (N-8): reload to show their outcome.
+    if (err.status === 409) {
+      // N-8: `errand_not_disputed` means another admin resolved it first.
       await this.s.loadErrandDetail(this.errandId(), { quiet: true });
-      this.notice.set({
-        tone: 'info',
-        text: 'This dispute was already resolved. Showing the outcome.',
-      });
+      if (err.code === 'errand_not_disputed' || this.s.detail()?.status !== 'DISPUTED') {
+        void this.loadDispute();
+        this.notice.set({
+          tone: 'info',
+          text: 'This dispute was already resolved. Showing the outcome.',
+        });
+      } else {
+        this.serverError.set(RATIONALE_ERROR);
+      }
       return;
     }
     if (err.status === 403) {

@@ -274,6 +274,11 @@ export interface Dispute {
   createdAt: string;
   updatedAt?: string;
   events?: DisputeEvent[];
+  // Outcome (row 79). TODO(owner-answers-4): optional until merged.
+  /** Verdict of the resolution, or null while open. */
+  verdict?: 'runner_favourable' | 'customer_favourable' | null;
+  /** When it was resolved, or null while open. */
+  resolvedAt?: string | null;
 }
 
 // --- Refund reviews (rows 37, 48, 54, 71) ---
