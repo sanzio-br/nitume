@@ -2,7 +2,7 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 361–384 (`#v-new-details`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
-- Implementation: `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (+ `task_draft.dart`) on branch `feat/customer-integrations`
+- Implementation: `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (+ `task_draft.dart`) on branch `feat/customer-owner-answers`
 - Status: matches-design
 
 ## Purpose
@@ -107,6 +107,8 @@ Validation (proposed copy; shown on Continue, then live):
 - Q2: Is "end of day" right for Today/Tomorrow, or should those chips open a time picker? Default: 23:59 local.
 
 ## Current vs design
+Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. Text typed without any pick now shows `Choose a place from the list.` (core `onTextChanged`; earlier minor closed); `title` sent in `POST /errands`.
+
 Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: PASS. An edit after a pick drops the place (core `onSelectionCleared`) and Continue shows `Choose a place from the list.`; search failures show `Couldn't search places. Check your connection.` Minor: text typed without any earlier pick gets the generic `Choose a location.` / `Choose where to …` message instead of `Choose a place from the list.`; nothing unpicked is ever sent.
 
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): FAIL. Blocker: editing the text of a chosen place does not clear the choice, so the wizard submits the previously picked place while the field shows other text; `Choose a place from the list.` never shows. Budget per category (row 45) and Google Places are in place.

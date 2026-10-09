@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Required by OA-3 (authoritative REQUESTED → QUOTED → ACCEPTED flow after the wizard preview) and OA-5 (merchant payment route chosen at checkout). Built from design-system patterns and existing mockup components (`.stk-wrap`, `.form-card`, `.receipt-row`, `.chip` column, `.pm-card`, `.cta-fixed`). Copy is **(proposed)** unless marked "mockup".
 - Shared conventions: `_shared.md` (OA-n §0, fees and routes §8)
-- Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-integrations`
-- Status: partial (spec updated 2026-10-09 for rows 68, 72, 80, 83, 88; see Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-owner-answers`
+- Status: matches-design (re-audited 2026-10-09 @ `c420265`)
 
 ## Purpose
 One screen per errand with two main states, plus the expired-quote state of checkout and the "new quote requested" waiting state:
@@ -128,6 +128,8 @@ States:
 - Q2: Should the checkout allow changing the route after payment (e.g. merchant details arrive later)? Default: no; route is fixed once the fees are paid.
 
 ## Current vs design
+Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. Expired state with `Request a new quote` on QUOTED and ACCEPTED, snackbar and error copy, `quote_still_valid` reload, **New quote requested** waiting state restored from `quoteRequestedAt`, switch back to checkout on re-quote with `Your new quote is ready.` Minor: stale comment at `awaiting_quote_screen.dart:579` ("No quote-request endpoint yet"). Builder handling accepted: `quote_request_not_allowed` reloads and routes per Entry.
+
 Spec update 2026-10-09 (owner rows 68, 72, 80, 83, 88), against `main` @ `c7675dc` (`awaiting_quote_screen.dart`): the build shows the expired state with the fallback notice `This quote has expired. We'll send you a new one.` (`:486`) and **no CTA**, because no quote-request endpoint existed. Now required:
 1. Expired state: notice `This quote has expired. Ask for a new quote to continue.` and the CTA `Request a new quote` calling the new endpoint, with the success snackbar and error copy above, on QUOTED and ACCEPTED.
 2. The **New quote requested** waiting state, restored from `quoteRequestedAt` on every open, and the switch back to checkout on a re-quote.

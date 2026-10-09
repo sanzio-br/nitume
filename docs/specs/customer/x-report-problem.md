@@ -2,7 +2,7 @@
 
 - Mockup: **not drawn.** Referenced by the `v-task-detail` row "Report a problem with this task" and §3.2 `POST /disputes`. Built from design-system form patterns (card, field, primary button, chips) and mockup components (`.ov-header`, `.form-card`, `.cta-fixed`); copy is **(proposed)**.
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/task/report_problem_screen.dart` (write + read) on branch `feat/customer-screens`
+- Implementation: `apps/customer_app/lib/src/screens/task/report_problem_screen.dart` (write + read) on branch `feat/customer-owner-answers`
 - Status: matches-design
 
 ## Purpose
@@ -29,7 +29,8 @@ Write: IN_PROGRESS → DISPUTED, AWAITING_CUSTOMER → DISPUTED (OA-9), COMPLETE
 1. Pushed header (C-10) `Your report`.
 2. Summary card (C-07): chip (C-05) for the dispute status (below), task title 15.5/600, meta Fira Code 12 slate-600 `Reported Today, 10:41 AM`.
 3. Section label `What you told us`; card (C-07) with the reason text 13.5 blue.
-4. When resolved: section label `Outcome`; card with the resolution text 13.5 blue and meta Fira Code 11 `Resolved Mon, 2:15 PM`. The resolution text is the admin's **resolution note**, which the customer and the runner may both see (row 79). Internal admin-only notes are separate and never reach this screen.
+4. When resolved: section label `Outcome`; card with the resolution text 13.5 blue and meta Fira Code 11 `Resolved Mon, 2:15 PM`. The resolution text is the admin's **resolution note**, which the customer and the runner may both see (row 79). Internal admin-only notes are separate and never reach this screen. The time is the API's `resolvedAt` (fallback `updatedAt`).
+   - **No verdict line** (decided in the 2026-10-09 round-4 re-audit): row 79 approves the note, not a verdict label. The outcome is carried by the note, the dispute chip and, on `v-task-detail`, the errand state and refund group. The API's `verdict` field is not shown. If the owner wants one (Q2), proposed copy: `Decided in your favour.` / `Decided in the runner's favour.`, 13 slate-600 above the note.
 
 Dispute status → chip:
 
@@ -70,10 +71,13 @@ C-10, C-07, C-17 (multiline + counter), C-40, C-05, C-08, C-35, C-01. NEW: C-35,
 
 ## Open questions for the owner
 - Q1: Should customers attach photos to a report? Not supported by the API today. Default: text only.
+- Q2 (optional, non-blocking): show a one-line verdict above the resolution note (copy under Layout — read mode 4)? Default: no.
 - Resolved: the resolution note is shown to the customer (and the runner) (row 79); internal admin notes stay separate.
 - Resolved: dispute targets (row 36). Refunds after a customer-favourable outcome are shown on `v-task-detail` (refund group, `_shared.md` §11), not here; read mode adds no refund copy.
 
 ## Current vs design
+Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. Resolution note with `Resolved …` from `resolvedAt`; no verdict line (decision above).
+
 Spec update 2026-10-09 (row 79): confirms what is built (`report_problem_screen.dart:290-294` shows `resolution`). Status unchanged.
 
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Builder copy accepted: read-mode `Couldn't load your report.` and `No report for this task.` (see Copy).
