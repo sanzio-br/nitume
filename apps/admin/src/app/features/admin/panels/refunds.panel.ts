@@ -8,7 +8,7 @@ import { InlineNoticeComponent } from '../../../shared/inline-notice.component';
 import { LoadMoreComponent } from '../../../shared/load-more.component';
 import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
-import { refundTriggerLabel } from '../refund-labels';
+import { refundTriggerLabel, reviewCeiling } from '../refund-labels';
 import { formatDateTime, formatKshExact } from '../shared-format';
 import { PanelTopbarComponent } from './panel-topbar.component';
 
@@ -124,7 +124,7 @@ export function refundRowAction(status: string): string {
                   <div class="task-id">{{ shortId(r.errandId) }}</div>
                 </td>
                 <td class="col-reason">{{ triggerLabel(r.trigger) }}</td>
-                <td class="num">{{ formatKshExact(r.amountPaid) }}</td>
+                <td class="num">{{ formatKshExact(reviewCeiling(r)) }}</td>
                 <td class="num">{{ formatKshExact(r.refundAmount) }}</td>
                 <td><app-status-chip [status]="r.status" kind="refund" /></td>
                 <td class="col-opened num cell-muted">{{ formatDateTime(r.createdAt) }}</td>
@@ -287,6 +287,8 @@ export class RefundsPanelComponent implements OnInit {
 
   protected readonly rowAction = refundRowAction;
   protected readonly triggerLabel = refundTriggerLabel;
+  /** `Refundable` = the net ceiling (row 87). */
+  protected readonly reviewCeiling = reviewCeiling;
   protected readonly shortId = shortId;
   protected readonly formatKshExact = formatKshExact;
   protected readonly formatDateTime = formatDateTime;

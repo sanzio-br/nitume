@@ -83,6 +83,29 @@ describe('RefundsPanelComponent (G-1)', () => {
     expect(heads).not.toContain('Paid to Nitume');
   });
 
+  it('Refundable shows the net ceiling while pending (row 87)', async () => {
+    const fixture = await render();
+    http.expectOne(list('pending_review')).flush({
+      items: [
+        item('1', { amountPaid: '1500.00', refundCeiling: '1200.00' }),
+        item('2', {
+          status: 'refunded',
+          amountPaid: '800.00',
+          refundAmount: '800.00',
+          refundCeiling: null,
+        }),
+      ],
+      nextCursor: null,
+    });
+    await flushAsync();
+    fixture.detectChanges();
+    const cells = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr'),
+      (tr) => tr.querySelectorAll('td')[2].textContent?.trim(),
+    );
+    expect(cells).toEqual(['KSh 1,200', 'KSh 800']);
+  });
+
   it('shows the filter-specific empty state', async () => {
     const fixture = await render();
     http.expectOne(list('pending_review')).flush({ items: [], nextCursor: null });

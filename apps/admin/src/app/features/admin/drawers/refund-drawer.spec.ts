@@ -9,11 +9,11 @@ import {
   formatPhone,
   RECEIPT_ERROR,
   RefundDrawerComponent,
-  reviewCeiling,
   validateReceipt,
   validateRefundAmount,
 } from './refund-drawer';
 import { AdminDataService } from '../admin-data.service';
+import { reviewCeiling } from '../refund-labels';
 import type { RefundDetail } from '../../../core/api-types';
 
 const RID = 'rrrrrrrr-0000-0000-0000-000000000001';

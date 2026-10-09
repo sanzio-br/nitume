@@ -21,7 +21,7 @@ import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
 import { AdminDataService, categoryLabel, maskedId, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
-import { refundTriggerLabel } from '../refund-labels';
+import { refundTriggerLabel, reviewCeiling } from '../refund-labels';
 import { formatDateTime, formatKshExact, isBlank, parseKsh } from '../shared-format';
 
 export const AMOUNT_REQUIRED = 'Enter a refund amount, or KSh 0 for no refund.';
@@ -43,17 +43,6 @@ export function validateRefundAmount(input: string, ceiling: string | number): s
   if (value === null) return AMOUNT_FORMAT;
   if (value > Number(ceiling)) return ceilingError(ceiling);
   return null;
-}
-
-/**
- * What can be refunded in this review: the API's `refundCeiling` while
- * pending (net of earlier refunds on the task, row 87), else `amountPaid`.
- */
-export function reviewCeiling(
-  r: Pick<RefundDetail, 'status' | 'amountPaid' | 'refundCeiling'>,
-): string {
-  // TODO(owner-answers-4): `refundCeiling` is optional until N-9 is on main.
-  return r.status === 'pending_review' ? (r.refundCeiling ?? r.amountPaid) : r.amountPaid;
 }
 
 /** Refunds already approved or sent on the task's other reviews (row 87). */
