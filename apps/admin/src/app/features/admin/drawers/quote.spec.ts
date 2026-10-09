@@ -173,7 +173,8 @@ describe('QuoteDialogComponent errors (row 83)', () => {
       );
     await flushAsync();
     fixture.detectChanges();
-    expect(el.textContent).toContain('Check the amounts and the expiry time.');
+    expect(el.textContent).toContain('The expiry time has passed. Choose a later time.');
+    expect(el.textContent).not.toContain('Check the amounts');
     expect(el.querySelector('.field-error')?.textContent).toContain(EXPIRY_ERROR);
   });
 });

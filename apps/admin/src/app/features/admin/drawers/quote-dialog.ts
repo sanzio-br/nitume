@@ -335,7 +335,7 @@ export class QuoteDialogComponent {
       this.notice.set({ tone: 'info', text: 'This task no longer exists.' });
     } else if (err.code === 'quote_expiry_in_past') {
       // The expiry passed while the dialog was open (row 83).
-      this.notice.set({ tone: 'danger', text: 'Check the amounts and the expiry time.' });
+      this.notice.set({ tone: 'danger', text: 'The expiry time has passed. Choose a later time.' });
       this.serverErrors.set({ expiresAt: EXPIRY_ERROR });
     } else if (err.status === 400) {
       this.notice.set({ tone: 'danger', text: 'Check the amounts and the expiry time.' });
