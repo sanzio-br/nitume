@@ -619,7 +619,7 @@ Variant A shows the **Details changed** C-40 notice (info icon, no red or amber)
 
 Read mode `Outcome` shows the admin's resolution note (the API's `rationale`, required, 20–2000 characters, so a resolved dispute always has one) with `Resolved <Mon, 2:15 PM>` from `resolvedAt` (fallback `updatedAt`), Fira Code meta. The API sends `resolvedBy: null` and no internal `comment` events to customers (row 79). Test covers note and time.
 
-**Judgement: verdict line (row 79).** Row 79 approves showing the resolution *note* to both parties; it says nothing about a separate verdict label. The customer already sees the outcome three ways: the note itself (written by the admin for both parties), the dispute chip `Resolved`, and the errand's state and refund group on `v-task-detail` (COMPLETED vs CANCELLED, `_shared.md` §11). A verdict label ("in your favour" / "in the runner's favour") would be new customer-facing copy about a judgement between two parties, which the documents do not ask for. **Not required; no finding.** The spec now records this decision and offers proposed copy as an optional owner question (x-report-problem Q2) in case the owner wants it.
+**Judgement: verdict line (row 79).** Same decision as the admin re-audit (`e8f4196` on `docs/owner-answers-3`, recorded in `x-report-problem.md` Open questions): row 79 makes the resolution note visible; it does not ask for a label naming the side the admin took. The outcome is carried by the errand chip (`Completed` / `Cancelled`), the dispute chip `Resolved`, the note under `Outcome` and the refund group on `v-task-detail`. **Not required; no finding.** `x-report-problem.md` is taken unchanged from `e8f4196` on this branch so the two branches merge cleanly.
 
 ### v-notifications — PASS
 
@@ -660,4 +660,4 @@ Note (not a finding, unchanged from earlier rounds): the default base URL in `co
 
 ### Questions for the owner
 
-- x-report-problem Q2 (optional, non-blocking): show a one-line verdict above the resolution note? Default: no.
+- None new.
