@@ -48,6 +48,14 @@ export function shortId(id: string, prefix = 'NT'): string {
     .toUpperCase()}`;
 }
 
+/**
+ * A pending customer request for a new quote (row 68): only meaningful while
+ * the task can be re-quoted (QUOTED / ACCEPTED).
+ */
+export function quoteRequested(e: { status: string; quoteRequestedAt?: string | null }): boolean {
+  return !!e.quoteRequestedAt && (e.status === 'QUOTED' || e.status === 'ACCEPTED');
+}
+
 export function maskedId(id: string): string {
   return `…${id.replace(/[^a-zA-Z0-9]/g, '').slice(-4)}`;
 }
@@ -126,9 +134,15 @@ export class AdminDataService {
 
   readonly disputes = computed(() => this.errands().filter((e) => e.status === 'DISPUTED'));
 
-  /** Nav badges. */
+  /**
+   * Nav badges. The task queue counts tasks needing a quote: REQUESTED,
+   * QUOTED, and any task whose customer asked for a new quote (row 68).
+   */
   readonly pendingCount = computed(
-    () => this.tasks().filter((e) => e.status === 'REQUESTED' || e.status === 'QUOTED').length,
+    () =>
+      this.tasks().filter(
+        (e) => e.status === 'REQUESTED' || e.status === 'QUOTED' || quoteRequested(e),
+      ).length,
   );
   readonly disputeCount = computed(() => this.disputes().length);
 
@@ -323,6 +337,7 @@ export class AdminDataService {
       'quotedPrice',
       'runnerProfileId',
       'quoteExpiresAt',
+      'quoteRequestedAt',
       'title',
     ] as const) {
       if (key in patch) (listPatch as Record<string, unknown>)[key] = patch[key];
@@ -383,6 +398,8 @@ export class AdminDataService {
         status: res.errand.status,
         quotedPrice: res.errand.quotedPrice ?? res.quote.total,
         quoteExpiresAt: res.quote.expiresAt,
+        // Issuing a quote answers any pending customer request (row 68).
+        quoteRequestedAt: res.errand.quoteRequestedAt ?? null,
       });
       this.appendHistory(res.history);
       return res;

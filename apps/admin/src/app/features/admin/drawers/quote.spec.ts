@@ -10,7 +10,7 @@ import {
   TOTAL_ERROR,
   validateQuoteForm,
 } from './quote-dialog';
-import { canRequote, QuoteSectionComponent } from './quote.section';
+import { canRequote, pendingQuoteRequest, QuoteSectionComponent } from './quote.section';
 import { QuoteDialogComponent } from './quote-dialog';
 import { eatLocalInputToIso } from '../shared-format';
 import type { Quote } from '../../../core/api-types';
@@ -144,6 +144,40 @@ describe('QuoteDialogComponent expiry (row 83)', () => {
   });
 });
 
+describe('QuoteDialogComponent errors (row 83)', () => {
+  let http: HttpTestingController;
+  beforeEach(() => {
+    http = setupHttp();
+  });
+  afterEach(() => http.verify());
+
+  it('maps 400 quote_expiry_in_past to the Valid until field', async () => {
+    const fixture = TestBed.createComponent(QuoteDialogComponent);
+    fixture.componentRef.setInput('errandId', errandFixture().id);
+    fixture.componentRef.setInput('open', true);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const total = el.querySelector('input[inputmode="decimal"]') as HTMLInputElement;
+    total.value = '1450';
+    total.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    Array.from(el.querySelectorAll('button'))
+      .find((b) => b.textContent?.trim() === 'Issue quote')!
+      .click();
+    http
+      .expectOne(`${API}/errands/${errandFixture().id}/quote`)
+      .flush(
+        { statusCode: 400, code: 'quote_expiry_in_past', message: 'x' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+    await flushAsync();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Check the amounts and the expiry time.');
+    expect(el.querySelector('.field-error')?.textContent).toContain(EXPIRY_ERROR);
+  });
+});
+
 describe('re-quote visibility (G-5)', () => {
   const now = NOW.getTime();
 
@@ -178,6 +212,27 @@ describe('re-quote visibility (G-5)', () => {
   });
 });
 
+describe('customer quote request (row 68)', () => {
+  it('is pending only when later than the newest quote, on QUOTED / ACCEPTED', () => {
+    const q = quote({ createdAt: '2026-10-08T06:00:00Z' });
+    const at = '2026-10-08T08:30:00Z';
+    expect(pendingQuoteRequest(errandFixture({ quoteRequestedAt: at }), q)).toBe(at);
+    expect(
+      pendingQuoteRequest(errandFixture({ status: 'ACCEPTED', quoteRequestedAt: at }), q),
+    ).toBe(at);
+    expect(
+      pendingQuoteRequest(
+        errandFixture({ quoteRequestedAt: at }),
+        quote({ createdAt: '2026-10-08T09:00:00Z' }),
+      ),
+    ).toBeNull();
+    expect(
+      pendingQuoteRequest(errandFixture({ status: 'CANCELLED', quoteRequestedAt: at }), q),
+    ).toBeNull();
+    expect(pendingQuoteRequest(errandFixture(), q)).toBeNull();
+  });
+});
+
 describe('QuoteSectionComponent', () => {
   let http: HttpTestingController;
   beforeEach(() => {
@@ -185,9 +240,9 @@ describe('QuoteSectionComponent', () => {
   });
   afterEach(() => http.verify());
 
-  async function render(status: Errand['status']) {
+  async function render(status: Errand['status'], patch: Partial<Errand> = {}) {
     const fixture = TestBed.createComponent(QuoteSectionComponent);
-    fixture.componentRef.setInput('errand', errandFixture({ status }));
+    fixture.componentRef.setInput('errand', errandFixture({ status, ...patch }));
     fixture.detectChanges();
     return fixture;
   }
@@ -211,6 +266,22 @@ describe('QuoteSectionComponent', () => {
       (b) => (b as HTMLElement).textContent?.trim() === 'Issue new quote',
     ) as HTMLButtonElement;
     expect(btn.classList).toContain('btn-primary');
+  });
+
+  it('shows a pending customer request above Issue new quote on ACCEPTED (rows 68, 72)', async () => {
+    const fixture = await render('ACCEPTED', { quoteRequestedAt: '2026-10-08T08:30:00Z' });
+    http.expectOne(`${API}/errands/${errandFixture().id}/quote`).flush(quote());
+    await flushAsync();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const text = (el.textContent as string).replace(/\s+/g, ' ');
+    expect(text).toContain('New quote requested');
+    expect(text).toContain('Customer asked for a new quote');
+    expect(el.querySelector('.quote-request .num')?.textContent).toMatch(/11:30 AM/);
+    expect(text).toContain('Issue new quote');
+    expect(text).toContain(
+      "This quote expired after the customer accepted it. They can't pay until it is re-quoted.",
+    );
   });
 
   it('shows the wait hint for a valid quote', async () => {

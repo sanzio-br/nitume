@@ -1,6 +1,6 @@
 import { Component, computed, inject, output, signal } from '@angular/core';
 import type { ErrandListItem } from '../../../core/api-types';
-import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
+import { AdminDataService, categoryLabel, quoteRequested, shortId } from '../admin-data.service';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { formatKsh } from '../shared-format';
 
@@ -71,7 +71,9 @@ import { formatKsh } from '../shared-format';
               <td>
                 <div class="chip-stack">
                   <app-status-chip [status]="task.status" />
-                  @if (quoteExpired(task)) {
+                  @if (quoteRequested(task)) {
+                    <app-status-chip label="New quote requested" tone="pending" />
+                  } @else if (quoteExpired(task)) {
                     <app-status-chip label="Quote expired" tone="pending" />
                   }
                 </div>
@@ -144,10 +146,8 @@ export class TaskQueuePanelComponent {
     const q = this.search().trim().toLowerCase();
     const cat = this.category();
     const now = this.now();
-    // Expired quotes first (drawer-task-requote "Queue flag"); otherwise API order.
-    const rows = [...this.s.tasks()].sort(
-      (a, b) => Number(isQuoteExpired(b, now)) - Number(isQuoteExpired(a, now)),
-    );
+    // Customer requests, then expired quotes first (drawer-task-requote Data); else API order.
+    const rows = [...this.s.tasks()].sort((a, b) => queueRank(b, now) - queueRank(a, now));
     return rows.filter((t) => {
       if (cat !== 'all' && t.category !== cat) return false;
       if (!q) return true;
@@ -177,6 +177,13 @@ export class TaskQueuePanelComponent {
 
   protected readonly categoryLabel = categoryLabel;
   protected readonly shortId = shortId;
+  protected readonly quoteRequested = quoteRequested;
+}
+
+/** 2 = customer asked for a new quote, 1 = quote expired, 0 = neither. */
+export function queueRank(t: ErrandListItem, now: number): number {
+  if (quoteRequested(t)) return 2;
+  return isQuoteExpired(t, now) ? 1 : 0;
 }
 
 export function isQuoteExpired(t: ErrandListItem, now: number): boolean {

@@ -193,6 +193,11 @@ export interface Errand {
   quoteExpiresAt?: string | null;
   /** ACCEPTED with an unaccepted admin re-quote (row 72). */
   quoteAcceptanceRequired?: boolean;
+  /**
+   * When the customer asked for a new quote after expiry (row 68, N-13);
+   * null when none is pending. TODO(owner-answers-4): optional until merged.
+   */
+  quoteRequestedAt?: string | null;
 }
 
 export interface ErrandListItem {
@@ -209,6 +214,8 @@ export interface ErrandListItem {
   createdAt: string;
   /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
+  /** Pending customer request for a new quote (row 68). TODO(owner-answers-4). */
+  quoteRequestedAt?: string | null;
 }
 
 export interface ListErrandsResult {

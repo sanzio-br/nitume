@@ -964,6 +964,13 @@ tr.clickable:hover {
 .drawer-row-strong {
   font-weight: 600;
 }
+.quote-request {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 10px 0;
+}
 .drawer-card-foot {
   display: flex;
   justify-content: flex-end;
