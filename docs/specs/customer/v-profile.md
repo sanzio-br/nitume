@@ -14,7 +14,7 @@ Account hub: identity summary and links to addresses, payment methods, notificat
   - `Saved addresses` → push `v-addresses`
   - `Payment methods` → push `v-payment-methods`
   - `Notifications` → push `v-notifications`
-  - `Support` → `x-support` (opens the configured target; row hidden when not configured)
+  - `Support` → `x-support` (opens `AppConfig.supportUri` with `url_launcher`, row 39; row hidden when not configured)
   - `Log out` → C-35 confirm → revoke session → reset to `v-auth-phone`
 - **Removed**: `Recurring tasks` (OA-18, out of MVP).
 
@@ -37,7 +37,7 @@ C-09, C-12, C-24 (destructive red change), C-35, C-33. NEW: C-35.
 
 States (proposed):
 - Log out dialog: title `Log out of Nitume?`, buttons `Log out` (outline, red text) / `Cancel` (C-01).
-- Log out failure still clears local tokens (`AuthRepository.logout` already does) and unregisters the FCM device when available (pending row 31).
+- Log out: first `DELETE /users/me/devices/:id` for this device's push token (row 31, best effort), then revoke the session. Failure of either still clears local tokens (`AuthRepository.logout` already does) and the stored device id.
 - Profile load error: avatar shows the person glyph, name and meta lines hidden, 12.5 slate-600 line `Couldn't load your profile.` with a C-04 `Try again` link; rows stay usable.
 - Count unavailable: meta shows `Customer since Feb 2026` only.
 

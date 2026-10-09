@@ -421,3 +421,95 @@ All customer specs (`docs/specs/customer/*.md`) now cite the answers above as `O
 ### New questions for the owner (not yet on the board)
 
 SQ-1 modal scrim colour; SQ-2 `url_launcher`; SQ-3 runner short names from API or client; SQ-4 fallback task title; SQ-5 send-to-runner mechanics; SQ-6 source and timing of merchant Till/Paybill details (all in `_shared.md` §9). Screen-level: quote expiry with no §3.3 transition (`x-awaiting-quote` Q1); how the price-change difference is paid (`v-price-auth` Q1); customer confirmation of merchant payment (`x-merchant-payment` Q1); M-Pesa number verification (`x-payment-method-form` Q1); dispute photos (`x-report-problem` Q1); budget visibility per category (`v-new-details` Q1); Terms/Privacy URLs (`x-legal` Q1); Support target value (`x-support` Q1).
+
+---
+
+# Addendum — owner answers round 2 (2026-10-08)
+
+- Auditor: `design-auditor`. Branch `docs/customer-answers-2` (from `docs/customer-reaudit`).
+- Input: BOARD rows 1–65 (answered except 57, 59, 62, 64; rows 34, 48, 49, 58 carry "Clarified 2026-10-08" notes) and the api-contract state notes for row 56.
+- Code referenced (read only, not re-audited): `feat/customer-screens` @ `08f9b26`, `feat/api-owner-decisions` @ `0098331`.
+- This addendum records **spec changes**, not a new audit. Screens whose required behaviour changed are set to `partial` in `SCREEN_MAP.md` until a re-audit against the updated spec. Screens with only cross-cutting or minor changes keep `matches-design`.
+
+## Spec changes
+
+| Spec | Owner rows | What changed | SCREEN_MAP |
+|---|---|---|---|
+| `_shared.md` | all | §0.1 index of rows 1, 23–65; §0.2 open rows; scrim and chip text decided; §7 API short names, category-name title fallback, suspended account; §8 total-only fee row, routes (`merchant_direct` / `send_to_runner`), price-change rules, quote expiry and hidden preview; §9 SQ-7..SQ-10; §10 live data, push, places; §11 refund status | — |
+| v-track | 23, 27, 29, 30, 40, 44, 49, 65 | Google Maps body; socket with polling only as fallback; runner marker/ETA only in the current assignment window; API short name; Price change only in IN_PROGRESS | matches-design → **partial** |
+| v-new-details | 30, 45, 60 | Budget only for Buy For Me / Get It For Me; Google Places client; picked place with coordinates only | matches-design → **partial** |
+| v-new-review | 34, 47 | No price until pricing rates exist (variant A notice, `AppConfig.quotePreviewEnabled`); estimate shows the total row only | matches-design → **partial** |
+| x-awaiting-quote | 34, 42, 43, 46 | `quote_expired` state + `Request a new quote`; `send_to_runner` wire value and platform-mediated subtitle; merchant details pending vs available | matches-design → **partial** |
+| v-payment | 24, 34, 46, 52, 63 | `merchantRoute` body; server TIMEOUT (120 s) wins; `quote_expired` on initiate | matches-design (minor) |
+| x-merchant-payment | 42, 43, 44, Needs 41 | Variant B is an STK payment to Nitume with the full STK state table; details-pending state; increases on both routes; `Nothing to pay right now.` approved | matches-design → **partial** |
+| v-price-auth | 37, 44, 48, 49, 55, 61 | IN_PROGRESS only; decrease variant; refund-review reject copy; route rows also on `merchant_details_missing` | matches-design → **partial** |
+| v-task-detail | 34, 36, 40, 50, 54 | Total-only fee row; refund group; report row only within the dispute window | matches-design → **partial** |
+| v-evidence-confirm | 34, 42 | Total-only fee row; `Paid to Nitume for your runner` route line | matches-design → **partial** |
+| x-legal, x-support | 39 | `url_launcher` approved: links must open when configured | matches-design → **partial** |
+| v-home, v-history, v-rate, v-auth-otp, v-auth-phone, v-profile, v-notifications, x-name-capture, x-report-problem, x-evidence-viewer, x-address-form, v-new-category | 1, 23, 25, 27, 29, 31, 32, 36, 39–41, 50, 60, Needs 40 | Pending references resolved; cross-cutting items below; new notification deep links; FCM registration and removal; suspended-account code | matches-design (unchanged) |
+| `docs/design/Nitume_System_Design.md` §3.3 | 56 (8, 10, 35–37, 49, 50) | Diagram with actors, transition table, guarded IN_PROGRESS → CANCELLED, system-only CONFIRMED/SETTLED, admin dispute resolution, DISPUTED → CONFIRMED removed | — |
+
+## Cross-cutting items (one-place fixes; affect screens that stay `matches-design`)
+
+- **CC-4 title fallback** (row 41): `apps/customer_app/lib/src/util/display.dart` `errandTitle()` must return `title ?? <category display name>`; drop the `— <locality>` part. Used on v-home, v-track, v-history, v-rate, x-report-problem, task widgets. Owner: flutter-customer.
+- **CC-5 runner short name** (row 40): `display.dart:42` shortens `runner.displayName` with core `shortName()`. Render the API short name as returned; fallback `Your runner`. Owner: api-contract (field), core-ui (model), flutter-customer (display).
+- **CC-6 empty-title top bar** (BOARD Needs row 40, approved): `NitumeTopBar` skips an empty title. Owner: core-ui.
+- **CC-7 chip text** (row 33): `NitumeDesignChoices.chipHighContrastText = true`. Owner: core-ui. Affects every status chip.
+- **CC-8 live data** (rows 23, 29): `RealtimeClient` on `socket_io_client`; screens poll only while disconnected. Owner: core-ui (client), flutter-customer (wiring on v-home, v-track, x-awaiting-quote, v-payment, v-evidence-confirm, x-merchant-payment, app-level `price_change:requested`).
+- **CC-9 push** (row 31): FCM token registration after sign-in / name capture, removal on log out, refresh, tap deep links. Owner: core-ui (service), flutter-customer (wiring).
+- **CC-10 fee rows** (row 34 clarified): `widgets/task_widgets.dart:93-97` `paidFeeRows()` lists `Service fee` / `Runner fee`; replace with the single `Total (service + runner fee)` row. Owner: flutter-customer. (Recorded under v-task-detail and v-evidence-confirm above.)
+
+## Consolidated needs (2026-10-08)
+
+### core-ui (`packages/nitume_core`)
+
+1. `NitumeDesignChoices.chipHighContrastText = true` (row 33); mark `modalScrim` as decided (row 38; doc comment only).
+2. `NitumeTopBar`: no title line or semantics node when `title` is empty (Needs row 40).
+3. `RealtimeClient` implementation on `socket_io_client` (row 29): `auth: { token }`, `errand:join` / `errand:leave`, the four events + `location:update`, reconnect with room re-join, a connection-state stream for `Reconnecting…`.
+4. Google Places `PlaceSearchService` (Autocomplete + Place Details, session token, 300 ms debounce, key from environment config, absent-safe) (rows 30, 60).
+5. Google Maps body for `LiveTrackingMap(mapBuilder:)`: pins, route polyline, animated runner marker, fit bounds; absent-safe without a key (row 30).
+6. FCM service on `firebase_messaging`: permission prompt, token, register/remove through the devices repository, token refresh, notification-tap stream (row 31).
+7. Link opening over `url_launcher` for `AppConfig.termsLink` / `privacyLink` / `supportLink` (row 39), if it lives in core rather than the app.
+8. `AppConfig.quotePreviewEnabled` (default `false`) (row 47).
+9. `ApiErrorCodes`: `quote_expired`, `account_suspended`, `price_change_already_decided` (the last one is the open Needs row 39).
+10. Models and repositories: runner short name on `RunnerPublicSummary` / assignment; `merchantDetailsAvailable` on `Errand`; customer refund view (`status`, `refundAmount`, `paidAt`, `trigger`) on the payment summary or errand; `stkStatus` on item payments; `refundReview` on `PriceChangeDecision`; repository calls for the item-amount STK initiate and the fresh-quote request (shapes from api-contract).
+11. Stop using `shortName()` for runner names (keep it only if another caller needs it).
+
+### api-contract (`apps/api`)
+
+1. Runner short name computed server-side on runner summaries and the errand assignment (row 40).
+2. `PRICE_CHANGEABLE` = IN_PROGRESS only (row 49 clarification).
+3. Price decrease opens an admin refund review for any already-paid difference; the approve response says so (`refundReview` or equivalent); allow more than one review per errand or merge them, and add a decrease trigger (row 48 clarification). Depends on schema row 62 (open).
+4. Customer-readable refund status for the customer's own errand (no decision note, no payout reference) (row 54).
+5. `send_to_runner`: STK initiation to Nitume for the item amount and for increase differences, with `Idempotency-Key`, and `stkStatus` on those payments (rows 42, 44). Today these are `PENDING` records without an STK, and the code comment says the merchant amount never goes through Nitume (contradicts row 42).
+6. Merchant Till/Paybill source supplied by the merchant or an admin (row 43): storage + admin write endpoint; `merchantDetailsFor` returns real data; a customer-safe `merchantDetailsAvailable` flag on the errand before payment.
+7. `quote_expired` on QUOTED → ACCEPTED and on fee initiation when the quote has expired (row 46); a fresh-quote request endpoint (e.g. `POST /errands/:id/quote-request`, no state change) pending SQ-9.
+8. Validation: reject `budget > 0` outside `buy_for_me` / `pickup_delivery` (row 45); reject locations without coordinates (row 60).
+9. Tracking: confirm no runner position outside RUNNER_ASSIGNED … IN_PROGRESS or for a non-current assignment (rows 27, 65).
+10. `account_suspended` error code on OTP verify and token refresh (existing need).
+11. Notification event types: price change requested, payment confirmed / failed, item payment confirmed / failed, merchant details added, refund status changed, dispute resolved, rating reminder (optional quote expired).
+12. Provider failure reason on the payment summary (existing need); Daraja STK Query behind TIMEOUT (row 52).
+
+### flutter-customer (`apps/customer_app`)
+
+1. Partial screens, per their updated specs: v-track, v-new-details, v-new-review, x-awaiting-quote, x-merchant-payment, v-price-auth, v-task-detail, v-evidence-confirm, x-legal, x-support (each spec's "Current vs design" lists the gap).
+2. CC-4, CC-5, CC-10 (above).
+3. Wire CC-8 (socket, polling only while disconnected) and CC-9 (FCM register after sign-in and name capture, remove on log out, deep links per `v-notifications`).
+4. Add `url_launcher` (approved, row 39) unless core-ui owns it; legal links with 48dp hit areas (v-auth-phone minor).
+5. v-payment: client confirmation window ≥ 120 s or none when `stkStatus` is present (`payment_screen.dart:22` is 90 s); handle `quote_expired` on initiate.
+6. x-merchant-payment: snackbar `Nothing to pay right now.` on the self-close (Needs row 41); share one STK widget between v-payment and variant B.
+7. Suspended account mid-session → sign out, reset to `v-auth-phone`, snackbar `This account can't sign in. Contact support.` (`_shared.md` §7).
+8. x-evidence-viewer: wire the `onLoadError` re-fetch for expired signed links (row 25).
+
+### web-parity (`apps/admin`)
+
+1. Admin entry of merchant Till/Paybill details per errand (row 43), once api-contract adds the endpoint.
+2. Refund reviews (existing need) now also include price decreases (row 48).
+
+## Questions for the owner (new)
+
+- **SQ-7** (payments, system design): row 42 has the customer pay the item amount to Nitume for `send_to_runner`, but `Nitume_System_Design.md` §2.2 and §6 still say Nitume never takes customer purchase money. Confirm the settlement model so the text outside §3.3 can be corrected.
+- **SQ-8** (payments): a `merchant_direct` increase cannot be pushed by STK on the merchant's own Till/Paybill without a merchant integration. Default: the customer pays the extra to the same Till/Paybill from their own M-Pesa.
+- **SQ-9** (state machine, payments): after `quote_expired`, does the customer request a new quote (default, new endpoint, errand stays QUOTED) or do ops re-quote automatically?
+- **SQ-10** (privacy): may the customer see the admin's refund decision note? Default: no.
+- Carried over, still unanswered at screen level: `x-merchant-payment` Q1 (customer confirms paying the merchant), `x-payment-method-form` Q1 (number verification), `x-report-problem` Q1 (dispute photos), `x-legal` Q1 and `x-support` Q1 (URL values per environment), `v-new-details` Q2 (end-of-day deadlines).

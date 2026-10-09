@@ -43,8 +43,8 @@ States (proposed):
 
 ## Data
 - `GET /api/v1/errands?status=<finished set>&limit=20&cursor=…` (multi-status filter on `feat/api-customer-gaps`; newest first).
-- Amount: the fees paid through Nitume (service + runner fee) from the errand/payment (Q3 default). Never adds the item/merchant amount (§8, three flows separate). Fee mapping pending row 34 does not change this total.
-- Runner short name: runner summary on the list item (`feat/api-customer-gaps`) + `displayName` (needs: api-contract, OA-2).
+- Amount: the fee total paid through Nitume (service + runner fee) from the errand/payment (Q3 default, row 34: one total, never split). Never adds the item/merchant amount (§8, three flows separate). Refunds are not shown here (only on `v-task-detail`, `_shared.md` §11).
+- Runner short name: the API-computed short name on the list item's runner summary (row 40; needs: api-contract). Without one, the meta shows the date only.
 - No socket events.
 
 ## Accessibility and mobile

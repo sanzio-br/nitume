@@ -6,7 +6,7 @@
 - Status: matches-design
 
 ## Purpose
-View one evidence item at full size (zoomable photo or playable video), swipe between items, and see when and where it was captured.
+View one evidence item at full size (zoomable photo), swipe between items, and see when and where it was captured. Video evidence is deferred from MVP (row 32): no playback.
 
 ## Entry / exit
 - Entry: tap a thumbnail on `v-evidence-confirm` or `v-task-detail`; opens at that item.
@@ -20,13 +20,13 @@ Full-screen pushed route, **blue-700 `#08192F` background** (design-system tone,
 1. Top row (padding `10 20`): close button (32px visual, 48 hit, white × glyph) left; counter `2/4` Fira Code 12.5 white right.
 2. Media area (fills the rest): swipeable pages.
    - Photo: fit to width, pinch-zoom up to 4×, double-tap to toggle 2×.
-   - Video: poster frame with a centred 56px white play glyph; tapping plays inline with system controls. **Playback pending row 32** (video player package): until approved, show the poster and the 12.5 white line `Video playback isn't available yet.`
+   - Video (deferred, row 32; no video-player dependency): if a video item appears, show its poster frame when one exists (else the blue-700 page) with a centred 56px white video glyph that is **not** tappable, and the 12.5 white line `Video playback isn't available yet.` (built copy; it states the owner's "not supported yet" decision). No play control.
 3. Caption bar at the bottom (padding `14 20`, above the bottom safe area): type + time, e.g. `Photo · 10:41 AM` (time Fira Code 12, white), and when present the address line 12 slate-line `#E2E7EF`.
 
 ## Components
 | Element | Component | Status |
 |---|---|---|
-| Viewer pages, zoom | `EvidenceViewer` (C-25) | built (no video playback) |
+| Viewer pages, zoom | `EvidenceViewer` (C-25) | built (photos; video tile only, row 32) |
 | Close button + counter bar | `EvidenceViewer` app bar (blue-700, white foreground) | built; counter `2/4` in the app bar's trailing slot may need a small core change |
 | Counter / caption | `NumText` | built |
 
@@ -40,7 +40,7 @@ Full-screen pushed route, **blue-700 `#08192F` background** (design-system tone,
 - Counter `2/4`, capture time.
 
 ## Data
-- Items passed from the opening screen (`GET /api/v1/errands/:errandId/evidence`). Viewable URLs pending row 25 (signed, short-lived links; A-12 partial).
+- Items passed from the opening screen (`GET /api/v1/errands/:errandId/evidence`). Viewable URLs are authenticated, short-lived signed links (~15 min, row 25); on a refused link re-fetch the list once (`onLoadError` hook), then the failure state.
 - No socket events.
 
 ## Accessibility and mobile
@@ -49,7 +49,9 @@ Full-screen pushed route, **blue-700 `#08192F` background** (design-system tone,
 - White on blue-700 passes AA.
 
 ## Open questions
-- Pending row 32 (video package), row 25 (evidence links).
+- None. Video deferred (row 32); signed links decided (row 25).
 
 ## Current vs design
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (video row 32 and link row 25 fallbacks). Minor: no widget test; `onLoadError` re-fetch not wired (waits for signed links, row 25).
+
+Spec update 2026-10-08 (rows 25, 32): matches the built fallback (video line, no playback). Remaining minor: wire the `onLoadError` re-fetch now that signed links are decided. Status stays `matches-design`.

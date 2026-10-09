@@ -9,13 +9,13 @@
 Let the customer tell Nitume what went wrong with a task (opens a dispute, errand → DISPUTED), and later see the report and its status.
 
 ## Entry / exit
-- Write mode entry: `v-task-detail` row (IN_PROGRESS, AWAITING_CUSTOMER, COMPLETED); `v-evidence-confirm` link `Report a problem` (AWAITING_CUSTOMER, OA-9).
+- Write mode entry: `v-task-detail` row (IN_PROGRESS, AWAITING_CUSTOMER, COMPLETED within the dispute window, row 50); `v-evidence-confirm` link `Report a problem` (AWAITING_CUSTOMER, OA-9).
 - Read mode entry: `v-task-detail` `View your report` (DISPUTED or any state after a dispute existed); notification "Dispute resolved".
 - Write success → pop to the previous screen, which reloads (chip `Disputed`); snackbar `Report sent. We'll be in touch.`
 - Back (write mode, text entered) → C-35 discard confirm.
 
 ## Task states
-Write: IN_PROGRESS → DISPUTED, AWAITING_CUSTOMER → DISPUTED (OA-9), COMPLETED → DISPUTED (§3.3). Read: DISPUTED and whatever state follows resolution (target state pending row 36; the screen does not assume one).
+Write: IN_PROGRESS → DISPUTED, AWAITING_CUSTOMER → DISPUTED (OA-9), COMPLETED → DISPUTED (§3.3). Read: DISPUTED and the state after resolution: COMPLETED (runner-favourable) or CANCELLED (customer-favourable), both admin-only (row 36, §3.3). The screen shows the errand chip the API returns and does not assume one.
 
 ## Layout — write mode
 1. Pushed header (C-10) `Report a problem`.
@@ -60,8 +60,9 @@ C-10, C-07, C-17 (multiline + counter), C-40, C-05, C-08, C-35, C-01. NEW: C-35,
 
 ## Data
 - Write: `POST /api/v1/disputes` `{ errandId, reason }` (exists on `feat/api-customer-gaps`; `reason` 5–500 chars; one dispute per errand, 409 on duplicate). The errand moves to DISPUTED server-side.
-- Read: `GET /api/v1/disputes/:id` (exists on `feat/api-customer-gaps`). needs: api-contract — a way to find the dispute from the errand (dispute id on `GET /errands/:id`, or `GET /disputes?errandId=`).
+- Read: `GET /api/v1/disputes/:id` (exists).
 - Photo attachments: not supported by `OpenDisputeDto` (Q1).
+- Find the dispute from the errand: `GET /api/v1/disputes?errandId=` (exists).
 - Push "Dispute opened/resolved" (§4.4): needs: api-contract — event types not in `NotificationEventType` (only `errand.DISPUTED`).
 
 ## Accessibility and mobile
@@ -69,8 +70,7 @@ C-10, C-07, C-17 (multiline + counter), C-40, C-05, C-08, C-35, C-01. NEW: C-35,
 
 ## Open questions for the owner
 - Q1: Should customers attach photos to a report? Not supported by the API today. Default: text only.
-- Pending row 36: which state a resolved dispute returns to; the screen just shows the dispute status and the errand chip the API returns.
-- Pending row 37: refund wording for customer-favourable outcomes; none shown until decided.
+- Resolved: dispute targets (row 36). Refunds after a customer-favourable outcome are shown on `v-task-detail` (refund group, `_shared.md` §11), not here; read mode adds no refund copy.
 
 ## Current vs design
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Builder copy accepted: read-mode `Couldn't load your report.` and `No report for this task.` (see Copy).

@@ -65,10 +65,11 @@ If more than one errand is active, a 12.5/700 green-700 link under the card `+N 
 
 ## Copy (exact from the mockup unless marked)
 - Greeting: `Good morning` before 12:00, `Good afternoon` 12:00–17:59, `Good evening` from 18:00 (device local time).
-- Name: first word of `displayName` (`Achieng`, OA-2). No name (should not happen after `x-name-capture`): greeting line only, name line hidden.
+- Name: first word of `displayName` (`Achieng`, OA-2). No name (should not happen after `x-name-capture`): greeting line only, name line hidden; the core top bar renders no empty title line (approved, BOARD Needs row 40).
 - Search placeholder: `What do you need done?`
 - Section labels: `Categories`, `In progress`, `Recent`.
 - Active card sample: tag `Check It For Me · #NT-10482` (mockup `Inspection · #10482`; OA-1 and OA-15), title `Apartment check — Nyali`, meta `Brian K. is en route · ETA 12 min`, button `Track live →`.
+- Runner name in metas = the API short name (row 40); without one use `Your runner` (`Your runner is on it`).
 - Meta by state (proposed): REQUESTED `Waiting for your quote`; QUOTED `Your quote is ready`; ACCEPTED `Pay to confirm your task`; PAYMENT_CONFIRMED `Finding a runner`; RUNNER_ASSIGNED `Brian K. is assigned`; RUNNER_EN_ROUTE mockup; ARRIVED `Brian K. has arrived`; IN_PROGRESS `Brian K. is on it`; AWAITING_CUSTOMER `Ready for your review`.
 - Recent sample rows: `Buy shoes — Sarit Centre` / `Yesterday, 4:12 PM` / `Completed`; `Collect documents — CBD` / `Mon, 10:03 AM` / `Completed`.
 
@@ -85,12 +86,12 @@ States (proposed):
 - `+N more` count.
 
 ## Data
-- Name and initials: `GET /users/me` `displayName` (needs: api-contract, A-15 approved by OA-2).
+- Name and initials: `GET /users/me` `displayName` (exists).
 - Active: `GET /api/v1/errands?status=<active set>&limit=5`; recent: `GET /api/v1/errands?status=<finished set>&limit=2` (multi-status filter on `feat/api-customer-gaps`).
-- Title and reference: `title`, `reference` on the errand (needs: api-contract, OA-15); title fallback per `_shared.md` §7.
+- Title and reference: `title`, `reference` on the errand (exist); title fallback = category display name (row 41, `_shared.md` §7).
 - Runner name + ETA: assignment + runner summary on the errand (`feat/api-customer-gaps`), ETA from `location:update` (§4.2).
 - Unread dot: `GET /notifications/unread-count` (exists).
-- Live: join `errand:{id}` for the active errand; `location:update` updates ETA; status events refresh the card (names pending row 23; socket client pending row 29, else refresh on resume and every 30 s while visible).
+- Live (rows 23, 29): `errand:join` for the active errand; `location:update` updates the ETA, shown only inside the assignment window (rows 27, 65; `_shared.md` §10); `errand:status_changed` refreshes the card; `price_change:requested` opens `v-price-auth` (app-level listener). Fallback only while the socket is disconnected: refresh on resume and every 30 s while visible.
 
 ## Accessibility and mobile
 - Bell: "Notifications, N unread"; 48dp hit area. Avatar: "Profile".
@@ -111,3 +112,5 @@ States (proposed):
 
 ## Current vs design
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `+N more in progress` count renders in Fira Sans (core link label is string-only, CC-2); with no name the greeting is shown as the 21/700 title instead of the greeting line only. ETA in the active-card meta waits for rows 29/30.
+
+Spec update 2026-10-08 (rows 23, 27, 29, 40, 41, Needs row 40): no screen-specific rework. Cross-cutting items CC-4 (title fallback), CC-5 (API short name), CC-6 (empty-title top bar) and the socket client apply here; see the 2026-10-08 addendum in `docs/audits/customer-gap-report.md`. Status stays `matches-design` until the next spot-check.

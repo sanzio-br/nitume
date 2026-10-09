@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 257–284 (`#v-track`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-screens`
-- Status: matches-design
+- Status: partial (spec changed 2026-10-08: live map, socket, location window, price-change gating; see Current vs design)
 
 ## Purpose
 Watch the assigned runner on a map, see ETA and runner identity, follow the status timeline, and act on what the task needs (price change, item payment, evidence review).
@@ -27,12 +27,13 @@ PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAIT
 3. Map (C-31), margin `0 20 14`, height 220, r 16:
    - ETA chip top-left (14,14): white pill, 1px slate-line border, no shadow (OA-14), Fira Code 11.5/700.
    - Start pin (blue) = runner start / pickup; end pin (green) = task site / drop-off; runner dot 16px green with 3px white ring, animated between pings; dashed blue route.
-   - Loading / no SDK placeholder: blue-050 `#E9EDF3` fill (replaces mockup `#EAEEF4`, OA-14); no grid, no image asset.
-   - Runner position is shown only when the tracking snapshot or `location:update` provides one (privacy window pending row 27). Without a position, show only the task pin and the caption below.
-4. Runner info card (C-21 inside C-07, padding 15, margin `0 20 14`): avatar 36 (initials from the runner's `displayName`), name 13.5/600 (`Brian K.`, OA-2), meta Fira Code 11 slate-600 `Verified · 4.9`, trailing status chip (C-05 per `_shared.md` §6: En route = amber).
-5. Item-payment notice (C-40 with a trailing C-03 small button), margin `0 20 14`. Only when the route is `merchant_direct` / `customer_to_runner` and an item amount is due.
+   - Map body: Google Maps (`google_maps_flutter`, row 30) through `LiveTrackingMap(mapBuilder:)`; map gestures on, no map-type or my-location controls; camera fits the pins and the runner marker with 40 padding and refits when the runner marker leaves the visible area. No extra map buttons (the mockup draws none).
+   - Loading, or a build without a maps key: blue-050 `#E9EDF3` fill (replaces mockup `#EAEEF4`, OA-14); no grid, no image asset.
+   - **Runner position window (rows 27, 65; `_shared.md` §10)**: the runner marker and ETA appear only in RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED and IN_PROGRESS, only for the current assignment, and only when the tracking snapshot or `location:update` provides a position. On AWAITING_CUSTOMER or any terminal state, on reassignment, or on a 403/404 from tracking, remove the marker and ETA immediately; never show a last-known position outside the window. Without a position, show only the task pins and the caption below.
+4. Runner info card (C-21 inside C-07, padding 15, margin `0 20 14`): avatar 36 (initials from the runner's name), name 13.5/600 = the API short name as returned (`Brian K.`, row 40; `Your runner` when absent), meta Fira Code 11 slate-600 `Verified · 4.9`, trailing status chip (C-05 per `_shared.md` §6: En route = amber).
+5. Item-payment notice (C-40 with a trailing C-03 small button), margin `0 20 14`. Only when an item amount is due: route `send_to_runner` (paid to Nitume by STK, row 42), or route `merchant_direct` with merchant details available (row 43). Includes an outstanding price-change difference (row 44).
 6. Action row (margin `0 20 14`, gap 8): equal-width small outline buttons (C-03 small, pill). Each button is shown only when relevant; with one button it takes the full width; with none the row is hidden:
-   - "Price change": while a price-change request is pending.
+   - "Price change": while a price-change request is pending. Requests exist only in IN_PROGRESS (row 49), so the button never shows in other states.
    - "Review evidence": in AWAITING_CUSTOMER.
 7. Section label (C-08) `Timeline`.
 8. Timeline (C-19), margin `0 20`, padding-left 22, item gap 18, title 12.5 blue, time Fira Code 11 slate-600. Done dot green, pending dot slate-400.
@@ -42,7 +43,7 @@ PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAIT
 |---|---|---|
 | Top bar + bell | C-09 + C-11 | built (unread dot → red) |
 | Errand selector | C-16 | built |
-| Map + ETA chip + markers | C-31 | built (SDK pending row 30) |
+| Map + ETA chip + markers | C-31 | built; **change**: Google Maps body (row 30) |
 | Runner card | C-21 + C-05 | built (En route tone change) |
 | Item-payment notice | C-40 + C-03 small | **NEW** (C-40) |
 | Action buttons | C-03 small | built |
@@ -61,10 +62,11 @@ PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAIT
 States (proposed):
 - No errand in the Track set: C-33 `No task in progress.` + primary `Start a new task` → `v-new-category`.
 - PAYMENT_CONFIRMED: map shows the task pin only; chip `Finding a runner`; ETA chip hidden; runner card replaced by a C-07 card with 13 slate-600 `We're finding a runner for your task.`
-- No runner position yet: caption under the map 12 slate-600 `Live location appears when your runner is on the way.`
+- No runner position yet (inside the window): caption under the map 12 slate-600 `Live location appears when your runner is on the way.`
+- AWAITING_CUSTOMER (window closed): no runner marker, no ETA chip, no caption; the action row shows `Review evidence`.
 - ARRIVED: ETA chip `Arrived`.
-- Socket disconnected: 12 slate-600 line under the map `Reconnecting…` (map keeps the last position).
-- Item-payment notice: `Pay the item amount: KSh 40,000` (amount in Fira Code) + button `View details`.
+- Socket disconnected: 12 slate-600 line under the map `Reconnecting…`; the map keeps the last position (still inside the window) while polling runs.
+- Item-payment notice: `Pay the item amount: KSh 40,000` (amount in Fira Code) + button `View details` → `x-merchant-payment` (variant A for `merchant_direct`, variant B STK for `send_to_runner`).
 - FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner was available in time.`, `We're reviewing your report.`) and outline `View task` → `v-task-detail`.
 - Load error: C-33 `Couldn't load your task.` + `Try again`.
 
@@ -73,13 +75,13 @@ States (proposed):
 
 ## Data
 - Errands for the selector: `GET /api/v1/errands?status=PAYMENT_CONFIRMED,RUNNER_ASSIGNED,RUNNER_EN_ROUTE,ARRIVED,IN_PROGRESS,AWAITING_CUSTOMER` (multi-status filter on `feat/api-customer-gaps`).
-- Errand + runner: `GET /api/v1/errands/:id` (assignment + runner summary embedded on `feat/api-customer-gaps`); runner `displayName` needs: api-contract (A-15, OA-2).
+- Errand + runner: `GET /api/v1/errands/:id` (assignment + runner summary embedded). needs: api-contract — the runner's API-computed short name on the runner summary (row 40).
 - Timeline: `GET /api/v1/errands/:id/history` (exists) using §6 labels, interleaved with evidence events from `GET /errands/:errandId/evidence`; the next expected state is shown as pending (Q1 default).
-- Snapshot: `GET /api/v1/errands/:id/tracking` (exists on `feat/api-customer-gaps`).
-- Live (room `errand:{id}`): `location:update` `{ lat, lng, eta }` (§4.2); status change, evidence uploaded, price-change requested (event names pending row 23, use `RealtimeEvents`). Socket client pending row 29; until then poll `GET /errands/:id/tracking` every 10 s and `GET /errands/:id` every 15 s while the tab is visible.
+- Snapshot: `GET /api/v1/errands/:id/tracking` (exists). needs: api-contract — return no runner position outside the assignment window and for any assignment that is not current (rows 27, 65); 403/404 handling above.
+- Live (rows 23, 29; `_shared.md` §10): `errand:join` on the selected errand's room `errand:{id}` (`errand:leave` on switch or when the tab is hidden); `location:update` `{ lat, lng, eta }`, `errand:status_changed`, `evidence:uploaded`, `price_change:requested`. Fallback only while the socket is disconnected: poll `GET /errands/:id/tracking` every 10 s and `GET /errands/:id` every 15 s while the tab is visible.
 - Pending price change: `GET /api/v1/errands/:errandId/price-change?status=requested` (exists on `feat/api-customer-gaps`).
 - Item amount due: see `x-merchant-payment.md` Data (needs: api-contract).
-- Maps: Google Maps SDK, animate the marker only (§5); pending row 30.
+- Maps: Google Maps SDK (row 30), animate the marker only (§5); key from environment config.
 
 ## Accessibility and mobile
 - The map is decorative for screen readers; ETA and status are also text (chip and card).
@@ -96,7 +98,8 @@ States (proposed):
 - Q2: Multiple active errands. Default: chip selector above the map.
 - Q3: Emoji in buttons vs icons. Default: icons.
 - Q4: Show the action buttons only when relevant (default) or always (mockup).
-- Pending row 27 (location privacy window) and row 30 (maps package).
 
 ## Current vs design
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS (map SDK row 30 and socket row 29 fallbacks). Minor: the item-payment notice amount renders in Fira Sans (core `NitumeNotice` is string-only, CC-2).
+
+Spec update 2026-10-08 (owner rows 23, 27, 29, 30, 40, 44, 49, 65): the build passed against the earlier fallbacks. Now required: Google Maps body for C-31; socket client with polling only as the disconnected fallback; runner marker and ETA removed outside the assignment window; runner name from the API short name; item-payment notice also for price-change differences. Status set to `partial` until re-audited.
