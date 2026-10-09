@@ -14,9 +14,55 @@ import { DisputeEvent } from './dispute-event.entity';
 import { Dispute } from './dispute.entity';
 import { OpenDisputeDto } from './dto/dispute.dto';
 
+export type DisputeVerdict = 'runner_favourable' | 'customer_favourable';
+
+/**
+ * Dispute with its event log and the outcome (row 79). `resolution` is the
+ * resolution note the admin wrote with the verdict; customer and runner see
+ * it. For them `resolvedBy` and admin actor ids are null and `comment`
+ * events (reserved for internal admin notes) are left out.
+ */
 export interface DisputeView extends Dispute {
   events: DisputeEvent[];
+  /** Verdict of the resolution, or null while open. */
+  verdict: DisputeVerdict | null;
+  /** When it was resolved, or null while open. */
+  resolvedAt: Date | null;
 }
+
+/** Event types a customer or runner may see; `comment` stays admin-only. */
+const PARTY_EVENT_TYPES = new Set<DisputeEventType>([
+  DisputeEventType.OPENED,
+  DisputeEventType.EVIDENCE_ADDED,
+  DisputeEventType.RESOLVED,
+]);
+
+/** Builds the viewer-specific dispute view (row 79). */
+export const toDisputeView = (
+  dispute: Dispute,
+  events: DisputeEvent[],
+  viewer: { role: UserRole },
+): DisputeView => {
+  const resolved = [...events].reverse().find((e) => e.eventType === DisputeEventType.RESOLVED);
+  const raw = resolved?.payload?.verdict;
+  const verdict: DisputeVerdict | null =
+    raw === 'runner_favourable' || raw === 'customer_favourable' ? raw : null;
+  const outcome = { verdict, resolvedAt: resolved?.createdAt ?? null };
+  if (viewer.role === UserRole.ADMIN) {
+    return Object.assign(dispute, { events }, outcome);
+  }
+  const visible = events
+    .filter((e) => PARTY_EVENT_TYPES.has(e.eventType))
+    .map((e) =>
+      e.eventType === DisputeEventType.RESOLVED
+        ? Object.assign(e, {
+            actorId: null,
+            payload: { verdict, resolution: dispute.resolution },
+          })
+        : e,
+    );
+  return Object.assign(dispute, { resolvedBy: null, events: visible }, outcome);
+};
 
 interface Actor {
   userId: string;
@@ -102,7 +148,7 @@ export class DisputesService implements OnModuleInit {
             payload: { reason },
           }),
         );
-        return Object.assign(dispute, { events: [opened] });
+        return Object.assign(dispute, { events: [opened], verdict: null, resolvedAt: null });
       },
     );
     return extra;
@@ -119,7 +165,7 @@ export class DisputesService implements OnModuleInit {
       where: { disputeId: dispute.id },
       order: { createdAt: 'ASC' },
     });
-    return Object.assign(dispute, { events });
+    return toDisputeView(dispute, events, viewer);
   }
 
   /** Dispute with its event log, for anyone who can view the errand. */
@@ -133,6 +179,6 @@ export class DisputesService implements OnModuleInit {
       where: { disputeId: id },
       order: { createdAt: 'ASC' },
     });
-    return Object.assign(dispute, { events });
+    return toDisputeView(dispute, events, viewer);
   }
 }
