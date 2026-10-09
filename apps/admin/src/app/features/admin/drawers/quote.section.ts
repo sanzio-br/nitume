@@ -267,7 +267,10 @@ export class QuoteSectionComponent implements OnInit, OnDestroy {
     await this.load();
     this.notice.set({
       tone: 'info',
-      text: 'This task changed while you were editing. Showing the latest.',
+      text:
+        error.code === 'payment_in_progress'
+          ? "The customer has started paying this quote, so it can't be replaced now. Showing the latest."
+          : 'This task changed while you were editing. Showing the latest.',
     });
   }
 

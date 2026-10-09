@@ -297,6 +297,29 @@ describe('QuoteSectionComponent', () => {
     expect(text).not.toContain('Issue new quote');
   });
 
+  it('on 409 payment_in_progress reloads and explains (m-7)', async () => {
+    const fixture = await render('ACCEPTED');
+    http.expectOne(`${API}/errands/${errandFixture().id}/quote`).flush(quote());
+    await flushAsync();
+    const cmp = fixture.componentInstance as unknown as {
+      onConflict(c: { error: unknown }): Promise<void>;
+    };
+    const done = cmp.onConflict({
+      error: { status: 409, code: 'payment_in_progress', message: '', messages: [], extra: {} },
+    });
+    http
+      .expectOne(`${API}/errands/${errandFixture().id}`)
+      .flush(errandFixture({ status: 'ACCEPTED' }));
+    http.expectOne(`${API}/errands/${errandFixture().id}/history`).flush([]);
+    await flushAsync();
+    http.expectOne(`${API}/errands/${errandFixture().id}/quote`).flush(quote());
+    await done;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(
+      "The customer has started paying this quote, so it can't be replaced now. Showing the latest.",
+    );
+  });
+
   it('on 409 quote_still_valid reloads the quote and explains', async () => {
     const fixture = await render('QUOTED');
     http.expectOne(`${API}/errands/${errandFixture().id}/quote`).flush(quote());
