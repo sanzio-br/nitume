@@ -21,6 +21,12 @@
   --nitume-green-050: #e3f8ea; // success chip bg
   --nitume-green-700: #038a3d; // green hover / pressed
 
+  // --- Ops shell tones (mockup sidebar + map; blue/slate tints only) ---
+  --nitume-sidebar-text: #dce3ee; // sidebar body text on blue
+  --nitume-sidebar-item: #c3cadc; // inactive nav item on blue
+  --nitume-sidebar-muted: #7e8ca8; // nav group labels, footer role
+  --nitume-map-bg: #eef1f5; // ops map canvas
+
   // --- Functional accents (chip-only, never large surfaces) ---
   --nitume-amber: #b8860b; // pending / needs-attention
   --nitume-amber-050: #fbf3e1;

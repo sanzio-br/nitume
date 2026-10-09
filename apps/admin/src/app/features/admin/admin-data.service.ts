@@ -1,12 +1,18 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { apiError, FORBIDDEN_COPY } from '../../core/api-error';
 import type {
   AssignErrandDto,
+  AssignErrandResult,
   Errand,
   ErrandListItem,
   ErrandStatusHistoryEntry,
+  MerchantDetailsDto,
   QuoteErrandDto,
+  QuoteErrandResult,
+  RefundReview,
+  ResolveDisputeResult,
   ResolveDisputeVerdict,
   ReviewVerificationDto,
   RunnerListItem,
@@ -28,7 +34,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   inspection: 'Check It For Me',
   representation: 'Go There For Me',
   queue_admin: 'Wait For Me',
-  business: 'Business',
+  business: 'Business Tasks',
 };
 
 export function categoryLabel(category: string): string {
@@ -244,8 +250,9 @@ export class AdminDataService {
       this.runners.set(runners.items);
       this.me.set(me);
       this.refreshedAt.set(Date.now());
+      void this.refreshRefundBadge();
     } catch (e) {
-      this.error.set(e instanceof Error ? e.message : String(e));
+      this.error.set(syncErrorCopy(e));
     } finally {
       this.loading.set(false);
     }
@@ -265,68 +272,187 @@ export class AdminDataService {
   readonly detail = signal<Errand | null>(null);
   readonly history = signal<ErrandStatusHistoryEntry[]>([]);
   readonly detailLoading = signal(false);
+  /** User copy for a failed detail load (never the raw HTTP message). */
   readonly detailError = signal<string | null>(null);
+  /** 404 is `info` with no retry (specs' error tables); everything else `danger`. */
+  readonly detailErrorTone = signal<'info' | 'danger'>('danger');
+  private detailRequest = 0;
 
-  async loadErrandDetail(id: string): Promise<void> {
-    this.detailLoading.set(true);
+  /**
+   * Loads `GET /errands/:id` + history. A newer call wins: a slower earlier
+   * response (e.g. the previous drawer) never overwrites the current one.
+   * `quiet` keeps the current detail on screen while reloading.
+   */
+  async loadErrandDetail(id: string, opts: { quiet?: boolean } = {}): Promise<void> {
+    const req = ++this.detailRequest;
+    if (!opts.quiet) {
+      this.detailLoading.set(true);
+      this.detail.set(null);
+      this.history.set([]);
+    }
     this.detailError.set(null);
     try {
       const [detail, history] = await Promise.all([
         firstValueFrom(this.api.getErrand(id)),
         firstValueFrom(this.api.getErrandHistory(id)),
       ]);
+      if (req !== this.detailRequest) return;
       this.detail.set(detail);
       this.history.set(history);
     } catch (e) {
-      this.detailError.set(e instanceof Error ? e.message : String(e));
+      if (req !== this.detailRequest) return;
+      const err = apiError(e);
+      this.detailErrorTone.set(err.status === 404 ? 'info' : 'danger');
+      this.detailError.set(
+        err.status === 403
+          ? FORBIDDEN_COPY
+          : err.status === 404
+            ? 'This task no longer exists.'
+            : "Couldn't load this task. Check your connection and try again.",
+      );
     } finally {
-      this.detailLoading.set(false);
+      if (req === this.detailRequest) this.detailLoading.set(false);
     }
   }
 
+  /** Patches an errand in the list window and, if open, in the drawer detail. */
+  patchErrand(id: string, patch: Partial<Errand>): void {
+    const listPatch: Partial<ErrandListItem> = {};
+    for (const key of [
+      'status',
+      'quotedPrice',
+      'runnerProfileId',
+      'quoteExpiresAt',
+      'title',
+    ] as const) {
+      if (key in patch) (listPatch as Record<string, unknown>)[key] = patch[key];
+    }
+    this.errands.update((items) => items.map((e) => (e.id === id ? { ...e, ...listPatch } : e)));
+    const d = this.detail();
+    if (d && d.id === id) {
+      this.detail.set({ ...d, ...patch });
+    }
+  }
+
+  /** Appends a history row to the open drawer's timeline. */
+  private appendHistory(entry: ErrandStatusHistoryEntry | null): void {
+    const d = this.detail();
+    if (entry && d && d.id === entry.errandId) {
+      this.history.update((h) => (h.some((x) => x.id === entry.id) ? h : [...h, entry]));
+    }
+  }
+
+  /** Throws the A-14 `ApiErrorInfo` on failure. */
   async resolveDispute(
     id: string,
     verdict: ResolveDisputeVerdict,
     rationale: string,
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<ResolveDisputeResult> {
     try {
       const res = await firstValueFrom(this.api.resolveDispute(id, verdict, rationale));
-      this.errands.update((items) =>
-        items.map((e) => (e.id === id ? { ...e, status: res.errand.status } : e)),
-      );
-      return { ok: true, message: `Verdict recorded — errand ${res.errand.status.toLowerCase()}.` };
+      this.patchErrand(id, { status: res.errand.status });
+      this.appendHistory(res.history);
+      return res;
     } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      throw apiError(e);
     }
   }
 
-  async assignErrand(id: string, runnerProfileId: string, note?: string): Promise<Errand> {
-    const dto: AssignErrandDto = { runnerProfileId, note };
-    const res = await firstValueFrom(this.api.assignErrand(id, dto));
-    this.errands.update((items) =>
-      items.map((e) => (e.id === id ? { ...e, status: res.status, runnerProfileId } : e)),
-    );
-    return res;
+  /** PAYMENT_CONFIRMED → RUNNER_ASSIGNED. Throws the A-14 `ApiErrorInfo`. */
+  async assignErrand(
+    id: string,
+    runnerProfileId: string,
+    note?: string,
+  ): Promise<AssignErrandResult> {
+    const dto: AssignErrandDto = { runnerProfileId, ...(note ? { note } : {}) };
+    try {
+      const res = await firstValueFrom(this.api.assignErrand(id, dto));
+      this.patchErrand(id, { status: res.errand.status, runnerProfileId });
+      this.appendHistory(res.history);
+      return res;
+    } catch (e) {
+      throw apiError(e);
+    }
   }
 
-  async quoteErrand(id: string, dto: QuoteErrandDto): Promise<Errand> {
-    const res = await firstValueFrom(this.api.quoteErrand(id, dto));
-    this.errands.update((items) =>
-      items.map((e) => (e.id === id ? { ...e, status: res.status, quotedPrice: res.quotedPrice } : e)),
-    );
-    return res;
+  /** First quote or re-quote. Throws the A-14 `ApiErrorInfo`. */
+  async quoteErrand(id: string, dto: QuoteErrandDto): Promise<QuoteErrandResult> {
+    try {
+      const res = await firstValueFrom(this.api.quoteErrand(id, dto));
+      this.patchErrand(id, {
+        status: res.errand.status,
+        quotedPrice: res.errand.quotedPrice ?? res.quote.total,
+        quoteExpiresAt: res.quote.expiresAt,
+      });
+      this.appendHistory(res.history);
+      return res;
+    } catch (e) {
+      throw apiError(e);
+    }
   }
 
-  async reviewVerification(id: string, decision: 'approved' | 'rejected'): Promise<RunnerVerification> {
+  /** Throws the A-14 `ApiErrorInfo`. */
+  async setMerchantDetails(id: string, body: MerchantDetailsDto): Promise<Errand> {
+    try {
+      const res = await firstValueFrom(this.api.setMerchantDetails(id, body));
+      this.patchErrand(id, {
+        merchantName: res.merchantName ?? null,
+        merchantTillNumber: res.merchantTillNumber ?? null,
+        merchantPaybillNumber: res.merchantPaybillNumber ?? null,
+        merchantAccountReference: res.merchantAccountReference ?? null,
+        merchantDetailsAvailable: true,
+      });
+      return res;
+    } catch (e) {
+      throw apiError(e);
+    }
+  }
+
+  // --- Refund reviews: sidebar badge + cross-view updates ---
+  /** `Needs review` count for the sidebar badge; `more` = show `99+`. */
+  readonly refundBadge = signal<{ count: number; more: boolean }>({ count: 0, more: false });
+  /** Last review saved in the refund drawer (the panel patches its row). */
+  readonly lastRefundUpdate = signal<RefundReview | null>(null);
+
+  async refreshRefundBadge(): Promise<void> {
+    try {
+      const { count } = await firstValueFrom(this.api.countRefunds('pending_review'));
+      this.refundBadge.set({ count: Math.min(count, 99), more: count > 99 });
+    } catch (e) {
+      if (apiError(e).status !== 404) return;
+      // TODO(N-7): drop this fallback once GET /refunds/count is on main.
+      try {
+        const page = await firstValueFrom(this.api.listRefunds('pending_review', null, 100));
+        this.refundBadge.set({
+          count: Math.min(page.items.length, 99),
+          more: !!page.nextCursor || page.items.length > 99,
+        });
+      } catch {
+        /* the badge stays as it was */
+      }
+    }
+  }
+
+  refundUpdated(review: RefundReview): void {
+    this.lastRefundUpdate.set(review);
+    void this.refreshRefundBadge();
+  }
+
+  async reviewVerification(
+    id: string,
+    decision: 'approved' | 'rejected',
+  ): Promise<RunnerVerification> {
     const dto: ReviewVerificationDto = { decision };
     const res = await firstValueFrom(this.api.reviewVerification(id, dto));
-    this.verifications.update((items) =>
-      items.map((v) => (v.id === id ? res : v)),
-    );
+    this.verifications.update((items) => items.map((v) => (v.id === id ? res : v)));
     return res;
   }
 
-  listVerifications(status?: string, cursor?: string | null, limit = 50): Observable<{ items: RunnerVerification[]; nextCursor: string | null }> {
+  listVerifications(
+    status?: string,
+    cursor?: string | null,
+    limit = 50,
+  ): Observable<{ items: RunnerVerification[]; nextCursor: string | null }> {
     return new Observable((subscriber) => {
       this.api.listVerifications(status, cursor, limit).subscribe({
         next: (res) => {
@@ -342,6 +468,13 @@ export class AdminDataService {
       });
     });
   }
+}
+
+/** User copy for a failed dashboard sync (never the raw HTTP message). */
+export function syncErrorCopy(e: unknown): string {
+  const err = apiError(e);
+  if (err.status === 403) return FORBIDDEN_COPY;
+  return "Couldn't reach the ops API. Check your connection and refresh.";
 }
 
 function feedItemFor(t: ErrandListItem): FeedItem {

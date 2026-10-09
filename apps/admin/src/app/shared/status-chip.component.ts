@@ -75,55 +75,124 @@ const AVAILABILITY_VARIANTS: Record<string, ChipVariant> = {
   offline: 'neutral',
 };
 
-/** Human label for an API status string. */
-export function statusLabel(status: string | null | undefined): string {
+const REFUND_LABELS: Record<string, string> = {
+  pending_review: 'Needs review',
+  approved: 'Payout due',
+  refunded: 'Refunded',
+  no_refund: 'No refund',
+};
+
+const REFUND_VARIANTS: Record<string, ChipVariant> = {
+  pending_review: 'pending',
+  approved: 'pending',
+  refunded: 'success',
+  no_refund: 'neutral',
+};
+
+/**
+ * Which vocabulary a status string belongs to. The same API string can mean
+ * different things per surface (`approved` is a verification outcome but a
+ * "payout due" refund), so the caller always says which one it shows.
+ */
+export type ChipKind = 'errand' | 'refund' | 'verification' | 'availability' | 'level';
+
+interface Vocabulary {
+  labels: Record<string, string>;
+  variants: Record<string, ChipVariant>;
+  key: (status: string) => string;
+  fallbackVariant: ChipVariant;
+}
+
+const LEVEL_VARIANTS: Record<string, ChipVariant> = Object.fromEntries(
+  Object.keys(LEVEL_LABELS).map((k) => [k, 'info' as ChipVariant]),
+);
+
+const VOCABULARIES: Record<ChipKind, Vocabulary> = {
+  errand: {
+    labels: ERRAND_LABELS,
+    variants: ERRAND_VARIANTS,
+    key: (s) => s.toUpperCase(),
+    fallbackVariant: 'neutral',
+  },
+  refund: {
+    labels: REFUND_LABELS,
+    variants: REFUND_VARIANTS,
+    key: (s) => s,
+    fallbackVariant: 'neutral',
+  },
+  verification: {
+    labels: VERIFICATION_LABELS,
+    variants: VERIFICATION_VARIANTS,
+    key: (s) => s,
+    fallbackVariant: 'neutral',
+  },
+  availability: {
+    labels: AVAILABILITY_LABELS,
+    variants: AVAILABILITY_VARIANTS,
+    key: (s) => s,
+    fallbackVariant: 'neutral',
+  },
+  level: {
+    labels: LEVEL_LABELS,
+    variants: LEVEL_VARIANTS,
+    key: (s) => s,
+    fallbackVariant: 'info',
+  },
+};
+
+/** Human label for an API status string in one vocabulary. Unknown values
+ * are title-cased, never hidden. */
+export function statusLabel(status: string | null | undefined, kind: ChipKind = 'errand'): string {
   if (!status) {
     return 'Unknown';
   }
-  const key = status.toUpperCase();
-  return (
-    ERRAND_LABELS[key] ??
-    VERIFICATION_LABELS[status] ??
-    LEVEL_LABELS[status] ??
-    AVAILABILITY_LABELS[status] ??
-    titleCase(status)
-  );
+  const v = VOCABULARIES[kind];
+  return v.labels[v.key(status)] ?? titleCase(status);
 }
 
 /** Chip variant (design-system accents) for an API status string. */
-export function statusVariant(status: string | null | undefined): ChipVariant {
+export function statusVariant(
+  status: string | null | undefined,
+  kind: ChipKind = 'errand',
+): ChipVariant {
   if (!status) {
     return 'neutral';
   }
-  const key = status.toUpperCase();
-  return (
-    ERRAND_VARIANTS[key] ??
-    AVAILABILITY_VARIANTS[status] ??
-    VERIFICATION_VARIANTS[status] ??
-    (LEVEL_LABELS[status] ? 'info' : 'neutral')
-  );
+  const v = VOCABULARIES[kind];
+  return v.variants[v.key(status)] ?? v.fallbackVariant;
 }
 
 function titleCase(value: string): string {
-  return value.replace(/_/g, ' ').replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  return value
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 
 /**
  * Reusable status chip. One component for every status surface (errand state,
- * runner availability, verification outcome, verification level) so chips are
- * wired to the design system in exactly one place — never inline per screen.
+ * refund review, runner availability, verification outcome, verification
+ * level) so chips are wired to the design system in exactly one place.
+ *
+ * `label` + `tone` render a fixed flag chip (e.g. `Quote expired`, pending)
+ * without a status lookup: a flag is not a state.
  */
 @Component({
   selector: 'app-status-chip',
   imports: [],
   template: `
-    <span class="chip" [class]="'chip-' + variant()"> <span class="dot"></span>{{ label() }} </span>
+    <span class="chip" [class]="'chip-' + variant()"><span class="dot"></span>{{ text() }}</span>
   `,
   styles: [],
 })
 export class StatusChipComponent {
   readonly status = input<string | null | undefined>(null);
+  readonly kind = input<ChipKind>('errand');
+  /** Fixed text; skips the status lookup. */
+  readonly label = input<string | null>(null);
+  /** Fixed tone; skips the status lookup. */
+  readonly tone = input<ChipVariant | null>(null);
 
-  readonly label = computed(() => statusLabel(this.status()));
-  readonly variant = computed(() => statusVariant(this.status()));
+  readonly text = computed(() => this.label() ?? statusLabel(this.status(), this.kind()));
+  readonly variant = computed(() => this.tone() ?? statusVariant(this.status(), this.kind()));
 }

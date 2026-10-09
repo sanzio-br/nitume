@@ -3,7 +3,17 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import {
   AssignErrandDto,
+  AssignErrandResult,
+  Dispute,
   Errand,
+  ErrandRefundView,
+  ListRefundsResult,
+  MerchantDetailsDto,
+  Quote,
+  QuoteErrandResult,
+  RefundDetail,
+  RefundReview,
+  RefundStatus,
   ErrandStatus,
   ErrandStatusHistoryEntry,
   ListErrandsResult,
@@ -85,14 +95,73 @@ export class ApiService {
     });
   }
 
-  /** POST /errands/:id/assign — admin assigns a runner to an errand. */
-  assignErrand(id: string, dto: AssignErrandDto): import('rxjs').Observable<Errand> {
-    return this.http.post<Errand>(`${this.base}/errands/${id}/assign`, dto);
+  /** POST /errands/:id/assign — PAYMENT_CONFIRMED → RUNNER_ASSIGNED only. */
+  assignErrand(id: string, dto: AssignErrandDto) {
+    return this.http.post<AssignErrandResult>(`${this.base}/errands/${id}/assign`, dto);
   }
 
-  /** POST /errands/:id/quote — admin issues a quote for an errand. */
-  quoteErrand(id: string, dto: QuoteErrandDto): import('rxjs').Observable<Errand> {
-    return this.http.post<Errand>(`${this.base}/errands/${id}/quote`, dto);
+  /**
+   * POST /errands/:id/quote — first quote (REQUESTED → QUOTED) or a re-quote
+   * of an expired quote (QUOTED, and ACCEPTED on round 3; no status change).
+   */
+  quoteErrand(id: string, dto: QuoteErrandDto) {
+    return this.http.post<QuoteErrandResult>(`${this.base}/errands/${id}/quote`, dto);
+  }
+
+  /** GET /errands/:id/quote — newest quote; 404 until quoted. */
+  getQuote(id: string) {
+    return this.http.get<Quote>(`${this.base}/errands/${id}/quote`);
+  }
+
+  /** PUT /errands/:id/merchant-details — admin sets the merchant Till/Paybill. */
+  setMerchantDetails(id: string, body: MerchantDetailsDto) {
+    return this.http.put<Errand>(`${this.base}/errands/${id}/merchant-details`, body);
+  }
+
+  /** GET /errands/:errandId/dispute — the dispute (claim `reason`, events). */
+  getDispute(errandId: string) {
+    return this.http.get<Dispute>(`${this.base}/errands/${errandId}/dispute`);
+  }
+
+  /** GET /errands/:errandId/refund — one review; 404 `refund_not_found`. */
+  getErrandRefund(errandId: string) {
+    return this.http.get<ErrandRefundView>(`${this.base}/errands/${errandId}/refund`);
+  }
+
+  /** GET /errands/:errandId/refunds — every review, newest first (row 71, round 3). */
+  listErrandRefunds(errandId: string) {
+    return this.http.get<{ items: ErrandRefundView[] }>(`${this.base}/errands/${errandId}/refunds`);
+  }
+
+  /** GET /refunds — admin refund reviews, newest first. */
+  listRefunds(status?: RefundStatus | null, cursor?: string | null, limit = 25) {
+    let params = new HttpParams();
+    if (status) params = params.set('status', status);
+    if (cursor) params = params.set('cursor', cursor);
+    params = params.set('limit', String(limit));
+    return this.http.get<ListRefundsResult>(`${this.base}/refunds`, { params });
+  }
+
+  /** GET /refunds/count — N-7 (round 3). */
+  countRefunds(status?: RefundStatus | null) {
+    let params = new HttpParams();
+    if (status) params = params.set('status', status);
+    return this.http.get<{ count: number }>(`${this.base}/refunds/count`, { params });
+  }
+
+  /** GET /refunds/:id — review + (round 3) errand, customer, paid breakdown. */
+  getRefund(id: string) {
+    return this.http.get<RefundDetail>(`${this.base}/refunds/${id}`);
+  }
+
+  /** PATCH /refunds/:id/decision — 0 closes with no refund, > 0 approves. */
+  decideRefund(id: string, body: { refundAmount: number; note?: string }) {
+    return this.http.patch<RefundReview>(`${this.base}/refunds/${id}/decision`, body);
+  }
+
+  /** POST /refunds/:id/mark-paid — records the manual M-Pesa payout. */
+  markRefundPaid(id: string, body: { payoutReference: string }) {
+    return this.http.post<RefundReview>(`${this.base}/refunds/${id}/mark-paid`, body);
   }
 
   /** GET /runners/verifications — admin verification inbox. */

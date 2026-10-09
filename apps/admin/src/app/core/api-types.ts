@@ -12,18 +12,68 @@ export interface AssignErrandDto {
   note?: string;
 }
 
+/**
+ * `POST /errands/:id/quote` body. Amounts are JSON numbers (the API DTO uses
+ * `@IsNumber`); empty components are omitted, never sent as `""`. Currency
+ * is left to the API default (`KES`). `expiresAt` is ISO 8601 with offset.
+ */
 export interface QuoteErrandDto {
-  total: string;
+  total: number;
+  baseFee?: number;
+  distanceFee?: number;
+  timeFee?: number;
+  urgencyFee?: number;
+  complexityFee?: number;
+  premiumFee?: number;
+  expiresAt: string;
+  note?: string;
+}
+
+export const QUOTE_COMPONENTS = [
+  'baseFee',
+  'distanceFee',
+  'timeFee',
+  'urgencyFee',
+  'complexityFee',
+  'premiumFee',
+] as const;
+export type QuoteComponent = (typeof QUOTE_COMPONENTS)[number];
+
+/** Newest `quotes` row (`GET /errands/:id/quote`). Amounts are decimal strings. */
+export interface Quote {
+  id: string;
+  errandId: string;
   baseFee: string;
   distanceFee: string;
   timeFee: string;
   urgencyFee: string;
   complexityFee: string;
   premiumFee: string;
+  total: string;
   currency: string;
-  expiresAt: string;
-  note?: string;
+  expiresAt: string | null;
+  acceptedAt?: string | null;
+  createdAt: string;
 }
+
+/** `POST /errands/:id/quote`: `history` is null on a re-quote (no status change). */
+export interface QuoteErrandResult {
+  errand: Errand;
+  history: ErrandStatusHistoryEntry | null;
+  quote: Quote;
+}
+
+/** `POST /errands/:id/assign`. */
+export interface AssignErrandResult {
+  errand: Errand;
+  history: ErrandStatusHistoryEntry;
+  assignment: { id: string; runnerProfileId: string; status: string };
+}
+
+/** `PUT /errands/:id/merchant-details`: exactly one of Till / Paybill. */
+export type MerchantDetailsDto =
+  | { merchantName: string; tillNumber: string }
+  | { merchantName: string; paybillNumber: string; accountReference?: string };
 
 export interface ReviewVerificationDto {
   decision: 'approved' | 'rejected';
@@ -116,6 +166,9 @@ export interface ErrandItem {
 export interface Errand {
   id: string;
   customerId: string;
+  /** `NT-1234` (round 3). */
+  reference?: string;
+  title?: string | null;
   category: string;
   description: string;
   status: ErrandStatusString;
@@ -130,10 +183,21 @@ export interface Errand {
   locations?: ErrandLocation[];
   items?: ErrandItem[];
   runnerProfileId?: string | null;
+  // Merchant Till/Paybill for the merchant_direct route (rows 42-44).
+  merchantName?: string | null;
+  merchantTillNumber?: string | null;
+  merchantPaybillNumber?: string | null;
+  merchantAccountReference?: string | null;
+  merchantDetailsAvailable?: boolean;
+  /** Newest quote expiry (N-5, feat/api-owner-answers-3); optional until merged. */
+  quoteExpiresAt?: string | null;
+  /** ACCEPTED with an unaccepted admin re-quote (row 72); optional until merged. */
+  quoteAcceptanceRequired?: boolean;
 }
 
 export interface ErrandListItem {
   id: string;
+  title?: string | null;
   category: string;
   description: string;
   status: ErrandStatusString;
@@ -143,6 +207,8 @@ export interface ErrandListItem {
   deadlineAt?: string | null;
   runnerProfileId?: string | null;
   createdAt: string;
+  /** N-5 (feat/api-owner-answers-3); absent on older APIs. */
+  quoteExpiresAt?: string | null;
 }
 
 export interface ListErrandsResult {
@@ -166,12 +232,127 @@ export interface ErrandDetail {
   history: ErrandStatusHistoryEntry[];
 }
 
-/** Verdicts for `PATCH /errands/:id/resolve-dispute` (§3.3 DISPUTED → CONFIRMED/CANCELLED). */
+/** Verdicts for `PATCH /errands/:id/resolve-dispute` (§3.3 DISPUTED → COMPLETED (runner) / CANCELLED (customer)). */
 export type ResolveDisputeVerdict = 'runner' | 'customer';
 
 export interface ResolveDisputeResult {
   errand: Errand;
   history: ErrandStatusHistoryEntry;
+}
+
+// --- Disputes ---
+export interface DisputeEvent {
+  id: string;
+  disputeId?: string;
+  type?: string;
+  createdAt: string;
+  [key: string]: unknown;
+}
+
+/** `GET /errands/:errandId/dispute`. */
+export interface Dispute {
+  id: string;
+  errandId: string;
+  openedBy: string;
+  /** The customer's claim. */
+  reason: string;
+  status: string;
+  resolution: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  events?: DisputeEvent[];
+}
+
+// --- Refund reviews (rows 37, 48, 54, 71) ---
+export type RefundStatus = 'pending_review' | 'approved' | 'no_refund' | 'refunded';
+export type RefundTrigger =
+  | 'price_change_rejected'
+  | 'dispute_customer_favourable'
+  | 'cancelled_after_payment'
+  | 'price_change_decrease';
+
+/** Bare `refund_reviews` row (decision / mark-paid responses). Amounts: decimal strings. */
+export interface RefundReview {
+  id: string;
+  errandId: string;
+  priceChangeRequestId?: string | null;
+  trigger: RefundTrigger | string;
+  amountPaid: string;
+  refundAmount: string | null;
+  status: RefundStatus | string;
+  decisionNote?: string | null;
+  decidedByUserId?: string | null;
+  decidedAt?: string | null;
+  payoutReference?: string | null;
+  paidByUserId?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/** An admin who decided / paid a refund (N-2). */
+export interface AdminRef {
+  id: string;
+  displayName: string | null;
+}
+
+/** Errand summary on admin refund items (N-1). */
+export interface RefundErrandSummary {
+  id: string;
+  reference?: string;
+  title: string | null;
+  description: string;
+  category: string;
+  status: ErrandStatusString;
+}
+
+/** `GET /refunds` item. N-1/N-2 fields are optional so older APIs still work. */
+export interface RefundListItem extends RefundReview {
+  errand?: RefundErrandSummary | null;
+  decidedBy?: AdminRef | null;
+  paidBy?: AdminRef | null;
+}
+
+export interface PaidBreakdown {
+  serviceAndRunnerFee: string;
+  itemAmountToNitume: string;
+  priceChangeDifferences: string;
+  totalPaidToNitume: string;
+  merchantDirectAmount: string;
+}
+
+/** `GET /refunds/:id` (N-1/N-2 fields optional). */
+export interface RefundDetail extends RefundListItem {
+  customer?: {
+    userId: string;
+    displayName: string | null;
+    shortName: string | null;
+    phone: string | null;
+    mpesaPhone: string | null;
+  } | null;
+  paid?: PaidBreakdown;
+  otherReviews?: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
+}
+
+export interface ListRefundsResult {
+  items: RefundListItem[];
+  nextCursor: string | null;
+}
+
+/** `GET /errands/:id/refund` and items of `GET /errands/:id/refunds`. */
+export interface ErrandRefundView {
+  id: string;
+  errandId: string;
+  trigger: RefundTrigger | string;
+  priceChangeRequestId?: string | null;
+  status: RefundStatus | string;
+  amountPaid: string;
+  refundAmount: string | null;
+  payoutReference?: string | null;
+  createdAt: string;
+  decidedAt?: string | null;
+  paidAt?: string | null;
 }
 
 // --- Runners ---

@@ -48,16 +48,10 @@ export class LoginComponent {
   }
 
   async verify(): Promise<void> {
-    console.log('wowww');
-    console.log(this.busy() !== 'idle')
-    console.log(this.code().length !== 6)
-
     if (this.busy() !== 'idle' || this.code().length !== 6) return;
-    console.log('imepista')
     this.error.set(null);
     this.busy.set('verifying');
     try {
-      console.log('submitting')
       await firstValueFrom(this.auth.verifyEmailOtp(this.email(), this.code()));
       await this.router.navigate(['/'], { replaceUrl: true });
     } catch (e) {

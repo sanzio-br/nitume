@@ -4,11 +4,7 @@ import { Router } from '@angular/router';
 import { catchError, of, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthStore } from './auth.store';
-import type {
-  OtpRequestResult,
-  OtpVerifyResult,
-  RefreshResult,
-} from '../api-types';
+import type { OtpRequestResult, OtpVerifyResult, RefreshResult } from '../api-types';
 
 /**
  * Admin OTP login module (design `nitume_admin_dashboard.html → #login-screen`):
@@ -34,9 +30,7 @@ export class AuthService {
 
   /** POST /auth/otp/email/request — emails a code to the entered admin address. */
   requestEmailOtp(email: string) {
-    return this.http
-      .post<OtpRequestResult>(`${this.base}/auth/otp/email/request`, { email })
-      .pipe(tap((r) => console.info('[nitume:admin] OTP requested', r)));
+    return this.http.post<OtpRequestResult>(`${this.base}/auth/otp/email/request`, { email });
   }
 
   verifyEmailOtp(email: string, code: string) {
@@ -44,10 +38,8 @@ export class AuthService {
       .post<OtpVerifyResult>(`${this.base}/auth/otp/email/verify`, { email, code })
       .pipe(
         tap((res) => {
-          console.log('[AuthService] verifyEmailOtp response:', res);
           this.store.applyTokens(res.tokens);
           this.store.setUser(res.user);
-          console.log('[AuthService] store state after apply:', this.store.state());
         }),
       );
   }
