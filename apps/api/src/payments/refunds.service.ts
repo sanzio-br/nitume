@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, Repository } from 'typeorm';
 import { ApiError } from '../common/api-error';
 import {
   ErrandCategory,
@@ -33,18 +33,66 @@ export interface CustomerRefundView {
   /** pending_review | approved | no_refund | refunded */
   status: RefundStatus;
   /**
-   * Refund ceiling: everything the customer paid by STK for the task
-   * (cancellation review) or the decrease (price-decrease review).
+   * This review's own basis: everything the customer paid by STK for the
+   * task (cancellation review) or the decrease (price-decrease review). The
+   * effective ceiling is also bounded by `remainingRefundable` (row 87).
    */
   amountPaid: string;
   /** Null until an admin decides. */
   refundAmount: string | null;
   /** M-Pesa receipt of the manual payout, once refunded. */
   payoutReference: string | null;
+  /**
+   * What can still be refunded on the whole task (row 87): total paid to
+   * Nitume minus every approved/refunded review's refund amount.
+   */
+  remainingRefundable: string;
   createdAt: Date;
   decidedAt: Date | null;
   paidAt: Date | null;
 }
+
+/**
+ * Cumulative refund position of one review on its task (rows 81, 87).
+ * Cumulative refunds can never exceed what the customer paid to Nitume.
+ */
+export interface RefundPosition {
+  /** Every completed STK amount paid to Nitume for the task (fees, item, differences). */
+  totalPaidToNitume: string;
+  /** Refund amounts of the task's OTHER approved/refunded reviews. */
+  alreadyRefunded: string;
+  /** totalPaidToNitume minus every approved/refunded refund on the task (this one included). */
+  remainingRefundable: string;
+  /**
+   * Highest refund an admin may approve on this review now:
+   * min(amountPaid, totalPaidToNitume - alreadyRefunded), never below 0.
+   * Null once the review is decided.
+   */
+  refundCeiling: string | null;
+}
+
+const COMMITTED = new Set<RefundStatus>([RefundStatus.APPROVED, RefundStatus.REFUNDED]);
+
+/** Pure ceiling maths for one review given the task's reviews and total paid. */
+export const refundPositionOf = (
+  row: Pick<RefundReview, 'id' | 'status' | 'amountPaid' | 'refundAmount'>,
+  totalPaid: number,
+  siblings: Pick<RefundReview, 'id' | 'status' | 'refundAmount'>[],
+): RefundPosition => {
+  const committed = (r: Pick<RefundReview, 'status' | 'refundAmount'>): number =>
+    COMMITTED.has(r.status) ? Number(r.refundAmount ?? 0) : 0;
+  const others = siblings.filter((r) => r.id !== row.id).reduce((sum, r) => sum + committed(r), 0);
+  const all = others + committed(row);
+  return {
+    totalPaidToNitume: totalPaid.toFixed(2),
+    alreadyRefunded: others.toFixed(2),
+    remainingRefundable: Math.max(0, totalPaid - all).toFixed(2),
+    refundCeiling:
+      row.status === RefundStatus.PENDING_REVIEW
+        ? Math.max(0, Math.min(Number(row.amountPaid), totalPaid - others)).toFixed(2)
+        : null,
+  };
+};
 
 /** Errand summary on admin refund items (N-1). */
 export interface RefundErrandSummary {
@@ -62,8 +110,11 @@ export interface AdminRef {
   displayName: string | null;
 }
 
+/** Admin view of a review: the row plus its cumulative position (row 87). */
+export type AdminRefundReview = RefundReview & RefundPosition;
+
 /** Admin list item: the review plus errand summary and admin names. */
-export type AdminRefundItem = RefundReview & {
+export type AdminRefundItem = AdminRefundReview & {
   errand: RefundErrandSummary | null;
   decidedBy: AdminRef | null;
   paidBy: AdminRef | null;
@@ -312,20 +363,21 @@ export class RefundsService implements OnModuleInit {
 
   /** Adds errand summaries and admin display names (batched). */
   private async enrich(rows: RefundReview[]): Promise<AdminRefundItem[]> {
-    const [errands, names] = await Promise.all([
+    const [errands, names, positions] = await Promise.all([
       this.errands.findByIds(rows.map((r) => r.errandId)),
       this.users
         ? this.users.displayNames(
             rows.flatMap((r) => [r.decidedByUserId, r.paidByUserId]).filter((v): v is string => !!v),
           )
         : Promise.resolve(new Map<string, string>()),
+      this.positions(rows),
     ]);
     const byId = new Map(errands.map((e) => [e.id, e]));
     const ref = (userId: string | null): AdminRef | null =>
       userId ? { id: userId, displayName: names.get(userId) ?? null } : null;
     return rows.map((row) => {
       const e = byId.get(row.errandId);
-      return Object.assign(row, {
+      return Object.assign(row, positions.get(row.id), {
         errand: e
           ? {
               id: e.id,
@@ -438,7 +490,14 @@ export class RefundsService implements OnModuleInit {
     if (!row) {
       throw new ApiError(HttpStatus.NOT_FOUND, 'refund_not_found', 'No refund for this task');
     }
-    return toCustomerView(row);
+    const positions = await this.positions([row]);
+    return toCustomerView(row, positions.get(row.id));
+  }
+
+  /** Customer view of one review with its cumulative position (row 87). */
+  async customerViewOf(row: RefundReview): Promise<CustomerRefundView> {
+    const positions = await this.positions([row]);
+    return toCustomerView(row, positions.get(row.id));
   }
 
   /** Every refund review of the errand, newest first (row 71); may be empty. */
@@ -448,45 +507,83 @@ export class RefundsService implements OnModuleInit {
   ): Promise<{ items: CustomerRefundView[] }> {
     await this.errands.getById(errandId, viewer);
     const rows = await this.reviews.find({ where: { errandId }, order: { createdAt: 'DESC' } });
-    return { items: rows.map(toCustomerView) };
+    const positions = await this.positions(rows);
+    return { items: rows.map((r) => toCustomerView(r, positions.get(r.id))) };
   }
 
-  /** Admin sets the refund amount: 0 (no refund) up to the full amount paid. */
+  /**
+   * Admin sets the refund amount: 0 (no refund) up to the review's ceiling,
+   * i.e. its own amountPaid and never more than what is still refundable on
+   * the task after other approved/refunded reviews (rows 81, 87). Every
+   * review of the task is row-locked, so two decisions on one task
+   * serialise and cumulative refunds cannot exceed the amount paid.
+   */
   async decide(
     id: string,
     refundAmount: number,
     note: string | undefined,
     adminUserId: string,
-  ): Promise<RefundReview> {
-    const row = await this.get(id);
-    if (row.status !== RefundStatus.PENDING_REVIEW) {
-      throw new ApiError(
-        HttpStatus.CONFLICT,
-        'refund_already_decided',
-        `Refund review is already ${row.status}`,
-      );
-    }
-    const paid = Number(row.amountPaid);
-    if (refundAmount > paid) {
-      throw new ApiError(
-        HttpStatus.BAD_REQUEST,
-        'refund_exceeds_amount_paid',
-        `Refund cannot exceed the amount paid (KES ${row.amountPaid})`,
-        { amountPaid: row.amountPaid },
-      );
-    }
-    row.refundAmount = refundAmount.toFixed(2);
-    row.status = refundAmount > 0 ? RefundStatus.APPROVED : RefundStatus.NO_REFUND;
-    row.decisionNote = note?.trim() || null;
-    row.decidedByUserId = adminUserId;
-    row.decidedAt = new Date();
-    const saved = await this.reviews.save(row);
+  ): Promise<AdminRefundReview> {
+    const target = await this.get(id);
+    const { saved, position } = await this.reviews.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(RefundReview);
+      const siblings = await repo.find({
+        where: { errandId: target.errandId },
+        order: { createdAt: 'ASC' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const row = siblings.find((r) => r.id === id);
+      if (!row) {
+        throw new NotFoundException('Refund review not found');
+      }
+      if (row.status !== RefundStatus.PENDING_REVIEW) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'refund_already_decided',
+          `Refund review is already ${row.status}`,
+        );
+      }
+      if (refundAmount > Number(row.amountPaid)) {
+        throw new ApiError(
+          HttpStatus.BAD_REQUEST,
+          'refund_exceeds_amount_paid',
+          `Refund cannot exceed the amount paid (KSh ${row.amountPaid})`,
+          { amountPaid: row.amountPaid },
+        );
+      }
+      const totalPaid = await this.amountPaid(row.errandId, manager);
+      const before = refundPositionOf(row, totalPaid, siblings);
+      if (refundAmount > Number(before.refundCeiling)) {
+        throw new ApiError(
+          HttpStatus.BAD_REQUEST,
+          'refund_exceeds_remaining',
+          `Refund cannot exceed what is still refundable on this task (KSh ${before.refundCeiling})`,
+          {
+            amountPaid: row.amountPaid,
+            totalPaidToNitume: before.totalPaidToNitume,
+            alreadyRefunded: before.alreadyRefunded,
+            refundCeiling: before.refundCeiling,
+          },
+        );
+      }
+      row.refundAmount = refundAmount.toFixed(2);
+      row.status = refundAmount > 0 ? RefundStatus.APPROVED : RefundStatus.NO_REFUND;
+      row.decisionNote = note?.trim() || null;
+      row.decidedByUserId = adminUserId;
+      row.decidedAt = new Date();
+      const out = await repo.save(row);
+      return { saved: out, position: refundPositionOf(out, totalPaid, siblings) };
+    });
     this.announce(saved);
-    return saved;
+    return Object.assign(saved, position);
   }
 
   /** Admin records the manual M-Pesa payout of an approved refund. */
-  async markPaid(id: string, payoutReference: string, adminUserId: string): Promise<RefundReview> {
+  async markPaid(
+    id: string,
+    payoutReference: string,
+    adminUserId: string,
+  ): Promise<AdminRefundReview> {
     const row = await this.get(id);
     if (row.status !== RefundStatus.APPROVED) {
       throw new ApiError(
@@ -501,7 +598,43 @@ export class RefundsService implements OnModuleInit {
     row.paidAt = new Date();
     const saved = await this.reviews.save(row);
     this.announce(saved);
-    return saved;
+    const positions = await this.positions([saved]);
+    return Object.assign(saved, positions.get(saved.id));
+  }
+
+  /**
+   * Cumulative position of each row (row 87), batched: one query for the
+   * tasks' reviews and one for what was paid to Nitume per task.
+   */
+  private async positions(rows: RefundReview[]): Promise<Map<string, RefundPosition>> {
+    const out = new Map<string, RefundPosition>();
+    const errandIds = [...new Set(rows.map((r) => r.errandId))];
+    if (errandIds.length === 0) {
+      return out;
+    }
+    const [siblings, paid] = await Promise.all([
+      this.reviews.find({ where: { errandId: In(errandIds) } }),
+      this.paidByErrand(errandIds),
+    ]);
+    for (const row of rows) {
+      const own = siblings.filter((r) => r.errandId === row.errandId);
+      out.set(row.id, refundPositionOf(row, paid.get(row.errandId) ?? 0, own));
+    }
+    return out;
+  }
+
+  /** Completed STK amounts paid to Nitume, per errand. */
+  private async paidByErrand(errandIds: string[]): Promise<Map<string, number>> {
+    const raw = await this.transactions
+      .createQueryBuilder('t')
+      .innerJoin(Payment, 'p', 'p.id = t."paymentId"')
+      .select('p."errandId"', 'errandId')
+      .addSelect('COALESCE(SUM(t.amount), 0)', 'total')
+      .where('p."errandId" IN (:...errandIds)', { errandIds })
+      .andWhere('t.status = :completed', { completed: PaymentTransactionStatus.COMPLETED })
+      .groupBy('p."errandId"')
+      .getRawMany<{ errandId: string; total: string }>();
+    return new Map(raw.map((r) => [r.errandId, Number(r.total)]));
   }
 
   /** Everything the customer paid through STK for this errand (completed legs). */
@@ -518,7 +651,10 @@ export class RefundsService implements OnModuleInit {
   }
 }
 
-export const toCustomerView = (row: RefundReview): CustomerRefundView => ({
+export const toCustomerView = (
+  row: RefundReview,
+  position: Pick<RefundPosition, 'remainingRefundable'> | undefined,
+): CustomerRefundView => ({
   id: row.id,
   errandId: row.errandId,
   trigger: row.trigger,
@@ -527,6 +663,7 @@ export const toCustomerView = (row: RefundReview): CustomerRefundView => ({
   amountPaid: row.amountPaid,
   refundAmount: row.refundAmount,
   payoutReference: row.payoutReference,
+  remainingRefundable: position?.remainingRefundable ?? '0.00',
   createdAt: row.createdAt,
   decidedAt: row.decidedAt,
   paidAt: row.paidAt,

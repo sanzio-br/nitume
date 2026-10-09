@@ -18,7 +18,7 @@ import { ApiError, conflict } from '../common/api-error';
 import { ErrandStateMachine, TransitionGuard } from '../errands/errand-state-machine';
 import { MerchantRoute } from '../payments/payment-views';
 import { DifferencePaymentView, PaymentsService } from '../payments/payments.service';
-import { CustomerRefundView, RefundsService, toCustomerView } from '../payments/refunds.service';
+import { CustomerRefundView, RefundsService } from '../payments/refunds.service';
 import { Errand } from '../errands/errand.entity';
 import { ErrandsService } from '../errands/errands.service';
 import { PriceChangeRequest } from './price-change-request.entity';
@@ -217,7 +217,7 @@ export class PriceChangeService {
       : null;
     return Object.assign(decided.saved, {
       differencePayment,
-      refundReview: decided.refund ? toCustomerView(decided.refund) : null,
+      refundReview: decided.refund ? await this.refunds.customerViewOf(decided.refund) : null,
     });
   }
 
@@ -274,7 +274,7 @@ export class PriceChangeService {
     const review = await this.refunds.cancellationReviewFor(errandId);
     return Object.assign(extra, {
       differencePayment: null,
-      refundReview: review ? toCustomerView(review) : null,
+      refundReview: review ? await this.refunds.customerViewOf(review) : null,
     });
   }
 

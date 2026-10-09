@@ -169,6 +169,9 @@ describe('PriceChangeService decisions (owner Q8)', () => {
         }),
       ),
       cancellationReviewFor: vi.fn(() => Promise.resolve(null)),
+      customerViewOf: vi.fn((r: Record<string, unknown>) =>
+        Promise.resolve({ ...r, remainingRefundable: '80.00' }),
+      ),
     };
     const service = new PriceChangeService(
       requests as never,

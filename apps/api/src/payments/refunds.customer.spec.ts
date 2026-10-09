@@ -5,18 +5,38 @@ import { UserRole } from '../common/enums';
 import { RefundStatus, RefundTrigger } from './refund-review.entity';
 import { RefundsService } from './refunds.service';
 
-const build = (row: object | null, access: 'ok' | 'denied' = 'ok', rows: object[] = []) => {
+const build = (
+  row: object | null,
+  access: 'ok' | 'denied' = 'ok',
+  rows: object[] = [],
+  paid = '500.00',
+) => {
   const reviews = {
     findOne: vi.fn(() => Promise.resolve(row)),
-    find: vi.fn(() => Promise.resolve(rows)),
+    find: vi.fn(() => Promise.resolve(rows.length > 0 ? rows : row ? [row] : [])),
   };
+  const qb = {
+    innerJoin: vi.fn(() => qb),
+    select: vi.fn(() => qb),
+    addSelect: vi.fn(() => qb),
+    where: vi.fn(() => qb),
+    andWhere: vi.fn(() => qb),
+    groupBy: vi.fn(() => qb),
+    getRawMany: vi.fn(() => Promise.resolve([{ errandId: 'e-1', total: paid }])),
+  };
+  const transactions = { createQueryBuilder: vi.fn(() => qb) };
   const errands = {
     onCancelled: vi.fn(),
     getById: vi.fn(() =>
       access === 'ok' ? Promise.resolve({ id: 'e-1' }) : Promise.reject(new ForbiddenException()),
     ),
   };
-  const service = new RefundsService(reviews as never, {} as never, {} as never, errands as never);
+  const service = new RefundsService(
+    reviews as never,
+    {} as never,
+    transactions as never,
+    errands as never,
+  );
   return { service, reviews, errands };
 };
 
@@ -49,6 +69,7 @@ describe('RefundsService.forCustomer (row 55)', () => {
       amountPaid: '500.00',
       refundAmount: '400.00',
       payoutReference: null,
+      remainingRefundable: '100.00',
       createdAt: new Date('2026-10-08T08:00:00Z'),
       decidedAt: new Date('2026-10-08T09:00:00Z'),
       paidAt: null,
@@ -98,6 +119,7 @@ describe('RefundsService with several reviews (row 71)', () => {
         amountPaid: '80.00',
         refundAmount: null,
         payoutReference: null,
+        remainingRefundable: '500.00',
         createdAt: decrease.createdAt,
         decidedAt: null,
         paidAt: null,
@@ -110,5 +132,35 @@ describe('RefundsService with several reviews (row 71)', () => {
     reviews.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(decrease);
     const view = await service.forCustomer('e-1', customer);
     expect(view.id).toBe('r-2');
+  });
+});
+
+describe('Customer refund views never expose the admin decision note (row 69)', () => {
+  it('omits decisionNote and admin ids on both refund endpoints', async () => {
+    const decided = {
+      id: 'r-1',
+      errandId: 'e-1',
+      priceChangeRequestId: null,
+      trigger: RefundTrigger.CANCELLED_AFTER_PAYMENT,
+      status: RefundStatus.NO_REFUND,
+      amountPaid: '500.00',
+      refundAmount: '0.00',
+      decisionNote: 'Runner already bought the item; internal only',
+      decidedByUserId: 'admin-1',
+      paidByUserId: null,
+      payoutReference: null,
+      createdAt: new Date(),
+      decidedAt: new Date(),
+      paidAt: null,
+    };
+    const { service } = build(decided);
+    const one = await service.forCustomer('e-1', customer);
+    const all = await service.forCustomerAll('e-1', customer);
+    for (const view of [one, ...all.items]) {
+      expect(view).not.toHaveProperty('decisionNote');
+      expect(view).not.toHaveProperty('decidedByUserId');
+      expect(view).not.toHaveProperty('paidByUserId');
+      expect(JSON.stringify(view)).not.toContain('internal only');
+    }
   });
 });

@@ -9,8 +9,7 @@ import {
   ListRefundsQueryDto,
   MarkRefundPaidDto,
 } from './dto/refund.dto';
-import { RefundReview } from './refund-review.entity';
-import { AdminRefundDetail, RefundsService } from './refunds.service';
+import { AdminRefundDetail, AdminRefundReview, RefundsService } from './refunds.service';
 
 /** Admin refund reviews for tasks cancelled after payment. */
 @Controller('refunds')
@@ -42,7 +41,7 @@ export class RefundsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DecideRefundDto,
     @CurrentUser() user: AuthContext,
-  ): Promise<RefundReview> {
+  ): Promise<AdminRefundReview> {
     return this.refunds.decide(id, dto.refundAmount, dto.note, user.userId);
   }
 
@@ -52,7 +51,7 @@ export class RefundsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: MarkRefundPaidDto,
     @CurrentUser() user: AuthContext,
-  ): Promise<RefundReview> {
+  ): Promise<AdminRefundReview> {
     return this.refunds.markPaid(id, dto.payoutReference, user.userId);
   }
 }
