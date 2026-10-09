@@ -15,6 +15,8 @@ View ids come from the `data-view` / `id="v-…"` / `data-p` / `page-…` attrib
 | Customer app | `apps/customer_app/lib/src/` |
 | Shared Flutter package | `packages/nitume_core/lib/src/` (theme, tokens, models, API client on `main`; shared widgets C-01..C-34 + data layer on `feat/core-customer-widgets`, not merged) |
 | API | `apps/api/src/` |
+| Admin dashboard (Angular) | `apps/admin/src/app/` (shell `features/admin/admin-dashboard.component.ts`, panels `features/admin/panels/`, drawers `features/admin/drawers/`, shared components `shared/`, global styles `src/styles.scss` + `src/styles/_ops.scss`) |
+| Admin specs | `docs/specs/admin/<view-id>.md`; shared conventions, component inventory (A-n) and open questions (AQ-n) in `docs/specs/admin/_shared.md` |
 
 Status values: `missing` · `partial` · `built` · `matches-design` (only after an audited PASS)
 
@@ -88,13 +90,28 @@ Unmapped implementation files: `apps/customer_app/lib/src/screens/tasks_screen.d
 
 ## Admin dashboard — `docs/design/nitume_admin_dashboard.html` → `apps/admin`
 
+Marked completed by the owner (parity audit only). The panels and drawers below have not been audited yet; implementation files recorded 2026-10-08 for reference.
+
 | View id | Purpose | Implementation file | Status |
 |---------|---------|---------------------|--------|
-| p-map | Live ops map | | unaudited |
-| p-queue | Task queue / assignment | | unaudited |
-| p-runners | Runners + verification | | unaudited |
-| p-disputes | Disputes | | unaudited |
-| p-reports | Reports | | unaudited |
+| p-map | Live ops map | `apps/admin/src/app/features/admin/panels/live-map.panel.ts` | unaudited |
+| p-queue | Task queue / assignment | `apps/admin/src/app/features/admin/panels/task-queue.panel.ts` | unaudited |
+| p-runners | Runners + verification | `apps/admin/src/app/features/admin/panels/runners.panel.ts`, `verifications.panel.ts` | unaudited |
+| p-disputes | Disputes | `apps/admin/src/app/features/admin/panels/disputes.panel.ts` | unaudited |
+| p-reports | Reports | `apps/admin/src/app/features/admin/panels/reports.panel.ts` | unaudited |
+| drawer-task | Task drawer | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` | unaudited |
+| drawer-runner | Runner profile drawer | `apps/admin/src/app/features/admin/drawers/runner-drawer.ts` | unaudited |
+| drawer-dispute | Dispute drawer | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` | unaudited (Resolution/outcome part specced below) |
+
+Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced 2026-10-08 on `docs/admin-ops-spec`; they extend the panels/drawers above, copy "(proposed)"):
+
+| Id (auditor-assigned) | Purpose | Placed in | Spec | Implementation file | Status |
+|---|---|---|---|---|---|
+| p-refunds | Refund reviews list (`GET /refunds`), status filter, nav item + badge | new sidebar item under Network, after Disputes | `docs/specs/admin/p-refunds.md` | (expected `apps/admin/src/app/features/admin/panels/refunds.panel.ts`) | missing |
+| drawer-refund | Decide refund amount (`PATCH /refunds/:id/decision`), record manual M-Pesa payout (`POST /refunds/:id/mark-paid`) | new drawer kind in the shell drawer | `docs/specs/admin/drawer-refund.md` | (expected `apps/admin/src/app/features/admin/drawers/refund-drawer.ts`) | missing |
+| drawer-task-merchant-details | Merchant Till/Paybill details (`PUT /errands/:id/merchant-details`) | section of `drawer-task` | `docs/specs/admin/drawer-task-merchant-details.md` | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` (section not built) | missing |
+| drawer-task-requote | Quote section + re-quote of an expired QUOTED task (`POST /errands/:id/quote`) | section/action of `drawer-task` | `docs/specs/admin/drawer-task-requote.md` | `apps/admin/src/app/features/admin/drawers/task-drawer.ts` (section not built) | missing |
+| drawer-dispute-outcome | Verdict copy and outcome: runner → COMPLETED, customer → CANCELLED + refund review | Resolution section of `drawer-dispute` | `docs/specs/admin/drawer-dispute-outcome.md` | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` (outcome not built) | missing |
 
 ## Website — `docs/design/nitume_website.html` → `apps/website`
 
