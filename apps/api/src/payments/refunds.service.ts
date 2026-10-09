@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { ApiError } from '../common/api-error';
@@ -9,6 +9,23 @@ import { ErrandsService } from '../errands/errands.service';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { Payment } from './payment.entity';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
+
+/** What the customer sees of a refund review (no admin notes or user ids). */
+export interface CustomerRefundView {
+  id: string;
+  errandId: string;
+  /** pending_review | approved | no_refund | refunded */
+  status: RefundStatus;
+  /** Everything the customer paid by STK for the task. */
+  amountPaid: string;
+  /** Null until an admin decides. */
+  refundAmount: string | null;
+  /** M-Pesa receipt of the manual payout, once refunded. */
+  payoutReference: string | null;
+  createdAt: Date;
+  decidedAt: Date | null;
+  paidAt: Date | null;
+}
 
 interface StatusChanged {
   errandId: string;
@@ -28,7 +45,24 @@ export class RefundsService implements OnModuleInit {
     @InjectRepository(PaymentTransaction)
     private readonly transactions: Repository<PaymentTransaction>,
     private readonly errands: ErrandsService,
+    private readonly events?: EventEmitter2,
   ) {}
+
+  /** Tells the notifications module the customer-visible status changed. */
+  private announce(row: RefundReview): void {
+    const events = this.events;
+    if (!events) {
+      return;
+    }
+    setImmediate(() =>
+      events.emit('refund.updated', {
+        errandId: row.errandId,
+        refundId: row.id,
+        status: row.status,
+        refundAmount: row.refundAmount,
+      }),
+    );
+  }
 
   /**
    * Every CANCELLED transition opens the refund review (when the customer
@@ -139,6 +173,33 @@ export class RefundsService implements OnModuleInit {
     return row;
   }
 
+  /**
+   * Customer-readable refund status of an errand (row 55): the owner
+   * customer (or an admin) sees status and amounts; 404 `refund_not_found`
+   * when no refund review exists. Internal admin notes are not exposed.
+   */
+  async forCustomer(
+    errandId: string,
+    viewer: { userId: string; role: string },
+  ): Promise<CustomerRefundView> {
+    await this.errands.getById(errandId, viewer);
+    const row = await this.reviews.findOne({ where: { errandId } });
+    if (!row) {
+      throw new ApiError(HttpStatus.NOT_FOUND, 'refund_not_found', 'No refund for this task');
+    }
+    return {
+      id: row.id,
+      errandId: row.errandId,
+      status: row.status,
+      amountPaid: row.amountPaid,
+      refundAmount: row.refundAmount,
+      payoutReference: row.payoutReference,
+      createdAt: row.createdAt,
+      decidedAt: row.decidedAt,
+      paidAt: row.paidAt,
+    };
+  }
+
   /** Admin sets the refund amount: 0 (no refund) up to the full amount paid. */
   async decide(
     id: string,
@@ -168,7 +229,9 @@ export class RefundsService implements OnModuleInit {
     row.decisionNote = note?.trim() || null;
     row.decidedByUserId = adminUserId;
     row.decidedAt = new Date();
-    return this.reviews.save(row);
+    const saved = await this.reviews.save(row);
+    this.announce(saved);
+    return saved;
   }
 
   /** Admin records the manual M-Pesa payout of an approved refund. */
@@ -185,7 +248,9 @@ export class RefundsService implements OnModuleInit {
     row.payoutReference = payoutReference;
     row.paidByUserId = adminUserId;
     row.paidAt = new Date();
-    return this.reviews.save(row);
+    const saved = await this.reviews.save(row);
+    this.announce(saved);
+    return saved;
   }
 
   /** Everything the customer paid through STK for this errand (completed legs). */

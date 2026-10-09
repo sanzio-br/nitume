@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { PriceChangeStatus, UserRole } from '../common/enums';
+import { ErrandStatus, PriceChangeStatus, UserRole } from '../common/enums';
+import { ApiError } from '../common/api-error';
 import { PriceChangeService } from './price-change.service';
 
 const build = (getById: () => Promise<unknown>) => {
@@ -8,8 +9,6 @@ const build = (getById: () => Promise<unknown>) => {
   const errandService = { getById: vi.fn(getById) };
   const service = new PriceChangeService(
     requests as never,
-    {} as never,
-    {} as never,
     {} as never,
     errandService as never,
     { emit: vi.fn() } as never,
@@ -71,8 +70,6 @@ describe('PriceChangeService.request domain event (A-2)', () => {
     const service = new PriceChangeService(
       requests as never,
       errands as never,
-      {} as never,
-      {} as never,
       {} as never,
       { emit } as never,
       {} as never,
@@ -143,14 +140,18 @@ describe('PriceChangeService decisions (owner Q8)', () => {
     };
     const payments = {
       recordPriceDifference: vi.fn(() =>
-        Promise.resolve({ payment: { id: 'p-diff' }, merchantPayment: { route: 'send_to_runner', amount: '150.00' } }),
+        Promise.resolve({
+          payment: { id: 'p-diff', paymentFlow: 'customer_to_runner' },
+          merchantPayment: { route: 'send_to_runner', amount: '150.00', paidTo: 'nitume' },
+        }),
+      ),
+      chargeDifference: vi.fn((id: string) =>
+        Promise.resolve({ payment: { id }, stkStatus: 'PENDING', checkoutRequestId: 'chk-9' }),
       ),
     };
     const service = new PriceChangeService(
       requests as never,
       errands as never,
-      {} as never,
-      {} as never,
       errandService as never,
       { emit: vi.fn() } as never,
       payments as never,
@@ -207,6 +208,34 @@ describe('PriceChangeService decisions (owner Q8)', () => {
     expect(res.differencePayment?.payment).toEqual({ id: 'p-diff' });
   });
 
+  it('charges the difference by STK only after the approval transaction commits', async () => {
+    const { service, payments, requests } = setup('IN_PROGRESS');
+    let committed = false;
+    const tx = vi.mocked(requests.manager.transaction);
+    const inner = tx.getMockImplementation()!;
+    tx.mockImplementationOnce(async (fn) => {
+      const out = await inner(fn);
+      committed = true;
+      return out;
+    });
+    payments.chargeDifference.mockImplementationOnce((id: string) => {
+      expect(committed).toBe(true);
+      return Promise.resolve({ payment: { id }, stkStatus: 'PENDING', checkoutRequestId: 'chk-9' });
+    });
+    const res = await service.approve('e-1', 'pc-1', customerActor);
+    expect(payments.chargeDifference).toHaveBeenCalledWith('p-diff');
+    expect(res.differencePayment?.checkoutRequestId).toBe('chk-9');
+  });
+
+  it('does not charge anything when the approval fails', async () => {
+    const { service, payments } = setup('IN_PROGRESS');
+    payments.recordPriceDifference.mockImplementationOnce(() =>
+      Promise.reject(new Error('merchant_route_required')),
+    );
+    await expect(service.approve('e-1', 'pc-1', customerActor)).rejects.toThrow();
+    expect(payments.chargeDifference).not.toHaveBeenCalled();
+  });
+
   it('approval before payment only moves the merchant amount', async () => {
     const { service, payments } = setup('QUOTED');
     const res = await service.approve('e-1', 'pc-1', customerActor);
@@ -235,4 +264,44 @@ describe('PriceChangeService decisions (owner Q8)', () => {
     expect((err as { code?: string }).code).toBe('price_change_reject_not_cancellable');
     expect(errandService.transitionWith).not.toHaveBeenCalled();
   });
+});
+
+describe('PriceChangeService.request runner window (row 49)', () => {
+  const runner = { userId: 'runner-user', role: UserRole.RUNNER };
+  const buildFor = (status: ErrandStatus) => {
+    const requests = {
+      findOne: vi.fn(() => Promise.resolve(null)),
+      create: vi.fn((row: object) => row),
+      save: vi.fn((row: object) => Promise.resolve({ id: 'pc-1', createdAt: new Date(), ...row })),
+    };
+    const errands = {
+      findOne: vi.fn(() => Promise.resolve({ id: 'e-1', status, budget: '500.00' })),
+    };
+    const errandService = { isCurrentRunner: vi.fn(() => Promise.resolve(true)) };
+    const service = new PriceChangeService(
+      requests as never,
+      errands as never,
+      errandService as never,
+      { emit: vi.fn() } as never,
+      {} as never,
+    );
+    return { service, requests };
+  };
+
+  it('accepts a runner request while IN_PROGRESS', async () => {
+    const { service, requests } = buildFor(ErrandStatus.IN_PROGRESS);
+    await service.request('e-1', { toPrice: 650 }, runner);
+    expect(requests.save).toHaveBeenCalled();
+  });
+
+  it.each([ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.RUNNER_EN_ROUTE, ErrandStatus.ARRIVED])(
+    'refuses a runner request while %s with price_change_not_in_progress',
+    async (status) => {
+      const { service, requests } = buildFor(status);
+      const err = await service.request('e-1', { toPrice: 650 }, runner).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).code).toBe('price_change_not_in_progress');
+      expect(requests.save).not.toHaveBeenCalled();
+    },
+  );
 });

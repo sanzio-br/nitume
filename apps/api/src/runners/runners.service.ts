@@ -12,6 +12,7 @@ import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification } from './runner-verification.entity';
 import { UsersService } from '../users/users.service';
+import { shortNameOf } from './short-name';
 
 /**
  * Lightweight public runner card embedded on errand responses (no PII: no
@@ -21,6 +22,8 @@ export interface RunnerPublicSummary {
   id: string;
   /** Runner's chosen display name; null until set. */
   displayName: string | null;
+  /** First name + last initial ("Kevin O."), computed by the API; null until a name is set. */
+  shortName: string | null;
   verificationLevel: VerificationLevel;
   avgRating: string;
   errandsCompleted: number;
@@ -29,6 +32,8 @@ export interface RunnerPublicSummary {
 export interface PublicRunnerProfile {
   id: string;
   displayName: string | null;
+  /** First name + last initial ("Kevin O."); null until a name is set. */
+  shortName: string | null;
   verificationLevel: VerificationLevel;
   avgRating: string;
   errandsCompleted: number;
@@ -94,6 +99,7 @@ export class RunnersService {
     return {
       id: profile.id,
       displayName: names.get(profile.userId) ?? null,
+      shortName: shortNameOf(names.get(profile.userId)),
       verificationLevel: profile.verificationLevel,
       avgRating: profile.avgRating,
       errandsCompleted: profile.errandsCompleted,
@@ -117,6 +123,7 @@ export class RunnersService {
         {
           id: p.id,
           displayName: names.get(p.userId) ?? null,
+          shortName: shortNameOf(names.get(p.userId)),
           verificationLevel: p.verificationLevel,
           avgRating: p.avgRating,
           errandsCompleted: p.errandsCompleted,

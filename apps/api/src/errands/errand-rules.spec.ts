@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../common/api-error';
 import { ErrandCategory, ErrandPointType, ErrandUrgency } from '../common/enums';
-import { assertDeadlineInFuture, assertLocationsFit, deriveUrgency } from './errand-rules';
+import { assertDeadlineInFuture, assertLocationsFit, budgetFor, deriveUrgency } from './errand-rules';
 
 const now = new Date('2026-10-07T08:00:00Z');
 const inHours = (h: number) => new Date(now.getTime() + h * 3_600_000);
@@ -73,5 +73,28 @@ describe('assertLocationsFit', () => {
       'locations_duplicate_point',
     );
     expect(codeOf(() => assertLocationsFit(ErrandCategory.INSPECTION, [T]))).toBeNull();
+  });
+});
+
+describe('budgetFor (row 45)', () => {
+  const codeOf = (fn: () => unknown) => {
+    try {
+      fn();
+      return null;
+    } catch (e) {
+      return (e as { code?: string }).code;
+    }
+  };
+
+  it('requires a budget for Buy For Me and Get It For Me (0 allowed)', () => {
+    expect(budgetFor(ErrandCategory.BUY_FOR_ME, 2500)).toBe(2500);
+    expect(budgetFor(ErrandCategory.PICKUP_DELIVERY, 0)).toBe(0);
+    expect(codeOf(() => budgetFor(ErrandCategory.BUY_FOR_ME, undefined))).toBe('budget_required');
+  });
+
+  it('refuses a positive budget for other categories and stores 0', () => {
+    expect(budgetFor(ErrandCategory.INSPECTION, undefined)).toBe(0);
+    expect(budgetFor(ErrandCategory.QUEUE_ADMIN, 0)).toBe(0);
+    expect(codeOf(() => budgetFor(ErrandCategory.REPRESENTATION, 100))).toBe('budget_not_applicable');
   });
 });

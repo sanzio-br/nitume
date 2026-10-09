@@ -2,6 +2,8 @@ export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'staging' | 'production';
   port: number;
   apiPrefix: string;
+  /** Express `trust proxy` hop count so per-IP limits see the client IP. */
+  trustProxyHops: number;
   database: {
     host: string;
     port: number;
@@ -25,6 +27,11 @@ export interface AppConfig {
     resendCooldownSeconds: number;
     rateLimitWindowSeconds: number;
     rateLimitPerPhone: number;
+    /** Per-IP limits on OTP request / verify routes (row 53). */
+    ipRequestLimit: number;
+    ipRequestWindowSeconds: number;
+    ipVerifyLimit: number;
+    ipVerifyWindowSeconds: number;
     senderTransport: 'console' | 'africas_talking';
   };
   mail: {
@@ -51,13 +58,38 @@ export interface AppConfig {
   payments: {
     mpesaTransport: string;
     stkTimeoutSeconds: number;
+    /** Minimum gap between two STK Queries for the same payment. */
+    stkQueryIntervalSeconds: number;
+    daraja: {
+      baseUrl: string;
+      consumerKey: string | null;
+      consumerSecret: string | null;
+      shortCode: string | null;
+      passkey: string | null;
+      callbackUrl: string | null;
+    };
   };
   evidence: {
     storageDriver: 'console' | 'cloudinary';
+    /** Lifetime of signed evidence view URLs (row 25). */
+    signedUrlTtlSeconds: number;
     cloudinary: {
       cloudName: string | null;
       apiKey: string | null;
       apiSecret: string | null;
+    };
+  };
+  queue: {
+    prefix: string;
+    attempts: number;
+    disputeSweepIntervalSeconds: number;
+    stkReconcileIntervalSeconds: number;
+  };
+  push: {
+    fcm: {
+      projectId: string | null;
+      clientEmail: string | null;
+      privateKey: string | null;
     };
   };
   atsms: {
@@ -76,6 +108,7 @@ export const configuration = (): AppConfig => ({
   nodeEnv: (process.env.NODE_ENV as AppConfig['nodeEnv']) ?? 'development',
   port: int(process.env.PORT, 3000),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
+  trustProxyHops: int(process.env.TRUST_PROXY_HOPS, 0),
   database: {
     host: process.env.DATABASE_HOST ?? 'localhost',
     port: int(process.env.DATABASE_PORT, 5432),
@@ -101,6 +134,12 @@ export const configuration = (): AppConfig => ({
     resendCooldownSeconds: int(process.env.OTP_RESEND_COOLDOWN_SECONDS, 60),
     rateLimitWindowSeconds: int(process.env.OTP_RATE_LIMIT_WINDOW_SECONDS, 3600),
     rateLimitPerPhone: int(process.env.OTP_RATE_LIMIT_PER_PHONE, 5),
+    // Per-IP throttling (row 53). Generous by default because many mobile
+    // users share one carrier NAT address; tune per deployment.
+    ipRequestLimit: int(process.env.OTP_IP_REQUEST_LIMIT, 30),
+    ipRequestWindowSeconds: int(process.env.OTP_IP_REQUEST_WINDOW_SECONDS, 3600),
+    ipVerifyLimit: int(process.env.OTP_IP_VERIFY_LIMIT, 60),
+    ipVerifyWindowSeconds: int(process.env.OTP_IP_VERIFY_WINDOW_SECONDS, 3600),
     senderTransport:
       (process.env.OTP_SENDER_TRANSPORT as AppConfig['otp']['senderTransport']) ??
       'console',
@@ -131,6 +170,19 @@ export const configuration = (): AppConfig => ({
     // After this long without a provider result an STK push reads TIMEOUT
     // (not FAILED); a late callback still settles it.
     stkTimeoutSeconds: int(process.env.PAYMENTS_STK_TIMEOUT_SECONDS, 120),
+    // A TIMEOUT payment is resolved by Daraja STK Query (row 52) at most
+    // once per interval, from GET /payments/:errandId or the reconcile job.
+    stkQueryIntervalSeconds: int(process.env.PAYMENTS_STK_QUERY_INTERVAL_SECONDS, 30),
+    // Only used with PAYMENTS_MPESA_TRANSPORT=daraja; every value must be set
+    // (owner-approved Daraja account). Never commit real values.
+    daraja: {
+      baseUrl: process.env.PAYMENTS_MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke',
+      consumerKey: process.env.PAYMENTS_MPESA_CONSUMER_KEY || null,
+      consumerSecret: process.env.PAYMENTS_MPESA_CONSUMER_SECRET || null,
+      shortCode: process.env.PAYMENTS_MPESA_SHORTCODE || null,
+      passkey: process.env.PAYMENTS_MPESA_PASSKEY || null,
+      callbackUrl: process.env.PAYMENTS_MPESA_CALLBACK_URL || null,
+    },
   },
   // TODO(owner): urgency thresholds are placeholders. Urgency is derived from
   // deadlineAt (owner decision Q19) but no thresholds are defined anywhere.
@@ -148,10 +200,31 @@ export const configuration = (): AppConfig => ({
     storageDriver:
       (process.env.EVIDENCE_STORAGE_DRIVER as AppConfig['evidence']['storageDriver']) ??
       'console',
+    signedUrlTtlSeconds: int(process.env.EVIDENCE_SIGNED_URL_TTL_SECONDS, 900),
     cloudinary: {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
       apiKey: process.env.CLOUDINARY_API_KEY ?? null,
       apiSecret: process.env.CLOUDINARY_API_SECRET ?? null,
+    },
+  },
+  // BullMQ (rows 26, 50). Workers run unless QUEUE_WORKERS_ENABLED=false.
+  queue: {
+    prefix: process.env.QUEUE_PREFIX || 'nitume',
+    attempts: int(process.env.QUEUE_JOB_ATTEMPTS, 5),
+    // How often the dispute-window job runs (COMPLETED -> CONFIRMED -> SETTLED).
+    disputeSweepIntervalSeconds: int(process.env.ERRANDS_DISPUTE_SWEEP_INTERVAL_SECONDS, 300),
+    // How often TIMEOUT STK payments are resolved by STK Query.
+    stkReconcileIntervalSeconds: int(process.env.PAYMENTS_STK_RECONCILE_INTERVAL_SECONDS, 60),
+  },
+  // FCM push (row 31). All three set -> firebase-admin; otherwise a no-op.
+  // The private key may use literal \n sequences (single-line env value).
+  push: {
+    fcm: {
+      projectId: process.env.FCM_PROJECT_ID || null,
+      clientEmail: process.env.FCM_CLIENT_EMAIL || null,
+      privateKey: process.env.FCM_PRIVATE_KEY
+        ? process.env.FCM_PRIVATE_KEY.replace(/\\n/g, '\n')
+        : null,
     },
   },
   atsms: {

@@ -11,6 +11,7 @@ import { ErrandsModule } from './errands/errands.module';
 import { HealthController } from './health/health.controller';
 import { MailModule } from './infra/mail/mail.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { QueueModule } from './infra/queue/queue.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { MatchingModule } from './matching/matching.module';
@@ -23,6 +24,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { LocationModule } from './location/location.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
   imports: [
@@ -43,6 +45,7 @@ import { RealtimeModule } from './realtime/realtime.module';
       }),
     }),
     RedisModule,
+    QueueModule,
     MailModule,
     UsersModule,
     CustomersModule,
@@ -57,6 +60,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     DisputesModule,
     LocationModule,
     RealtimeModule,
+    SchedulerModule,
   ],
   controllers: [HealthController],
   providers: [

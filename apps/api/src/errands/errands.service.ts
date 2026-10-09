@@ -44,9 +44,11 @@ import {
 import {
   assertDeadlineInFuture,
   assertLocationsFit,
+  budgetFor,
   deriveUrgency,
 } from './errand-rules';
 import { ApiError } from '../common/api-error';
+import { feesFor } from '../common/fees';
 
 export interface ActorReference {
   type: StatusHistoryActor;
@@ -122,6 +124,13 @@ export type ErrandView = Errand & {
   assignment: ErrandAssignmentView | null;
   locations: ErrandLocationView[];
   items: ErrandItemView[];
+  /**
+   * "Total (service + runner fee)" of the current quote (row 34), as a
+   * 2-decimal string; null until quoted. The component split stays internal.
+   */
+  feeTotal: string | null;
+  /** True once the merchant/admin set Till/Paybill details (rows 42-44). */
+  merchantDetailsAvailable: boolean;
 };
 
 /** States in which the assigned runner may write `runnerNotes`. */
@@ -152,6 +161,25 @@ export interface ListErrandViewsResponse {
   items: ErrandView[];
   nextCursor: string | null;
 }
+
+/**
+ * 409 `quote_expired` when the quote has an expiry that has passed (BOARD
+ * row 46). A quote without `expiresAt` never expires. The customer needs a
+ * fresh quote (admin re-quote) before accepting or paying.
+ */
+export const assertQuoteCurrent = (
+  quote: Pick<Quote, 'id' | 'expiresAt'> | null,
+  now: Date = new Date(),
+): void => {
+  if (quote?.expiresAt && quote.expiresAt.getTime() <= now.getTime()) {
+    throw new ApiError(
+      HttpStatus.CONFLICT,
+      'quote_expired',
+      'This quote has expired. A fresh quote is needed before you can accept or pay.',
+      { quoteId: quote.id, expiresAt: quote.expiresAt.toISOString() },
+    );
+  }
+};
 
 const pointToGeo = (loc: ErrandLocationDto): GeoPoint => ({
   type: 'Point',
@@ -225,6 +253,7 @@ export class ErrandsService {
       dto.category,
       dto.locations.map((l) => l.pointType),
     );
+    const budget = budgetFor(dto.category, dto.budget);
     return this.inTx(async (manager) => {
       const profile = await manager
         .getRepository(CustomerProfile)
@@ -238,7 +267,7 @@ export class ErrandsService {
         category: dto.category,
         title: dto.title ?? null,
         description: dto.description,
-        budget: dto.budget.toString(),
+        budget: budget.toFixed(2),
         deadlineAt,
         // Client-sent `urgency` is ignored: deadline_at is authoritative.
         urgency: deriveUrgency(deadlineAt, this.urgencyThresholds()),
@@ -282,6 +311,7 @@ export class ErrandsService {
         assignment: null,
         locations: savedLocations.map(toLocationView),
         items: savedItems.map(toItemView),
+        ...this.derivedFields(saved),
       });
       return { errand: view, history };
     });
@@ -315,6 +345,17 @@ export class ErrandsService {
       throw new NotFoundException('Errand has not been quoted yet');
     }
     return quote;
+  }
+
+  /** Newest quote row of an errand, or null (no access check). */
+  async currentQuote(errandId: string, manager?: EntityManager): Promise<Quote | null> {
+    const repo = manager ? manager.getRepository(Quote) : this.quotes;
+    return repo.findOne({ where: { errandId }, order: { createdAt: 'DESC' } });
+  }
+
+  /** Throws 409 `quote_expired` when the errand's newest quote has expired. */
+  async assertQuoteCurrentFor(errandId: string, manager?: EntityManager): Promise<void> {
+    assertQuoteCurrent(await this.currentQuote(errandId, manager));
   }
 
   /** `getById` plus the current assignment and public runner summary. */
@@ -351,6 +392,20 @@ export class ErrandsService {
       where: { errandId, status: In(ACTIVE_ASSIGNMENT_STATUSES) },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  private derivedFields(errand: Errand): Pick<ErrandView, 'feeTotal' | 'merchantDetailsAvailable'> {
+    const feeTotal =
+      errand.quotedPrice === null || errand.quotedPrice === undefined
+        ? null
+        : feesFor(Number(errand.quotedPrice), {
+            serviceFeeRate: this.config?.get<number>('pricing.serviceFeeRate', 0.2) ?? 0.2,
+            runnerFeeRate: this.config?.get<number>('pricing.runnerFeeRate', 0.3) ?? 0.3,
+          }).total.toFixed(2);
+    return {
+      feeTotal,
+      merchantDetailsAvailable: Boolean(errand.merchantTillNumber || errand.merchantPaybillNumber),
+    };
   }
 
   private async withAssignments(errands: Errand[]): Promise<ErrandView[]> {
@@ -394,6 +449,7 @@ export class ErrandsService {
         assignment,
         locations: (locationsBy.get(errand.id) ?? []).map(toLocationView),
         items: (itemsBy.get(errand.id) ?? []).map(toItemView),
+        ...this.derivedFields(errand),
       });
     });
   }
@@ -423,6 +479,54 @@ export class ErrandsService {
   }
 
   /**
+   * Admin sets the merchant Till/Paybill details used by the merchant_direct
+   * route (rows 42-44). Exactly one of Till or Paybill; an account reference
+   * only goes with a Paybill. Not allowed once the errand is closed.
+   */
+  async setMerchantDetails(
+    errandId: string,
+    details: {
+      merchantName: string;
+      tillNumber?: string;
+      paybillNumber?: string;
+      accountReference?: string;
+    },
+  ): Promise<Errand> {
+    const errand = await this.getById(errandId);
+    if (ErrandStateMachine.isTerminal(errand.status)) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'errand_closed',
+        `The task is ${errand.status} and can no longer be edited`,
+      );
+    }
+    const till = details.tillNumber ?? null;
+    const paybill = details.paybillNumber ?? null;
+    if ((till === null) === (paybill === null)) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'merchant_details_invalid',
+        'Give either a Till number or a Paybill number, not both',
+      );
+    }
+    if (details.accountReference && paybill === null) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'merchant_details_invalid',
+        'An account reference only goes with a Paybill number',
+      );
+    }
+    const patch = {
+      merchantName: details.merchantName,
+      merchantTillNumber: till,
+      merchantPaybillNumber: paybill,
+      merchantAccountReference: paybill ? (details.accountReference ?? null) : null,
+    };
+    await this.errands.update(errandId, patch);
+    return Object.assign(errand, patch);
+  }
+
+  /**
    * Assigned runner writes the notes the customer reads on evidence review
    * (ARRIVED, IN_PROGRESS or AWAITING_CUSTOMER).
    */
@@ -432,7 +536,7 @@ export class ErrandsService {
     viewer: ViewerContext,
   ): Promise<ErrandView> {
     const errand = await this.getById(errandId, viewer);
-    const active = await this.isActiveRunner(errandId, viewer.userId);
+    const active = await this.isCurrentRunner(errandId, viewer.userId);
     if (!active) {
       throw new ForbiddenException('Only the assigned runner can write runner notes');
     }
@@ -449,19 +553,19 @@ export class ErrandsService {
     return this.getDetail(errandId, viewer);
   }
 
-  private async isActiveRunner(errandId: string, userId: string): Promise<boolean> {
+  /**
+   * True when `userId` is the runner on the errand's CURRENT assignment (the
+   * newest assigned/accepted row). A past assignment (declined, expired or
+   * superseded by a newer one) grants nothing (BOARD rows 27, 65). Public so
+   * other modules (evidence, price change, location) share one rule.
+   */
+  async isCurrentRunner(errandId: string, userId: string): Promise<boolean> {
     const runnerProfile = await this.runnerProfiles.findOne({ where: { userId } });
     if (!runnerProfile) {
       return false;
     }
-    const row = await this.assignments.findOne({
-      where: {
-        errandId,
-        runnerProfileId: runnerProfile.id,
-        status: In(ACTIVE_ASSIGNMENT_STATUSES),
-      },
-    });
-    return row !== null;
+    const current = await this.activeAssignmentFor(errandId);
+    return current !== null && current.runnerProfileId === runnerProfile.id;
   }
 
   async listFor(
@@ -519,11 +623,16 @@ export class ErrandsService {
       if (!runnerProfile) {
         throw new ForbiddenException('Runner profile not found');
       }
+      // Only errands where this runner holds the current assignment (the
+      // newest assigned/accepted row); past assignments are not listed.
       qb.innerJoin(
         ErrandAssignment,
         'a',
-        'a."errandId" = e.id AND a."runnerProfileId" = :runnerProfileId',
-        { runnerProfileId: runnerProfile.id },
+        `a.id = (SELECT a2.id FROM "errand_assignments" a2
+                  WHERE a2."errandId" = e.id AND a2.status IN (:...activeAssignment)
+                  ORDER BY a2."createdAt" DESC LIMIT 1)
+         AND a."runnerProfileId" = :runnerProfileId`,
+        { runnerProfileId: runnerProfile.id, activeAssignment: ACTIVE_ASSIGNMENT_STATUSES },
       );
     } else if (viewer.role !== 'admin') {
       const profile = await this.customerProfiles.findOne({
@@ -691,6 +800,9 @@ export class ErrandsService {
       );
     }
     await this.enforceSubject(manager, errand, actor, subject);
+    if (fromStatus === ErrandStatus.QUOTED && to === ErrandStatus.ACCEPTED) {
+      assertQuoteCurrent(await this.currentQuote(errandId, manager));
+    }
 
     errand.status = to;
     try {
@@ -749,9 +861,10 @@ export class ErrandsService {
 
   /**
    * System step COMPLETED -> CONFIRMED for errands whose COMPLETED entry is
-   * older than the dispute window (errands.disputeWindowHours). Meant to be
-   * run by a scheduled job; nothing schedules it yet (queue infrastructure
-   * pending, BOARD row 26). Returns the ids it confirmed.
+   * older than the dispute window (errands.disputeWindowHours). Run by the
+   * `dispute-window` job on the maintenance queue (rows 26, 50). The window
+   * counts from the latest COMPLETED entry, so it restarts after a dispute
+   * resolves back to COMPLETED. Returns the ids it confirmed.
    */
   async confirmPastDisputeWindow(now: Date = new Date()): Promise<string[]> {
     const hours = this.config?.get<number>('errands.disputeWindowHours', 24) ?? 24;
@@ -786,6 +899,17 @@ export class ErrandsService {
     return confirmed;
   }
 
+  /** Ids of errands in a status, oldest first (system jobs only, no access check). */
+  async idsInStatus(status: ErrandStatus, limit = 100): Promise<string[]> {
+    const rows = await this.errands.find({
+      where: { status },
+      select: { id: true },
+      order: { updatedAt: 'ASC' },
+      take: limit,
+    });
+    return rows.map((r) => r.id);
+  }
+
   async historyFor(errandId: string): Promise<ErrandStatusHistory[]> {
     return this.history.find({
       where: { errandId },
@@ -797,14 +921,41 @@ export class ErrandsService {
    * Admin quote step: prices the errand and moves REQUESTED -> QUOTED in one
    * transaction. The quoted price is captured on the errand; the full
    * breakdown lands in `quotes` (auditable pricing provenance).
+   *
+   * Re-quote (BOARD row 46): on a QUOTED errand whose newest quote has
+   * expired, the same call writes a fresh quote row and updates the quoted
+   * price without a status change (QUOTED stays QUOTED, no history row). A
+   * quote that is still valid is not replaced (409 `quote_still_valid`).
    */
   async quote(
     errandId: string,
     quote: QuoteInput,
     actor: ActorReference,
     note?: string,
-  ): Promise<{ errand: Errand; history: ErrandStatusHistory; quote: Quote }> {
+  ): Promise<{ errand: Errand; history: ErrandStatusHistory | null; quote: Quote }> {
     return this.inTx(async (manager) => {
+      const current = await manager.getRepository(Errand).findOne({
+        where: { id: errandId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (current?.status === ErrandStatus.QUOTED) {
+        if (actor.type !== StatusHistoryActor.ADMIN && actor.type !== StatusHistoryActor.SYSTEM) {
+          throw new ForbiddenException(`Actor '${actor.type}' cannot re-quote an errand`);
+        }
+        const latest = await this.currentQuote(errandId, manager);
+        if (!latest?.expiresAt || latest.expiresAt.getTime() > Date.now()) {
+          throw new ApiError(
+            HttpStatus.CONFLICT,
+            'quote_still_valid',
+            'The current quote has not expired; only an expired quote can be replaced',
+            { quoteId: latest?.id ?? null, expiresAt: latest?.expiresAt?.toISOString() ?? null },
+          );
+        }
+        const row = await this.saveQuote(manager, errandId, quote);
+        current.quotedPrice = quote.total.toFixed(2);
+        await manager.getRepository(Errand).update(errandId, { quotedPrice: current.quotedPrice });
+        return { errand: current, history: null, quote: row };
+      }
       const done = await this.performTransition(
         manager,
         errandId,
@@ -812,27 +963,30 @@ export class ErrandsService {
         actor,
         note,
       );
-      const errandRepo = manager.getRepository(Errand);
       const quotedPrice = quote.total.toFixed(2);
-      await errandRepo.update(errandId, { quotedPrice });
+      await manager.getRepository(Errand).update(errandId, { quotedPrice });
       done.errand.quotedPrice = quotedPrice;
-      const quoteRepo = manager.getRepository(Quote);
-      const row = await quoteRepo.save(
-        quoteRepo.create({
-          errandId,
-          baseFee: (quote.baseFee ?? quote.total).toString(),
-          distanceFee: (quote.distanceFee ?? 0).toString(),
-          timeFee: (quote.timeFee ?? 0).toString(),
-          urgencyFee: (quote.urgencyFee ?? 0).toString(),
-          complexityFee: (quote.complexityFee ?? 0).toString(),
-          premiumFee: (quote.premiumFee ?? 0).toString(),
-          total: quote.total.toString(),
-          currency: quote.currency ?? 'KES',
-          expiresAt: quote.expiresAt ? new Date(quote.expiresAt) : null,
-        }),
-      );
+      const row = await this.saveQuote(manager, errandId, quote);
       return { errand: done.errand, history: done.history, quote: row };
     });
+  }
+
+  private saveQuote(manager: EntityManager, errandId: string, quote: QuoteInput): Promise<Quote> {
+    const quoteRepo = manager.getRepository(Quote);
+    return quoteRepo.save(
+      quoteRepo.create({
+        errandId,
+        baseFee: (quote.baseFee ?? quote.total).toString(),
+        distanceFee: (quote.distanceFee ?? 0).toString(),
+        timeFee: (quote.timeFee ?? 0).toString(),
+        urgencyFee: (quote.urgencyFee ?? 0).toString(),
+        complexityFee: (quote.complexityFee ?? 0).toString(),
+        premiumFee: (quote.premiumFee ?? 0).toString(),
+        total: quote.total.toString(),
+        currency: quote.currency ?? 'KES',
+        expiresAt: quote.expiresAt ? new Date(quote.expiresAt) : null,
+      }),
+    );
   }
 
   /**
@@ -888,16 +1042,7 @@ export class ErrandsService {
       return true;
     }
     if (viewer.role === 'runner') {
-      const runnerProfile = await this.runnerProfiles.findOne({
-        where: { userId: viewer.userId },
-      });
-      if (!runnerProfile) {
-        return false;
-      }
-      const assignment = await this.assignments.findOne({
-        where: { errandId: errand.id, runnerProfileId: runnerProfile.id },
-      });
-      return assignment !== null;
+      return this.isCurrentRunner(errand.id, viewer.userId);
     }
     const ownerProfileId = await this.customerProfileIdFor(
       this.mutableEntityManager(),

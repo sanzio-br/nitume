@@ -77,7 +77,16 @@ export class RatingsService {
     return this.ratings.save(rating);
   }
 
-  async getForErrand(errandId: string): Promise<Rating | null> {
+  /**
+   * Rating of an errand for anyone allowed to view the errand (owner
+   * customer, runner on the current assignment, admin). 404 for an unknown
+   * errand, 403 without access; null while the task is unrated.
+   */
+  async getForErrand(
+    errandId: string,
+    viewer: { userId: string; role: UserRole },
+  ): Promise<Rating | null> {
+    await this.errandService.getById(errandId, viewer);
     return this.ratings.findOne({ where: { errandId } });
   }
 

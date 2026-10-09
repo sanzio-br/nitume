@@ -1,11 +1,17 @@
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
+  // Behind a load balancer, per-IP throttling must see the client address.
+  const hops = config.get<number>('trustProxyHops', 0);
+  if (hops > 0) {
+    app.set('trust proxy', hops);
+  }
 
   app.setGlobalPrefix(config.get<string>('apiPrefix', 'api/v1'));
   app.useGlobalPipes(

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { Device } from './device.entity';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 
@@ -44,5 +44,23 @@ export class DevicesService {
     if (!result.affected) {
       throw new NotFoundException('Device not found');
     }
+  }
+
+  /** Push tokens registered for a user (for the notification worker). */
+  async pushTokensFor(userId: string): Promise<string[]> {
+    const rows = await this.devices.find({ where: { userId, pushToken: Not(IsNull()) } });
+    return [...new Set(rows.map((d) => d.pushToken).filter((t): t is string => !!t))];
+  }
+
+  /**
+   * Drops devices whose token the push provider reported as dead
+   * (unregistered/invalid), so they are never retried.
+   */
+  async removeStaleTokens(tokens: string[]): Promise<number> {
+    if (tokens.length === 0) {
+      return 0;
+    }
+    const result = await this.devices.delete({ pushToken: In(tokens) });
+    return result.affected ?? 0;
   }
 }

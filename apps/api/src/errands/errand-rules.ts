@@ -69,3 +69,36 @@ export const assertDeadlineInFuture = (deadlineAt: Date | null, now = new Date()
     );
   }
 };
+
+/** Categories whose flow carries a merchant/item budget (row 45). */
+export const BUDGET_CATEGORIES = new Set<ErrandCategory>([
+  ErrandCategory.BUY_FOR_ME,
+  ErrandCategory.PICKUP_DELIVERY,
+]);
+
+/**
+ * Budget only for Buy For Me and Get It For Me (row 45): required there
+ * (400 budget_required), refused elsewhere when positive (400
+ * budget_not_applicable). Returns the budget to store.
+ */
+export const budgetFor = (category: ErrandCategory, budget: number | undefined): number => {
+  if (BUDGET_CATEGORIES.has(category)) {
+    if (budget === undefined || budget === null) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'budget_required',
+        'A budget is required for Buy For Me and Get It For Me tasks',
+      );
+    }
+    return budget;
+  }
+  if (budget !== undefined && budget !== null && budget > 0) {
+    throw new ApiError(
+      HttpStatus.BAD_REQUEST,
+      'budget_not_applicable',
+      'A budget only applies to Buy For Me and Get It For Me tasks',
+      { category },
+    );
+  }
+  return 0;
+};

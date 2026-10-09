@@ -15,8 +15,7 @@ import {
   EvidenceViewerContext,
   UploadEvidenceParamsDto,
 } from './dto/evidence.dto';
-import { Evidence } from './evidence.entity';
-import { EvidenceService } from './evidence.service';
+import { EvidenceService, EvidenceView } from './evidence.service';
 
 @Controller('errands/:errandId/evidence')
 @UseGuards(JwtAuthGuard)
@@ -29,7 +28,7 @@ export class EvidenceController {
     @Param() params: UploadEvidenceParamsDto,
     @Body() dto: CreateEvidenceDto,
     @CurrentUser() user: AuthContext,
-  ): Promise<Evidence> {
+  ): Promise<EvidenceView> {
     return this.evidence.upload(params.errandId, dto, this.viewer(user));
   }
 
@@ -37,7 +36,7 @@ export class EvidenceController {
   list(
     @Param() params: UploadEvidenceParamsDto,
     @CurrentUser() user: AuthContext,
-  ): Promise<Evidence[]> {
+  ): Promise<EvidenceView[]> {
     return this.evidence.listForErrand(params.errandId, this.viewer(user));
   }
 

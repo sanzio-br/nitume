@@ -4,8 +4,10 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -22,6 +24,7 @@ import {
   CreateErrandDto,
   ErrandStatusFilterDto,
   ListErrandsQueryDto,
+  MerchantDetailsDto,
   ResolveDisputeDto,
   RunnerNotesDto,
   TransitionErrandDto,
@@ -33,6 +36,7 @@ import {
   ErrandsService,
   ListErrandViewsResponse,
 } from './errands.service';
+import { Errand } from './errand.entity';
 import { Quote } from './quote.entity';
 
 @Controller('errands')
@@ -109,6 +113,19 @@ export class ErrandsController {
       role: user.role,
       userId: user.userId,
     });
+  }
+
+  /**
+   * Admin sets the merchant Till/Paybill details for the merchant_direct
+   * route (rows 42-44). The customer only picks the route.
+   */
+  @Put(':id/merchant-details')
+  @Roles(UserRole.ADMIN)
+  setMerchantDetails(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MerchantDetailsDto,
+  ): Promise<Errand> {
+    return this.errands.setMerchantDetails(id, dto);
   }
 
   /** Customer-readable quote breakdown (latest `quotes` row). */

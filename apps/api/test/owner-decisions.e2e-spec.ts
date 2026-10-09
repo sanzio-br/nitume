@@ -77,6 +77,8 @@ describe('Owner decisions (e2e)', () => {
            (SELECT id FROM "disputes" WHERE "errandId" = ANY($1))`,
         [errandIds],
       );
+      // Payments reference price_change_requests: remove them first.
+      await ds.query('DELETE FROM "payments" WHERE "errandId" = ANY($1)', [errandIds]);
       const tables: { table_name: string }[] = await ds.query(
         `SELECT table_name FROM information_schema.columns
           WHERE table_schema = 'public' AND column_name = 'errandId'
@@ -407,10 +409,22 @@ describe('Owner decisions (e2e)', () => {
   });
 
   describe('payments', () => {
-    const prepare = async (budget: number) => {
+    const prepare = async (budget: number): Promise<{ customer: Actor; admin: Actor; errand: Record<string, any> }> => {
       const customer = await makeUser(UserRole.CUSTOMER);
       const admin = await makeUser(UserRole.ADMIN);
-      const errand = await createErrand(customer, { budget });
+      // A budget only applies to Buy For Me / Get It For Me (row 45).
+      const errand = await createErrand(
+        customer,
+        budget > 0
+          ? {
+              category: 'buy_for_me',
+              budget,
+              locations: [
+                { pointType: 'dropoff', lat: -4.04, lon: 39.7, addressText: 'Links Road, Nyali' },
+              ],
+            }
+          : { budget },
+      );
       await http().post(`/api/v1/errands/${errand.id}/submit`).set(bearer(customer.token)).expect(201);
       await http()
         .post(`/api/v1/errands/${errand.id}/quote`)
@@ -418,7 +432,7 @@ describe('Owner decisions (e2e)', () => {
         .send({ total: 1000 })
         .expect(201);
       await setStatus(customer, errand.id, 'ACCEPTED');
-      return { customer, errand };
+      return { customer, admin, errand };
     };
 
     it('retries with the same Idempotency-Key return the stored payment', async () => {
@@ -486,7 +500,53 @@ describe('Owner decisions (e2e)', () => {
         .send({ merchantRoute: 'send_to_runner' })
         .expect(201);
       expect(ok.body.payment.paymentFlow).toBe('customer_to_runner');
-      expect(ok.body.merchantPayment).toEqual({ route: 'send_to_runner', amount: '2500.00' });
+      expect(ok.body.merchantPayment).toEqual({
+        route: 'send_to_runner',
+        amount: '2500.00',
+        paidTo: 'nitume',
+      });
+      // Platform-mediated (row 42): the purchase amount is a leg of the STK charge.
+      expect(ok.body.transactions.map((t: { amount: string }) => t.amount).sort()).toEqual([
+        '200.00',
+        '2500.00',
+        '300.00',
+      ]);
+    });
+
+    it('pays merchant_direct once an admin sets the Till details (row 43)', async () => {
+      const { customer, admin, errand } = await prepare(2500);
+      await http()
+        .put(`/api/v1/errands/${errand.id}/merchant-details`)
+        .set(bearer(customer.token))
+        .send({ merchantName: 'Naivas Nyali', tillNumber: '123456' })
+        .expect(403);
+      const bad = await http()
+        .put(`/api/v1/errands/${errand.id}/merchant-details`)
+        .set(bearer(admin.token))
+        .send({ merchantName: 'Naivas Nyali', tillNumber: '123456', paybillNumber: '400200' })
+        .expect(400);
+      expect(bad.body.code).toBe('merchant_details_invalid');
+      await http()
+        .put(`/api/v1/errands/${errand.id}/merchant-details`)
+        .set(bearer(admin.token))
+        .send({ merchantName: 'Naivas Nyali', tillNumber: '123456' })
+        .expect(200);
+      const ok = await http()
+        .post(`/api/v1/payments/${errand.id}/initiate`)
+        .set(bearer(customer.token))
+        .send({ merchantRoute: 'merchant_direct' })
+        .expect(201);
+      expect(ok.body.merchantDetailsAvailable).toBe(true);
+      expect(ok.body.merchantPayment).toEqual({
+        route: 'merchant_direct',
+        amount: '2500.00',
+        paidTo: 'merchant',
+        merchantName: 'Naivas Nyali',
+        tillNumber: '123456',
+        paybillNumber: null,
+        accountReference: null,
+      });
+      expect(ok.body.transactions).toHaveLength(2);
     });
   });
 
@@ -535,8 +595,24 @@ describe('Owner decisions (e2e)', () => {
       expect(approved.body.differencePayment.merchantPayment).toEqual({
         route: 'send_to_runner',
         amount: '150.00',
+        paidTo: 'nitume',
       });
       expect(approved.body.differencePayment.payment.priceChangeRequestId).toBe(up.body.id);
+      // The increase is charged by STK to Nitume (rows 44, 48).
+      expect(approved.body.differencePayment.stkStatus).toBe('PENDING');
+      expect(typeof approved.body.differencePayment.checkoutRequestId).toBe('string');
+      await http()
+        .post('/api/v1/payments/mpesa/callback')
+        .send({
+          reference: approved.body.differencePayment.transactions[0].mpesaReference,
+          resultCode: 0,
+        })
+        .expect(201);
+      const summary = await http()
+        .get(`/api/v1/payments/${errand.id}`)
+        .set(bearer(customer.token))
+        .expect(200);
+      expect(summary.body.differencePayments[0].stkStatus).toBe('SUCCESS');
       const afterApprove = await http()
         .get(`/api/v1/errands/${errand.id}`)
         .set(bearer(customer.token))
@@ -568,9 +644,10 @@ describe('Owner decisions (e2e)', () => {
         review = list.body.items.find((r: { errandId: string }) => r.errandId === errand.id);
         if (!review) await new Promise((r) => setTimeout(r, 50));
       }
+      // Service 200 + runner 300 + purchase 500 + paid difference 150.
       expect(review).toMatchObject({
         trigger: 'price_change_rejected',
-        amountPaid: '500.00',
+        amountPaid: '1150.00',
         status: 'pending_review',
       });
       await http().get('/api/v1/refunds').set(bearer(customer.token)).expect(403);
@@ -578,7 +655,7 @@ describe('Owner decisions (e2e)', () => {
       const tooMuch = await http()
         .patch(`/api/v1/refunds/${review!.id}/decision`)
         .set(bearer(admin.token))
-        .send({ refundAmount: 501 })
+        .send({ refundAmount: 1151 })
         .expect(400);
       expect(tooMuch.body.code).toBe('refund_exceeds_amount_paid');
       const decided = await http()
@@ -603,7 +680,10 @@ describe('Owner decisions (e2e)', () => {
       await driveTo({ customer, admin, runner }, errand.id, 'RUNNER_ASSIGNED');
       await setStatus(runner, errand.id, 'RUNNER_EN_ROUTE');
       const base = `/api/v1/errands/${errand.id}/price-change`;
-      const req = await http().post(base).set(bearer(runner.token)).send({ toPrice: 100 }).expect(201);
+      // Runners request price changes only IN_PROGRESS (row 49); an admin still can.
+      const early = await http().post(base).set(bearer(runner.token)).send({ toPrice: 100 }).expect(409);
+      expect(early.body.code).toBe('price_change_not_in_progress');
+      const req = await http().post(base).set(bearer(admin.token)).send({ toPrice: 100 }).expect(201);
       const res = await http()
         .post(`${base}/${req.body.id}/reject`)
         .set(bearer(customer.token))

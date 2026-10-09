@@ -15,7 +15,8 @@ export const PAYMENT_TYPES = [
   {
     code: PaymentTypeCode.MERCHANT_PAYMENT,
     name: 'Merchant payment',
-    description: 'Purchase amount paid to the merchant (merchant_direct flow)',
+    description:
+      'Purchase amount collected by Nitume STK for send_to_runner; the runner is reimbursed through the payout ledger',
   },
   {
     code: PaymentTypeCode.RUNNER_ADVANCE,

@@ -10,19 +10,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import {
   ErrandStatus,
+  PaymentFlow,
   PriceChangeStatus,
   StatusHistoryActor,
   UserRole,
 } from '../common/enums';
 import { ApiError } from '../common/api-error';
 import { ErrandStateMachine, TransitionGuard } from '../errands/errand-state-machine';
-import { Payment } from '../payments/payment.entity';
-import { MerchantPaymentView, MerchantRoute } from '../payments/payment-views';
-import { PaymentsService } from '../payments/payments.service';
+import { MerchantRoute } from '../payments/payment-views';
+import { DifferencePaymentView, PaymentsService } from '../payments/payments.service';
 import { Errand } from '../errands/errand.entity';
 import { ErrandsService } from '../errands/errands.service';
-import { ErrandAssignment } from '../errands/errand-assignment.entity';
-import { RunnerProfile } from '../runners/runner-profile.entity';
 import { PriceChangeRequest } from './price-change-request.entity';
 import { RequestPriceChangeDto } from './dto/price-change.dto';
 
@@ -48,11 +46,12 @@ const POST_PAYMENT = new Set<ErrandStatus>([
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export type PriceChangeDecision = PriceChangeRequest & {
-  /** Set when an approved increase on a paid task was recorded. */
-  differencePayment: {
-    payment: Payment;
-    merchantPayment: MerchantPaymentView | null;
-  } | null;
+  /**
+   * Set when an approved increase on a paid task was recorded. For
+   * send_to_runner it carries the STK charge to Nitume (stkStatus,
+   * checkoutRequestId); for merchant_direct the Till/Paybill to pay.
+   */
+  differencePayment: DifferencePaymentView | null;
 };
 
 @Injectable()
@@ -62,16 +61,16 @@ export class PriceChangeService {
     private readonly requests: Repository<PriceChangeRequest>,
     @InjectRepository(Errand)
     private readonly errands: Repository<Errand>,
-    @InjectRepository(ErrandAssignment)
-    private readonly assignments: Repository<ErrandAssignment>,
-    @InjectRepository(RunnerProfile)
-    private readonly runners: Repository<RunnerProfile>,
     private readonly errandService: ErrandsService,
     private readonly events: EventEmitter2,
     private readonly payments: PaymentsService,
   ) {}
 
-  /** Assigned runner (or admin) proposes a new price for a live errand. */
+  /**
+   * Runner on the current assignment proposes a new merchant/item price while
+   * the task is IN_PROGRESS (row 49); an admin may also open one in any
+   * price-changeable state.
+   */
   async request(
     errandId: string,
     dto: RequestPriceChangeDto,
@@ -93,6 +92,16 @@ export class PriceChangeService {
       );
       if (!isAssignedRunner) {
         throw new ForbiddenException('Only the assigned runner can request a price change');
+      }
+      // Owner clarification 2026-10-08 (row 49): runners request price
+      // changes only while the task is IN_PROGRESS.
+      if (errand.status !== ErrandStatus.IN_PROGRESS) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'price_change_not_in_progress',
+          `Runners can request a price change only while the task is IN_PROGRESS (current: ${errand.status})`,
+          { status: errand.status },
+        );
       }
     }
 
@@ -144,7 +153,7 @@ export class PriceChangeService {
     await this.assertCustomer(errandId, actor);
     // One transaction: status check, difference record, budget and request.
     // Lock order errand -> request matches reject (transition, then request).
-    return this.requests.manager.transaction(async (manager) => {
+    const decided = await this.requests.manager.transaction(async (manager) => {
       const errand = await manager.getRepository(Errand).findOne({
         where: { id: errandId },
         lock: { mode: 'pessimistic_write' },
@@ -156,24 +165,31 @@ export class PriceChangeService {
         );
       }
       const difference = round2(Number(req.toPrice) - Number(req.fromPrice));
-      let differencePayment: PriceChangeDecision['differencePayment'] = null;
+      let recorded: { paymentId: string; flow: PaymentFlow } | null = null;
       if (difference > 0 && POST_PAYMENT.has(errand.status)) {
         // Validates the route before anything is written.
-        differencePayment = await this.payments.recordPriceDifference(
+        const { payment } = await this.payments.recordPriceDifference(
           errandId,
           req.id,
           difference,
           route,
           manager,
         );
+        recorded = { paymentId: payment.id, flow: payment.paymentFlow };
       }
       await manager.getRepository(Errand).update(errandId, { budget: req.toPrice });
       req.status = PriceChangeStatus.APPROVED;
       req.decidedByUserId = actor.userId;
       req.decidedAt = new Date();
       const saved = await manager.getRepository(PriceChangeRequest).save(req);
-      return Object.assign(saved, { differencePayment });
+      return { saved, recorded };
     });
+    // The STK charge for a send_to_runner difference goes out only after the
+    // approval has committed (rows 44, 48).
+    const differencePayment = decided.recorded
+      ? await this.payments.chargeDifference(decided.recorded.paymentId)
+      : null;
+    return Object.assign(decided.saved, { differencePayment });
   }
 
   /**
@@ -309,15 +325,8 @@ export class PriceChangeService {
     }
   }
 
-  private async isAssignedRunner(
-    errandId: string,
-    userId: string,
-  ): Promise<boolean> {
-    const runner = await this.runners.findOne({ where: { userId } });
-    if (!runner) return false;
-    const assignment = await this.assignments.findOne({
-      where: { errandId, runnerProfileId: runner.id },
-    });
-    return assignment !== null;
+  /** Runner on the errand's current assignment (BOARD rows 27, 65). */
+  private isAssignedRunner(errandId: string, userId: string): Promise<boolean> {
+    return this.errandService.isCurrentRunner(errandId, userId);
   }
 }

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EvidenceStorage } from './evidence-storage.interface';
+import { EvidenceStorage, SignedView } from './evidence-storage.interface';
 
 export const randomKey = (): string =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -20,5 +20,10 @@ export class ConsoleEvidenceStorage extends EvidenceStorage {
       `[console] evidence upload suppressed (${input.contentType}, ${input.data.length} bytes) → key=${key}`,
     );
     return { key, url: '' };
+  }
+
+  /** Nothing is stored by the console driver, so there is nothing to serve. */
+  viewUrl(): SignedView {
+    return { url: null, expiresAt: null };
   }
 }
