@@ -203,10 +203,12 @@ describe('RefundsService', () => {
     });
     const over = build({ row: cancellation, siblings: [decrease], paid: '1650.00' });
     const err = await over.service.decide('r-1', 1600, undefined, 'admin-1').catch((e: unknown) => e);
-    expect((err as ApiError).code).toBe('refund_exceeds_remaining');
+    expect((err as ApiError).code).toBe('refund_exceeds_amount_paid');
     expect((err as ApiError).getStatus()).toBe(400);
     expect((err as ApiError).getResponse()).toMatchObject({
+      amountPaid: '1500.00',
       refundCeiling: '1500.00',
+      reviewAmountPaid: '1650.00',
       alreadyRefunded: '150.00',
       totalPaidToNitume: '1650.00',
     });
@@ -233,7 +235,7 @@ describe('RefundsService', () => {
       review({ id: 'r-2', trigger: RefundTrigger.PRICE_CHANGE_DECREASE, amountPaid: '100.00' });
     const b = build({ row: decreaseRow(), siblings: [cancellation], paid: '1000.00' });
     expect(await codeOf(b.service.decide('r-2', 100, undefined, 'admin-1'))).toBe(
-      'refund_exceeds_remaining',
+      'refund_exceeds_amount_paid',
     );
     const ok = build({ row: decreaseRow(), siblings: [cancellation], paid: '1000.00' });
     expect((await ok.service.decide('r-2', 50, undefined, 'admin-1')).remainingRefundable).toBe('0.00');

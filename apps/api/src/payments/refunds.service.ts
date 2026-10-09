@@ -40,8 +40,6 @@ export interface CustomerRefundView {
   amountPaid: string;
   /** Null until an admin decides. */
   refundAmount: string | null;
-  /** M-Pesa receipt of the manual payout, once refunded. */
-  payoutReference: string | null;
   /**
    * What can still be refunded on the whole task (row 87): total paid to
    * Nitume minus every approved/refunded review's refund amount.
@@ -543,26 +541,20 @@ export class RefundsService implements OnModuleInit {
           `Refund review is already ${row.status}`,
         );
       }
-      if (refundAmount > Number(row.amountPaid)) {
-        throw new ApiError(
-          HttpStatus.BAD_REQUEST,
-          'refund_exceeds_amount_paid',
-          `Refund cannot exceed the amount paid (KSh ${row.amountPaid})`,
-          { amountPaid: row.amountPaid },
-        );
-      }
       const totalPaid = await this.amountPaid(row.errandId, manager);
       const before = refundPositionOf(row, totalPaid, siblings);
       if (refundAmount > Number(before.refundCeiling)) {
+        // Spec N-9: one code, the effective ceiling in `amountPaid`.
         throw new ApiError(
           HttpStatus.BAD_REQUEST,
-          'refund_exceeds_remaining',
-          `Refund cannot exceed what is still refundable on this task (KSh ${before.refundCeiling})`,
+          'refund_exceeds_amount_paid',
+          `Refund cannot exceed KSh ${before.refundCeiling} (paid to Nitume minus refunds already approved on this task)`,
           {
-            amountPaid: row.amountPaid,
+            amountPaid: before.refundCeiling,
+            refundCeiling: before.refundCeiling,
+            reviewAmountPaid: row.amountPaid,
             totalPaidToNitume: before.totalPaidToNitume,
             alreadyRefunded: before.alreadyRefunded,
-            refundCeiling: before.refundCeiling,
           },
         );
       }
@@ -675,7 +667,6 @@ export const toCustomerView = (
   status: row.status,
   amountPaid: row.amountPaid,
   refundAmount: row.refundAmount,
-  payoutReference: row.payoutReference,
   remainingRefundable: position?.remainingRefundable ?? '0.00',
   createdAt: row.createdAt,
   decidedAt: row.decidedAt,

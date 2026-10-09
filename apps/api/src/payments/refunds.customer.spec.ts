@@ -68,7 +68,6 @@ describe('RefundsService.forCustomer (row 55)', () => {
       status: RefundStatus.APPROVED,
       amountPaid: '500.00',
       refundAmount: '400.00',
-      payoutReference: null,
       remainingRefundable: '100.00',
       createdAt: new Date('2026-10-08T08:00:00Z'),
       decidedAt: new Date('2026-10-08T09:00:00Z'),
@@ -118,7 +117,6 @@ describe('RefundsService with several reviews (row 71)', () => {
         status: RefundStatus.PENDING_REVIEW,
         amountPaid: '80.00',
         refundAmount: null,
-        payoutReference: null,
         remainingRefundable: '500.00',
         createdAt: decrease.createdAt,
         decidedAt: null,
@@ -160,6 +158,7 @@ describe('Customer refund views never expose the admin decision note (row 69)', 
       expect(view).not.toHaveProperty('decisionNote');
       expect(view).not.toHaveProperty('decidedByUserId');
       expect(view).not.toHaveProperty('paidByUserId');
+      expect(view).not.toHaveProperty('payoutReference');
       expect(JSON.stringify(view)).not.toContain('internal only');
     }
   });
