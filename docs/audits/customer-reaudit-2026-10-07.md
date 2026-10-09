@@ -432,3 +432,144 @@ Verdict: **matches the spec's intent; accepted**. Recorded in `x-merchant-paymen
 3. `price_change_dialog.dart:10-12` defines the API code `price_change_already_decided` locally with a TODO; core-ui should move it into `ApiErrorCodes`. Code hygiene only.
 
 Still open from earlier rounds (unchanged, minor): v-auth-phone legal link hit areas (inactive until SQ-2); v-payment provider failure reason; v-history per-card payment calls (api-contract); v-notifications `Mark all read` placement (header trailing slot). Owner rows 30, 34, 60, SQ-5, SQ-6 and v-price-auth Q2 stay open.
+
+---
+
+# Addendum — re-audit after owner answers rounds 2 and 3 (2026-10-09)
+
+- Code audited: `feat/customer-integrations` @ `ca6f614` (apps/customer_app + packages/nitume_core), read only. Specs: `docs/customer-answers-2` plus this round's spec updates on `docs/customer-reaudit-2`.
+- Scope: the ten screens set to `partial` by the round-2 owner answers (v-track, v-new-details, v-new-review, x-awaiting-quote, x-merchant-payment, v-price-auth, v-task-detail, v-evidence-confirm, x-legal, x-support), plus v-payment and v-notifications, plus a regression spot-check of the other screens (CC-4..CC-10).
+- This is round 1 for these rebuilt screens.
+
+## Build health
+
+| Check | Result |
+|---|---|
+| `flutter analyze` apps/customer_app | No issues |
+| `flutter test` apps/customer_app | 90 passed |
+| `flutter analyze` packages/nitume_core | No issues |
+| `flutter test` packages/nitume_core | 187 passed |
+| Token scan of `apps/customer_app/lib` (`Color(0x`, Material `Colors.`, `fontFamily`, `GoogleFonts`, hex) | 0 hits |
+| Escrow / wallet words | 0 user-facing hits |
+| Device builds | **Unverified.** Android failed while downloading Flutter engine artifacts; iOS was not built. Noted, not failed: the Maps, FCM and `url_launcher` integrations are untested on a device until a build runs |
+
+## Summary
+
+| Screen | Verdict | Blockers | Minors | SCREEN_MAP |
+|---|---|---|---|---|
+| v-track | PASS | 0 | 1 | matches-design |
+| v-new-details | **FAIL** | 1 | 1 | partial |
+| v-new-review | PASS | 0 | 0 | matches-design |
+| x-awaiting-quote | PASS | 0 | 0 | matches-design |
+| x-merchant-payment | PASS | 0 | 0 | matches-design |
+| v-price-auth | PASS | 0 | 0 | matches-design |
+| v-task-detail | PASS | 0 | 1 | matches-design |
+| v-evidence-confirm | PASS | 0 | 0 | matches-design |
+| x-legal | PASS | 0 | 0 | matches-design |
+| x-support | PASS | 0 | 0 | matches-design |
+| v-payment | PASS | 0 | 0 | matches-design |
+| v-notifications | PASS | 0 | 0 | matches-design |
+
+11 PASS, 1 FAIL. Other screens: no regression; one new minor on x-address-form (below).
+
+## Explicit judgements
+
+1. **Row 76 (one combined STK for send_to_runner) vs `_shared.md` §8.1/§8.2.** The owner answered row 76 after the specs were written; the build follows row 76 (checkout CTA and `v-payment` charge fees + item amount; the receipt keeps the item amount on its own line, outside `Total (service + runner fee)`; Track and `x-merchant-payment` variant B now cover only an unpaid price-change difference). **Specs updated to match row 76**: `_shared.md` §8.1 and §8.2, `v-payment` (Entry/exit, Rules → Amount), `x-awaiting-quote` (route subtitle, CTA amount), `x-merchant-payment` (variant B scope: difference only, started by the approve call, no READY step). Not a finding on any screen.
+2. **"Includes KSh … for your runner's purchase."** (`payment_screen.dart:233-251`, amount as a `NumSpan`). BOARD row 91 is open. The line is short, factual, says where the money goes, uses no wallet/escrow wording and keeps the three flows readable. **Accepted as proposed** and written into `_shared.md` §8.1 and `v-payment.md` with "builder copy, accepted as proposed while row 91 is open". The route subtitle `You'll pay this amount to Nitume by M-Pesa together with the fees, for your runner's purchase.` (`widgets/task_widgets.dart:98-100`) is accepted on the same basis.
+3. **Expired quote without a CTA** (`awaiting_quote_screen.dart:323-335, 481-488`). The spec's own fallback for a missing quote-request endpoint: no CTA, notice `This quote has expired. We'll send you a new one.`, decline still available. Row 68 (SQ-9) is open and no endpoint exists in core or the app. An admin re-quote (row 72, `quote:reissued`) refreshes the checkout. **PASS (fallback; note).**
+4. **v-payment and the item-difference STK keep polling while the socket is connected** (`payment_screen.dart:186-203`, `merchant_payment_screen.dart:122-139`). An STK FAILED or TIMEOUT changes no errand state, so no socket event would ever arrive for it; without polling the screen could only learn the result from a manual tap. **Accepted**; `v-payment.md` and `x-merchant-payment.md` Data now say so. All other screens poll only while disconnected (verified on v-home, v-track, x-awaiting-quote, v-evidence-confirm).
+5. **Device builds unverified.** Noted above; no screen is failed for it.
+
+## Cross-cutting items from the round-2 addendum
+
+| Item | Status | Evidence |
+|---|---|---|
+| CC-4 title fallback | Closed | `util/display.dart:7-11`: `title` else category display name |
+| CC-5 runner short name | Closed | `util/display.dart:31-35`: renders the API `shortName`, fallback `Your runner`; no `shortName()` in the app |
+| CC-6 empty-title top bar | Closed | core `nitume_top_bar.dart:50`: no title line or header node when empty |
+| CC-7 chip text | Closed | core `NitumeDesignChoices.chipHighContrastText = true` |
+| CC-8 live data | Closed | `services/live_updates.dart` over core `SocketIoRealtimeClient`; per-screen `ErrandWatch` with room ref-counting; app-level `price_change:requested` modal (`home_shell.dart`); `Reconnecting…` on Track |
+| CC-9 push | Closed | `services/push.dart` + `session.dart`: register after sign-in / name capture / restore, unregister on log out and suspension; push taps through `Nav.openNotification` including cold start (`app.dart`) |
+| CC-10 fee rows | Closed | `widgets/task_widgets.dart:114-120` `feeTotalRows`: one `Total (service + runner fee)` row; no `Service fee` / `Runner fee` anywhere in the app |
+
+Suspended account mid-session (`_shared.md` §7): closed. `session.suspend()` resets to `v-auth-phone` with `This account can't sign in. Contact support.` Minor: the device unregister runs after the API client has already cleared the tokens, so the `DELETE /users/me/devices/:id` call will usually fail (best effort; the server should also drop the device on suspension).
+
+## v-track — PASS
+
+Google Maps body through core `GoogleTrackingMap.builderFor` (pins blue/green, dashed blue route, no controls, fit with 40 padding) with the schematic fallback without a key; socket watch on the selected errand (left on switch and when the tab hides), polling only while disconnected; `Reconnecting…`; runner marker and ETA only in RUNNER_ASSIGNED … IN_PROGRESS, cleared outside the window and on tracking 403/404; ARRIVED → `Arrived`; Price change only in IN_PROGRESS; item notice only for a merchant-direct amount with details or an unpaid difference (row 76); terminal cards unchanged; the timeline hides DRAFT/CONFIRMED/SETTLED.
+
+1. Minor — core `google_tracking_map.dart:319-320`: runner marker drawn as an 8 px white circle with a 5 px green centre (16 px across including the ring). Spec: 16 px green dot plus a 3 px white ring (22 px). Fix (core-ui): radius 11 white, 8 green.
+
+Note: a merchant-direct item amount has no "paid" signal (x-merchant-payment Q1 open), so its notice stays while the task is active.
+
+## v-new-details — FAIL
+
+Budget only for Buy For Me / Get It For Me with `budget: 0` otherwise (row 45); Google Places client when a key exists, saved addresses with coordinates otherwise; points always carry coordinates.
+
+1. **Blocker** — `screens/wizard/details_screen.dart:123-149` with core `widgets/place_autocomplete_field.dart:83-94`. Spec (Layout 3 bullet 1, Validation; row 60; clarified in this round): editing the text of a chosen place clears the choice, and typed-but-unpicked text shows `Choose a place from the list.` Code: `PlaceAutocompleteField` reports only picks; typing does not tell the screen, so `TaskDraft.first` / `dropoff` keep the earlier pick. A customer who picks "Kilimani", then types "Westlands" and continues submits the task to Kilimani while the field reads Westlands; the review step shows no location to catch it. Fix: core-ui adds a callback when the field text no longer matches the picked place (e.g. `onSelectionCleared`); flutter-customer clears `first` / `dropoff` there and shows `Choose a place from the list.` when the field has text but no pick (`Choose a location.` when empty).
+2. Minor — core `place_autocomplete_field.dart:101-104`: a failed search shows an empty list instead of `Couldn't search places. Check your connection.` Fix (core-ui).
+
+## v-new-review — PASS
+
+Variant A (`quotePreviewEnabled` false): notice `We'll send your final quote after you submit. You won't pay anything until you accept it.`, no price and no preview call; `Item budget` form card only when the budget is > 0 (Buy For Me / Get It For Me). Variant B keeps its estimate-unavailable state inside `Estimated price`. Submit flow unchanged.
+
+## x-awaiting-quote — PASS
+
+Waiting state; checkout with one `Total (service + runner fee)` row (`feeTotal` → `quote.total` → `quotedPrice`); route rows with the merchant-details available / pending states and default merchant-direct when available; CTA amount = fees, or fees + item for send_to_runner (row 76, spec updated) in Fira Code; ACCEPTED re-entry and admin re-quote acceptance (`acceptQuote`, row 72); `quote_expired` → expired state (chip hidden, `Expired at`, route and Pay-with cards hidden, notice, no CTA: judgement 3); 409 reload; live refresh on status, `quote:reissued` and `merchant_details:updated`; polling only while disconnected.
+
+## x-merchant-payment — PASS
+
+Variant A with Till/Paybill copy rows, the amber increase line, how-to and `Done`; details-pending state with the notice; variant B = the price-change difference STK on the shared `StkStatusView` (copy `to pay for the items.`, `Item amount paid`, `Done`), retry through `retryDifferencePayment`; nothing due → snackbar `Nothing to pay right now.` and close (Needs row 41). Matches the spec as updated for row 76 (judgement 1). Polling while connected accepted (judgement 4).
+
+Note: the variant B body says "the prompt sent to your phone" because the difference payment carries no target number; the spec now records this.
+
+## v-price-auth — PASS
+
+IN_PROGRESS only (other states open the already-answered state); increase and decrease variants with the spec copy (`− KSh 5,000 less`, `Approve new price`); route rows on `merchant_route_required` and `merchant_details_missing`, nothing preselected, Approve disabled until chosen (row 61); reject confirm with the refund-review copy; decrease snackbar when the decision opened a refund review; `price_change_already_decided` / `price_change_not_in_progress` → already answered; load failure with `Try again` / `Close`; app-level live modal (`home_shell.dart`) plus resume check and Track.
+
+## v-task-detail — PASS
+
+Primary action per state (rating also in CONFIRMED/SETTLED), API short name, evidence with expired-link re-fetch, one `Total (service + runner fee)` row, item amount with `Paid to the merchant directly` / `Paid to Nitume for your runner`, refund groups per `_shared.md` §11 (also when unpaid), `View your report` after a dispute, red report row in IN_PROGRESS / AWAITING_CUSTOMER / COMPLETED, live refresh.
+
+1. Minor — `task_detail_screen.dart:296-306`. `View payment details` shows whenever the merchant payment amount is positive and the task is active. For send_to_runner the item amount is already paid in the combined STK (row 76), so the link opens `x-merchant-payment`, which closes itself with `Nothing to pay right now.` Fix: use the same `itemAmountDue()` test as Track (`track_tab.dart` `itemAmountDue`).
+
+Note: the report row in COMPLETED relies on the system moving the errand to CONFIRMED when the dispute window ends (row 50); the client has no window end time. Acceptable while the scheduler owns the window.
+
+## v-evidence-confirm — PASS
+
+Total-only fee row, `Paid to Nitume for your runner` route line, `evidence:uploaded` / status live refresh with polling only while disconnected, expired-link re-fetch on the viewer, `Confirm completion` unchanged.
+
+## x-legal — PASS
+
+Configured links render as C-04 link buttons (48 dp targets) inside a `Wrap` and open through core `openExternalLink` (`url_launcher`, external application); open failure snackbar; unconfigured links are plain text. Values per environment remain x-legal Q1.
+
+## x-support — PASS
+
+Support row (profile) and `Contact support` (OTP suspended state) open `AppConfig.supportLink` externally; hidden when unconfigured; failure snackbar `Couldn't open support. Try again later.`
+
+## v-payment — PASS
+
+Shared `StkStatusView`; combined amount for send_to_runner with the row-91 caption (judgement 2); 120 s client fallback window (row 52/63); `quote_expired` → expired checkout, `quote_not_accepted` and `merchant_route_required` → checkout; idempotency handling unchanged; polling while connected (judgement 4).
+
+Note (unchanged minor from 2026-10-07): the provider failure reason is still not shown (api-contract has not exposed it).
+
+## v-notifications — PASS
+
+Row taps and push taps share `Nav.openNotification`: quoted / quote reissued → x-awaiting-quote; merchant details added → checkout or x-merchant-payment; runner states → Track; price change requested → Track + modal; awaiting customer → v-evidence-confirm; refund, completed, cancelled, failed, disputed and unknown types → Task detail. Payment confirmed/failed and rating-reminder types are not sent by the API yet and fall back to Task detail (spec fallback; note).
+
+## Regression spot-check of the other screens
+
+- v-home, v-history, v-rate, v-profile, x-report-problem: title fallback (CC-4) and API short names (CC-5) render correctly; v-home polls only while disconnected and watches the active errand. No regression.
+- v-auth-otp: `account_suspended` handled (plus the legacy uncoded 401). No regression.
+- x-address-form — **new minor**: with a Places key, a place can be picked and the field text then edited without picking again; `_place` keeps the earlier pick and Save stores it (`screens/account/address_form_screen.dart` `_place`). The saved record is self-consistent and the list shows its text right away, so this is minor here; it shares the fix of v-new-details 1.
+- v-new-category, v-auth-phone, x-name-capture, x-evidence-viewer, v-payment-methods, x-payment-method-form, v-addresses, shell: no relevant changes; still PASS.
+
+## Needs raised
+
+- **core-ui**: `PlaceAutocompleteField` selection-cleared callback (v-new-details 1, x-address-form); places search error copy (v-new-details 2); runner marker size (v-track 1).
+- **flutter-customer**: v-new-details 1 (clear the draft place and show `Choose a place from the list.`), the same in x-address-form; v-task-detail 1 (`itemAmountDue`).
+- **api-contract**: provider failure reason (existing); payment confirmed/failed and rating reminder event types (existing); drop the push device server-side on suspension (optional).
+
+## Questions for the owner
+
+- No new questions. Row 91 (combined-STK copy) is accepted as proposed in the specs until the owner answers; row 68 (SQ-9) keeps the expired-quote fallback.
