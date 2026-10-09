@@ -157,6 +157,24 @@ describe('PaymentsService.recordPriceDifference (rows 44, 48)', () => {
   });
 });
 
+describe('PaymentsService.primaryRouteFor (row 86)', () => {
+  it('maps the primary payment flow to its merchant route', async () => {
+    expect(
+      await build({ primaryFlow: PaymentFlow.CUSTOMER_TO_RUNNER }).service.primaryRouteFor('e-1'),
+    ).toBe(MerchantRoute.SEND_TO_RUNNER);
+    expect(
+      await build({ primaryFlow: PaymentFlow.MERCHANT_DIRECT }).service.primaryRouteFor('e-1'),
+    ).toBe(MerchantRoute.MERCHANT_DIRECT);
+  });
+
+  it('is null without a primary payment or merchant amount', async () => {
+    expect(await build({ primaryFlow: null }).service.primaryRouteFor('e-1')).toBeNull();
+    expect(
+      await build({ primaryFlow: PaymentFlow.PLATFORM_ONLY }).service.primaryRouteFor('e-1'),
+    ).toBeNull();
+  });
+});
+
 describe('PaymentsService.chargeDifference / retryDifference', () => {
   const stkDifference = {
     id: 'p-1',

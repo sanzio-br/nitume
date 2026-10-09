@@ -182,10 +182,14 @@ export class PriceChangeService {
       }
       const difference = round2(Number(req.toPrice) - Number(req.fromPrice));
       let recorded: { paymentId: string; flow: PaymentFlow } | null = null;
-      // A decrease on a paid task opens its own refund review for the
-      // difference (rows 48, 71), committed with the approval.
+      // A decrease on a paid send_to_runner task opens its own refund review
+      // for the difference (rows 48, 71), committed with the approval. On
+      // merchant_direct Nitume never held the item money, so none opens
+      // (row 86).
       const refund =
-        difference < 0 && POST_PAYMENT.has(errand.status)
+        difference < 0 &&
+        POST_PAYMENT.has(errand.status) &&
+        (await this.payments.primaryRouteFor(errandId, manager)) === MerchantRoute.SEND_TO_RUNNER
           ? await this.refunds.openForDecrease(manager, errandId, req.id, -difference)
           : null;
       if (difference > 0 && POST_PAYMENT.has(errand.status)) {

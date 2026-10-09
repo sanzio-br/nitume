@@ -436,6 +436,20 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
     return { payment, merchantPayment: await this.merchantPaymentFor(payment) };
   }
 
+  /**
+   * Merchant route of the task's primary (non-difference, non-failed)
+   * payment, or null when there is none or it carries no merchant amount.
+   * Decrease refund reviews open only for send_to_runner (row 86).
+   */
+  async primaryRouteFor(errandId: string, manager?: EntityManager): Promise<MerchantRoute | null> {
+    const repo = manager ? manager.getRepository(Payment) : this.payments;
+    const primary = await repo.findOne({
+      where: { errandId, priceChangeRequestId: IsNull(), status: Not(PaymentStatus.FAILED) },
+      order: { createdAt: 'DESC' },
+    });
+    return primary ? routeOf(primary.paymentFlow) : null;
+  }
+
   /** Difference payment row, plus its merchant_payment leg when charged by STK. */
   private async saveDifference(
     manager: EntityManager,

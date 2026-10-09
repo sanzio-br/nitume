@@ -147,6 +147,7 @@ describe('PriceChangeService decisions (owner Q8)', () => {
           merchantPayment: { route: 'send_to_runner', amount: '150.00', paidTo: 'nitume' },
         }),
       ),
+      primaryRouteFor: vi.fn(() => Promise.resolve('send_to_runner' as string | null)),
       chargeDifference: vi.fn((id: string) =>
         Promise.resolve({ payment: { id }, stkStatus: 'PENDING', checkoutRequestId: 'chk-9' }),
       ),
@@ -193,6 +194,23 @@ describe('PriceChangeService decisions (owner Q8)', () => {
       status: 'pending_review',
     });
     expect(out.differencePayment).toBeNull();
+  });
+
+  it('a decrease on a merchant_direct task opens no refund review (row 86)', async () => {
+    const { service, refunds, payments } = setup(ErrandStatus.IN_PROGRESS, { toPrice: '420.00' });
+    payments.primaryRouteFor.mockResolvedValueOnce('merchant_direct');
+    const out = await service.approve('e-1', 'pc-1', customerActor);
+    expect(payments.primaryRouteFor).toHaveBeenCalledWith('e-1', expect.anything());
+    expect(refunds.openForDecrease).not.toHaveBeenCalled();
+    expect(out.refundReview).toBeNull();
+    expect(out.status).toBe(PriceChangeStatus.APPROVED);
+  });
+
+  it('a decrease on a task without a merchant route opens no refund review (row 86)', async () => {
+    const { service, refunds, payments } = setup(ErrandStatus.IN_PROGRESS, { toPrice: '420.00' });
+    payments.primaryRouteFor.mockResolvedValueOnce(null);
+    await service.approve('e-1', 'pc-1', customerActor);
+    expect(refunds.openForDecrease).not.toHaveBeenCalled();
   });
 
   it('a decrease before payment opens no refund review', async () => {
