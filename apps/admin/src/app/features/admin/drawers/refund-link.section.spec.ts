@@ -90,13 +90,23 @@ describe('RefundLinkSectionComponent', () => {
     http.expectNone(`${API}/errands/${ID}/refunds`);
   });
 
-  it('stays hidden when the request fails', async () => {
+  it('shows a load error with Try again, which reloads', async () => {
     const fixture = create('DISPUTED');
     http
       .expectOne(`${API}/errands/${ID}/refunds`)
       .flush(null, { status: 500, statusText: 'Server Error' });
     await flushAsync();
     fixture.detectChanges();
-    expect((fixture.nativeElement as HTMLElement).querySelector('.drawer-section')).toBeNull();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain("Couldn't load refunds.");
+    const retry = Array.from(el.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Try again',
+    )!;
+    retry.click();
+    http.expectOne(`${API}/errands/${ID}/refunds`).flush({ items: [view('r1')] });
+    await flushAsync();
+    fixture.detectChanges();
+    expect(el.textContent).not.toContain("Couldn't load refunds.");
+    expect(el.textContent).toContain('Open refund review');
   });
 });

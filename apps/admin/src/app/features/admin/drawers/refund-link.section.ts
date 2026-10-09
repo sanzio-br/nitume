@@ -32,7 +32,15 @@ export function refundLinkApplies(status: string): boolean {
   selector: 'app-refund-link-section',
   imports: [StatusChipComponent],
   template: `
-    @if (items().length) {
+    @if (failed()) {
+      <section class="drawer-section">
+        <div class="drawer-label">Refund</div>
+        <div class="drawer-caption">
+          Couldn't load refunds.
+          <button type="button" class="btn btn-text btn-sm" (click)="retry()">Try again</button>
+        </div>
+      </section>
+    } @else if (items().length) {
       <section class="drawer-section">
         <div class="drawer-label">Refund</div>
         <div class="drawer-card">
@@ -64,6 +72,7 @@ export class RefundLinkSectionComponent {
   readonly status = input.required<string>();
 
   protected readonly items = signal<ErrandRefundView[]>([]);
+  protected readonly failed = signal(false);
 
   constructor() {
     effect(() => {
@@ -71,6 +80,7 @@ export class RefundLinkSectionComponent {
       const applies = refundLinkApplies(this.status());
       untracked(() => {
         this.items.set([]);
+        this.failed.set(false);
         if (applies) void this.load(id);
       });
     });
@@ -81,8 +91,14 @@ export class RefundLinkSectionComponent {
       const items = await loadErrandRefunds(this.api, id);
       if (id === this.errandId()) this.items.set(items);
     } catch {
-      /* the section stays hidden; the review is still reachable from Refunds */
+      // The rest of the drawer still renders; the section offers a retry.
+      if (id === this.errandId()) this.failed.set(true);
     }
+  }
+
+  protected retry(): void {
+    this.failed.set(false);
+    void this.load(this.errandId());
   }
 
   protected readonly triggerLabel = refundTriggerLabel;
