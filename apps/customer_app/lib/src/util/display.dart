@@ -1,0 +1,171 @@
+import 'package:nitume_core/nitume_core.dart';
+
+/// Display rules from `_shared.md` §7. Nothing here is stored or sent.
+
+/// Task title (OA-15, SQ-4 build default): `title` when set, else
+/// `<category display name> — <first locality>`, where the locality is the
+/// first comma-separated part of the first location's address.
+String errandTitle(Errand errand) {
+  final title = errand.title?.trim();
+  if (title != null && title.isNotEmpty) return title;
+  final locality = firstLocality(errand.locations);
+  if (locality == null) return errand.category.label;
+  return '${errand.category.label} — $locality';
+}
+
+/// First comma-separated part of the first location's address, if any.
+String? firstLocality(List<ErrandLocation>? locations) {
+  if (locations == null || locations.isEmpty) return null;
+  final first = locations.first.addressText.split(',').first.trim();
+  return first.isEmpty ? null : first;
+}
+
+/// `#NT-10482`, or `null` when the API sent no reference. Never derived.
+String? errandReference(Errand errand) {
+  final ref = errand.reference?.trim();
+  if (ref == null || ref.isEmpty) return null;
+  return '#$ref';
+}
+
+/// `#NT-10482 · Today, 10:03 AM` (either part may be missing).
+String errandRefMeta(Errand errand, {DateTime? now}) {
+  final parts = <String>[
+    ?errandReference(errand),
+    if (errand.createdAt != null) formatDayTime(errand.createdAt!, now: now),
+  ];
+  return parts.join(' · ');
+}
+
+/// Runner name as drawn (`Brian K.`, SQ-3 build default: the client
+/// shortens). `null` when the API has no name.
+String? runnerShortName(RunnerSummary? runner) =>
+    shortName(runner?.displayName);
+
+/// "Verified" = `2_id_verified` or higher (v-task-detail Q4 default).
+bool isVerified(VerificationLevel level) => level != VerificationLevel.basic;
+
+/// `Verified · 4.9` (plus ` · 137 tasks` when [withCount]).
+String runnerMeta(RunnerSummary runner, {bool withCount = false}) {
+  final parts = <String>[
+    if (isVerified(runner.verificationLevel)) 'Verified',
+    formatRating(runner.avgRating),
+    if (withCount) '${runner.errandsCompleted} tasks',
+  ];
+  return parts.join(' · ');
+}
+
+/// `Good morning` / `Good afternoon` / `Good evening` (v-home).
+String greetingFor(DateTime now) {
+  final h = now.hour;
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/// First word of the display name, or `null`.
+String? firstName(String? displayName) {
+  final parts = displayName?.trim().split(RegExp(r'\s+'));
+  if (parts == null || parts.isEmpty || parts.first.isEmpty) return null;
+  return parts.first;
+}
+
+/// `+254 712 345 678` for a Kenyan number; the input when it cannot parse.
+String formatPhoneIntl(String phone) {
+  try {
+    final n = KenyanPhone.normalize(phone);
+    return '+254 ${n.substring(4, 7)} ${n.substring(7, 10)} ${n.substring(10)}';
+  } on FormatException {
+    return phone;
+  }
+}
+
+/// `+254 712 ••• 678`: the masked form saved as a payment method `detail`.
+String maskPhone(String phone) {
+  try {
+    final n = KenyanPhone.normalize(phone);
+    return '+254 ${n.substring(4, 7)} ••• ${n.substring(10)}';
+  } on FormatException {
+    return phone;
+  }
+}
+
+/// Adds two API decimal strings exactly (cents), e.g. service fee + runner
+/// fee as returned by the API (v-payment "Amount"). Returns `0.00` form.
+String addDecimals(String a, String b) {
+  final cents = _toCents(a) + _toCents(b);
+  final negative = cents < 0;
+  final abs = cents.abs();
+  final whole = abs ~/ 100;
+  final frac = (abs % 100).toString().padLeft(2, '0');
+  return '${negative ? '-' : ''}$whole.$frac';
+}
+
+/// Difference `b - a` of two API decimal strings (price change).
+String subtractDecimals(String b, String a) => addDecimals(b, _negate(a));
+
+/// True when the decimal string is greater than zero.
+bool isPositiveAmount(String? value) =>
+    value != null && _tryCents(value) != null && _tryCents(value)! > 0;
+
+/// Digits-only amount for the clipboard (`40000`, `40000.50`).
+String plainAmount(String value) {
+  final cents = _toCents(value);
+  final whole = cents ~/ 100;
+  final frac = cents % 100;
+  return frac == 0 ? '$whole' : '$whole.${frac.toString().padLeft(2, '0')}';
+}
+
+String _negate(String v) {
+  final t = v.trim();
+  return t.startsWith('-') ? t.substring(1) : '-$t';
+}
+
+int _toCents(String value) => _tryCents(value) ?? 0;
+
+int? _tryCents(String value) {
+  final m = RegExp(r'^([+-])?(\d+)(?:\.(\d{1,}))?$')
+      .firstMatch(value.trim().replaceAll(',', ''));
+  if (m == null) return null;
+  final whole = int.parse(m.group(2)!);
+  final fracRaw = (m.group(3) ?? '').padRight(2, '0').substring(0, 2);
+  final cents = whole * 100 + int.parse(fracRaw);
+  return m.group(1) == '-' ? -cents : cents;
+}
+
+/// Customer-facing messages for an API failure (`_shared.md` §7).
+String friendlyError(Object error) {
+  if (error is NitumeApiException && error.isNetworkError) {
+    return 'Check your connection and try again.';
+  }
+  return 'Something went wrong. Please try again.';
+}
+
+/// Status code of an API failure, if any.
+int? statusOf(Object error) =>
+    error is NitumeApiException ? error.statusCode : null;
+
+/// Home active-card meta line by state (v-home, proposed copy).
+String activeCardMeta(Errand errand) {
+  final name = runnerShortName(errand.runner) ?? 'Your runner';
+  return switch (errand.status) {
+    ErrandStatus.requested => 'Waiting for your quote',
+    ErrandStatus.quoted => 'Your quote is ready',
+    ErrandStatus.accepted => 'Pay to confirm your task',
+    ErrandStatus.paymentConfirmed => 'Finding a runner',
+    ErrandStatus.runnerAssigned => '$name is assigned',
+    ErrandStatus.runnerEnRoute => '$name is en route',
+    ErrandStatus.arrived => '$name has arrived',
+    ErrandStatus.inProgress => '$name is on it',
+    ErrandStatus.awaitingCustomer => 'Ready for your review',
+    _ => statusPresentation(errand.status).label,
+  };
+}
+
+/// Home active-card button by state (v-home table).
+String activeCardAction(ErrandStatus status) => switch (status) {
+  ErrandStatus.requested => 'View request →',
+  ErrandStatus.quoted => 'Review quote →',
+  ErrandStatus.accepted => 'Pay now →',
+  ErrandStatus.awaitingCustomer => 'Review evidence →',
+  _ => 'Track live →',
+};
