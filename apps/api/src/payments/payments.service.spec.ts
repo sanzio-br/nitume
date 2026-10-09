@@ -73,6 +73,7 @@ const build = (opts: {
         status: ErrandStatus.ACCEPTED,
         quotedPrice: '1000.00',
         budget: opts.budget ?? '0.00',
+        category: 'buy_for_me',
         ...opts.merchant,
       }),
     ),
@@ -229,6 +230,17 @@ describe('PaymentsService.initiate', () => {
     expect(await codeOf(service.initiate('e-1', user))).toBe('merchant_route_required');
   });
 
+  it('never charges a merchant amount outside Buy For Me / Get It For Me (row 80)', async () => {
+    const { service, payments } = build({
+      budget: '2500.00',
+      merchant: { category: 'inspection' } as never,
+    });
+    await service.initiate('e-1', user);
+    expect(payments.create).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentFlow: PaymentFlow.PLATFORM_ONLY, merchantAmount: '0.00' }),
+    );
+  });
+
   it('refuses merchant_direct while no merchant Till/Paybill details exist', async () => {
     const { service } = build({ budget: '2500.00' });
     expect(
@@ -251,6 +263,8 @@ describe('PaymentsService.initiate', () => {
       merchantName: 'Naivas',
       tillNumber: '123456',
       paybillNumber: null,
+      merchantDetailsUpdatedAt: null,
+      merchantDetailsChangedAfterPayment: false,
     });
   });
 

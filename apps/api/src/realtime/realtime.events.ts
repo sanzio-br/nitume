@@ -15,6 +15,7 @@
  *  - server -> client `quote:reissued` (admin re-quote, N-4 / row 72)
  *  - server -> client `merchant_details:updated` (Till/Paybill set)
  *  - room `admins` + server -> client `quote:requested` (row 68)
+ *  - server -> client `merchant_details:changed` (row 80)
  */
 export const errandRoom = (errandId: string): string => `errand:${errandId}`;
 
@@ -36,6 +37,8 @@ export const SocketServerEvent = {
   PRICE_CHANGE_REQUESTED: 'price_change:requested',
   QUOTE_REISSUED: 'quote:reissued',
   MERCHANT_DETAILS_UPDATED: 'merchant_details:updated',
+  /** PROPOSED (row 80): details changed after a merchant-direct payment started. */
+  MERCHANT_DETAILS_CHANGED: 'merchant_details:changed',
   /** PROPOSED (row 68): to `admins` and `errand:{id}`. */
   QUOTE_REQUESTED: 'quote:requested',
 } as const;
@@ -48,6 +51,7 @@ export const DomainEvent = {
   QUOTE_REISSUED: 'quote.reissued',
   MERCHANT_DETAILS_UPDATED: 'errand.merchant_details_updated',
   QUOTE_REQUESTED: 'quote.requested',
+  MERCHANT_DETAILS_CHANGED: 'merchant_details.changed',
 } as const;
 
 export interface EvidenceUploadedEvent {

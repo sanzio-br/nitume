@@ -77,6 +77,21 @@ export const BUDGET_CATEGORIES = new Set<ErrandCategory>([
 ]);
 
 /**
+ * Merchant amounts and merchant Till/Paybill details apply only to Buy For
+ * Me and Get It For Me (rows 45, 80): 400 with `code` otherwise.
+ */
+export const assertMerchantCategory = (category: ErrandCategory, code: string): void => {
+  if (!BUDGET_CATEGORIES.has(category)) {
+    throw new ApiError(
+      HttpStatus.BAD_REQUEST,
+      code,
+      'Merchant amounts only apply to Buy For Me and Get It For Me tasks',
+      { category },
+    );
+  }
+};
+
+/**
  * Budget only for Buy For Me and Get It For Me (row 45): required there
  * (400 budget_required), refused elsewhere when positive (400
  * budget_not_applicable). Returns the budget to store.

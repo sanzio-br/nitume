@@ -16,6 +16,7 @@ import {
 } from '../common/enums';
 import { ApiError, conflict } from '../common/api-error';
 import { ErrandStateMachine, TransitionGuard } from '../errands/errand-state-machine';
+import { assertMerchantCategory } from '../errands/errand-rules';
 import { MerchantRoute } from '../payments/payment-views';
 import { DifferencePaymentView, PaymentsService } from '../payments/payments.service';
 import { CustomerRefundView, RefundsService } from '../payments/refunds.service';
@@ -95,6 +96,9 @@ export class PriceChangeService {
         { status: errand.status },
       );
     }
+    // A price change moves the merchant/item amount, which only Buy For Me
+    // and Get It For Me carry (row 80).
+    assertMerchantCategory(errand.category, 'merchant_amount_not_applicable');
     if (actor.role !== UserRole.ADMIN) {
       const isAssignedRunner = await this.isAssignedRunner(
         errandId,

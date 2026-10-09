@@ -13,6 +13,7 @@ import { PaymentsService } from './payments.service';
 import { RefundReview } from './refund-review.entity';
 import { RefundsController } from './refunds.controller';
 import { RefundsService } from './refunds.service';
+import { MerchantDetailsWatcher } from './merchant-details.watcher';
 import { BullModule } from '@nestjs/bullmq';
 import { MAINTENANCE_QUEUE } from '../infra/queue/queues';
 import { ConsoleMpesaProvider } from './providers/console.provider';
@@ -33,7 +34,13 @@ import { mpesaProviderFactory } from './providers/mpesa-provider.factory';
     ]),
   ],
   controllers: [PaymentsController, RefundsController, ErrandRefundController],
-  providers: [PaymentsService, RefundsService, ConsoleMpesaProvider, mpesaProviderFactory],
+  providers: [
+    PaymentsService,
+    RefundsService,
+    MerchantDetailsWatcher,
+    ConsoleMpesaProvider,
+    mpesaProviderFactory,
+  ],
   exports: [PaymentsService, RefundsService],
 })
 export class PaymentsModule {}

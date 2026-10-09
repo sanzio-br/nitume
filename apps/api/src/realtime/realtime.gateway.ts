@@ -19,6 +19,7 @@ import {
   QuoteReissuedEvent,
   QuoteRequestedEvent,
 } from '../errands/errands.service';
+import { MerchantDetailsChangedEvent } from '../payments/payment-events';
 import { UsersService } from '../users/users.service';
 import {
   ADMIN_ROOM,
@@ -165,6 +166,14 @@ export class RealtimeGateway implements OnGatewayConnection {
     this.server
       ?.to(errandRoom(event.errandId))
       .emit(SocketServerEvent.MERCHANT_DETAILS_UPDATED, event);
+  }
+
+  /** Merchant details changed after a merchant-direct payment started (row 80). */
+  @OnEvent(DomainEvent.MERCHANT_DETAILS_CHANGED)
+  onMerchantDetailsChanged(event: MerchantDetailsChangedEvent): void {
+    this.server
+      ?.to(errandRoom(event.errandId))
+      .emit(SocketServerEvent.MERCHANT_DETAILS_CHANGED, event);
   }
 
   /** Customer asked for a new quote (row 68): admins and the errand room. */

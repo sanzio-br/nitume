@@ -223,6 +223,8 @@ describe('Re-quote and merchant-details notifications (N-4, rows 42-44)', () => 
       tillNumber: '123456',
       paybillNumber: null,
       accountReference: null,
+      changed: false,
+      merchantDetailsUpdatedAt: null,
     });
     expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
       kind: 'merchant_details',
@@ -295,5 +297,45 @@ describe('Quote request admin feed (row 68)', () => {
       await service.deliverFeed({ kind: 'quote_requested', errandId: 'e-1', reference: 'NT-10001' }),
     ).toBeNull();
     expect(notifications.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('Merchant details changed after a merchant-direct payment (row 80)', () => {
+  it('does not send the "added" item for a change of existing details', async () => {
+    const { service, queue } = build();
+    await service.onMerchantDetails({
+      errandId: 'e-1',
+      merchantName: 'Naivas',
+      tillNumber: '654321',
+      paybillNumber: null,
+      accountReference: null,
+      changed: true,
+      merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
+    });
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('queues a merchant_details_changed item for the customer', async () => {
+    const { service, queue } = build();
+    await service.onMerchantDetailsChanged({
+      errandId: 'e-1',
+      merchantName: 'Naivas',
+      tillNumber: '654321',
+      paybillNumber: null,
+      accountReference: null,
+      merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
+    });
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
+      kind: 'merchant_details_changed',
+      errandId: 'e-1',
+      merchantName: 'Naivas',
+    });
+    expect(
+      copyFor({ kind: 'merchant_details_changed', errandId: 'e-1', merchantName: 'Naivas' }),
+    ).toMatchObject({
+      eventType: 'merchant_details.changed',
+      title: 'Merchant payment details changed',
+      body: expect.stringContaining('Naivas'),
+    });
   });
 });

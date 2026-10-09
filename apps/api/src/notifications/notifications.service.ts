@@ -23,6 +23,10 @@ import {
   QuoteReissuedEvent,
   QuoteRequestedEvent,
 } from '../errands/errands.service';
+import {
+  MERCHANT_DETAILS_CHANGED_EVENT,
+  MerchantDetailsChangedEvent,
+} from '../payments/payment-events';
 import { AppNotification } from './app-notification.entity';
 import { NotificationLog } from './notification-log.entity';
 import { PUSH_SENDER, PushSender } from './push/push-sender';
@@ -65,6 +69,7 @@ export type FeedJob =
       acceptanceRequired: boolean;
     }
   | { kind: 'merchant_details'; errandId: string; merchantName: string | null }
+  | { kind: 'merchant_details_changed'; errandId: string; merchantName: string | null }
   /** Admin-facing (row 68): written to every active admin's feed. */
   | { kind: 'quote_requested'; errandId: string; reference: string };
 
@@ -194,8 +199,23 @@ export class NotificationsService {
   /** Merchant Till/Paybill details added -> merchant_direct is now possible. */
   @OnEvent(MERCHANT_DETAILS_UPDATED_EVENT, { async: true })
   async onMerchantDetails(event: MerchantDetailsUpdatedEvent): Promise<void> {
+    // A change of existing details is announced only when a merchant-direct
+    // payment has started (merchant_details.changed, row 80).
+    if (event.changed) {
+      return;
+    }
     await this.enqueue({
       kind: 'merchant_details',
+      errandId: event.errandId,
+      merchantName: event.merchantName,
+    });
+  }
+
+  /** Details changed after a merchant-direct payment started -> warn the customer (row 80). */
+  @OnEvent(MERCHANT_DETAILS_CHANGED_EVENT, { async: true })
+  async onMerchantDetailsChanged(event: MerchantDetailsChangedEvent): Promise<void> {
+    await this.enqueue({
+      kind: 'merchant_details_changed',
       errandId: event.errandId,
       merchantName: event.merchantName,
     });
@@ -369,6 +389,14 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         body: job.acceptanceRequired
           ? `Your task has a new quote of ${formatKsh(job.total)}. Accept it to continue to payment.`
           : `Your task has a new quote of ${formatKsh(job.total)}. Review it to continue.`,
+      };
+    case 'merchant_details_changed':
+      return {
+        eventType: NotificationEventType.MERCHANT_DETAILS_CHANGED,
+        title: 'Merchant payment details changed',
+        body: job.merchantName
+          ? `The payment details for ${job.merchantName} changed after you started paying. Check the Till or Paybill before you pay.`
+          : 'The merchant payment details changed after you started paying. Check the Till or Paybill before you pay.',
       };
     case 'quote_requested':
       return {

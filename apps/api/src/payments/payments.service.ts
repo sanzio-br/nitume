@@ -25,6 +25,7 @@ import { ErrandStatus } from '../common/enums';
 import { AuthContext } from '../common/decorators/auth.decorators';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { ErrandStateMachine } from '../errands/errand-state-machine';
+import { BUDGET_CATEGORIES } from '../errands/errand-rules';
 import { ErrandsService } from '../errands/errands.service';
 import { Payment } from './payment.entity';
 import { PaymentTransaction } from './payment-transaction.entity';
@@ -248,7 +249,8 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
       runnerFeeRate: this.config.get<number>('pricing.runnerFeeRate', 0.3),
     };
     const budget = Number(errand.budget);
-    const merchantAmount = budget > 0 ? round2(budget) : 0;
+    // Merchant amounts only on Buy For Me / Get It For Me (rows 45, 80).
+    const merchantAmount = BUDGET_CATEGORIES.has(errand.category) && budget > 0 ? round2(budget) : 0;
     const flow = await this.flowFor(errandId, merchantAmount, opts.merchantRoute);
     const phone = await this.payerPhone(user, opts.paymentMethodId);
 
@@ -682,6 +684,7 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
       tillNumber: errand.merchantTillNumber,
       paybillNumber: errand.merchantPaybillNumber,
       accountReference: errand.merchantAccountReference,
+      merchantDetailsUpdatedAt: errand.merchantDetailsUpdatedAt ?? null,
     };
   }
 
@@ -706,7 +709,27 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
       tillNumber: details?.tillNumber ?? null,
       paybillNumber: details?.paybillNumber ?? null,
       accountReference: details?.accountReference ?? null,
+      merchantDetailsUpdatedAt: details?.merchantDetailsUpdatedAt ?? null,
+      merchantDetailsChangedAfterPayment: Boolean(
+        details?.merchantDetailsUpdatedAt &&
+          details.merchantDetailsUpdatedAt.getTime() > payment.createdAt.getTime(),
+      ),
     };
+  }
+
+  /**
+   * True when the errand has a merchant_direct payment (primary or
+   * difference) that has started and not failed (row 80).
+   */
+  async merchantDirectStarted(errandId: string): Promise<boolean> {
+    const count = await this.payments.count({
+      where: {
+        errandId,
+        paymentFlow: PaymentFlow.MERCHANT_DIRECT,
+        status: Not(PaymentStatus.FAILED),
+      },
+    });
+    return count > 0;
   }
 
   /**

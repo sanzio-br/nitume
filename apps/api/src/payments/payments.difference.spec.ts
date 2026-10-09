@@ -33,6 +33,7 @@ const build = (opts: {
       );
     }),
     find: vi.fn(() => Promise.resolve([])),
+    count: vi.fn(() => Promise.resolve(opts.primaryFlow === PaymentFlow.MERCHANT_DIRECT ? 1 : 0)),
     create: vi.fn((row: object) => row),
     save: vi.fn((row: object) => {
       const out = { id: `p-${saved.length + 1}`, createdAt: new Date(), ...row };
@@ -172,6 +173,41 @@ describe('PaymentsService.primaryRouteFor (row 86)', () => {
     expect(
       await build({ primaryFlow: PaymentFlow.PLATFORM_ONLY }).service.primaryRouteFor('e-1'),
     ).toBeNull();
+  });
+});
+
+describe('Merchant details changed after a merchant-direct payment (row 80)', () => {
+  it('merchantDirectStarted counts non-failed merchant_direct payments', async () => {
+    const direct = build({ primaryFlow: PaymentFlow.MERCHANT_DIRECT });
+    expect(await direct.service.merchantDirectStarted('e-1')).toBe(true);
+    expect(direct.payments.count).toHaveBeenCalledWith({
+      where: { errandId: 'e-1', paymentFlow: PaymentFlow.MERCHANT_DIRECT, status: expect.anything() },
+    });
+    expect(
+      await build({ primaryFlow: PaymentFlow.CUSTOMER_TO_RUNNER }).service.merchantDirectStarted('e-1'),
+    ).toBe(false);
+  });
+
+  it('flags the merchant_direct view when details changed after the payment started', async () => {
+    const changedAt = new Date(Date.now() + 60_000);
+    const { service } = build({
+      primaryFlow: PaymentFlow.MERCHANT_DIRECT,
+      merchant: { merchantName: 'Naivas', merchantTillNumber: '654321' },
+    });
+    // Details changed one minute after this difference payment was created.
+    const errands = (service as unknown as { errands: { getById: ReturnType<typeof vi.fn> } }).errands;
+    errands.getById.mockResolvedValue({
+      id: 'e-1',
+      merchantName: 'Naivas',
+      merchantTillNumber: '654321',
+      merchantDetailsUpdatedAt: changedAt,
+    });
+    const res = await service.recordPriceDifference('e-1', 'pc-1', 150);
+    expect(res.merchantPayment).toMatchObject({
+      route: 'merchant_direct',
+      merchantDetailsUpdatedAt: changedAt,
+      merchantDetailsChangedAfterPayment: true,
+    });
   });
 });
 

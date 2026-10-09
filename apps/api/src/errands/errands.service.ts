@@ -44,6 +44,7 @@ import {
 import {
   assertDeadlineInFuture,
   assertLocationsFit,
+  assertMerchantCategory,
   budgetFor,
   deriveUrgency,
 } from './errand-rules';
@@ -265,6 +266,13 @@ export interface MerchantDetailsUpdatedEvent {
   tillNumber: string | null;
   paybillNumber: string | null;
   accountReference: string | null;
+  /**
+   * True when details already existed and this call changed them (row 80);
+   * false on the first entry or when nothing changed.
+   */
+  changed: boolean;
+  /** Set when `changed`: the errand's new merchantDetailsUpdatedAt. */
+  merchantDetailsUpdatedAt: string | null;
 }
 
 /** States in which an admin may replace an expired quote (rows 46, 72). */
@@ -605,6 +613,7 @@ export class ErrandsService {
         `The task is ${errand.status} and can no longer be edited`,
       );
     }
+    assertMerchantCategory(errand.category, 'merchant_details_not_applicable');
     const till = details.tillNumber ?? null;
     const paybill = details.paybillNumber ?? null;
     if ((till === null) === (paybill === null)) {
@@ -627,16 +636,28 @@ export class ErrandsService {
       merchantPaybillNumber: paybill,
       merchantAccountReference: paybill ? (details.accountReference ?? null) : null,
     };
-    await this.errands.update(errandId, patch);
+    const hadDetails = Boolean(errand.merchantTillNumber || errand.merchantPaybillNumber);
+    const changed =
+      hadDetails &&
+      (errand.merchantName !== patch.merchantName ||
+        errand.merchantTillNumber !== patch.merchantTillNumber ||
+        errand.merchantPaybillNumber !== patch.merchantPaybillNumber ||
+        (errand.merchantAccountReference ?? null) !== patch.merchantAccountReference);
+    const update: Partial<Errand> = changed
+      ? { ...patch, merchantDetailsUpdatedAt: new Date() }
+      : patch;
+    await this.errands.update(errandId, update);
     const event: MerchantDetailsUpdatedEvent = {
       errandId,
       merchantName: patch.merchantName,
       tillNumber: patch.merchantTillNumber,
       paybillNumber: patch.merchantPaybillNumber,
       accountReference: patch.merchantAccountReference,
+      changed,
+      merchantDetailsUpdatedAt: update.merchantDetailsUpdatedAt?.toISOString() ?? null,
     };
     setImmediate(() => this.events.emit(MERCHANT_DETAILS_UPDATED_EVENT, event));
-    return Object.assign(errand, patch);
+    return Object.assign(errand, update);
   }
 
   /**

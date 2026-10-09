@@ -65,7 +65,7 @@ describe('PriceChangeService.request domain event (A-2)', () => {
     };
     const errands = {
       findOne: vi.fn(() =>
-        Promise.resolve({ id: 'e-1', status: 'IN_PROGRESS', quotedPrice: '900.00', budget: '500.00' }),
+        Promise.resolve({ id: 'e-1', status: 'IN_PROGRESS', quotedPrice: '900.00', budget: '500.00', category: 'buy_for_me' }),
       ),
     };
     const service = new PriceChangeService(
@@ -345,7 +345,7 @@ describe('PriceChangeService.request runner window (row 49)', () => {
       save: vi.fn((row: object) => Promise.resolve({ id: 'pc-1', createdAt: new Date(), ...row })),
     };
     const errands = {
-      findOne: vi.fn(() => Promise.resolve({ id: 'e-1', status, budget: '500.00' })),
+      findOne: vi.fn(() => Promise.resolve({ id: 'e-1', status, budget: '500.00', category: 'buy_for_me' })),
     };
     const errandService = { isCurrentRunner: vi.fn(() => Promise.resolve(true)) };
     const service = new PriceChangeService(
@@ -372,6 +372,33 @@ describe('PriceChangeService.request runner window (row 49)', () => {
       const err = await service.request('e-1', { toPrice: 650 }, runner).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect((err as ApiError).code).toBe('price_change_not_in_progress');
+      expect(requests.save).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('PriceChangeService.request category rule (row 80)', () => {
+  it.each(['inspection', 'representation', 'queue_admin', 'business'])(
+    'refuses a price change on %s with merchant_amount_not_applicable',
+    async (category) => {
+      const requests = { findOne: vi.fn(), save: vi.fn() };
+      const errands = {
+        findOne: vi.fn(() =>
+          Promise.resolve({ id: 'e-1', status: ErrandStatus.IN_PROGRESS, budget: '0.00', category }),
+        ),
+      };
+      const service = new PriceChangeService(
+        requests as never,
+        errands as never,
+        {} as never,
+        { emit: vi.fn() } as never,
+        {} as never,
+        {} as never,
+      );
+      const err = await service
+        .request('e-1', { toPrice: 650 }, { userId: 'admin', role: UserRole.ADMIN })
+        .catch((e: unknown) => e);
+      expect((err as ApiError).code).toBe('merchant_amount_not_applicable');
       expect(requests.save).not.toHaveBeenCalled();
     },
   );

@@ -179,9 +179,26 @@ describe('RealtimeGateway pushes (A-1, A-2)', () => {
       tillNumber: '123456',
       paybillNumber: null,
       accountReference: null,
+      changed: false,
+      merchantDetailsUpdatedAt: null,
     };
     gateway.onMerchantDetailsUpdated(merchant);
     expect(emit).toHaveBeenCalledWith('merchant_details:updated', merchant);
+  });
+
+  it('forwards merchant_details:changed to the errand room (row 80)', () => {
+    const { gateway, to, emit } = build();
+    const event = {
+      errandId: ERRAND_ID,
+      merchantName: 'Naivas',
+      tillNumber: '654321',
+      paybillNumber: null,
+      accountReference: null,
+      merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
+    };
+    gateway.onMerchantDetailsChanged(event);
+    expect(to).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
+    expect(emit).toHaveBeenCalledWith('merchant_details:changed', event);
   });
 
   it('emits location:update with the §4.2 payload', () => {
