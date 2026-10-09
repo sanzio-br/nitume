@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)",
+      "Bash(git branch*)", "Bash(git checkout*)", "Bash(git switch*)",
+      "Bash(git add*)", "Bash(git commit*)", "Bash(git worktree*)",
+      "Bash(flutter analyze*)", "Bash(flutter test*)", "Bash(dart format*)",
+      "Bash(npm run lint*)", "Bash(npm test*)", "Bash(rg *)"
+    ],
+    "deny": [
+      "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push origin main*)",
+      "Bash(git merge*)", "Bash(git rebase*)", "Bash(git reset --hard*)",
+      "Read(./.env)", "Read(./.env.*)"
+    ]
+  }
+}
