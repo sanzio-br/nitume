@@ -12,34 +12,34 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | customer/v-auth-otp | awaiting-owner | owner | feat/customer-screens | core-ui: NitumePushedHeader, OtpCodeField, link button variant; app-level session restore | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/v-home | awaiting-owner | owner | feat/customer-screens | core-ui: NitumeTopBar, NotificationBell, InitialsAvatar, SearchEntryRow, SectionLabel, CategoryTile, ActiveTaskCard, TaskRow, StatusChip, empty/error states; api-contract: A-1, A-2, A-4, A-10 | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/v-new-category | awaiting-owner | owner | feat/customer-screens | core-ui: NitumePushedHeader, StepProgressBar, CategoryTile; shell: New task pushes wizard | reviewed 2026-10-08: READY; merge in order (see session log) |
-| customer/v-new-details | audited-pass | reviewer | feat/customer-integrations | core-ui: NitumeField (multiline/money), NitumeChoiceChip, PlaceAutocompleteField, NitumeCard; Google Places key/config | re-audit round 2 PASS 2026-10-09 (c8cd3d9) |
-| customer/v-new-review | audited-pass | reviewer | feat/customer-integrations | api-contract: A-5, A-6, A-2; core-ui: ReceiptCard, NitumeChoiceChip | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
-| customer/v-price-auth | audited-pass | reviewer | feat/customer-integrations | api-contract: A-8, A-2; core-ui: NitumeCard, StatusChip, NumText, non-dismissible route | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
-| customer/v-payment | audited-pass | reviewer | feat/customer-integrations | api-contract: A-7 idempotency key, A-2; core-ui: PulsingDots, NumText | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
+| customer/v-new-details | awaiting-owner | owner | feat/customer-integrations | core-ui: NitumeField (multiline/money), NitumeChoiceChip, PlaceAutocompleteField, NitumeCard; Google Places key/config | reviewed 2026-10-09: READY (second stack) |
+| customer/v-new-review | awaiting-owner | owner | feat/customer-integrations | api-contract: A-5, A-6, A-2; core-ui: ReceiptCard, NitumeChoiceChip | reviewed 2026-10-09: READY (second stack) |
+| customer/v-price-auth | awaiting-owner | owner | feat/customer-integrations | api-contract: A-8, A-2; core-ui: NitumeCard, StatusChip, NumText, non-dismissible route | reviewed 2026-10-09: READY (second stack) |
+| customer/v-payment | awaiting-owner | owner | feat/customer-integrations | api-contract: A-7 idempotency key, A-2; core-ui: PulsingDots, NumText | reviewed 2026-10-09: READY (second stack) |
 | customer/v-payment-methods | awaiting-owner | owner | feat/customer-screens | core-ui: PaymentMethodCard, StatusChip (small info), NitumePushedHeader | reviewed 2026-10-08: READY; merge in order (see session log) |
-| customer/v-track | audited-pass | reviewer | feat/customer-integrations | api-contract: A-1, A-2, A-3, A-4; core-ui: LiveTrackingMap, EtaChip, RunnerSummaryTile, StatusTimeline, NotificationBell, small outline button; google_maps_flutter | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
-| customer/v-task-detail | audited-pass | reviewer | feat/customer-integrations | api-contract: A-4, A-9 disputes, A-12 evidence URLs; core-ui: RunnerSummaryTile, EvidenceGrid, ReceiptCard, MenuRow | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
-| customer/v-evidence-confirm | audited-pass | reviewer | feat/customer-integrations | api-contract: A-12, A-2; core-ui: EvidenceGrid, EvidenceViewer, ReceiptCard (dashed) | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
+| customer/v-track | awaiting-owner | owner | feat/customer-integrations | api-contract: A-1, A-2, A-3, A-4; core-ui: LiveTrackingMap, EtaChip, RunnerSummaryTile, StatusTimeline, NotificationBell, small outline button; google_maps_flutter | reviewed 2026-10-09: READY (second stack) |
+| customer/v-task-detail | awaiting-owner | owner | feat/customer-integrations | api-contract: A-4, A-9 disputes, A-12 evidence URLs; core-ui: RunnerSummaryTile, EvidenceGrid, ReceiptCard, MenuRow | reviewed 2026-10-09: READY (second stack) |
+| customer/v-evidence-confirm | awaiting-owner | owner | feat/customer-integrations | api-contract: A-12, A-2; core-ui: EvidenceGrid, EvidenceViewer, ReceiptCard (dashed) | reviewed 2026-10-09: READY (second stack) |
 | customer/v-rate | awaiting-owner | owner | feat/customer-screens | core-ui: StarRatingInput, InitialsAvatar, NitumeField multiline; api-contract: A-4 | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/v-history | awaiting-owner | owner | feat/customer-screens | core-ui: TaskHistoryCard, StatusChip, statusPresentation, empty/error/skeleton; api-contract: A-10, A-4 | reviewed 2026-10-08: READY; merge in order (see session log) |
-| customer/v-notifications | audited-pass | reviewer | feat/customer-integrations | core-ui: NotificationRow, NotificationsRepository; api-contract: A-13 FCM registration, A-14 eventType enum | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
+| customer/v-notifications | awaiting-owner | owner | feat/customer-integrations | core-ui: NotificationRow, NotificationsRepository; api-contract: A-13 FCM registration, A-14 eventType enum | reviewed 2026-10-09: READY (second stack) |
 | customer/v-addresses | awaiting-owner | owner | feat/customer-screens | core-ui: SavedAddressCard, PlaceAutocompleteField (x-address-form) | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/v-profile | awaiting-owner | owner | feat/customer-screens | core-ui: MenuRow (+destructive), InitialsAvatar, NitumeTopBar; api-contract: A-11, A-15 | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/shell | awaiting-owner | owner | feat/customer-screens | core-ui: NitumeTabBar / navigationBarTheme fix | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/x-name-capture | awaiting-owner | owner | feat/customer-screens | api-contract A-15 (display_name, PATCH /users/me) | reviewed 2026-10-08: READY; merge in order (see session log) |
-| customer/x-legal | audited-pass | reviewer | feat/customer-integrations | core-ui AppConfig termsUri/privacyUri; url_launcher (SQ-2) | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
-| customer/x-awaiting-quote | audited-pass | reviewer | feat/customer-integrations | api-contract A-20 (fee fields + expiresAt), A-22 merchant details, A-16, A-6/A-7; core-ui C-16 radio-row, C-35, C-40 | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
-| customer/x-merchant-payment | audited-pass | reviewer | feat/customer-integrations | api-contract A-22, A-26; core-ui C-39, C-40 | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
+| customer/x-legal | awaiting-owner | owner | feat/customer-integrations | core-ui AppConfig termsUri/privacyUri; url_launcher (SQ-2) | reviewed 2026-10-09: READY (second stack) |
+| customer/x-awaiting-quote | awaiting-owner | owner | feat/customer-integrations | api-contract A-20 (fee fields + expiresAt), A-22 merchant details, A-16, A-6/A-7; core-ui C-16 radio-row, C-35, C-40 | reviewed 2026-10-09: READY (second stack) |
+| customer/x-merchant-payment | awaiting-owner | owner | feat/customer-integrations | api-contract A-22, A-26; core-ui C-39, C-40 | reviewed 2026-10-09: READY (second stack) |
 | customer/x-payment-method-form | awaiting-owner | owner | feat/customer-screens | core-ui C-35, C-36; api-contract A-28 | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/x-report-problem | awaiting-owner | owner | feat/customer-screens | api-contract A-27 (dispute from errand), A-26; core-ui C-35, C-40 | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/x-evidence-viewer | awaiting-owner | owner | feat/customer-screens | core-ui: counter in EvidenceViewer app bar | reviewed 2026-10-08: READY; merge in order (see session log) |
 | customer/x-address-form | awaiting-owner | owner | feat/customer-screens | core-ui C-35, C-36 | reviewed 2026-10-08: READY; merge in order (see session log) |
-| customer/x-support | audited-pass | reviewer | feat/customer-integrations | core-ui AppConfig supportUri; url_launcher (SQ-2) | round-2 re-audit PASS 2026-10-09 (fd4fb5a) |
-| admin/p-refunds | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
-| admin/drawer-refund | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
-| admin/drawer-task-merchant-details | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
-| admin/drawer-task-requote | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
-| admin/drawer-dispute-outcome | audited-pass | reviewer | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | re-audit round 1 PASS 2026-10-09 (5bc8591); minors m-1..m-5, SA-1/SA-2 open (non-blocking) |
+| customer/x-support | awaiting-owner | owner | feat/customer-integrations | core-ui AppConfig supportUri; url_launcher (SQ-2) | reviewed 2026-10-09: READY (second stack) |
+| admin/p-refunds | awaiting-owner | owner | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | reviewed 2026-10-09: READY (second stack) |
+| admin/drawer-refund | awaiting-owner | owner | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | reviewed 2026-10-09: READY (second stack) |
+| admin/drawer-task-merchant-details | awaiting-owner | owner | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | reviewed 2026-10-09: READY (second stack) |
+| admin/drawer-task-requote | awaiting-owner | owner | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | reviewed 2026-10-09: READY (second stack) |
+| admin/drawer-dispute-outcome | awaiting-owner | owner | feat/admin-ops | admin shared widgets A-06/08/09/11/13/14; api-contract N-1..N-8 | reviewed 2026-10-09: READY (second stack) |
 
 All 17 existing customer specs + shell updated with owner answers on docs/customer-spec-answers (stages unchanged). x-recurring-tasks dropped (out of MVP).
 
@@ -96,6 +96,8 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | design-auditor | flutter-customer | v-new-details: clear the draft place on edit and show "Choose a place from the list." (blocker); x-address-form same; v-task-detail "View payment details" via itemAmountDue(); suspension: unregister push before clearing tokens | done: 7089d21, 7192a77 (94 app + 190 core tests) |
 | flutter-customer | core-ui | (optional) run the push-unregister hook before tokenStore.clear() in the auth interceptor, replacing the app's BeforeClearTokenStore wrapper | open |
 | design-auditor | flutter-customer | (minor) v-new-details: "Choose a place from the list." also for text typed without any earlier pick; dev-only schematic map runner dot 22px → 16px overall | open |
+| reviewer | api-contract | (follow-up, before runner location pings) remove sockets from errand rooms when a runner is reassigned | open |
+| reviewer | owner | Add PAYMENTS_PROVIDER, PAYHERO_*, FCM_*, TRUST_PROXY_HOPS, OTP_IP_*, EVIDENCE_SIGNED_URL_TTL_SECONDS and the queue vars to apps/api/.env.example | open |
 
 ## Questions for the project owner
 
@@ -192,6 +194,9 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 89 | api-contract (round 3) | With PAYMENTS_PROVIDER=console in production, mock callbacks are trusted (a warning is logged). Refuse to start instead? Recommended: yes | open |
 | 90 | design-auditor (admin gap report) | Security (G-25): apps/admin logs access and refresh tokens and the OTP request response to the browser console (core/auth/auth.service.ts:39, 47, 50). Being removed on feat/admin-ops. FYI: anyone with console access on a shared machine could have read tokens | open (FYI) |
 | 91 | flutter-customer (integrations) | Combined STK copy (row 76): the checkout and payment screens show the full M-Pesa charge (fees + item amount), with the line "Includes KSh … for your runner's purchase." (builder's copy). Approve the wording? | open |
+| 92 | reviewer (second stack) | feat/customer-integrations has 5 app commits that don't compile on their own (b48bd52, bae2b8d, 6cbf6f1, 915e525, bcb91a3; head is clean). Squash-merge this leaf branch (recommended by reviewer), or merge as is and accept the broken range in history? | open |
+| 93 | reviewer (second stack) | Admin palette (§3): _tokens.scss now names 4 tones not in the design system (#DCE3EE, #C3CADC, #7E8CA8, #EEF1F5), moved from raw mockup values. Approve them, or replace with the nearest design-system tokens as row 15 did for the customer app? | open |
+| 94 | reviewer (second stack) | Row 62 (refund_reviews schema): the reviewer considers it settled by your row-71 approval. Close it? | open |
 
 ## Session log
 
@@ -234,3 +239,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-09 | core-ui fix for the v-new-details blocker: PlaceAutocompleteField.onSelectionCleared + search error copy | adde9da |
 | 2026-10-09 | flutter-customer fixed v-new-details FAIL #1 (stale place cleared on edit), x-address-form, task-detail payment link, suspension unregister order; 94 app tests | 7089d21, 7192a77 |
 | 2026-10-09 | design-auditor round 2: v-new-details PASS; all customer screens matches-design on feat/customer-integrations @ 7192a77 (94 app + 190 core tests). Sent to reviewer with API rounds 2–3 and admin ops | c8cd3d9 |
+| 2026-10-09 | reviewer final check of the second stack: all 7 branches READY. Merge after the first stack: docs/customer-answers-2 → docs/customer-reaudit-2 → docs/admin-ops-spec → feat/api-owner-answers-2 → feat/api-owner-answers-3 → feat/admin-ops → feat/customer-integrations. Answer row 89 before any deploy. PROGRESS entry added | — |

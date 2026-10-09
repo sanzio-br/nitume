@@ -117,20 +117,70 @@ and merge order: see the reviewer summary on `BOARD.md` (session log, 2026-10-07
 
 **Deferred (pending owner decisions on BOARD)**
 
-- Places/Maps SDK (rows 30, 60). **Blocks saving new addresses and so creating tasks.**
-- Socket.IO client in the app (row 29); the app polls instead. Event names (row 23).
-- FCM push sending and the app token (rows 26, 31); BullMQ queue (row 26).
-- Quote preview: no pricing engine (row 47). Customer fee grouping (row 34).
-- Price-change difference is recorded, not charged (rows 44, 48). Send-to-runner
-  mechanics and merchant Till/Paybill source (rows 42, 43); merchant-direct is
-  disabled.
-- Refund payout via M-Pesa B2C/reversal (row 55); refunds are recorded and paid manually.
-- Dispute-window scheduler that moves COMPLETED → CONFIRMED → SETTLED (rows 26, 50).
-- Daraja STK Query for TIMEOUT payments (row 52); per-IP OTP throttling (row 53).
-- url_launcher for Terms/Privacy/Support links (row 39); video evidence playback (row 32).
-- Evidence links are permanent public Cloudinary URLs (row 25).
-- Runner app work (runner notes, location pings) and admin refund screens (web-parity).
+Most items deferred at first were built in the second stack below; see its entry.
+Still deferred from this stack:
+
+- Quote preview: no pricing engine (row 47). The customer sees only the fee total (row 34).
+- Refund payout via M-Pesa B2C/reversal (row 54); refunds are recorded and paid manually.
+- Video evidence playback (row 32, deferred from MVP).
+- Runner app work (runner notes UI, location pings).
 - After merging, run `migration:run` on local DBs (1790100100000 was edited in place;
-  1790100400000 is new). API e2e suite was not re-run after the review; it must use a throwaway database
+  1790100400000 is new). Run the API e2e suite only against a throwaway database
   (row 57). Note: per the migrations section above, `.env` targets `nitume`, the
   near-empty DB, while dev data lives in `nitume_dev`.
+
+## Owner answers rounds 2–3: integrations, PayHero, admin ops — second branch stack
+
+Built by the agent team, 2026-10-08 to 2026-10-09, after the owner answered BOARD
+rows 1–76 and 84. Not merged; merge after the first stack, in the order on `BOARD.md`
+(session log, 2026-10-09). All branches reviewed READY.
+
+**Completed**
+
+- **Specs and audits** (`docs/customer-answers-2`, `docs/customer-reaudit-2`,
+  `docs/admin-ops-spec`): customer specs updated for the owner answers; System Design
+  §3.3 rewritten in `docs/design/` (row 56); admin specs for refunds, merchant details,
+  re-quote and dispute outcome; customer re-audit, all screens PASS.
+- **API** (`feat/api-owner-answers-2`, `feat/api-owner-answers-3`):
+  - Access: rating access check; runners see only their current assignment.
+  - Quotes and price changes: runner short names; `quote_expired` and admin re-quote,
+    including while ACCEPTED with explicit customer acceptance; price-change requests
+    only while IN_PROGRESS.
+  - Payments: merchant Till/Paybill set by admins; send-to-runner and price increases
+    collected by STK to Nitume (one combined STK, row 76); MpesaProvider abstraction
+    with PayHero first (callbacks verified by status re-query) and Daraja kept for
+    later; STK Query for TIMEOUT payments.
+  - Refunds: customer refund status; one refund review per price decrease.
+  - Auth: per-IP OTP throttling (30 requests / 60 verifies per hour); `account_suspended`.
+  - Infrastructure: BullMQ notifications with FCM push; dispute-window and STK-reconcile
+    jobs; 15-minute signed evidence URLs; stable codes on every 409.
+  - 4 migrations, all reversible.
+- **Shared Flutter core + customer app** (`feat/customer-integrations`): Socket.IO
+  live updates (polling only while disconnected), Google Maps tracking within the
+  runner window, Google Places search with required picks, FCM push, url_launcher
+  links, the 10 rebuilt screens, round-3 quote acceptance and refund lists, Android
+  and iOS setup with keys kept out of git.
+- **Admin** (`feat/admin-ops`): token and OTP console logging removed (security);
+  shared admin components; quote, assign and dispute fixes; re-quote section;
+  merchant details; Refunds panel and drawer. Admin tests went from 2 to 101.
+- Verified: API 279 unit tests; core 190; app 94; admin 101; every branch head
+  analyzes or typechecks clean. Design re-audits PASS. Reviewer: all READY.
+
+**Deferred / before go-live**
+
+- **Row 89 (must answer before any deploy):** with `PAYMENTS_PROVIDER=console` in
+  production the public callback is trusted and references are guessable. Recommended:
+  refuse to start.
+- Row 85: confirm PayHero callback shape, signing, status values, rounding and retries.
+- Add to `apps/api/.env.example` (agents can't edit env files here): `PAYMENTS_PROVIDER`,
+  `PAYHERO_*`, `FCM_*`, `TRUST_PROXY_HOPS`, `OTP_IP_*`, `EVIDENCE_SIGNED_URL_TTL_SECONDS`
+  and the queue settings.
+- Android and iOS device builds are unverified (network failure; iOS not built).
+- `feat/customer-integrations` has 5 app commits that don't compile on their own
+  (b48bd52, bae2b8d, 6cbf6f1, 915e525, bcb91a3); the head is clean. Squash-merge or
+  accept (owner decision).
+- Customer quote-request endpoint (row 68); quote preview (row 47); refund payout via B2C.
+- Remove sockets from errand rooms on runner reassignment before runner location pings ship.
+- Legacy evidence uploaded as public keeps its old public URL until migrated.
+- After merging, run `migration:run` (3 more migrations). Run the API e2e suite on a
+  fresh DB with `--no-file-parallelism` (pre-existing payment_type seeding race).
