@@ -28,8 +28,11 @@ const build = (opts: {
   const gateway = new RealtimeGateway(jwt as never, config as never, users as never, errands as never);
   const emit = vi.fn();
   const to = vi.fn(() => ({ emit }));
-  gateway.server = { to } as never;
-  return { gateway, jwt, users, errands, to, emit };
+  const roomSockets: object[] = [];
+  const fetchSockets = vi.fn(() => Promise.resolve(roomSockets));
+  const inRoom = vi.fn(() => ({ fetchSockets }));
+  gateway.server = { to, in: inRoom } as never;
+  return { gateway, jwt, users, errands, to, emit, roomSockets, inRoom };
 };
 
 const socket = (auth: Record<string, unknown> = { token: 'abc' }, headers = {}) => ({
@@ -119,9 +122,9 @@ describe('RealtimeGateway rooms (A-1)', () => {
 });
 
 describe('RealtimeGateway pushes (A-1, A-2)', () => {
-  it('forwards status changes to the errand room', () => {
+  it('forwards status changes to the errand room', async () => {
     const { gateway, to, emit } = build();
-    gateway.onStatusChanged({
+    await gateway.onStatusChanged({
       errandId: ERRAND_ID,
       status: ErrandStatus.ARRIVED,
       from: ErrandStatus.RUNNER_EN_ROUTE,
@@ -236,5 +239,58 @@ describe('RealtimeGateway admin room (row 68)', () => {
     gateway.onQuoteRequested(event);
     expect(to).toHaveBeenCalledWith(['admins', `errand:${ERRAND_ID}`]);
     expect(emit).toHaveBeenCalledWith('quote:requested', event);
+  });
+});
+
+describe('RealtimeGateway room re-check (row 65 follow-up)', () => {
+  const member = (user: object | undefined) => ({
+    data: { user },
+    emit: vi.fn(),
+    leave: vi.fn(),
+  });
+
+  it('removes sockets that lost access before pushing the status change', async () => {
+    const { gateway, errands, roomSockets, emit, inRoom } = build();
+    const customer = member({ userId: 'u-1', role: UserRole.CUSTOMER });
+    const oldRunner = member({ userId: 'r-old', role: UserRole.RUNNER });
+    roomSockets.push(customer, oldRunner);
+    errands.getById.mockImplementation(((_id: string, viewer: { userId: string }) =>
+      viewer.userId === 'r-old'
+        ? Promise.reject(new ForbiddenException())
+        : Promise.resolve({ id: ERRAND_ID })) as never);
+    await gateway.onStatusChanged({
+      errandId: ERRAND_ID,
+      status: ErrandStatus.RUNNER_ASSIGNED,
+      from: ErrandStatus.PAYMENT_CONFIRMED,
+      actor: 'admin',
+    });
+    expect(inRoom).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
+    expect(oldRunner.emit).toHaveBeenCalledWith('errand:access_revoked', { errandId: ERRAND_ID });
+    expect(oldRunner.leave).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
+    expect(customer.leave).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith('errand:status_changed', expect.anything());
+  });
+
+  it('removes sockets without an authenticated user', async () => {
+    const { gateway, roomSockets } = build();
+    const anon = member(undefined);
+    roomSockets.push(anon);
+    expect(await gateway.revalidateRoom(ERRAND_ID)).toBe(1);
+    expect(anon.leave).toHaveBeenCalled();
+  });
+
+  it('keeps sockets on a transient failure and never throws', async () => {
+    const { gateway, errands, roomSockets } = build();
+    const runner = member({ userId: 'r-1', role: UserRole.RUNNER });
+    roomSockets.push(runner);
+    errands.getById.mockRejectedValueOnce(new Error('db down'));
+    await expect(gateway.revalidateRoom(ERRAND_ID)).resolves.toBe(0);
+    expect(runner.leave).not.toHaveBeenCalled();
+  });
+
+  it('re-checks on errand.access_changed', async () => {
+    const { gateway, inRoom } = build();
+    await gateway.onAccessChanged({ errandId: ERRAND_ID });
+    expect(inRoom).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
   });
 });

@@ -39,6 +39,11 @@ export const SocketServerEvent = {
   MERCHANT_DETAILS_UPDATED: 'merchant_details:updated',
   /** PROPOSED (row 80): details changed after a merchant-direct payment started. */
   MERCHANT_DETAILS_CHANGED: 'merchant_details:changed',
+  /**
+   * PROPOSED: sent to a socket just before it is removed from `errand:{id}`
+   * because the user lost access (e.g. runner reassigned). `{ errandId }`.
+   */
+  ERRAND_ACCESS_REVOKED: 'errand:access_revoked',
   /** PROPOSED (row 68): to `admins` and `errand:{id}`. */
   QUOTE_REQUESTED: 'quote:requested',
 } as const;
@@ -52,6 +57,11 @@ export const DomainEvent = {
   MERCHANT_DETAILS_UPDATED: 'errand.merchant_details_updated',
   QUOTE_REQUESTED: 'quote.requested',
   MERCHANT_DETAILS_CHANGED: 'merchant_details.changed',
+  /**
+   * Emit `{ errandId }` whenever who may view an errand changes without a
+   * status change; the gateway re-checks every socket in the room.
+   */
+  ERRAND_ACCESS_CHANGED: 'errand.access_changed',
 } as const;
 
 export interface EvidenceUploadedEvent {

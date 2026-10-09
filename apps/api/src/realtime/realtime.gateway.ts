@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
@@ -132,8 +132,15 @@ export class RealtimeGateway implements OnGatewayConnection {
       .emit(SocketServerEvent.LOCATION_UPDATE, payload);
   }
 
-  @OnEvent(DomainEvent.ERRAND_STATUS_CHANGED)
-  onStatusChanged(event: StatusChangedEvent): void {
+  /**
+   * Status pushes go out after the room is re-checked: a status change can
+   * move the current assignment (assign, reassignment, terminal states), so
+   * sockets whose user can no longer view the errand are removed first
+   * (reviewer follow-up, row 65).
+   */
+  @OnEvent(DomainEvent.ERRAND_STATUS_CHANGED, { async: true })
+  async onStatusChanged(event: StatusChangedEvent): Promise<void> {
+    await this.revalidateRoom(event.errandId);
     this.server?.to(errandRoom(event.errandId)).emit(SocketServerEvent.ERRAND_STATUS_CHANGED, {
       errandId: event.errandId,
       status: event.status,
@@ -166,6 +173,56 @@ export class RealtimeGateway implements OnGatewayConnection {
     this.server
       ?.to(errandRoom(event.errandId))
       .emit(SocketServerEvent.MERCHANT_DETAILS_UPDATED, event);
+  }
+
+  @OnEvent(DomainEvent.ERRAND_ACCESS_CHANGED, { async: true })
+  async onAccessChanged(event: { errandId: string }): Promise<void> {
+    await this.revalidateRoom(event.errandId);
+  }
+
+  /**
+   * Removes from `errand:{id}` every socket whose user can no longer view the
+   * errand (same check as `errand:join`), telling it first with
+   * `errand:access_revoked`. Never throws: a failed check leaves the room
+   * as it was and is logged.
+   */
+  async revalidateRoom(errandId: string): Promise<number> {
+    if (!this.server) {
+      return 0;
+    }
+    const room = errandRoom(errandId);
+    let removed = 0;
+    try {
+      const sockets = await this.server.in(room).fetchSockets();
+      for (const socket of sockets) {
+        const user = (socket.data as SocketData | undefined)?.user;
+        let allowed = false;
+        if (user) {
+          try {
+            await this.errands.getById(errandId, { role: user.role, userId: user.userId });
+            allowed = true;
+          } catch (err) {
+            // Only a definite "no access" evicts; a transient failure keeps the socket.
+            if (!(err instanceof ForbiddenException || err instanceof NotFoundException)) {
+              allowed = true;
+              this.logger.warn(
+                `Kept a socket in ${room}; access check failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          }
+        }
+        if (!allowed) {
+          socket.emit(SocketServerEvent.ERRAND_ACCESS_REVOKED, { errandId });
+          socket.leave(room);
+          removed += 1;
+        }
+      }
+    } catch (err) {
+      this.logger.error(
+        `Could not re-check ${room}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return removed;
   }
 
   /** Merchant details changed after a merchant-direct payment started (row 80). */
