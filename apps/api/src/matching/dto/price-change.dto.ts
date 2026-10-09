@@ -1,4 +1,14 @@
-import { IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { PriceChangeStatus } from '../../common/enums';
 import { PriceChangeRequest } from '../price-change-request.entity';
 
 export class RequestPriceChangeDto {
@@ -19,6 +29,18 @@ export class PriceChangeRequestParamsDto {
 
   @IsUUID()
   requestId: string;
+}
+
+export class ErrandIdParamsDto {
+  @IsUUID()
+  errandId: string;
+}
+
+export class ListPriceChangesQueryDto {
+  /** e.g. `?status=requested` for the pending request the customer must decide. */
+  @IsOptional()
+  @IsEnum(PriceChangeStatus)
+  status?: PriceChangeStatus;
 }
 
 export type PriceChangeResult = PriceChangeRequest;

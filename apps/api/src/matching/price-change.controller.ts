@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthContext, Roles } from '../common/decorators/auth.decorators';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -6,6 +6,8 @@ import { UserRole } from '../common/enums';
 import { PriceChangeRequest } from './price-change-request.entity';
 import { PriceChangeService } from './price-change.service';
 import {
+  ErrandIdParamsDto,
+  ListPriceChangesQueryDto,
   PriceChangeRequestParamsDto,
   RequestPriceChangeDto,
 } from './dto/price-change.dto';
@@ -14,6 +16,20 @@ import {
 @UseGuards(JwtAuthGuard)
 export class PriceChangeController {
   constructor(private readonly priceChange: PriceChangeService) {}
+
+  @Get()
+  @Roles(UserRole.CUSTOMER, UserRole.RUNNER, UserRole.ADMIN)
+  list(
+    @Param() params: ErrandIdParamsDto,
+    @Query() query: ListPriceChangesQueryDto,
+    @CurrentUser() user: AuthContext,
+  ): Promise<PriceChangeRequest[]> {
+    return this.priceChange.listForErrand(
+      params.errandId,
+      { userId: user.userId, role: user.role },
+      query.status,
+    );
+  }
 
   @Post()
   @Roles(UserRole.RUNNER, UserRole.ADMIN)

@@ -20,15 +20,18 @@ import {
 } from '../common/enums';
 import {
   CreateErrandDto,
+  ErrandStatusFilterDto,
   ListErrandsQueryDto,
   ResolveDisputeDto,
   TransitionErrandDto,
 } from './dto/errand.dto';
 import {
   ErrandResult,
+  ErrandView,
   ErrandsService,
-  ListErrandsResponse,
+  ListErrandViewsResponse,
 } from './errands.service';
+import { Quote } from './quote.entity';
 
 @Controller('errands')
 @UseGuards(JwtAuthGuard)
@@ -51,10 +54,22 @@ export class ErrandsController {
   list(
     @CurrentUser() user: AuthContext,
     @Query() query: ListErrandsQueryDto,
-  ): Promise<ListErrandsResponse> {
-    return this.errands.listFor(
+  ): Promise<ListErrandViewsResponse> {
+    return this.errands.listViewsFor(
       { role: user.role, userId: user.userId },
       { status: query.status, limit: query.limit, cursor: query.cursor },
+    );
+  }
+
+  /** Count of errands visible to the caller (e.g. customer profile "Tasks"). */
+  @Get('count')
+  count(
+    @CurrentUser() user: AuthContext,
+    @Query() query: ErrandStatusFilterDto,
+  ): Promise<{ count: number }> {
+    return this.errands.countFor(
+      { role: user.role, userId: user.userId },
+      query.status,
     );
   }
 
@@ -62,8 +77,14 @@ export class ErrandsController {
   get(
     @Param('id') id: string,
     @CurrentUser() user: AuthContext,
-  ) {
-    return this.errands.getById(id, { role: user.role, userId: user.userId });
+  ): Promise<ErrandView> {
+    return this.errands.getDetail(id, { role: user.role, userId: user.userId });
+  }
+
+  /** Customer-readable quote breakdown (latest `quotes` row). */
+  @Get(':id/quote')
+  quote(@Param('id') id: string, @CurrentUser() user: AuthContext): Promise<Quote> {
+    return this.errands.latestQuoteFor(id, { role: user.role, userId: user.userId });
   }
 
   @Get(':id/history')

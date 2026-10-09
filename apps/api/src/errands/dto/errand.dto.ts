@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -126,10 +126,34 @@ export class ResolveDisputeDto {
   rationale: string;
 }
 
-export class ListErrandsQueryDto {
+/**
+ * Accepts `status=A`, `status=A,B` or repeated `status=A&status=B` and
+ * normalises to a de-duplicated array.
+ */
+const toStatusList = ({ value }: { value: unknown }): unknown => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  const raw = Array.isArray(value) ? value : [value];
+  const parts = raw
+    .flatMap((v) => String(v).split(','))
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  return [...new Set(parts)];
+};
+
+export class ErrandStatusFilterDto {
+  /** One or more statuses: `status=IN_PROGRESS,ARRIVED`. */
   @IsOptional()
-  @IsEnum(ErrandStatus)
-  status?: ErrandStatus;
+  @Transform(toStatusList)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(17)
+  @IsEnum(ErrandStatus, { each: true })
+  status?: ErrandStatus[];
+}
+
+export class ListErrandsQueryDto extends ErrandStatusFilterDto {
 
   @IsOptional()
   @IsString()

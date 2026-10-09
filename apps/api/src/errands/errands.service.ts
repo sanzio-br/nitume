@@ -9,7 +9,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   DataSource,
   EntityManager,
+  In,
   Repository,
+  SelectQueryBuilder,
 } from 'typeorm';
 import {
   ErrandStatus,
@@ -21,6 +23,10 @@ import {
 import { AuthContext } from '../common/decorators/auth.decorators';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
+import {
+  RunnerPublicSummary,
+  RunnersService,
+} from '../runners/runners.service';
 import { ErrandAssignment } from './errand-assignment.entity';
 import { ErrandItem } from './errand-item.entity';
 import { ErrandLocation } from './errand-location.entity';
@@ -66,6 +72,29 @@ export interface ListErrandsResponse {
   nextCursor: string | null;
 }
 
+/** Assignment states that mean "this runner holds the errand". */
+export const ACTIVE_ASSIGNMENT_STATUSES: AssignmentStatus[] = [
+  AssignmentStatus.ASSIGNED,
+  AssignmentStatus.ACCEPTED,
+];
+
+/** Customer-facing view of the runner currently holding an errand. */
+export interface ErrandAssignmentView {
+  id: string;
+  status: AssignmentStatus;
+  /** When the assignment was decided (falls back to creation time). */
+  assignedAt: Date;
+  runner: RunnerPublicSummary | null;
+}
+
+/** Errand row plus its current assignment (null until a runner is assigned). */
+export type ErrandView = Errand & { assignment: ErrandAssignmentView | null };
+
+export interface ListErrandViewsResponse {
+  items: ErrandView[];
+  nextCursor: string | null;
+}
+
 const pointToGeo = (loc: ErrandLocationDto): GeoPoint => ({
   type: 'Point',
   coordinates: [loc.lon, loc.lat],
@@ -90,6 +119,9 @@ export class ErrandsService {
     @InjectRepository(RunnerProfile)
     private readonly runnerProfiles: Repository<RunnerProfile>,
     private readonly events: EventEmitter2,
+    private readonly runners: RunnersService,
+    @InjectRepository(Quote)
+    private readonly quotes: Repository<Quote>,
   ) {}
 
   async createDraft(
@@ -165,46 +197,98 @@ export class ErrandsService {
     return errand;
   }
 
+  /**
+   * Latest quote breakdown for an errand, readable by anyone who can view the
+   * errand (owner customer, assigned runner, admin). 404 until quoted.
+   */
+  async latestQuoteFor(errandId: string, viewer: ViewerContext): Promise<Quote> {
+    await this.getById(errandId, viewer);
+    const quote = await this.quotes.findOne({
+      where: { errandId },
+      order: { createdAt: 'DESC' },
+    });
+    if (!quote) {
+      throw new NotFoundException('Errand has not been quoted yet');
+    }
+    return quote;
+  }
+
+  /** `getById` plus the current assignment and public runner summary. */
+  async getDetail(errandId: string, viewer: ViewerContext): Promise<ErrandView> {
+    const errand = await this.getById(errandId, viewer);
+    const [view] = await this.withAssignments([errand]);
+    return view;
+  }
+
+  /** `listFor` with each item carrying its current assignment (batched). */
+  async listViewsFor(
+    viewer: ViewerContext,
+    opts: { status?: ErrandStatus | ErrandStatus[]; limit?: number; cursor?: string | null },
+  ): Promise<ListErrandViewsResponse> {
+    const page = await this.listFor(viewer, opts);
+    return {
+      items: await this.withAssignments(page.items),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  /** Pickup / drop-off / task-site points of an errand (no access check). */
+  async locationsFor(errandId: string): Promise<ErrandLocation[]> {
+    return this.locations.find({ where: { errandId } });
+  }
+
+  /**
+   * Current (assigned/accepted) assignment for an errand, or null. Public so
+   * other modules (location, realtime) go through this service instead of
+   * reading `errand_assignments` themselves.
+   */
+  async activeAssignmentFor(errandId: string): Promise<ErrandAssignment | null> {
+    return this.assignments.findOne({
+      where: { errandId, status: In(ACTIVE_ASSIGNMENT_STATUSES) },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  private async withAssignments(errands: Errand[]): Promise<ErrandView[]> {
+    if (errands.length === 0) {
+      return [];
+    }
+    const rows = await this.assignments.find({
+      where: {
+        errandId: In(errands.map((e) => e.id)),
+        status: In(ACTIVE_ASSIGNMENT_STATUSES),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    const latest = new Map<string, ErrandAssignment>();
+    for (const row of rows) {
+      if (!latest.has(row.errandId)) {
+        latest.set(row.errandId, row);
+      }
+    }
+    const summaries = await this.runners.publicSummaries(
+      [...latest.values()].map((a) => a.runnerProfileId),
+    );
+    return errands.map((errand) => {
+      const a = latest.get(errand.id);
+      const assignment: ErrandAssignmentView | null = a
+        ? {
+            id: a.id,
+            status: a.status,
+            assignedAt: a.decidedAt ?? a.createdAt,
+            runner: summaries.get(a.runnerProfileId) ?? null,
+          }
+        : null;
+      return Object.assign(errand, { assignment });
+    });
+  }
+
   async listFor(
     viewer: ViewerContext,
-    opts: { status?: ErrandStatus; limit?: number; cursor?: string | null },
+    opts: { status?: ErrandStatus | ErrandStatus[]; limit?: number; cursor?: string | null },
   ): Promise<ListErrandsResponse> {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
-    const qb = this.errands.createQueryBuilder('e');
-
-    if (viewer.role === 'admin') {
-      if (opts.status) {
-        qb.where('e.status = :status', { status: opts.status });
-      }
-    } else if (viewer.role === 'runner') {
-      const runnerProfile = await this.runnerProfiles.findOne({
-        where: { userId: viewer.userId },
-      });
-      if (!runnerProfile) {
-        throw new ForbiddenException('Runner profile not found');
-      }
-      qb.innerJoin(
-        ErrandAssignment,
-        'a',
-        'a."errandId" = e.id AND a."runnerProfileId" = :runnerProfileId',
-        { runnerProfileId: runnerProfile.id },
-      );
-      if (opts.status) {
-        qb.andWhere('e.status = :status', { status: opts.status });
-      }
-    } else {
-      const profile = await this.customerProfiles.findOne({
-        where: { userId: viewer.userId },
-      });
-      if (!profile) {
-        throw new ForbiddenException('Customer profile not found');
-      }
-      qb.where('e."customerId" = :profileId', { profileId: profile.id });
-      if (opts.status) {
-        qb.andWhere('e.status = :status', { status: opts.status });
-      }
-      qb.andWhere('e.status != :draft', { draft: ErrandStatus.DRAFT });
-    }
+    const qb = await this.scopedQuery(viewer, opts.status);
 
     qb.orderBy('e."createdAt"', 'DESC').addOrderBy('e.id', 'DESC').limit(limit + 1);
 
@@ -225,6 +309,58 @@ export class ErrandsService {
       items: page,
       nextCursor: hasMore && last ? encodeCursor(last) : null,
     };
+  }
+
+  /**
+   * Number of errands visible to the viewer, with the same scoping and status
+   * filter as `listFor` (customers never see their DRAFTs).
+   */
+  async countFor(
+    viewer: ViewerContext,
+    status?: ErrandStatus | ErrandStatus[],
+  ): Promise<{ count: number }> {
+    const qb = await this.scopedQuery(viewer, status);
+    return { count: await qb.getCount() };
+  }
+
+  /** Viewer-scoped errand query with an optional one-or-many status filter. */
+  private async scopedQuery(
+    viewer: ViewerContext,
+    status?: ErrandStatus | ErrandStatus[],
+  ): Promise<SelectQueryBuilder<Errand>> {
+    const statuses = normalizeStatuses(status);
+    const qb = this.errands.createQueryBuilder('e');
+
+    if (viewer.role === 'runner') {
+      const runnerProfile = await this.runnerProfiles.findOne({
+        where: { userId: viewer.userId },
+      });
+      if (!runnerProfile) {
+        throw new ForbiddenException('Runner profile not found');
+      }
+      qb.innerJoin(
+        ErrandAssignment,
+        'a',
+        'a."errandId" = e.id AND a."runnerProfileId" = :runnerProfileId',
+        { runnerProfileId: runnerProfile.id },
+      );
+    } else if (viewer.role !== 'admin') {
+      const profile = await this.customerProfiles.findOne({
+        where: { userId: viewer.userId },
+      });
+      if (!profile) {
+        throw new ForbiddenException('Customer profile not found');
+      }
+      qb.where('e."customerId" = :profileId', { profileId: profile.id });
+      qb.andWhere('e.status != :draft', { draft: ErrandStatus.DRAFT });
+    }
+
+    if (statuses.length === 1) {
+      qb.andWhere('e.status = :status', { status: statuses[0] });
+    } else if (statuses.length > 1) {
+      qb.andWhere('e.status IN (:...statuses)', { statuses });
+    }
+    return qb;
   }
 
   /**
@@ -289,6 +425,27 @@ export class ErrandsService {
     return this.dataSource.transaction((manager) =>
       this.performTransition(manager, errandId, to, actor, note, subject),
     );
+  }
+
+  /**
+   * Same as `transition`, but runs `within` in the same database transaction
+   * after the status row is written, so another module can persist its own
+   * rows atomically with the status change (e.g. disputes). The callback
+   * owns its repositories through the manager it is given.
+   */
+  async transitionWith<T>(
+    errandId: string,
+    to: ErrandStatus,
+    actor: ActorReference,
+    note: string | undefined,
+    subject: ViewerContext | undefined,
+    within: (manager: EntityManager, result: ErrandResult) => Promise<T>,
+  ): Promise<ErrandResult & { extra: T }> {
+    return this.dataSource.transaction(async (manager) => {
+      const result = await this.performTransition(manager, errandId, to, actor, note, subject);
+      const extra = await within(manager, result);
+      return { ...result, extra };
+    });
   }
 
   private async performTransition(
@@ -553,6 +710,15 @@ export class ErrandsService {
     return repo.save(row);
   }
 }
+
+const normalizeStatuses = (
+  status: ErrandStatus | ErrandStatus[] | undefined,
+): ErrandStatus[] => {
+  if (!status) {
+    return [];
+  }
+  return [...new Set(Array.isArray(status) ? status : [status])];
+};
 
 const encodeCursor = (errand: Errand): string =>
   Buffer.from(

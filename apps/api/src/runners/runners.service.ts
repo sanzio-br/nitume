@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   RunnerAvailability,
   RunnerSkill,
@@ -11,6 +11,17 @@ import {
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification } from './runner-verification.entity';
+
+/**
+ * Lightweight public runner card embedded on errand responses (no PII: no
+ * phone, no location, no verification documents).
+ */
+export interface RunnerPublicSummary {
+  id: string;
+  verificationLevel: VerificationLevel;
+  avgRating: string;
+  errandsCompleted: number;
+}
 
 export interface PublicRunnerProfile {
   id: string;
@@ -83,6 +94,41 @@ export class RunnersService {
       skills: skills.map((s) => s.skill),
       serviceAreas: serviceAreas.map((a) => a.area),
     };
+  }
+
+  /** Batch lookup of public runner summaries keyed by runner profile id. */
+  async publicSummaries(ids: string[]): Promise<Map<string, RunnerPublicSummary>> {
+    const unique = [...new Set(ids)].filter(Boolean);
+    if (unique.length === 0) {
+      return new Map();
+    }
+    const rows = await this.profiles.find({ where: { id: In(unique) } });
+    return new Map(
+      rows.map((p) => [
+        p.id,
+        {
+          id: p.id,
+          verificationLevel: p.verificationLevel,
+          avgRating: p.avgRating,
+          errandsCompleted: p.errandsCompleted,
+        },
+      ]),
+    );
+  }
+
+  /**
+   * Last-known runner position for live tracking. Returns null when the
+   * runner has never pinged.
+   */
+  async lastKnownLocation(
+    id: string,
+  ): Promise<{ lat: number; lng: number; capturedAt: Date | null } | null> {
+    const profile = await this.profiles.findOne({ where: { id } });
+    if (!profile?.currentLocation) {
+      return null;
+    }
+    const [lng, lat] = profile.currentLocation.coordinates;
+    return { lat, lng, capturedAt: profile.lastPingAt };
   }
 
   async setAvailability(userId: string, availability: RunnerAvailability): Promise<RunnerProfile> {

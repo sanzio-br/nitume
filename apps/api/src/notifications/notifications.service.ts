@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
-import { ErrandStatus } from '../common/enums';
+import { ErrandStatus, NotificationEventType } from '../common/enums';
 import { Errand } from '../errands/errand.entity';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { AppNotification } from './app-notification.entity';
@@ -73,8 +73,9 @@ export class NotificationsService {
   /** Turns an errand status change into a customer-facing feed item. */
   @OnEvent(ERrandStatusChangedEvent, { async: true })
   async onStatusChanged(event: StatusChangedEvent): Promise<void> {
-    const copy = feedCopy(event.status);
-    if (!copy) {
+    const eventType = notificationEventTypeFor(event.status);
+    const copy = eventType ? feedCopy(event.status) : null;
+    if (!eventType || !copy) {
       return;
     }
     const errand = await this.errands.findOne({ where: { id: event.errandId } });
@@ -92,13 +93,25 @@ export class NotificationsService {
       this.notifications.create({
         userId: profile.userId,
         errandId: errand.id,
-        eventType: `errand.${event.status}`,
+        eventType,
         title: titleWithRef,
         body: copy.body,
       }),
     );
   }
 }
+
+const PUBLISHED_EVENT_TYPES = new Set<string>(Object.values(NotificationEventType));
+
+/** Feed event type for a status change, or null when no feed item is sent. */
+export const notificationEventTypeFor = (
+  status: ErrandStatus,
+): NotificationEventType | null => {
+  const candidate = `errand.${status}`;
+  return PUBLISHED_EVENT_TYPES.has(candidate)
+    ? (candidate as NotificationEventType)
+    : null;
+};
 
 const humanStatus = (s: ErrandStatus): string =>
   s
