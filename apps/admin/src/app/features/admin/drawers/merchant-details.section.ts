@@ -111,7 +111,7 @@ export function savedCopy(first: boolean, afterPayment: boolean, res: Errand): s
   if (first) return 'Merchant details saved. The customer can now pay the merchant directly.';
   // TODO(owner-answers-4): `merchantDetailsUpdatedAt` arrives with N-14.
   if (afterPayment && res.merchantDetailsUpdatedAt) {
-    return 'Merchant details updated. The customer has been told to check them.';
+    return "Merchant details updated. If the customer had started paying the merchant, they've been told to check them.";
   }
   return 'Merchant details updated.';
 }
@@ -296,7 +296,8 @@ function hasDetails(e: Errand): boolean {
         <p>
           The customer may already be paying the current {{ currentKind() }}
           <span class="num">{{ currentNumber() }}</span
-          >. We'll tell them the details changed so they check before paying.
+          >. If they've started paying the merchant, we'll tell them the details changed so they
+          check before paying.
         </p>
       </app-confirm-dialog>
     }

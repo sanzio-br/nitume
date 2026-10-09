@@ -183,7 +183,7 @@ describe('MerchantDetailsSectionComponent', () => {
     button(el, 'Save details')!.click();
     fixture.detectChanges();
     expect(el.textContent?.replace(/\s+/g, ' ')).toContain(
-      "The customer may already be paying the current Till 5123456. We'll tell them the details changed so they check before paying.",
+      "The customer may already be paying the current Till 5123456. If they've started paying the merchant, we'll tell them the details changed so they check before paying.",
     );
   });
 
@@ -224,7 +224,7 @@ describe('merchant details rules (row 80)', () => {
   it('tells the admin the customer was warned only when the API recorded the change', () => {
     const e = errandFixture();
     expect(savedCopy(false, true, { ...e, merchantDetailsUpdatedAt: '2026-10-08T09:00:00Z' })).toBe(
-      'Merchant details updated. The customer has been told to check them.',
+      "Merchant details updated. If the customer had started paying the merchant, they've been told to check them.",
     );
     expect(savedCopy(false, true, e)).toBe('Merchant details updated.');
     expect(savedCopy(false, false, { ...e, merchantDetailsUpdatedAt: 'x' })).toBe(
