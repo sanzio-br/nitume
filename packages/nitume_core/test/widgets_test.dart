@@ -28,6 +28,27 @@ void main() {
       expect(statusPresentation(ErrandStatus.completed).tone,
           StatusTone.success);
     });
+
+    test('applies the owner Q13 tones', () {
+      expect(statusPresentation(ErrandStatus.runnerEnRoute),
+          (label: 'En route', tone: StatusTone.pending));
+      expect(statusPresentation(ErrandStatus.cancelled),
+          (label: 'Cancelled', tone: StatusTone.danger));
+      expect(statusPresentation(ErrandStatus.runnerAssigned).tone,
+          StatusTone.info);
+      expect(statusPresentation(ErrandStatus.arrived).tone, StatusTone.info);
+      expect(statusPresentation(ErrandStatus.inProgress).tone, StatusTone.info);
+    });
+
+    test('red and amber accents follow the owner decisions', () {
+      expect(NitumeDesignChoices.unreadDot, NitumeColors.red);
+      expect(NitumeDesignChoices.destructiveText, NitumeColors.red);
+      expect(NitumeDesignChoices.fieldError, NitumeColors.red);
+      expect(NitumeDesignChoices.priceChangeAmount, NitumeColors.amber);
+      expect(NitumeDesignChoices.buttonRadius, NitumeRadii.pill);
+      expect(NitumeDesignChoices.fieldFill, NitumeColors.white);
+      expect(NitumeDesignChoices.fieldRadius, NitumeRadii.small);
+    });
   });
 
   group('StatusChip', () {
@@ -140,6 +161,92 @@ void main() {
       expect(_boxColor(tester,
               find.byKey(const ValueKey('timeline-dot-pending'))),
           NitumeColors.slate400);
+    });
+  });
+
+  group('OTP error and resend states', () {
+    testWidgets('errorText turns boxes red and shows the message',
+        (tester) async {
+      await pumpThemed(
+        tester,
+        const OtpCodeField(
+          errorText: 'That code is incorrect or has expired.',
+        ),
+      );
+      expect(_borderColor(tester, find.byKey(const ValueKey('otp-box-0'))),
+          NitumeColors.red);
+      final error = tester.widget<Text>(find.byKey(const ValueKey('otp-error')));
+      expect(error.data, 'That code is incorrect or has expired.');
+      expect(error.style?.color, NitumeColors.red);
+    });
+
+    testWidgets('ResendCooldown counts 60s down to the resend link',
+        (tester) async {
+      final cooldown = ResendCooldown();
+      addTearDown(cooldown.dispose);
+      var resends = 0;
+      await pumpThemed(
+        tester,
+        ListenableBuilder(
+          listenable: cooldown,
+          builder: (_, _) => OtpResendLine(
+            secondsRemaining: cooldown.secondsRemaining,
+            onResend: () => resends++,
+          ),
+        ),
+      );
+      expect(find.text('Resend code'), findsOneWidget);
+
+      cooldown.start();
+      await tester.pump();
+      expect(cooldown.secondsRemaining, 60);
+      expect(find.byKey(const ValueKey('otp-resend-countdown')),
+          findsOneWidget);
+      expect(find.text('Resend code'), findsNothing);
+      final countdown = tester.widget<Text>(
+        find.byKey(const ValueKey('otp-resend-countdown')),
+      );
+      final span = (countdown.textSpan! as TextSpan).children!.single
+          as TextSpan;
+      expect(span.text, '1:00');
+      expect(span.style?.fontFamily, NitumeTypography.numericFamily);
+
+      await tester.pump(const Duration(seconds: 18));
+      expect(cooldown.secondsRemaining, 42);
+
+      await tester.pump(const Duration(seconds: 42));
+      expect(cooldown.isActive, isFalse);
+      await tester.tap(find.text('Resend code'));
+      expect(resends, 1);
+    });
+
+    test('OtpPolicy matches the owner decision (Q17)', () {
+      expect(OtpPolicy.codeLength, 6);
+      expect(OtpPolicy.expiry, const Duration(minutes: 5));
+      expect(OtpPolicy.maxAttempts, 5);
+      expect(OtpPolicy.resendCooldown, const Duration(seconds: 60));
+      expect(OtpPolicy.maxRequestsPerHour, 5);
+    });
+
+    test('OtpErrorKind classifies the API OTP errors', () {
+      OtpErrorKind? kind(int status, String message) =>
+          OtpErrorKind.fromApiException(
+            NitumeApiException(message: message, statusCode: status),
+          );
+      expect(kind(401, 'Incorrect verification code.'),
+          OtpErrorKind.incorrect);
+      expect(kind(401, 'No active verification code. Request a new one.'),
+          OtpErrorKind.expired);
+      expect(kind(401, 'Too many incorrect attempts. Request a new code.'),
+          OtpErrorKind.attemptsExhausted);
+      expect(kind(429, 'Please wait 60s before requesting another code.'),
+          OtpErrorKind.resendTooSoon);
+      expect(kind(429, 'Too many OTP requests. Try again in a few minutes.'),
+          OtpErrorKind.requestLimitReached);
+      expect(kind(500, 'Something went wrong.'), isNull);
+      expect(OtpErrorKind.expired.requiresNewCode, isTrue);
+      expect(OtpErrorKind.attemptsExhausted.requiresNewCode, isTrue);
+      expect(OtpErrorKind.incorrect.requiresNewCode, isFalse);
     });
   });
 
@@ -275,14 +382,44 @@ void main() {
         NotificationBell(unreadCount: 2, onPressed: () {}),
       );
       expect(find.byKey(const ValueKey('bell-unread-dot')), findsOneWidget);
+      expect(
+        _boxColor(tester, find.byKey(const ValueKey('bell-unread-dot'))),
+        NitumeColors.red,
+      );
       expect(find.bySemanticsLabel('Notifications, 2 unread'), findsOneWidget);
       expect(tester.getSize(find.byType(NotificationBell)),
           const Size(48, 48));
     });
   });
 
+  group('PaymentMethodCard', () {
+    testWidgets('green M-PESA badge with white text, Fira Code detail',
+        (tester) async {
+      await pumpThemed(
+        tester,
+        PaymentMethodCard(
+          label: 'M-Pesa',
+          detail: '+254 712 ••• 678',
+          onTap: () {},
+        ),
+      );
+      final badge = find.ancestor(
+        of: find.text('M-PESA'),
+        matching: find.byType(Container),
+      );
+      expect(_boxColor(tester, badge.first), NitumeColors.green);
+      expect(tester.widget<Text>(find.text('M-PESA')).style?.color,
+          NitumeColors.white);
+      expect(
+        tester.widget<Text>(find.text('+254 712 ••• 678')).style?.fontFamily,
+        NitumeTypography.numericFamily,
+      );
+      expect(find.text('VISA'), findsNothing);
+    });
+  });
+
   group('CategoryGrid', () {
-    testWidgets('shows the six display names and reports selection',
+    testWidgets('shows the five MVP display names and reports selection',
         (tester) async {
       ErrandCategory? picked;
       await pumpThemed(
@@ -292,11 +429,27 @@ void main() {
           onSelected: (c) => picked = c,
         ),
       );
-      for (final c in ErrandCategory.values) {
+      for (final c in mvpCustomerCategories) {
         expect(find.text(c.label), findsOneWidget);
       }
+      expect(find.text('Business Tasks'), findsNothing);
       await tester.tap(find.text('Wait For Me'));
       expect(picked, ErrandCategory.waitForMe);
+    });
+
+    test('full display names; Business Tasks kept but not in MVP list', () {
+      expect(ErrandCategory.values.map((c) => c.label), [
+        'Buy For Me',
+        'Get It For Me',
+        'Check It For Me',
+        'Go There For Me',
+        'Wait For Me',
+        'Business Tasks',
+      ]);
+      expect(mvpCustomerCategories, hasLength(5));
+      expect(mvpCustomerCategories,
+          isNot(contains(ErrandCategory.businessTasks)));
+      expect(ErrandCategory.fromWire('business'), ErrandCategory.businessTasks);
     });
   });
 

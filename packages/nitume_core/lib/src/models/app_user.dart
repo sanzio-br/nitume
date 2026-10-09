@@ -1,4 +1,5 @@
 import 'enums.dart';
+import 'json_utils.dart';
 
 /// Public user shape returned by the API (`PublicUser` in `users.service.ts`).
 class AppUser {
@@ -8,12 +9,18 @@ class AppUser {
     required this.role,
     required this.status,
     this.email,
+    this.displayName,
     this.createdAt,
   });
 
   final String id;
   final String phone;
   final String? email;
+
+  /// Name shown in the UI, collected after first sign-in (Q2, decided).
+  /// API shape pending api-contract (`display_name`); `null` until the API
+  /// sends it or the user has not set one.
+  final String? displayName;
   final UserRole role;
   final UserStatus status;
   final DateTime? createdAt;
@@ -26,6 +33,7 @@ class AppUser {
       id: json['id'] as String,
       phone: json['phone'] as String,
       email: json['email'] as String?,
+      displayName: parseOptionalString(json['displayName']),
       role: UserRole.fromWire(json['role'] as String),
       status: UserStatus.fromWire(json['status'] as String),
       createdAt: json['createdAt'] == null
@@ -38,8 +46,10 @@ class AppUser {
         'id': id,
         'phone': phone,
         'email': email,
+        'displayName': displayName,
         'role': role.wire,
         'status': status.wire,
         'createdAt': createdAt?.toIso8601String(),
       };
 }
+

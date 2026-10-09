@@ -227,6 +227,67 @@ void main() {
     });
   });
 
+  group('StkPaymentState', () {
+    const window = Duration(seconds: 90);
+
+    test('maps provider answers to success / failed', () {
+      expect(
+        StkPaymentState.from(
+          status: PaymentStatus.completed,
+          elapsed: Duration.zero,
+          confirmationWindow: window,
+        ),
+        StkPaymentState.success,
+      );
+      expect(
+        StkPaymentState.from(
+          status: PaymentStatus.failed,
+          elapsed: Duration.zero,
+          confirmationWindow: window,
+        ),
+        StkPaymentState.failed,
+      );
+    });
+
+    test('unconfirmed past the window is timeout, never failed', () {
+      for (final status in [
+        null,
+        PaymentStatus.pending,
+        PaymentStatus.authorized,
+      ]) {
+        expect(
+          StkPaymentState.from(
+            status: status,
+            elapsed: const Duration(seconds: 10),
+            confirmationWindow: window,
+          ),
+          StkPaymentState.pending,
+        );
+        final late = StkPaymentState.from(
+          status: status,
+          elapsed: window,
+          confirmationWindow: window,
+        );
+        expect(late, StkPaymentState.timeout);
+        expect(late.keepChecking, isTrue);
+        expect(late.isFinal, isFalse);
+      }
+    });
+
+    test('fromSummary handles a missing payment row', () {
+      expect(
+        StkPaymentState.fromSummary(
+          const PaymentSummary(),
+          elapsed: const Duration(seconds: 120),
+          confirmationWindow: window,
+        ),
+        StkPaymentState.timeout,
+      );
+      expect(StkPaymentState.success.isConfirmed, isTrue);
+      expect(StkPaymentState.failed.keepChecking, isFalse);
+    });
+  });
+
   group('PriceChangeRepository', () {
     test('pending filters by status and returns the newest', () async {
       final adapter = _FakeAdapter({
@@ -304,6 +365,136 @@ void main() {
       expect(adapter.requests.single.data, {'errandId': 'e1', 'reason': 'Wrong item'});
       expect(d.status, DisputeStatus.open);
       expect(d.events.single.eventType, DisputeEventType.opened);
+    });
+  });
+
+  group('CustomerAccountRepository payment methods', () {
+    test('lists M-Pesa only and skips card/bank rows (Q10)', () async {
+      final adapter = _FakeAdapter({
+        'GET /customers/me/payment-methods': (200, [
+          {
+            'id': 'pm1',
+            'type': 'mpesa',
+            'label': 'M-Pesa',
+            'detail': '+254 712 ••• 678',
+            'isDefault': true,
+          },
+          {
+            'id': 'pm2',
+            'type': 'card',
+            'label': 'Visa',
+            'detail': '•••• 4242',
+            'isDefault': false,
+          },
+        ]),
+      });
+      final methods =
+          await CustomerAccountRepository(_client(adapter)).paymentMethods();
+      expect(methods.map((m) => m.id), ['pm1']);
+      expect(methods.single.type, PaymentMethodType.mpesa);
+    });
+
+    test('add always posts type mpesa', () async {
+      final adapter = _FakeAdapter({
+        'POST /customers/me/payment-methods': (201, {
+          'id': 'pm1',
+          'type': 'mpesa',
+          'label': 'M-Pesa',
+          'detail': '+254 712 ••• 678',
+          'isDefault': false,
+        }),
+      });
+      await CustomerAccountRepository(_client(adapter))
+          .addPaymentMethod(label: 'M-Pesa', detail: '+254 712 ••• 678');
+      expect((adapter.requests.single.data as Map)['type'], 'mpesa');
+    });
+
+    test('type enum has no card variant', () {
+      expect(PaymentMethodType.values, [PaymentMethodType.mpesa]);
+      expect(PaymentMethodType.tryFromWire('card'), isNull);
+      expect(() => PaymentMethodType.fromWire('card'), throwsFormatException);
+    });
+  });
+
+  group('Owner-approved optional fields (pending api-contract)', () {
+    test('absent fields parse as null', () {
+      final e = Errand.fromJson(Map<String, dynamic>.from(_errand));
+      expect(e.reference, isNull);
+      expect(e.title, isNull);
+      expect(e.runnerNotes, isNull);
+      expect(e.items, isNull);
+      expect(e.locations, isNull);
+      expect(e.pickup, isNull);
+      expect(e.runner?.displayName, isNull);
+      final u = AppUser.fromJson({
+        'id': 'u1',
+        'phone': '+254712345678',
+        'role': 'customer',
+        'status': 'active',
+      });
+      expect(u.displayName, isNull);
+    });
+
+    test('present fields parse; malformed entries are skipped', () {
+      final e = Errand.fromJson({
+        ..._errand,
+        'reference': 'NT-10482',
+        'title': 'Apartment check — Nyali',
+        'runnerNotes': 'Caretaker says water is on Tuesdays.',
+        'items': [
+          {'name': 'Milk', 'quantity': 2, 'notes': 'Brookside'},
+          {'quantity': 3},
+          'bad',
+        ],
+        'locations': [
+          {
+            'pointType': 'pickup',
+            'lat': -1.29,
+            'lng': 36.82,
+            'addressText': 'Naivas Westlands',
+          },
+          {
+            'pointType': 'dropoff',
+            'lat': -1.3,
+            'lng': 36.8,
+            'addressText': 'Kilimani',
+          },
+          {'pointType': 'nowhere'},
+        ],
+        'assignment': {
+          ...(_errand['assignment']! as Map<String, Object?>),
+          'runner': {
+            'id': 'r1',
+            'verificationLevel': '2_id_verified',
+            'avgRating': '4.90',
+            'errandsCompleted': 137,
+            'displayName': 'Brian K.',
+          },
+        },
+      });
+      expect(e.reference, 'NT-10482');
+      expect(e.title, 'Apartment check — Nyali');
+      expect(e.runnerNotes, 'Caretaker says water is on Tuesdays.');
+      expect(e.items!.single.name, 'Milk');
+      expect(e.items!.single.quantity, 2);
+      expect(e.items!.single.notes, 'Brookside');
+      expect(e.locations, hasLength(2));
+      expect(e.pickup?.addressText, 'Naivas Westlands');
+      expect(e.dropoff?.addressText, 'Kilimani');
+      expect(e.taskSite, isNull);
+      expect(e.runner?.displayName, 'Brian K.');
+    });
+
+    test('blank strings and non-list values are null', () {
+      final e = Errand.fromJson({
+        ..._errand,
+        'reference': '  ',
+        'items': 'Milk, bread',
+        'locations': {'pointType': 'pickup'},
+      });
+      expect(e.reference, isNull);
+      expect(e.items, isNull);
+      expect(e.locations, isNull);
     });
   });
 

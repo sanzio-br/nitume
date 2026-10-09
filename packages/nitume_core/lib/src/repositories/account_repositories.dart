@@ -106,21 +106,26 @@ class CustomerAccountRepository {
 
   // ---- payment methods ----------------------------------------------------
 
+  /// Saved M-Pesa methods. Rows of other types (`card`, `bank`, still in
+  /// the API enum) are skipped: cards are out of MVP (Q10, decided).
   Future<List<PaymentMethod>> paymentMethods() async => asJsonList(
         await _api.getList('/customers/me/payment-methods'),
-      ).map(PaymentMethod.fromJson).toList();
+      )
+          .where((row) =>
+              PaymentMethodType.tryFromWire(row['type'] as String?) != null)
+          .map(PaymentMethod.fromJson)
+          .toList();
 
-  /// [detail] must already be masked (`+254 712 ••• 678`). Card payments are
-  /// an open scope question (Q10).
+  /// Adds an M-Pesa method. [detail] must already be masked
+  /// (`+254 712 ••• 678`). M-Pesa is the only type (Q10, decided).
   Future<PaymentMethod> addPaymentMethod({
-    required PaymentMethodType type,
     required String label,
     required String detail,
     String? phoneNumber,
     bool? isDefault,
   }) =>
       _api.postMap('/customers/me/payment-methods', data: {
-        'type': type.wire,
+        'type': PaymentMethodType.mpesa.wire,
         'label': label,
         'detail': detail,
         'phoneNumber': ?phoneNumber,

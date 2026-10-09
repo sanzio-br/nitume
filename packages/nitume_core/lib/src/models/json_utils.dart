@@ -18,6 +18,10 @@ double? parseDouble(Object? value) {
   return double.tryParse(value.toString());
 }
 
+/// A non-blank string, else `null` (tolerant parsing of optional fields).
+String? parseOptionalString(Object? value) =>
+    value is String && value.trim().isNotEmpty ? value : null;
+
 Map<String, dynamic> asJsonMap(Object? value) {
   if (value is Map<String, dynamic>) return value;
   if (value is Map) return value.cast<String, dynamic>();

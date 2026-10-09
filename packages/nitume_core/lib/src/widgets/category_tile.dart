@@ -17,7 +17,7 @@ IconData categoryIcon(ErrandCategory category) => switch (category) {
     };
 
 /// C-15. Category tile (`.cat-tile`): white, slate-line border, 32px green-050
-/// icon box, label 11.5/600 (the full display name, Q1 pending). Selected:
+/// icon box, label 11.5/600 (the full display name, Q1 decided). Selected:
 /// green border plus a 2px inset green-050 ring.
 class CategoryTile extends StatelessWidget {
   const CategoryTile({
@@ -105,13 +105,14 @@ class CategoryTile extends StatelessWidget {
 }
 
 /// C-15 grid (`.cat-grid2`): 3 columns, gap 10, equal-height rows, padding
-/// `0 20 20`. Shows [categories] in order (defaults to all six).
+/// `0 20 20`. Shows [categories] in order; defaults to
+/// [mvpCustomerCategories] (five, Business Tasks is out of MVP).
 class CategoryGrid extends StatelessWidget {
   const CategoryGrid({
     super.key,
     required this.onSelected,
     this.selected,
-    this.categories = ErrandCategory.values,
+    this.categories = mvpCustomerCategories,
     this.padding = const EdgeInsets.fromLTRB(20, 0, 20, 20),
   });
 

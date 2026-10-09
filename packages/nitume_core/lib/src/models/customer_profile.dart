@@ -63,21 +63,38 @@ class SavedAddress {
       };
 }
 
+/// Payment method kinds the app supports. M-Pesa only: card payments are
+/// out of MVP (Q10, decided), so there is no card or bank variant.
+///
+/// The API enum still lists `card` and `bank`;
+/// `CustomerAccountRepository.paymentMethods` skips those rows.
 enum PaymentMethodType {
-  mpesa('mpesa', 'M-Pesa'),
-  card('card', 'Card'),
-  bank('bank', 'Bank');
+  mpesa('mpesa', 'M-Pesa');
 
   const PaymentMethodType(this.wire, this.label);
 
   final String wire;
   final String label;
 
-  static PaymentMethodType fromWire(String value) =>
-      PaymentMethodType.values.firstWhere((e) => e.wire == value);
+  /// Throws [FormatException] for anything other than `mpesa`.
+  static PaymentMethodType fromWire(String value) {
+    final match = tryFromWire(value);
+    if (match == null) {
+      throw FormatException('Unsupported payment method type', value);
+    }
+    return match;
+  }
+
+  /// `null` for types the app does not support (`card`, `bank`).
+  static PaymentMethodType? tryFromWire(String? value) {
+    for (final e in values) {
+      if (e.wire == value) return e;
+    }
+    return null;
+  }
 }
 
-/// Saved payment method (`payment_methods`).
+/// Saved M-Pesa payment method (`payment_methods`).
 class PaymentMethod {
   const PaymentMethod({
     required this.id,
@@ -91,7 +108,7 @@ class PaymentMethod {
   final PaymentMethodType type;
   final String label;
 
-  /// Masked detail (e.g. `+2547•• •••••887`).
+  /// Masked M-Pesa number (e.g. `+2547•• •••••887`).
   final String detail;
   final bool isDefault;
 

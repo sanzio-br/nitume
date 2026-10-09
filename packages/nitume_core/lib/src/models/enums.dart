@@ -32,10 +32,14 @@ enum UserStatus {
 
 /// The six task categories from the business plan (no open-ended task type).
 ///
-/// [label] is the single source of category display names. The enum value →
-/// display name mapping (`buy_for_me | pickup_delivery | inspection |
-/// representation | queue_admin | business` → Buy For Me … Business Tasks)
-/// is **pending owner confirmation (BOARD Q1 / Q-CAT)**; change it here only.
+/// [label] is the single source of category display names: the six full
+/// names, never short labels (Q1 / Q-CAT, **decided**). The wire value →
+/// display name pairing below (`buy_for_me | pickup_delivery | inspection |
+/// representation | queue_admin | business` in that order) is still pending
+/// owner confirmation (BOARD row 1); change it here only.
+///
+/// Business Tasks is out of MVP (Q18, decided). The enum value stays so
+/// existing data still parses; customer pickers use [mvpCustomerCategories].
 enum ErrandCategory {
   buyForMe('buy_for_me', 'Buy For Me'),
   getItForMe('pickup_delivery', 'Get It For Me'),
@@ -52,6 +56,16 @@ enum ErrandCategory {
   static ErrandCategory fromWire(String value) =>
       ErrandCategory.values.firstWhere((e) => e.wire == value);
 }
+
+/// The categories a customer can pick in the MVP: the six minus Business
+/// Tasks (Q18, decided). [CategoryGrid] shows this list by default.
+const List<ErrandCategory> mvpCustomerCategories = [
+  ErrandCategory.buyForMe,
+  ErrandCategory.getItForMe,
+  ErrandCategory.checkItForMe,
+  ErrandCategory.goThereForMe,
+  ErrandCategory.waitForMe,
+];
 
 enum ErrandStatus {
   draft('DRAFT'),

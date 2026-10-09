@@ -5,14 +5,13 @@ import '../theme/status_tone.dart';
 /// C-06. Customer-facing label and chip tone for an errand state.
 typedef ErrandStatusPresentation = ({String label, StatusTone tone});
 
-/// Maps every §3.3 state to its customer label and chip tone
-/// (`docs/specs/customer/_shared.md` §6).
+/// Maps every §3.3 state to its customer label and chip tone.
 ///
-/// Labels are the spec's recommended copy and are **pending owner
-/// confirmation** (gap report Q20 / Q-LABELS). Tones for runner-progress,
-/// CANCELLED and EXPIRED come from [NitumeDesignChoices] (Q13).
+/// The labels are the `docs/specs/customer/_shared.md` §6 table, which the
+/// owner made authoritative (Q20 / Q-LABELS, decided): do not add alternate
+/// customer-facing labels. Tones follow §6 with the Q13 decisions applied:
+/// En route amber, Cancelled red (see [NitumeDesignChoices]).
 ErrandStatusPresentation statusPresentation(ErrandStatus status) {
-  const progress = NitumeDesignChoices.runnerProgressTone;
   return switch (status) {
     ErrandStatus.draft => (label: 'Draft', tone: StatusTone.info),
     ErrandStatus.requested => (label: 'Awaiting quote', tone: StatusTone.pending),
@@ -20,10 +19,12 @@ ErrandStatusPresentation statusPresentation(ErrandStatus status) {
     ErrandStatus.accepted => (label: 'Awaiting payment', tone: StatusTone.pending),
     ErrandStatus.paymentConfirmed =>
       (label: 'Finding a runner', tone: StatusTone.info),
-    ErrandStatus.runnerAssigned => (label: 'Runner assigned', tone: progress),
-    ErrandStatus.runnerEnRoute => (label: 'En route', tone: progress),
-    ErrandStatus.arrived => (label: 'Arrived', tone: progress),
-    ErrandStatus.inProgress => (label: 'In progress', tone: progress),
+    ErrandStatus.runnerAssigned =>
+      (label: 'Runner assigned', tone: StatusTone.info),
+    ErrandStatus.runnerEnRoute =>
+      (label: 'En route', tone: NitumeDesignChoices.enRouteTone),
+    ErrandStatus.arrived => (label: 'Arrived', tone: StatusTone.info),
+    ErrandStatus.inProgress => (label: 'In progress', tone: StatusTone.info),
     ErrandStatus.awaitingCustomer =>
       (label: 'Needs your review', tone: StatusTone.pending),
     ErrandStatus.completed => (label: 'Completed', tone: StatusTone.success),
