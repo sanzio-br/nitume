@@ -3,7 +3,7 @@
 - Mockup: **not drawn. EXTENDS MOCKUP**: a new sidebar item and panel. Built from the mockup's `#p-queue` panel (topbar + `.table-card`) and sidebar nav pattern. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md` (A-n components, §3 money, §6 refund vocabulary, §7 API gaps, §8 questions)
 - Implementation: `apps/admin/src/app/features/admin/panels/refunds.panel.ts`; nav item in `features/admin/admin-dashboard.component.ts`
-- Status: partial (re-audit 2026-10-09 round 4: FAIL, one blocker on the `Refundable` value; see Current vs design)
+- Status: matches-design (re-audit round 4, round 2, 2026-10-09: PASS; see Current vs design)
 
 ## Purpose
 One place where ops sees every refund review (opened when a task is cancelled after the customer paid, rows 37, 54, or for an approved price decrease on a `send_to_runner` task, rows 48, 86), works the ones that need a decision, and records the manual M-Pesa payout of approved refunds. Refund reviews are records, not task states (§3.3 note). Any authorized admin works them; there is no second approver (row 77).
@@ -99,6 +99,8 @@ Widths: the panel uses the main column (`.ops-main` padding 26 34 50). Below 110
 None.
 
 ## Current vs design
+Re-audit round 4, round 2 (2026-10-09) against `fix/angular-admin-owner-answers` @ `c1630ec`: **PASS**. `0592e9f`: the `Refundable` column shows `reviewCeiling(r)` from the shared `features/admin/refund-labels.ts` (`refundCeiling` while `pending_review`, else `amountPaid`; the drawer imports the same helper); test with `amountPaid` 1,500 / `refundCeiling` 1,200 → `KSh 1,200` and a decided row → `amountPaid`. Blocker 1 below is closed.
+
 Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de` (`docs/audits/admin-gap-report.md`, addendum "Re-audit round 4"): **FAIL**.
 1. Built: `Payments` nav group between `Network` and `Insights`, badge kept (`admin-dashboard.component.ts:115-135`, tested); header `Refundable`; Needs-review empty text; the round-3 fallbacks are gone (title from `errand`, badge from `GET /refunds/count`).
 2. **Blocker**: `refunds.panel.ts:127` shows `r.amountPaid` under `Refundable`. The API keeps `amountPaid` as the review's gross basis and sends the net ceiling separately as `refundCeiling` (N-9). A pending cancellation review on a task that already had a decrease refund therefore shows more than can be refunded. Show `reviewCeiling(r)` (the drawer's helper, moved to a shared module such as `refund-labels.ts`), with a test for that case. The spec's earlier wording ("`amountPaid` = the ceiling") assumed N-9 would net `amountPaid` itself; the API chose a separate field, so this is a spec correction, not a builder error.

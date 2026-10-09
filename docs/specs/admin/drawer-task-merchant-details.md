@@ -3,7 +3,7 @@
 - Mockup: `#drawer-task` draws a `Payment` section with the rows `Service fee`, `Runner fee`, `Merchant amount`, `Total`, but nothing about where the merchant is paid. **EXTENDS MOCKUP**: a new `Merchant payment details` section in the same drawer, built from `.drawer-section` / `.drawer-card` / `.drawer-row` and the design-system form field. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/merchant-details.section.ts` (in `task-drawer.ts`)
-- Status: matches-design (re-audit 2026-10-09 round 4: PASS with minor m-9; see Current vs design)
+- Status: matches-design (re-audit 2026-10-09 round 4: PASS; m-9 closed in round 2)
 
 ## Purpose
 Let ops enter or correct the merchant's Till (Buy Goods) or Paybill (+ account number) for a task, so the customer can choose to pay the merchant directly (`merchant_direct`). Row 43: the merchant/admin supplies these details; the customer only picks the route. Until details exist, the API refuses `merchant_direct` with `merchant_details_missing` and the customer app shows the "details not ready" state (`docs/specs/customer/x-merchant-payment.md`).
@@ -103,6 +103,8 @@ Till number, Paybill number, account number (display and input), task id in any 
 None.
 
 ## Current vs design
+Round 2 spot-check (2026-10-09, `c1630ec`): m-9 closed (`c1630ec`): dialog body and `savedCopy` use the corrected copy; both tests updated.
+
 Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de`: **PASS**, one minor:
 1. Row 80 built: editable only for `buy_for_me` / `pickup_delivery` in non-terminal states; other categories with legacy details read-only with `Merchant details only apply to Buy For Me and Get It For Me.`; 400 `merchant_details_not_applicable` switches to read-only with the same line (`merchant-details.section.ts` `merchantEditable`, `handleError`). Tested for both category groups.
 2. m-9 (minor, spec correction): the warning body (`merchant-details.section.ts:296-299`) and `savedCopy` (`:110-117`) say the customer will be / has been told after any change on a paid task. Use the corrected copy above.

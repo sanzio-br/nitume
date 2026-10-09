@@ -3,7 +3,7 @@
 - Mockup: `#drawer-task` has no quote content; the queue's `Assign` / `View` row buttons are the only admin actions drawn. The current build already adds an `Admin actions` card with `Issue quote` (REQUESTED). **EXTENDS MOCKUP**: a `Quote` section showing the current quote and its expiry, and an `Issue new quote` action for a QUOTED task whose quote has expired (row 46). Built from `.drawer-section` / `.drawer-card` / `.drawer-row`, A-08 for the form dialog and the design-system form field. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/quote.section.ts`, `quote-dialog.ts` (in `task-drawer.ts`)
-- Status: matches-design (re-audit 2026-10-09 round 4: PASS with minors m-6, m-7, m-8; see Current vs design)
+- Status: matches-design (re-audit 2026-10-09 round 4: PASS; m-6, m-7 closed in round 2, m-8 deferred; see Current vs design)
 
 ## Purpose
 A customer cannot accept or pay an expired quote (`quote_expired`, row 46). Ops must see that a quote has expired and issue a fresh one. On a QUOTED or ACCEPTED errand with an expired newest quote, `POST /errands/:id/quote` writes a new quote and updates the quoted price **without a status change** (QUOTED stays QUOTED; ACCEPTED stays ACCEPTED and the customer must accept/pay the new quote, row 72). A quote that has not expired cannot be replaced (`quote_still_valid`, row 88). Every quote has an expiry, 24 h by default (row 83). After expiry the customer can ask for a new quote (row 68); the section shows that request.
@@ -117,6 +117,8 @@ Quoted total, every fee component (display and input values), `Issued` and `Vali
 None.
 
 ## Current vs design
+Round 2 spot-check (2026-10-09, `c1630ec`): m-6 closed (`d84b2aa`, notice `The expiry time has passed. Choose a later time.`, tested); m-7 closed (`1c87c75`, 409 `payment_in_progress` copy per Errors, tested). m-8 stays deferred until `feat/api-owner-answers-4` is on `main`.
+
 Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de`: **PASS**, minors to fix on the next touch (the same branch is reopened for p-refunds):
 1. Row 68 built: `New quote requested` flag chip and `Customer asked for a new quote {date, time}.` when `quoteRequestedAt` is later than the newest quote, on QUOTED/ACCEPTED only (`quote.section.ts` `pendingQuoteRequest`); queue flag replaces `Quote expired`, requested rows sort first, the badge counts them (`task-queue.panel.ts` `queueRank`, `admin-data.service.ts` `pendingCount`). Tested. Source limited to the loaded window: accepted (Data).
 2. Row 83: `Valid until` required in both modes, default now + 24 h EAT; tested for the first-quote mode.

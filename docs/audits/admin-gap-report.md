@@ -400,3 +400,15 @@ Judgements requested by the orchestrator:
 
 ### Questions for the owner (new)
 - **AQ-8 (payments, schema)**: a paid task can end EXPIRED (no runner accepts) or FAILED (RUNNER_EN_ROUTE → FAILED), but the API opens a refund review only on CANCELLED. Should EXPIRED and FAILED after payment open a refund review too (new trigger values: an enum change)? Nothing is built for it.
+
+### Round 2 (2026-10-09): p-refunds re-audit and minor spot-checks
+
+Audited `fix/angular-admin-owner-answers` @ `c1630ec` (`0592e9f`, `d84b2aa`, `1c87c75`, `c1630ec` on top of `f1323de`). From a `git archive`: `ng test` **139 tests pass** (18 files), `ng build` clean, Prettier clean on the changed files, no hex outside `_tokens.scss`.
+
+| View | Verdict | Notes |
+|---|---|---|
+| p-refunds | **PASS** | Blocker 1 closed: `refunds.panel.ts:127` shows `reviewCeiling(r)`; the helper moved to `features/admin/refund-labels.ts` and the refund drawer imports it (no copy). Test covers a pending row (`refundCeiling` 1,200 under `amountPaid` 1,500 → `KSh 1,200`) and a decided row (`amountPaid`). |
+| drawer-task-requote | PASS | m-6 closed (`quote-dialog.ts:338`, `The expiry time has passed. Choose a later time.`; test also asserts the old text is gone). m-7 closed (`quote.section.ts:267-273`, `payment_in_progress` copy after the reload; new test). m-8 stays deferred to the `TODO(owner-answers-4)` cleanup. |
+| drawer-task-merchant-details | PASS | m-9 closed (`merchant-details.section.ts` dialog body and `savedCopy` match the corrected spec copy; both tests updated). |
+
+Every view from this round is now PASS. Still open: m-1, m-2, m-4 (carried from the first re-audit), m-8 (after the API merge) and **AQ-8** (owner).
