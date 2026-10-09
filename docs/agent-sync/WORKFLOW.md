@@ -8,7 +8,7 @@ How the Nitume agents stay in sync. Read this before starting any work.
 
 ```
 docs/design/                 nitume_design_system.html + the four mockup HTML files
-docs/Nitume_System_Design.md
+docs/design/Nitume_System_Design.md
 docs/Nitume_Business_Plan.docx
 docs/specs/<surface>/<view-id>.md      written by design-auditor
 docs/audits/<surface>-gap-report.md    written by design-auditor
