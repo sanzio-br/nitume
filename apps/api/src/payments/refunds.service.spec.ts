@@ -270,5 +270,14 @@ describe('RefundsService', () => {
     expect(await codeOf(pending.service.markPaid('r-1', 'QJK12AB34C', 'admin-1'))).toBe(
       'refund_not_approved',
     );
+
+    // Row 82: the receipt cannot be edited after refunded.
+    const done = build({
+      row: review({ status: RefundStatus.REFUNDED, refundAmount: '200.00', payoutReference: 'QJK12AB34C' }),
+    });
+    const err = await done.service.markPaid('r-1', 'QZZ99XY88W', 'admin-1').catch((e: unknown) => e);
+    expect((err as ApiError).code).toBe('refund_payout_locked');
+    expect((err as ApiError).getStatus()).toBe(409);
+    expect(done.reviews.save).not.toHaveBeenCalled();
   });
 });

@@ -75,6 +75,26 @@ describe('NotificationEventType (A-14)', () => {
     }
   });
 
+  it('uses KSh, never KES, in every amount copy (row 82)', () => {
+    const bodies = [
+      copyFor({ kind: 'price_change', errandId: 'e', requestId: 'r', fromPrice: '500.00', toPrice: '650.00' }),
+      copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'approved', refundAmount: '400.00' }),
+      copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'refunded', refundAmount: '400.00' }),
+      copyFor({
+        kind: 'quote_reissued',
+        errandId: 'e',
+        quoteId: 'q',
+        total: '700.00',
+        expiresAt: null,
+        acceptanceRequired: false,
+      }),
+    ].map((c) => `${c?.title} ${c?.body}`);
+    for (const text of bodies) {
+      expect(text).toMatch(/KSh \d/);
+      expect(text).not.toContain('KES');
+    }
+  });
+
   it('has copy for price-change and refund items', () => {
     expect(
       copyFor({ kind: 'price_change', errandId: 'e', requestId: 'r', fromPrice: '500.00', toPrice: '650.00' }),

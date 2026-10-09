@@ -578,13 +578,26 @@ export class RefundsService implements OnModuleInit {
     return Object.assign(saved, position);
   }
 
-  /** Admin records the manual M-Pesa payout of an approved refund. */
+  /**
+   * Admin records the manual M-Pesa payout of an approved refund. Once
+   * `refunded`, the receipt is locked (409 `refund_payout_locked`, row 82).
+   */
   async markPaid(
     id: string,
     payoutReference: string,
     adminUserId: string,
   ): Promise<AdminRefundReview> {
     const row = await this.get(id);
+    // Row 82: the payout receipt is final once recorded. A correction needs
+    // an auditable correction/reversal flow, which does not exist yet.
+    if (row.status === RefundStatus.REFUNDED) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'refund_payout_locked',
+        'The payout receipt of a refunded review cannot be changed',
+        { payoutReference: row.payoutReference, paidAt: row.paidAt?.toISOString() ?? null },
+      );
+    }
     if (row.status !== RefundStatus.APPROVED) {
       throw new ApiError(
         HttpStatus.CONFLICT,

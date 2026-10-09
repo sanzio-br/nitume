@@ -328,7 +328,7 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
       return {
         eventType: NotificationEventType.PRICE_CHANGE_REQUESTED,
         title: 'Price change requested',
-        body: `Your runner asked to change the item price from KES ${job.fromPrice} to KES ${job.toPrice}. Review it to continue.`,
+        body: `Your runner asked to change the item price from KSh ${job.fromPrice} to KSh ${job.toPrice}. Review it to continue.`,
       };
     case 'refund':
       return refundCopy(job.status, job.refundAmount);
@@ -337,8 +337,8 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.QUOTE_REISSUED,
         title: 'New quote for your task',
         body: job.acceptanceRequired
-          ? `Your task has a new quote of KES ${job.total}. Accept it to continue to payment.`
-          : `Your task has a new quote of KES ${job.total}. Review it to continue.`,
+          ? `Your task has a new quote of KSh ${job.total}. Accept it to continue to payment.`
+          : `Your task has a new quote of KSh ${job.total}. Review it to continue.`,
       };
     case 'merchant_details':
       return {
@@ -357,7 +357,7 @@ const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
       return {
         eventType: NotificationEventType.REFUND_APPROVED,
         title: 'Refund approved',
-        body: `A refund of KES ${amount ?? '0.00'} was approved for your task.`,
+        body: `A refund of KSh ${amount ?? '0.00'} was approved for your task.`,
       };
     case 'no_refund':
       return {
@@ -369,7 +369,7 @@ const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
       return {
         eventType: NotificationEventType.REFUND_REFUNDED,
         title: 'Refund sent',
-        body: `Your refund of KES ${amount ?? '0.00'} has been sent to M-Pesa.`,
+        body: `Your refund of KSh ${amount ?? '0.00'} has been sent to M-Pesa.`,
       };
     default:
       return null;
