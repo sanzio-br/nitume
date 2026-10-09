@@ -1,0 +1,23 @@
+/**
+ * Fail-fast environment checks run by ConfigModule before any provider is
+ * built. Returns the env unchanged; throws to stop the process.
+ */
+const str = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined;
+
+export const resolvePaymentsProvider = (env: Record<string, unknown>): string =>
+  str(env.PAYMENTS_PROVIDER) ?? str(env.PAYMENTS_MPESA_TRANSPORT) ?? 'console';
+
+export const validateEnv = (env: Record<string, unknown>): Record<string, unknown> => {
+  const nodeEnv = str(env.NODE_ENV) ?? 'development';
+  // Row 89: console (mock) callbacks are trusted, so production must never
+  // run on it. An unset provider resolves to console and is refused too.
+  if (nodeEnv === 'production' && resolvePaymentsProvider(env) === 'console') {
+    throw new Error(
+      'PAYMENTS_PROVIDER=console is not allowed when NODE_ENV=production: mock ' +
+        'payment callbacks would be trusted. Set PAYMENTS_PROVIDER=payhero (or daraja) ' +
+        'with its full configuration.',
+    );
+  }
+  return env;
+};
