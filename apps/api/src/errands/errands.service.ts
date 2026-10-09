@@ -172,8 +172,10 @@ export interface ListErrandViewsResponse {
 
 /**
  * 409 `quote_expired` when the quote has an expiry that has passed (BOARD
- * row 46). A quote without `expiresAt` never expires. The customer needs a
- * fresh quote (admin re-quote) before accepting or paying.
+ * row 46). Every new quote has an expiry (row 83); only legacy quotes the
+ * customer had already accepted before that rule may still have none, and
+ * those never expire. The customer needs a fresh quote (admin re-quote)
+ * before accepting or paying.
  */
 export const assertQuoteCurrent = (
   quote: Pick<Quote, 'id' | 'expiresAt'> | null,
@@ -1216,7 +1218,30 @@ export class ErrandsService {
     return latest;
   }
 
+  /**
+   * Every quote expires (row 83): the admin's `expiresAt`, else now +
+   * QUOTES_DEFAULT_TTL_HOURS (24). An expiry not in the future is refused
+   * (400 `quote_expiry_in_past`); null is refused by the DTO.
+   */
+  quoteExpiryFor(expiresAt: string | undefined, now: Date = new Date()): Date {
+    if (expiresAt === undefined) {
+      const hours = this.config?.get<number>('quotes.defaultTtlHours', 24) ?? 24;
+      return new Date(now.getTime() + hours * 3_600_000);
+    }
+    const at = new Date(expiresAt);
+    if (Number.isNaN(at.getTime()) || at.getTime() <= now.getTime()) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'quote_expiry_in_past',
+        'A quote expiry must be a date in the future',
+        { expiresAt },
+      );
+    }
+    return at;
+  }
+
   private saveQuote(manager: EntityManager, errandId: string, quote: QuoteInput): Promise<Quote> {
+    const expiresAt = this.quoteExpiryFor(quote.expiresAt);
     const quoteRepo = manager.getRepository(Quote);
     return quoteRepo.save(
       quoteRepo.create({
@@ -1229,7 +1254,7 @@ export class ErrandsService {
         premiumFee: (quote.premiumFee ?? 0).toString(),
         total: quote.total.toString(),
         currency: quote.currency ?? 'KES',
-        expiresAt: quote.expiresAt ? new Date(quote.expiresAt) : null,
+        expiresAt,
       }),
     );
   }

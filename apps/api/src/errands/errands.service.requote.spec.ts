@@ -222,3 +222,49 @@ describe('ErrandsService.payableQuote (row 72)', () => {
     expect(await codeOf(expired.service.payableQuote('e-1'))).toBe('quote_expired');
   });
 });
+
+describe('Every quote expires (row 83)', () => {
+  it('defaults to now + 24h when the admin omits expiresAt', async () => {
+    const { service, quoteRepo } = build(ErrandStatus.REQUESTED, null);
+    const before = Date.now();
+    await service.quote('e-1', { total: 650 }, admin);
+    const saved = quoteRepo.create.mock.calls[0][0] as { expiresAt: Date };
+    expect(saved.expiresAt).toBeInstanceOf(Date);
+    const ttl = saved.expiresAt.getTime() - before;
+    expect(ttl).toBeGreaterThanOrEqual(24 * 3_600_000 - 1_000);
+    expect(ttl).toBeLessThanOrEqual(24 * 3_600_000 + 1_000);
+  });
+
+  it('uses QUOTES_DEFAULT_TTL_HOURS when configured', () => {
+    const { service } = build(ErrandStatus.REQUESTED, null);
+    Object.assign(service, {
+      config: { get: (key: string, d: unknown) => (key === 'quotes.defaultTtlHours' ? 6 : d) },
+    });
+    const now = new Date('2026-10-09T10:00:00Z');
+    expect(service.quoteExpiryFor(undefined, now).toISOString()).toBe('2026-10-09T16:00:00.000Z');
+  });
+
+  it('keeps an explicit future expiry', async () => {
+    const { service, quoteRepo } = build(ErrandStatus.REQUESTED, null);
+    await service.quote('e-1', { total: 650, expiresAt: future.toISOString() }, admin);
+    const saved = quoteRepo.create.mock.calls[0][0] as { expiresAt: Date };
+    expect(saved.expiresAt.toISOString()).toBe(future.toISOString());
+  });
+
+  it('refuses an expiry that is not in the future (quote_expiry_in_past)', async () => {
+    const { service, quoteRepo, errand } = build(ErrandStatus.REQUESTED, null);
+    expect(
+      await codeOf(service.quote('e-1', { total: 650, expiresAt: past.toISOString() }, admin)),
+    ).toBe('quote_expiry_in_past');
+    expect(quoteRepo.save).not.toHaveBeenCalled();
+    // The transition is in the same transaction, which rolls back in the DB.
+    expect(errand.id).toBe('e-1');
+  });
+
+  it('re-quote of an expired quote also gets the default expiry', async () => {
+    const { service, quoteRepo } = build(ErrandStatus.QUOTED, { id: 'q-1', expiresAt: past });
+    await service.quote('e-1', { total: 700 }, admin);
+    const saved = quoteRepo.create.mock.calls[0][0] as { expiresAt: Date | null };
+    expect(saved.expiresAt).toBeInstanceOf(Date);
+  });
+});

@@ -19,5 +19,10 @@ export const validateEnv = (env: Record<string, unknown>): Record<string, unknow
         'with its full configuration.',
     );
   }
+  // Row 83: every quote gets an expiry; a bad TTL would store Invalid Date.
+  const ttl = str(env.QUOTES_DEFAULT_TTL_HOURS);
+  if (ttl !== undefined && !(Number.parseFloat(ttl) > 0)) {
+    throw new Error(`QUOTES_DEFAULT_TTL_HOURS must be a positive number of hours (got '${ttl}')`);
+  }
   return env;
 };

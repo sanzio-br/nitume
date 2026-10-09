@@ -8,6 +8,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class QuoteErrandDto {
@@ -51,7 +52,11 @@ export class QuoteErrandDto {
   @MaxLength(8)
   currency?: string;
 
-  @IsOptional()
+  /**
+   * Every quote expires (row 83). Omit for now + QUOTES_DEFAULT_TTL_HOURS
+   * (24h); null is refused (only `undefined` skips validation).
+   */
+  @ValidateIf((_o: unknown, v: unknown) => v !== undefined)
   @IsISO8601({ strict: true })
   expiresAt?: string;
 

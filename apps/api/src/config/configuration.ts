@@ -50,6 +50,10 @@ export interface AppConfig {
     serviceFeeRate: number;
     runnerFeeRate: number;
   };
+  quotes: {
+    /** Expiry applied when the admin quotes without `expiresAt` (row 83). */
+    defaultTtlHours: number;
+  };
   errands: {
     urgentWithinHours: number;
     scheduledAfterHours: number;
@@ -206,6 +210,10 @@ export const configuration = (): AppConfig => ({
       passkey: process.env.PAYMENTS_MPESA_PASSKEY || null,
       callbackUrl: process.env.PAYMENTS_MPESA_CALLBACK_URL || null,
     },
+  },
+  // Every quote expires (row 83); 24h unless the admin sets expiresAt.
+  quotes: {
+    defaultTtlHours: Number.parseFloat(process.env.QUOTES_DEFAULT_TTL_HOURS ?? '24'),
   },
   // TODO(owner): urgency thresholds are placeholders. Urgency is derived from
   // deadlineAt (owner decision Q19) but no thresholds are defined anywhere.

@@ -25,4 +25,11 @@ describe('validateEnv (row 89)', () => {
       expect(() => validateEnv({ NODE_ENV, PAYMENTS_PROVIDER: 'console' })).not.toThrow();
     }
   });
+
+  it('refuses a non-positive or non-numeric QUOTES_DEFAULT_TTL_HOURS (row 83)', () => {
+    for (const QUOTES_DEFAULT_TTL_HOURS of ['0', '-1', 'abc']) {
+      expect(() => validateEnv({ QUOTES_DEFAULT_TTL_HOURS })).toThrow(/QUOTES_DEFAULT_TTL_HOURS/);
+    }
+    expect(() => validateEnv({ QUOTES_DEFAULT_TTL_HOURS: '48' })).not.toThrow();
+  });
 });
