@@ -96,12 +96,12 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | design-auditor | flutter-customer | v-new-details: clear the draft place on edit and show "Choose a place from the list." (blocker); x-address-form same; v-task-detail "View payment details" via itemAmountDue(); suspension: unregister push before clearing tokens | done: 7089d21, 7192a77 (94 app + 190 core tests) |
 | flutter-customer | core-ui | (optional) run the push-unregister hook before tokenStore.clear() in the auth interceptor, replacing the app's BeforeClearTokenStore wrapper | open |
 | design-auditor | flutter-customer | (minor) v-new-details: "Choose a place from the list." also for text typed without any earlier pick; dev-only schematic map runner dot 22px → 16px overall | open |
-| reviewer | api-contract | (follow-up, before runner location pings) remove sockets from errand rooms when a runner is reassigned | open |
+| reviewer | api-contract | (follow-up, before runner location pings) remove sockets from errand rooms when a runner is reassigned | done: 9c75e12 on feat/api-owner-answers-4 (errand:access_revoked, room re-checks) |
 | reviewer | owner | Add PAYMENTS_PROVIDER, PAYHERO_*, FCM_*, TRUST_PROXY_HOPS, OTP_IP_*, EVIDENCE_SIGNED_URL_TTL_SECONDS and the queue vars to apps/api/.env.example | open |
 | orchestrator | design-auditor | Owner answers rows 59–94: System Design canonical copy (70) + §2.2/§6 (66); customer and admin specs for rows 67–69, 77–83, 86, 87, 91, 93; SA-1/SA-2 | done: docs/owner-answers-3 (d623f66, d014c00, 8685d91, 347cd6a, 7269c4a). Root system-design copy removed; WORKFLOW.md path fixed by orchestrator |
-| orchestrator | api-contract | Rows 89 (refuse console in prod), 86, 87/81 (net refund ceilings), 83 (quote expiry required), 68 (customer quote request), 82, 79/69, 80; socket room cleanup on reassignment | in progress: feat/api-owner-answers-4 (../nitume-api-answers4) |
+| orchestrator | api-contract | Rows 89 (refuse console in prod), 86, 87/81 (net refund ceilings), 83 (quote expiry required), 68 (customer quote request), 82, 79/69, 80; socket room cleanup on reassignment | done: feat/api-owner-answers-4 (13 commits, 344 unit + 42 e2e on throwaway DB; migrations 1790100800000–1790101000000) |
 | orchestrator | web-parity | Rows 77 (Payments group), 78 (Side with customer), 82, 83; SA-1/SA-2; remove TODO(N-x) fallbacks | done: fix/angular-admin-owner-answers (9d1b2c8, 1f24c63, 60ce9a5, 0e7711a, 98074dd, 9bcdce2; 120 tests). Rows 78/83 already met on main. Awaiting re-audit; net ceiling (81/87) and quote-requested flag (68) to add after api-contract |
-| orchestrator | core-ui → flutter-customer | Row 68 Request a new quote, row 59 (.env.example + drop asset), row 80 merchant-details warning, row 79 resolution note, open customer minors (failure reason, title on create, persistent idempotency keys, pushed-header trailing slot, typed-place copy, dev map dot) | queued (after specs + API) |
+| orchestrator | core-ui → flutter-customer | Row 68 Request a new quote, row 59 (.env.example + drop asset), row 80 merchant-details warning, row 79 resolution note, open customer minors (failure reason, title on create, persistent idempotency keys, pushed-header trailing slot, typed-place copy, dev map dot) | in progress: feat/customer-owner-answers (../nitume-customer-answers4), core-ui first |
 
 ## Questions for the project owner
 
@@ -203,6 +203,11 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 94 | reviewer (second stack) | Row 62 (refund_reviews schema): the reviewer considers it settled by your row-71 approval. Close it? | answered (owner, 2026-10-09): Close. Settled by the approval in row 71. The refund_reviews schema changes, including the refund_reviews table and payments.priceChangeRequestId, are approved. No further schema decision is required. |
 | 95 | design-auditor (round 4 specs) | SQ-11: when does Nitume pay the runner the send_to_runner item amount through the payout ledger: before the purchase (advance), or as a reimbursement after the receipt is uploaded? | open |
 | 96 | design-auditor (round 4 specs) | AQ-7 (minor): admin times in 12-hour East Africa Time as in the mockup? Default yes | open |
+| 97 | api-contract (round 4) | Schema: approve two nullable, reversible columns on errands, already built: quoteRequestedAt (row 68, so the request survives reloads and drives the admin queue) and merchantDetailsUpdatedAt (row 80). Recommended: approve | open |
+| 98 | api-contract (round 4) | Socket.IO Redis adapter (@socket.io/redis-adapter, §4.1): not approved, so the API must run as a single instance. Approve adding it? | open |
+| 99 | api-contract (round 4) | Socket names (proposed): room `admins`; events quote:requested, merchant_details:changed, errand:access_revoked. Approve? | open |
+| 100 | api-contract (round 4) | Payout receipt corrections (row 82, spec N-15): receipts now lock (409 refund_payout_locked). An auditable correction/reversal record needs a schema. Build it now, or later? | open |
+| 101 | api-contract (round 4) | Breaking API changes in round 4: customers/runners get resolvedBy: null on disputes; payoutReference removed from customer refund views; price changes on categories other than Buy For Me / Get It For Me now 400. FYI (clients updated in this round) | open |
 
 ## Session log
 
@@ -251,3 +256,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-09 | Owner-answers round 4 started from main: design-auditor, api-contract and web-parity in parallel; customer app queued | — |
 | 2026-10-09 | web-parity round 4: Payments nav group, round-3 fallbacks removed, refundable row + column (SA-1), refund link from PAYMENT_CONFIRMED (SA-2), shared KSh formatter, quote expiry tests; 120 admin tests | 9d1b2c8, 1f24c63, 60ce9a5, 0e7711a, 98074dd, 9bcdce2 |
 | 2026-10-09 | design-auditor round 4: one system design (docs/design), §2.2/§6 platform-mediated send-to-runner, customer + admin specs for rows 59–94, gap-report addenda with builder lists; questions 95–96 | d623f66, d014c00, 8685d91, 347cd6a, 7269c4a |
+| 2026-10-09 | api-contract round 4 (feat/api-owner-answers-4): row 89 refuse console in production, 86, 87 cumulative refund cap, 83 quote expiry required (+ data backfill), 68 customer quote request, 82 KSh + locked receipts, 79 resolution note to both parties, 80 merchant category rules + change warning, socket room cleanup; questions 97–101. core-ui round 4 and web-parity follow-up started | 1ce5240 … 124d81e |
