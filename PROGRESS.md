@@ -184,3 +184,44 @@ rows 1–76 and 84. Not merged; merge after the first stack, in the order on `BO
 - Legacy evidence uploaded as public keeps its old public URL until migrated.
 - After merging, run `migration:run` (3 more migrations). Run the API e2e suite on a
   fresh DB with `--no-file-parallelism` (pre-existing payment_type seeding race).
+
+## Owner answers round 4: rows 59–96 — third branch stack
+
+Built by the agent team, 2026-10-09 to 2026-10-11, after the owner answered BOARD rows
+59–96 (plus 97 and 99). Reviewed READY; merged into main on 2026-10-11 (see BOARD session log).
+
+**Completed**
+
+- **Docs** (`docs/owner-answers-3`, `docs/customer-reaudit-3`): one canonical system design
+  (`docs/design/Nitume_System_Design.md`, row 70); §2.2/§6 rewritten for platform-mediated
+  send-to-runner (rows 66, 67, 76); customer and admin specs for rows 66–69, 72, 77–83,
+  86–88, 91, 93; customer and admin re-audits, all PASS.
+- **API** (`feat/api-owner-answers-4`): production refuses the console payment provider
+  (row 89); decrease refund reviews only for send-to-runner (86); cumulative refund cap at
+  the amount paid to Nitume (81, 87); every quote has an expiry, 24h default (83); customer
+  "request a new quote" (68); KSh copy and locked payout receipts (82); dispute verdict and
+  resolution note to both parties (79); merchant amounts only for Buy For Me / Get It For Me
+  with a change warning (80); sockets removed from errand rooms when access is lost.
+  3 migrations (one data-only backfill, two nullable columns approved in row 97).
+- **Admin** (`fix/angular-admin-owner-answers`): Payments nav group (77), round-3 fallbacks
+  removed, refundable amount and net ceiling, refund link from PAYMENT_CONFIRMED, quote
+  requests flagged, merchant category gating, dispute verdict. 139 tests.
+- **Customer app + core** (`feat/customer-owner-answers`, squash-merged): request a new
+  quote, merchant-details-changed notice, access revoked stops live data, `.env.example`
+  with `--dart-define-from-file` instead of a bundled `.env` (59), title on create,
+  persisted payment idempotency keys, Mark all read in the header, failure reason shown.
+- Verified: API 344 unit; admin 139; core 223; app 110 (also from a fresh checkout without
+  `.env`). Design re-audits PASS. Reviewer: all READY.
+
+**Deferred / before go-live**
+
+- Row 85: PayHero confirmations. Production needs `NODE_ENV=production` and a real provider;
+  a public staging server without `NODE_ENV=production` still trusts the console mock.
+- Row 98: Socket.IO Redis adapter not approved, so run the API as a single instance.
+- Rows 95, 96, 100, 101 (FYI), 102 open.
+- Admin: make the round-4 fields required now that the API is merged (TODO(owner-answers-4));
+  m-8 quote-requested filter/count.
+- Migration 1790100800000: don't run its `down` after new quotes exist.
+- Device builds still unverified; restrict the Places/Maps keys by app.
+- Runner app (runner notes, location pings) not started.
+
