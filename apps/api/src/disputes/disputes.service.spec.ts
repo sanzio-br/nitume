@@ -9,7 +9,7 @@ import {
 } from '../common/enums';
 import { DisputeEvent } from './dispute-event.entity';
 import { Dispute } from './dispute.entity';
-import { DisputesService } from './disputes.service';
+import { DisputesService, toDisputeView } from './disputes.service';
 
 const customer = { userId: 'u-1', role: UserRole.CUSTOMER };
 
@@ -45,7 +45,7 @@ const build = (opts: { existing?: Dispute | null } = {}) => {
     getById: vi.fn(() => Promise.resolve({ id: 'e-1' })),
   };
   const disputes = { findOne: vi.fn(() => Promise.resolve(opts.existing ?? null)) };
-  const events = { find: vi.fn(() => Promise.resolve([{ id: 'ev-1' }])) };
+  const events = { find: vi.fn(() => Promise.resolve([{ id: 'ev-1', eventType: DisputeEventType.OPENED }])) };
   const service = new DisputesService(disputes as never, events as never, errands as never);
   return { service, errands, disputes, events, saved };
 };
@@ -100,7 +100,7 @@ describe('DisputesService.get (A-9)', () => {
       where: { disputeId: 'd-1' },
       order: { createdAt: 'ASC' },
     });
-    expect(view.events).toEqual([{ id: 'ev-1' }]);
+    expect(view.events).toEqual([{ id: 'ev-1', eventType: DisputeEventType.OPENED }]);
   });
 
   it('404s for an unknown dispute', async () => {
@@ -122,7 +122,7 @@ describe('DisputesService.getForErrand', () => {
     const view = await service.getForErrand('e-1', customer);
     expect(errands.getById).toHaveBeenCalledWith('e-1', customer);
     expect(disputes.findOne).toHaveBeenCalledWith({ where: { errandId: 'e-1' } });
-    expect(view.events).toEqual([{ id: 'ev-1' }]);
+    expect(view.events).toEqual([{ id: 'ev-1', eventType: DisputeEventType.OPENED }]);
   });
 
   it('404s when the errand has no dispute', async () => {
@@ -187,5 +187,58 @@ describe('DisputesService.closeWithin (N-6)', () => {
     const { manager, writes } = managerWith(null);
     await service.closeWithin(manager as never, resolution);
     expect(writes).toEqual({});
+  });
+});
+
+describe('Dispute resolution visible to customer and runner (row 79)', () => {
+  const resolvedAt = new Date('2026-10-09T12:00:00Z');
+  const rows = () => ({
+    dispute: {
+      id: 'd-1',
+      errandId: 'e-1',
+      reason: 'Wrong item',
+      status: 'resolved',
+      resolution: 'Receipt shows the runner bought the right item.',
+      resolvedBy: 'admin-1',
+    } as unknown as Dispute,
+    events: [
+      { id: 'ev-1', eventType: DisputeEventType.OPENED, actorId: 'cust-user', payload: { reason: 'Wrong item' } },
+      { id: 'ev-2', eventType: DisputeEventType.COMMENT, actorId: 'admin-1', payload: { note: 'internal: call runner' } },
+      {
+        id: 'ev-3',
+        eventType: DisputeEventType.RESOLVED,
+        actorId: 'admin-1',
+        payload: { verdict: 'runner_favourable', resolution: 'Receipt shows the runner bought the right item.' },
+        createdAt: resolvedAt,
+      },
+    ] as unknown as DisputeEvent[],
+  });
+
+  it.each([UserRole.CUSTOMER, UserRole.RUNNER])('%s sees the note and verdict, not admin internals', (role) => {
+    const { dispute, events } = rows();
+    const view = toDisputeView(dispute, events, { role });
+    expect(view.resolution).toBe('Receipt shows the runner bought the right item.');
+    expect(view.verdict).toBe('runner_favourable');
+    expect(view.resolvedAt).toEqual(resolvedAt);
+    expect(view.resolvedBy).toBeNull();
+    expect(view.events.map((e) => e.id)).toEqual(['ev-1', 'ev-3']);
+    expect(view.events[1].actorId).toBeNull();
+    expect(JSON.stringify(view)).not.toContain('internal');
+    expect(JSON.stringify(view)).not.toContain('admin-1');
+  });
+
+  it('admins see everything', () => {
+    const { dispute, events } = rows();
+    const view = toDisputeView(dispute, events, { role: UserRole.ADMIN });
+    expect(view.resolvedBy).toBe('admin-1');
+    expect(view.events).toHaveLength(3);
+    expect(view.verdict).toBe('runner_favourable');
+  });
+
+  it('an open dispute has no verdict', () => {
+    const { dispute, events } = rows();
+    const view = toDisputeView(dispute, events.slice(0, 1), { role: UserRole.CUSTOMER });
+    expect(view.verdict).toBeNull();
+    expect(view.resolvedAt).toBeNull();
   });
 });

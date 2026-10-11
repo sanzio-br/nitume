@@ -60,6 +60,15 @@ export class UsersService {
     return this.users.findOne({ where: { email } });
   }
 
+  /** Ids of every active admin (admin notification fan-out, row 68). */
+  async activeAdminIds(): Promise<string[]> {
+    const rows = await this.users.find({
+      where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
+      select: { id: true },
+    });
+    return rows.map((u) => u.id);
+  }
+
   /** Display names keyed by user id (missing users and unset names are omitted). */
   async displayNames(userIds: string[]): Promise<Map<string, string>> {
     const unique = [...new Set(userIds)].filter(Boolean);

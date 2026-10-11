@@ -65,7 +65,7 @@ describe('PriceChangeService.request domain event (A-2)', () => {
     };
     const errands = {
       findOne: vi.fn(() =>
-        Promise.resolve({ id: 'e-1', status: 'IN_PROGRESS', quotedPrice: '900.00', budget: '500.00' }),
+        Promise.resolve({ id: 'e-1', status: 'IN_PROGRESS', quotedPrice: '900.00', budget: '500.00', category: 'buy_for_me' }),
       ),
     };
     const service = new PriceChangeService(
@@ -147,6 +147,7 @@ describe('PriceChangeService decisions (owner Q8)', () => {
           merchantPayment: { route: 'send_to_runner', amount: '150.00', paidTo: 'nitume' },
         }),
       ),
+      primaryRouteFor: vi.fn(() => Promise.resolve('send_to_runner' as string | null)),
       chargeDifference: vi.fn((id: string) =>
         Promise.resolve({ payment: { id }, stkStatus: 'PENDING', checkoutRequestId: 'chk-9' }),
       ),
@@ -168,6 +169,9 @@ describe('PriceChangeService decisions (owner Q8)', () => {
         }),
       ),
       cancellationReviewFor: vi.fn(() => Promise.resolve(null)),
+      customerViewOf: vi.fn((r: Record<string, unknown>) =>
+        Promise.resolve({ ...r, remainingRefundable: '80.00' }),
+      ),
     };
     const service = new PriceChangeService(
       requests as never,
@@ -193,6 +197,23 @@ describe('PriceChangeService decisions (owner Q8)', () => {
       status: 'pending_review',
     });
     expect(out.differencePayment).toBeNull();
+  });
+
+  it('a decrease on a merchant_direct task opens no refund review (row 86)', async () => {
+    const { service, refunds, payments } = setup(ErrandStatus.IN_PROGRESS, { toPrice: '420.00' });
+    payments.primaryRouteFor.mockResolvedValueOnce('merchant_direct');
+    const out = await service.approve('e-1', 'pc-1', customerActor);
+    expect(payments.primaryRouteFor).toHaveBeenCalledWith('e-1', expect.anything());
+    expect(refunds.openForDecrease).not.toHaveBeenCalled();
+    expect(out.refundReview).toBeNull();
+    expect(out.status).toBe(PriceChangeStatus.APPROVED);
+  });
+
+  it('a decrease on a task without a merchant route opens no refund review (row 86)', async () => {
+    const { service, refunds, payments } = setup(ErrandStatus.IN_PROGRESS, { toPrice: '420.00' });
+    payments.primaryRouteFor.mockResolvedValueOnce(null);
+    await service.approve('e-1', 'pc-1', customerActor);
+    expect(refunds.openForDecrease).not.toHaveBeenCalled();
   });
 
   it('a decrease before payment opens no refund review', async () => {
@@ -324,7 +345,7 @@ describe('PriceChangeService.request runner window (row 49)', () => {
       save: vi.fn((row: object) => Promise.resolve({ id: 'pc-1', createdAt: new Date(), ...row })),
     };
     const errands = {
-      findOne: vi.fn(() => Promise.resolve({ id: 'e-1', status, budget: '500.00' })),
+      findOne: vi.fn(() => Promise.resolve({ id: 'e-1', status, budget: '500.00', category: 'buy_for_me' })),
     };
     const errandService = { isCurrentRunner: vi.fn(() => Promise.resolve(true)) };
     const service = new PriceChangeService(
@@ -351,6 +372,33 @@ describe('PriceChangeService.request runner window (row 49)', () => {
       const err = await service.request('e-1', { toPrice: 650 }, runner).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ApiError);
       expect((err as ApiError).code).toBe('price_change_not_in_progress');
+      expect(requests.save).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('PriceChangeService.request category rule (row 80)', () => {
+  it.each(['inspection', 'representation', 'queue_admin', 'business'])(
+    'refuses a price change on %s with merchant_amount_not_applicable',
+    async (category) => {
+      const requests = { findOne: vi.fn(), save: vi.fn() };
+      const errands = {
+        findOne: vi.fn(() =>
+          Promise.resolve({ id: 'e-1', status: ErrandStatus.IN_PROGRESS, budget: '0.00', category }),
+        ),
+      };
+      const service = new PriceChangeService(
+        requests as never,
+        errands as never,
+        {} as never,
+        { emit: vi.fn() } as never,
+        {} as never,
+        {} as never,
+      );
+      const err = await service
+        .request('e-1', { toPrice: 650 }, { userId: 'admin', role: UserRole.ADMIN })
+        .catch((e: unknown) => e);
+      expect((err as ApiError).code).toBe('merchant_amount_not_applicable');
       expect(requests.save).not.toHaveBeenCalled();
     },
   );

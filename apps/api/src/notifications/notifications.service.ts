@@ -14,12 +14,19 @@ import { Errand } from '../errands/errand.entity';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { NOTIFICATIONS_QUEUE } from '../infra/queue/queues';
 import { DevicesService } from '../users/devices.service';
+import { UsersService } from '../users/users.service';
 import {
   MERCHANT_DETAILS_UPDATED_EVENT,
   MerchantDetailsUpdatedEvent,
   QUOTE_REISSUED_EVENT,
+  QUOTE_REQUESTED_EVENT,
   QuoteReissuedEvent,
+  QuoteRequestedEvent,
 } from '../errands/errands.service';
+import {
+  MERCHANT_DETAILS_CHANGED_EVENT,
+  MerchantDetailsChangedEvent,
+} from '../payments/payment-events';
 import { AppNotification } from './app-notification.entity';
 import { NotificationLog } from './notification-log.entity';
 import { PUSH_SENDER, PushSender } from './push/push-sender';
@@ -61,7 +68,13 @@ export type FeedJob =
       expiresAt: string | null;
       acceptanceRequired: boolean;
     }
-  | { kind: 'merchant_details'; errandId: string; merchantName: string | null };
+  | { kind: 'merchant_details'; errandId: string; merchantName: string | null }
+  | { kind: 'merchant_details_changed'; errandId: string; merchantName: string | null }
+  /** Admin-facing (row 68): written to every active admin's feed. */
+  | { kind: 'quote_requested'; errandId: string; reference: string };
+
+/** Feed jobs whose recipients are the admins, not the errand's customer. */
+const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested']);
 
 export const FEED_JOB = 'feed';
 export const PUSH_JOB = 'push';
@@ -97,6 +110,7 @@ export class NotificationsService {
     private readonly devices: DevicesService,
     @Inject(PUSH_SENDER)
     private readonly push: PushSender,
+    private readonly users?: UsersService,
   ) {}
 
   async listForUser(
@@ -185,10 +199,35 @@ export class NotificationsService {
   /** Merchant Till/Paybill details added -> merchant_direct is now possible. */
   @OnEvent(MERCHANT_DETAILS_UPDATED_EVENT, { async: true })
   async onMerchantDetails(event: MerchantDetailsUpdatedEvent): Promise<void> {
+    // A change of existing details is announced only when a merchant-direct
+    // payment has started (merchant_details.changed, row 80).
+    if (event.changed) {
+      return;
+    }
     await this.enqueue({
       kind: 'merchant_details',
       errandId: event.errandId,
       merchantName: event.merchantName,
+    });
+  }
+
+  /** Details changed after a merchant-direct payment started -> warn the customer (row 80). */
+  @OnEvent(MERCHANT_DETAILS_CHANGED_EVENT, { async: true })
+  async onMerchantDetailsChanged(event: MerchantDetailsChangedEvent): Promise<void> {
+    await this.enqueue({
+      kind: 'merchant_details_changed',
+      errandId: event.errandId,
+      merchantName: event.merchantName,
+    });
+  }
+
+  /** Customer asked for a new quote -> admin feed (row 68). */
+  @OnEvent(QUOTE_REQUESTED_EVENT, { async: true })
+  async onQuoteRequested(event: QuoteRequestedEvent): Promise<void> {
+    await this.enqueue({
+      kind: 'quote_requested',
+      errandId: event.errandId,
+      reference: event.reference,
     });
   }
 
@@ -203,7 +242,11 @@ export class NotificationsService {
     }
   }
 
-  /** Worker step 1: writes the customer's feed row, then queues its push. */
+  /**
+   * Worker step 1: writes the feed row of each recipient (the errand's
+   * customer, or every active admin for admin kinds), then queues the push.
+   * Returns the first row written, or null.
+   */
   async deliverFeed(job: FeedJob): Promise<AppNotification | null> {
     const copy = copyFor(job);
     if (!copy) {
@@ -213,23 +256,30 @@ export class NotificationsService {
     if (!errand) {
       return null;
     }
-    const profile = await this.customers.findOne({ where: { id: errand.customerId } });
-    if (!profile) {
-      return null;
+    let recipients: string[];
+    if (ADMIN_FEED_KINDS.has(job.kind)) {
+      recipients = this.users ? await this.users.activeAdminIds() : [];
+    } else {
+      const profile = await this.customers.findOne({ where: { id: errand.customerId } });
+      recipients = profile ? [profile.userId] : [];
     }
-    const row = await this.notifications.save(
-      this.notifications.create({
-        userId: profile.userId,
-        errandId: errand.id,
-        eventType: copy.eventType,
-        title: copy.title,
-        body: copy.body,
-      }),
-    );
-    if (this.push.enabled) {
-      await this.queue.add(PUSH_JOB, { notificationId: row.id }, { jobId: `push-${row.id}` });
+    let first: AppNotification | null = null;
+    for (const userId of recipients) {
+      const row = await this.notifications.save(
+        this.notifications.create({
+          userId,
+          errandId: errand.id,
+          eventType: copy.eventType,
+          title: copy.title,
+          body: copy.body,
+        }),
+      );
+      if (this.push.enabled) {
+        await this.queue.add(PUSH_JOB, { notificationId: row.id }, { jobId: `push-${row.id}` });
+      }
+      first ??= row;
     }
-    return row;
+    return first;
   }
 
   /**
@@ -328,7 +378,7 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
       return {
         eventType: NotificationEventType.PRICE_CHANGE_REQUESTED,
         title: 'Price change requested',
-        body: `Your runner asked to change the item price from KES ${job.fromPrice} to KES ${job.toPrice}. Review it to continue.`,
+        body: `Your runner asked to change the item price from ${formatKsh(job.fromPrice)} to ${formatKsh(job.toPrice)}. Review it to continue.`,
       };
     case 'refund':
       return refundCopy(job.status, job.refundAmount);
@@ -337,8 +387,22 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.QUOTE_REISSUED,
         title: 'New quote for your task',
         body: job.acceptanceRequired
-          ? `Your task has a new quote of KES ${job.total}. Accept it to continue to payment.`
-          : `Your task has a new quote of KES ${job.total}. Review it to continue.`,
+          ? `Your task has a new quote of ${formatKsh(job.total)}. Accept it to continue to payment.`
+          : `Your task has a new quote of ${formatKsh(job.total)}. Review it to continue.`,
+      };
+    case 'merchant_details_changed':
+      return {
+        eventType: NotificationEventType.MERCHANT_DETAILS_CHANGED,
+        title: 'Merchant payment details changed',
+        body: job.merchantName
+          ? `The payment details for ${job.merchantName} changed after you started paying. Check the Till or Paybill before you pay.`
+          : 'The merchant payment details changed after you started paying. Check the Till or Paybill before you pay.',
+      };
+    case 'quote_requested':
+      return {
+        eventType: NotificationEventType.QUOTE_REQUESTED,
+        title: 'New quote requested',
+        body: `The customer asked for a new quote on ${job.reference} after their quote expired.`,
       };
     case 'merchant_details':
       return {
@@ -351,13 +415,27 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
   }
 };
 
+/**
+ * App money format (row 82): `KSh 40,000`, `KSh 1,250.50`. Whole amounts
+ * drop the decimals; anything else keeps two.
+ */
+export const formatKsh = (value: string | number | null | undefined): string => {
+  const n = Number(value ?? 0);
+  const amount = Number.isFinite(n) ? n : 0;
+  const whole = Math.round(amount * 100) % 100 === 0;
+  return `KSh ${amount.toLocaleString('en-US', {
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  })}`;
+};
+
 const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
   switch (status) {
     case 'approved':
       return {
         eventType: NotificationEventType.REFUND_APPROVED,
         title: 'Refund approved',
-        body: `A refund of KES ${amount ?? '0.00'} was approved for your task.`,
+        body: `A refund of ${formatKsh(amount)} was approved for your task.`,
       };
     case 'no_refund':
       return {
@@ -369,7 +447,7 @@ const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
       return {
         eventType: NotificationEventType.REFUND_REFUNDED,
         title: 'Refund sent',
-        body: `Your refund of KES ${amount ?? '0.00'} has been sent to M-Pesa.`,
+        body: `Your refund of ${formatKsh(amount)} has been sent to M-Pesa.`,
       };
     default:
       return null;

@@ -39,6 +39,11 @@ export class Quote {
   @Column({ type: 'varchar', length: 8, default: 'KES' })
   currency: string;
 
+  /**
+   * Every quote the API writes has an expiry (row 83, default 24h); legacy
+   * nulls are backfilled to createdAt + 24h by migration 1790100800000.
+   * The column stays nullable (no schema change).
+   */
   @Column({ type: 'timestamptz', nullable: true })
   expiresAt: Date | null;
 

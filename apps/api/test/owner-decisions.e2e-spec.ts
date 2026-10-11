@@ -545,6 +545,8 @@ describe('Owner decisions (e2e)', () => {
         tillNumber: '123456',
         paybillNumber: null,
         accountReference: null,
+        merchantDetailsUpdatedAt: null,
+        merchantDetailsChangedAfterPayment: false,
       });
       expect(ok.body.transactions).toHaveLength(2);
     });
@@ -676,8 +678,15 @@ describe('Owner decisions (e2e)', () => {
       const customer = await makeUser(UserRole.CUSTOMER);
       const admin = await makeUser(UserRole.ADMIN);
       const runner = await makeUser(UserRole.RUNNER);
-      const errand = await createErrand(customer);
-      await driveTo({ customer, admin, runner }, errand.id, 'RUNNER_ASSIGNED');
+      // Price changes move the item amount: Buy For Me / Get It For Me only (row 80).
+      const errand = await createErrand(customer, {
+        category: 'buy_for_me',
+        budget: 50,
+        locations: [{ pointType: 'dropoff', lat: -4.04, lon: 39.7, addressText: 'Links Road, Nyali' }],
+      });
+      await driveTo({ customer, admin, runner }, errand.id, 'RUNNER_ASSIGNED', {
+        merchantRoute: 'send_to_runner',
+      });
       await setStatus(runner, errand.id, 'RUNNER_EN_ROUTE');
       const base = `/api/v1/errands/${errand.id}/price-change`;
       // Runners request price changes only IN_PROGRESS (row 49); an admin still can.

@@ -3,7 +3,7 @@ import { ApiError } from '../common/api-error';
 import { ErrandStatus } from '../common/enums';
 import { TransitionGuard } from '../errands/errand-state-machine';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
-import { RefundsService, triggerFor } from './refunds.service';
+import { RefundsService, refundPositionOf, triggerFor } from './refunds.service';
 
 const review = (over: Partial<RefundReview> = {}): RefundReview =>
   Object.assign(new RefundReview(), {
@@ -16,12 +16,22 @@ const review = (over: Partial<RefundReview> = {}): RefundReview =>
     ...over,
   });
 
-const build = (opts: { row?: RefundReview | null; status?: ErrandStatus; paid?: string } = {}) => {
+const build = (
+  opts: {
+    row?: RefundReview | null;
+    status?: ErrandStatus;
+    paid?: string;
+    siblings?: RefundReview[];
+  } = {},
+) => {
   // In-memory refund_reviews table keyed by errandId (the unique index).
   const table = new Map<string, RefundReview>();
   const reviews = {
     findOne: vi.fn(({ where }: { where: { id?: string; errandId?: string } }) =>
       Promise.resolve(where.errandId ? (table.get(where.errandId) ?? null) : (opts.row ?? null)),
+    ),
+    find: vi.fn(() =>
+      Promise.resolve([...(opts.row ? [opts.row] : []), ...(opts.siblings ?? [])]),
     ),
     create: vi.fn((r: object) => Object.assign(new RefundReview(), r)),
     save: vi.fn((r: RefundReview) => Promise.resolve(r)),
@@ -32,7 +42,10 @@ const build = (opts: { row?: RefundReview | null; status?: ErrandStatus; paid?: 
     select: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     andWhere: vi.fn().mockReturnThis(),
+    addSelect: vi.fn().mockReturnThis(),
+    groupBy: vi.fn().mockReturnThis(),
     getRawOne: vi.fn(() => Promise.resolve({ total: opts.paid ?? '0' })),
+    getRawMany: vi.fn(() => Promise.resolve([{ errandId: 'e-1', total: opts.paid ?? '0' }])),
   };
   const transactions = { createQueryBuilder: vi.fn(() => qb) };
   /** Mirrors INSERT ... ON CONFLICT ("errandId") DO UPDATE ... WHERE pending. */
@@ -152,17 +165,22 @@ describe('RefundsService', () => {
   });
 
   it('lets an admin set 0..amountPaid', async () => {
-    const full = build({ row: review() });
+    const full = build({ row: review(), paid: '500.00' });
     const approved = await full.service.decide('r-1', 500, 'Full refund', 'admin-1');
     expect(approved.status).toBe(RefundStatus.APPROVED);
     expect(approved.refundAmount).toBe('500.00');
+    expect(approved.remainingRefundable).toBe('0.00');
+    // Every review of the task is locked for the decision (row 87).
+    expect(full.reviews.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { errandId: 'e-1' }, lock: { mode: 'pessimistic_write' } }),
+    );
 
     const none = build({ row: review() });
     expect((await none.service.decide('r-1', 0, undefined, 'admin-1')).status).toBe(
       RefundStatus.NO_REFUND,
     );
 
-    const over = build({ row: review() });
+    const over = build({ row: review(), paid: '500.00' });
     expect(await codeOf(over.service.decide('r-1', 500.01, undefined, 'admin-1'))).toBe(
       'refund_exceeds_amount_paid',
     );
@@ -171,6 +189,77 @@ describe('RefundsService', () => {
     expect(await codeOf(twice.service.decide('r-1', 1, undefined, 'admin-1'))).toBe(
       'refund_already_decided',
     );
+  });
+
+  it('caps a cancellation review at what is left after approved decreases (rows 81, 87)', async () => {
+    // Paid 1650 to Nitume (fees + item + difference); a decrease refunded 150.
+    const cancellation = review({ amountPaid: '1650.00' });
+    const decrease = review({
+      id: 'r-2',
+      trigger: RefundTrigger.PRICE_CHANGE_DECREASE,
+      amountPaid: '150.00',
+      refundAmount: '150.00',
+      status: RefundStatus.REFUNDED,
+    });
+    const over = build({ row: cancellation, siblings: [decrease], paid: '1650.00' });
+    const err = await over.service.decide('r-1', 1600, undefined, 'admin-1').catch((e: unknown) => e);
+    expect((err as ApiError).code).toBe('refund_exceeds_amount_paid');
+    expect((err as ApiError).getStatus()).toBe(400);
+    expect((err as ApiError).getResponse()).toMatchObject({
+      amountPaid: '1500.00',
+      refundCeiling: '1500.00',
+      reviewAmountPaid: '1650.00',
+      alreadyRefunded: '150.00',
+      totalPaidToNitume: '1650.00',
+    });
+
+    const ok = build({ row: review({ amountPaid: '1650.00' }), siblings: [decrease], paid: '1650.00' });
+    const decided = await ok.service.decide('r-1', 1500, undefined, 'admin-1');
+    expect(decided).toMatchObject({
+      status: RefundStatus.APPROVED,
+      refundAmount: '1500.00',
+      alreadyRefunded: '150.00',
+      remainingRefundable: '0.00',
+      refundCeiling: null,
+    });
+  });
+
+  it('caps a decrease review once a cancellation refund used up the payment (row 87)', async () => {
+    const cancellation = review({
+      id: 'r-1',
+      amountPaid: '1000.00',
+      refundAmount: '950.00',
+      status: RefundStatus.APPROVED,
+    });
+    const decreaseRow = () =>
+      review({ id: 'r-2', trigger: RefundTrigger.PRICE_CHANGE_DECREASE, amountPaid: '100.00' });
+    const b = build({ row: decreaseRow(), siblings: [cancellation], paid: '1000.00' });
+    expect(await codeOf(b.service.decide('r-2', 100, undefined, 'admin-1'))).toBe(
+      'refund_exceeds_amount_paid',
+    );
+    const ok = build({ row: decreaseRow(), siblings: [cancellation], paid: '1000.00' });
+    expect((await ok.service.decide('r-2', 50, undefined, 'admin-1')).remainingRefundable).toBe('0.00');
+  });
+
+  it('ignores pending and no_refund siblings in the ceiling (row 87)', () => {
+    const pos = refundPositionOf(review({ amountPaid: '500.00' }), 500, [
+      review({ id: 'r-2', status: RefundStatus.PENDING_REVIEW, refundAmount: null }),
+      review({ id: 'r-3', status: RefundStatus.NO_REFUND, refundAmount: '0.00' }),
+    ]);
+    expect(pos).toEqual({
+      totalPaidToNitume: '500.00',
+      alreadyRefunded: '0.00',
+      remainingRefundable: '500.00',
+      refundCeiling: '500.00',
+    });
+  });
+
+  it('never reports a negative ceiling or remaining amount', () => {
+    const pos = refundPositionOf(review({ amountPaid: '500.00' }), 100, [
+      review({ id: 'r-2', status: RefundStatus.REFUNDED, refundAmount: '300.00' }),
+    ]);
+    expect(pos.refundCeiling).toBe('0.00');
+    expect(pos.remainingRefundable).toBe('0.00');
   });
 
   it('marks only approved refunds as paid out manually', async () => {
@@ -183,5 +272,14 @@ describe('RefundsService', () => {
     expect(await codeOf(pending.service.markPaid('r-1', 'QJK12AB34C', 'admin-1'))).toBe(
       'refund_not_approved',
     );
+
+    // Row 82: the receipt cannot be edited after refunded.
+    const done = build({
+      row: review({ status: RefundStatus.REFUNDED, refundAmount: '200.00', payoutReference: 'QJK12AB34C' }),
+    });
+    const err = await done.service.markPaid('r-1', 'QZZ99XY88W', 'admin-1').catch((e: unknown) => e);
+    expect((err as ApiError).code).toBe('refund_payout_locked');
+    expect((err as ApiError).getStatus()).toBe(409);
+    expect(done.reviews.save).not.toHaveBeenCalled();
   });
 });

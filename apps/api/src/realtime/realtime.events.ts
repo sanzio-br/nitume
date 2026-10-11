@@ -14,8 +14,16 @@
  *  - server -> client `price_change:requested`
  *  - server -> client `quote:reissued` (admin re-quote, N-4 / row 72)
  *  - server -> client `merchant_details:updated` (Till/Paybill set)
+ *  - room `admins` + server -> client `quote:requested` (row 68)
+ *  - server -> client `merchant_details:changed` (row 80)
  */
 export const errandRoom = (errandId: string): string => `errand:${errandId}`;
+
+/**
+ * PROPOSED: every authenticated admin socket joins this room on connect
+ * (admin-wide pushes such as `quote:requested`, row 68).
+ */
+export const ADMIN_ROOM = 'admins';
 
 export const SocketClientEvent = {
   ERRAND_JOIN: 'errand:join',
@@ -29,6 +37,15 @@ export const SocketServerEvent = {
   PRICE_CHANGE_REQUESTED: 'price_change:requested',
   QUOTE_REISSUED: 'quote:reissued',
   MERCHANT_DETAILS_UPDATED: 'merchant_details:updated',
+  /** PROPOSED (row 80): details changed after a merchant-direct payment started. */
+  MERCHANT_DETAILS_CHANGED: 'merchant_details:changed',
+  /**
+   * PROPOSED: sent to a socket just before it is removed from `errand:{id}`
+   * because the user lost access (e.g. runner reassigned). `{ errandId }`.
+   */
+  ERRAND_ACCESS_REVOKED: 'errand:access_revoked',
+  /** PROPOSED (row 68): to `admins` and `errand:{id}`. */
+  QUOTE_REQUESTED: 'quote:requested',
 } as const;
 
 /** In-process domain events (EventEmitter2) the realtime module listens to. */
@@ -38,6 +55,13 @@ export const DomainEvent = {
   PRICE_CHANGE_REQUESTED: 'price_change.requested',
   QUOTE_REISSUED: 'quote.reissued',
   MERCHANT_DETAILS_UPDATED: 'errand.merchant_details_updated',
+  QUOTE_REQUESTED: 'quote.requested',
+  MERCHANT_DETAILS_CHANGED: 'merchant_details.changed',
+  /**
+   * Emit `{ errandId }` whenever who may view an errand changes without a
+   * status change; the gateway re-checks every socket in the room.
+   */
+  ERRAND_ACCESS_CHANGED: 'errand.access_changed',
 } as const;
 
 export interface EvidenceUploadedEvent {

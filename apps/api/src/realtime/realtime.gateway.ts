@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
@@ -12,14 +12,17 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import { AuthContext, Public } from '../common/decorators/auth.decorators';
-import { ErrandStatus, UserStatus } from '../common/enums';
+import { ErrandStatus, UserRole, UserStatus } from '../common/enums';
 import {
   ErrandsService,
   MerchantDetailsUpdatedEvent,
   QuoteReissuedEvent,
+  QuoteRequestedEvent,
 } from '../errands/errands.service';
+import { MerchantDetailsChangedEvent } from '../payments/payment-events';
 import { UsersService } from '../users/users.service';
 import {
+  ADMIN_ROOM,
   DomainEvent,
   EvidenceUploadedEvent,
   JoinAck,
@@ -80,6 +83,9 @@ export class RealtimeGateway implements OnGatewayConnection {
       return;
     }
     client.data.user = user;
+    if (user.role === UserRole.ADMIN) {
+      await client.join(ADMIN_ROOM);
+    }
   }
 
   @SubscribeMessage(SocketClientEvent.ERRAND_JOIN)
@@ -126,8 +132,15 @@ export class RealtimeGateway implements OnGatewayConnection {
       .emit(SocketServerEvent.LOCATION_UPDATE, payload);
   }
 
-  @OnEvent(DomainEvent.ERRAND_STATUS_CHANGED)
-  onStatusChanged(event: StatusChangedEvent): void {
+  /**
+   * Status pushes go out after the room is re-checked: a status change can
+   * move the current assignment (assign, reassignment, terminal states), so
+   * sockets whose user can no longer view the errand are removed first
+   * (reviewer follow-up, row 65).
+   */
+  @OnEvent(DomainEvent.ERRAND_STATUS_CHANGED, { async: true })
+  async onStatusChanged(event: StatusChangedEvent): Promise<void> {
+    await this.revalidateRoom(event.errandId);
     this.server?.to(errandRoom(event.errandId)).emit(SocketServerEvent.ERRAND_STATUS_CHANGED, {
       errandId: event.errandId,
       status: event.status,
@@ -160,6 +173,72 @@ export class RealtimeGateway implements OnGatewayConnection {
     this.server
       ?.to(errandRoom(event.errandId))
       .emit(SocketServerEvent.MERCHANT_DETAILS_UPDATED, event);
+  }
+
+  @OnEvent(DomainEvent.ERRAND_ACCESS_CHANGED, { async: true })
+  async onAccessChanged(event: { errandId: string }): Promise<void> {
+    await this.revalidateRoom(event.errandId);
+  }
+
+  /**
+   * Removes from `errand:{id}` every socket whose user can no longer view the
+   * errand (same check as `errand:join`), telling it first with
+   * `errand:access_revoked`. Never throws: a failed check leaves the room
+   * as it was and is logged.
+   */
+  async revalidateRoom(errandId: string): Promise<number> {
+    if (!this.server) {
+      return 0;
+    }
+    const room = errandRoom(errandId);
+    let removed = 0;
+    try {
+      const sockets = await this.server.in(room).fetchSockets();
+      for (const socket of sockets) {
+        const user = (socket.data as SocketData | undefined)?.user;
+        let allowed = false;
+        if (user) {
+          try {
+            await this.errands.getById(errandId, { role: user.role, userId: user.userId });
+            allowed = true;
+          } catch (err) {
+            // Only a definite "no access" evicts; a transient failure keeps the socket.
+            if (!(err instanceof ForbiddenException || err instanceof NotFoundException)) {
+              allowed = true;
+              this.logger.warn(
+                `Kept a socket in ${room}; access check failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          }
+        }
+        if (!allowed) {
+          socket.emit(SocketServerEvent.ERRAND_ACCESS_REVOKED, { errandId });
+          socket.leave(room);
+          removed += 1;
+        }
+      }
+    } catch (err) {
+      this.logger.error(
+        `Could not re-check ${room}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return removed;
+  }
+
+  /** Merchant details changed after a merchant-direct payment started (row 80). */
+  @OnEvent(DomainEvent.MERCHANT_DETAILS_CHANGED)
+  onMerchantDetailsChanged(event: MerchantDetailsChangedEvent): void {
+    this.server
+      ?.to(errandRoom(event.errandId))
+      .emit(SocketServerEvent.MERCHANT_DETAILS_CHANGED, event);
+  }
+
+  /** Customer asked for a new quote (row 68): admins and the errand room. */
+  @OnEvent(DomainEvent.QUOTE_REQUESTED)
+  onQuoteRequested(event: QuoteRequestedEvent): void {
+    this.server
+      ?.to([ADMIN_ROOM, errandRoom(event.errandId)])
+      .emit(SocketServerEvent.QUOTE_REQUESTED, event);
   }
 
   private async authenticate(client: AuthedSocket): Promise<AuthContext | null> {

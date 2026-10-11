@@ -42,11 +42,16 @@ export const mpesaProviderFactory = {
         return new DarajaMpesaProvider(cfg);
       }
       case 'console':
+        // Row 89: production refuses to start on the mock (validateEnv fails
+        // first; this guards a factory built outside ConfigModule).
         if (config.get<string>('nodeEnv') === 'production') {
-          new Logger('MpesaProvider').warn(
-            'PAYMENTS_PROVIDER=console in production: STK pushes are mocked and mock callbacks are trusted.',
+          throw new Error(
+            'PAYMENTS_PROVIDER=console is not allowed when NODE_ENV=production.',
           );
         }
+        new Logger('MpesaProvider').warn(
+          'PAYMENTS_PROVIDER=console: STK pushes are mocked and mock callbacks are trusted (non-production only).',
+        );
         return consoleProvider;
       default:
         throw new Error(`Unknown PAYMENTS_PROVIDER '${String(name)}' (console | payhero | daraja)`);

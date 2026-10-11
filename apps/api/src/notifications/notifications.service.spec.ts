@@ -9,10 +9,13 @@ import {
   NotificationsService,
   PUSH_JOB,
   copyFor,
+  formatKsh,
   notificationEventTypeFor,
 } from './notifications.service';
 
-const build = (opts: { pushEnabled?: boolean; tokens?: string[]; results?: object[] } = {}) => {
+const build = (
+  opts: { pushEnabled?: boolean; tokens?: string[]; results?: object[]; admins?: string[] } = {},
+) => {
   const notifications = {
     create: vi.fn((row: object) => row),
     save: vi.fn((row: object) => Promise.resolve({ id: 'n-1', ...row })),
@@ -48,8 +51,9 @@ const build = (opts: { pushEnabled?: boolean; tokens?: string[]; results?: objec
     queue as never,
     devices as never,
     push as never,
+    { activeAdminIds: vi.fn(() => Promise.resolve(opts.admins ?? ['admin-1', 'admin-2'])) } as never,
   );
-  return { service, notifications, queue, devices, push, logs };
+  return { service, notifications, queue, devices, push, logs, customers };
 };
 
 describe('NotificationEventType (A-14)', () => {
@@ -75,13 +79,39 @@ describe('NotificationEventType (A-14)', () => {
     }
   });
 
+  it('formats money as the app does (row 82)', () => {
+    expect(formatKsh('40000.00')).toBe('KSh 40,000');
+    expect(formatKsh('1250.50')).toBe('KSh 1,250.50');
+    expect(formatKsh(null)).toBe('KSh 0');
+  });
+
+  it('uses KSh, never KES, in every amount copy (row 82)', () => {
+    const bodies = [
+      copyFor({ kind: 'price_change', errandId: 'e', requestId: 'r', fromPrice: '500.00', toPrice: '650.00' }),
+      copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'approved', refundAmount: '400.00' }),
+      copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'refunded', refundAmount: '400.00' }),
+      copyFor({
+        kind: 'quote_reissued',
+        errandId: 'e',
+        quoteId: 'q',
+        total: '700.00',
+        expiresAt: null,
+        acceptanceRequired: false,
+      }),
+    ].map((c) => `${c?.title} ${c?.body}`);
+    for (const text of bodies) {
+      expect(text).toMatch(/KSh \d/);
+      expect(text).not.toContain('KES');
+    }
+  });
+
   it('has copy for price-change and refund items', () => {
     expect(
       copyFor({ kind: 'price_change', errandId: 'e', requestId: 'r', fromPrice: '500.00', toPrice: '650.00' }),
     ).toMatchObject({ eventType: 'price_change.requested' });
     expect(
       copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'refunded', refundAmount: '400.00' }),
-    ).toMatchObject({ eventType: 'refund.refunded', body: expect.stringContaining('400.00') });
+    ).toMatchObject({ eventType: 'refund.refunded', body: expect.stringContaining('KSh 400') });
     expect(
       copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'pending_review', refundAmount: null }),
     ).toBeNull();
@@ -193,6 +223,8 @@ describe('Re-quote and merchant-details notifications (N-4, rows 42-44)', () => 
       tillNumber: '123456',
       paybillNumber: null,
       accountReference: null,
+      changed: false,
+      merchantDetailsUpdatedAt: null,
     });
     expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
       kind: 'merchant_details',
@@ -214,6 +246,96 @@ describe('Re-quote and merchant-details notifications (N-4, rows 42-44)', () => 
     ).toMatchObject({ eventType: 'quote.reissued', body: expect.stringContaining('Accept it') });
     expect(copyFor({ kind: 'merchant_details', errandId: 'e', merchantName: null })).toMatchObject({
       eventType: 'merchant_details.added',
+    });
+  });
+});
+
+describe('Quote request admin feed (row 68)', () => {
+  it('queues a quote_requested job on the domain event (no inline write)', async () => {
+    const { service, queue, notifications } = build();
+    await service.onQuoteRequested({
+      errandId: 'e-1',
+      reference: 'NT-10001',
+      quoteId: 'q-1',
+      status: ErrandStatus.QUOTED,
+      quoteRequestedAt: '2026-10-09T10:00:00.000Z',
+    });
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
+      kind: 'quote_requested',
+      errandId: 'e-1',
+      reference: 'NT-10001',
+    });
+    expect(notifications.save).not.toHaveBeenCalled();
+  });
+
+  it('writes one feed row per active admin, never to the customer', async () => {
+    const { service, notifications, queue, customers } = build();
+    const first = await service.deliverFeed({
+      kind: 'quote_requested',
+      errandId: 'e-1',
+      reference: 'NT-10001',
+    });
+    expect(first).not.toBeNull();
+    expect(customers.findOne).not.toHaveBeenCalled();
+    expect(notifications.save).toHaveBeenCalledTimes(2);
+    expect(notifications.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'admin-1',
+        errandId: 'e-1',
+        eventType: 'quote.requested',
+        title: 'New quote requested',
+        body: expect.stringContaining('NT-10001'),
+      }),
+    );
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'admin-2' }));
+    expect(queue.add).toHaveBeenCalledTimes(2);
+  });
+
+  it('writes nothing when there is no active admin', async () => {
+    const { service, notifications } = build({ admins: [] });
+    expect(
+      await service.deliverFeed({ kind: 'quote_requested', errandId: 'e-1', reference: 'NT-10001' }),
+    ).toBeNull();
+    expect(notifications.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('Merchant details changed after a merchant-direct payment (row 80)', () => {
+  it('does not send the "added" item for a change of existing details', async () => {
+    const { service, queue } = build();
+    await service.onMerchantDetails({
+      errandId: 'e-1',
+      merchantName: 'Naivas',
+      tillNumber: '654321',
+      paybillNumber: null,
+      accountReference: null,
+      changed: true,
+      merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
+    });
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('queues a merchant_details_changed item for the customer', async () => {
+    const { service, queue } = build();
+    await service.onMerchantDetailsChanged({
+      errandId: 'e-1',
+      merchantName: 'Naivas',
+      tillNumber: '654321',
+      paybillNumber: null,
+      accountReference: null,
+      merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
+    });
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
+      kind: 'merchant_details_changed',
+      errandId: 'e-1',
+      merchantName: 'Naivas',
+    });
+    expect(
+      copyFor({ kind: 'merchant_details_changed', errandId: 'e-1', merchantName: 'Naivas' }),
+    ).toMatchObject({
+      eventType: 'merchant_details.changed',
+      title: 'Merchant payment details changed',
+      body: expect.stringContaining('Naivas'),
     });
   });
 });

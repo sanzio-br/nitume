@@ -59,6 +59,8 @@ export interface MerchantDetails {
   tillNumber: string | null;
   paybillNumber: string | null;
   accountReference: string | null;
+  /** When existing details were last changed (row 80), or null. */
+  merchantDetailsUpdatedAt: Date | null;
 }
 
 /**
@@ -78,5 +80,14 @@ export type MerchantPayee = 'nitume' | 'merchant';
  * amount (platform-only errand).
  */
 export type MerchantPaymentView =
-  | ({ route: MerchantRoute.MERCHANT_DIRECT; amount: string; paidTo: 'merchant' } & MerchantDetails)
+  | ({
+      route: MerchantRoute.MERCHANT_DIRECT;
+      amount: string;
+      paidTo: 'merchant';
+      /**
+       * Row 80: the Till/Paybill changed after this payment started; the
+       * customer app warns (never blocks).
+       */
+      merchantDetailsChangedAfterPayment: boolean;
+    } & MerchantDetails)
   | { route: MerchantRoute.SEND_TO_RUNNER; amount: string; paidTo: 'nitume' };

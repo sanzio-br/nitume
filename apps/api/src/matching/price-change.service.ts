@@ -16,9 +16,10 @@ import {
 } from '../common/enums';
 import { ApiError, conflict } from '../common/api-error';
 import { ErrandStateMachine, TransitionGuard } from '../errands/errand-state-machine';
+import { assertMerchantCategory } from '../errands/errand-rules';
 import { MerchantRoute } from '../payments/payment-views';
 import { DifferencePaymentView, PaymentsService } from '../payments/payments.service';
-import { CustomerRefundView, RefundsService, toCustomerView } from '../payments/refunds.service';
+import { CustomerRefundView, RefundsService } from '../payments/refunds.service';
 import { Errand } from '../errands/errand.entity';
 import { ErrandsService } from '../errands/errands.service';
 import { PriceChangeRequest } from './price-change-request.entity';
@@ -95,6 +96,9 @@ export class PriceChangeService {
         { status: errand.status },
       );
     }
+    // A price change moves the merchant/item amount, which only Buy For Me
+    // and Get It For Me carry (row 80).
+    assertMerchantCategory(errand.category, 'merchant_amount_not_applicable');
     if (actor.role !== UserRole.ADMIN) {
       const isAssignedRunner = await this.isAssignedRunner(
         errandId,
@@ -182,10 +186,14 @@ export class PriceChangeService {
       }
       const difference = round2(Number(req.toPrice) - Number(req.fromPrice));
       let recorded: { paymentId: string; flow: PaymentFlow } | null = null;
-      // A decrease on a paid task opens its own refund review for the
-      // difference (rows 48, 71), committed with the approval.
+      // A decrease on a paid send_to_runner task opens its own refund review
+      // for the difference (rows 48, 71), committed with the approval. On
+      // merchant_direct Nitume never held the item money, so none opens
+      // (row 86).
       const refund =
-        difference < 0 && POST_PAYMENT.has(errand.status)
+        difference < 0 &&
+        POST_PAYMENT.has(errand.status) &&
+        (await this.payments.primaryRouteFor(errandId, manager)) === MerchantRoute.SEND_TO_RUNNER
           ? await this.refunds.openForDecrease(manager, errandId, req.id, -difference)
           : null;
       if (difference > 0 && POST_PAYMENT.has(errand.status)) {
@@ -213,7 +221,7 @@ export class PriceChangeService {
       : null;
     return Object.assign(decided.saved, {
       differencePayment,
-      refundReview: decided.refund ? toCustomerView(decided.refund) : null,
+      refundReview: decided.refund ? await this.refunds.customerViewOf(decided.refund) : null,
     });
   }
 
@@ -270,7 +278,7 @@ export class PriceChangeService {
     const review = await this.refunds.cancellationReviewFor(errandId);
     return Object.assign(extra, {
       differencePayment: null,
-      refundReview: review ? toCustomerView(review) : null,
+      refundReview: review ? await this.refunds.customerViewOf(review) : null,
     });
   }
 

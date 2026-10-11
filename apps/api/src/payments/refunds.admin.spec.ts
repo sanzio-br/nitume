@@ -26,7 +26,9 @@ const qb = (raw: object) => {
     where: vi.fn(() => b),
     andWhere: vi.fn(() => b),
     setParameters: vi.fn(() => b),
+    groupBy: vi.fn(() => b),
     getRawOne: vi.fn(() => Promise.resolve(raw)),
+    getRawMany: vi.fn(() => Promise.resolve([{ errandId: 'e-1', total: '1650.00' }])),
   };
   return b;
 };
@@ -124,6 +126,13 @@ describe('RefundsService admin views (N-1, N-2, N-7)', () => {
       priceChangeDifferences: '150.00',
       totalPaidToNitume: '1650.00',
       merchantDirectAmount: '0.00',
+    });
+    // Row 87: this review refunded 1000 of the 1650 paid to Nitume.
+    expect(out).toMatchObject({
+      totalPaidToNitume: '1650.00',
+      alreadyRefunded: '0.00',
+      remainingRefundable: '650.00',
+      refundCeiling: null,
     });
     expect(out.otherReviews).toEqual([
       {

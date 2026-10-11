@@ -48,6 +48,15 @@ describe('mpesaProviderFactory (row 73)', () => {
     );
   });
 
+  it('refuses the console mock in production (row 89)', () => {
+    expect(() =>
+      mpesaProviderFactory.useFactory(
+        config({ 'payments.provider': 'console', nodeEnv: 'production' }),
+        consoleProvider,
+      ),
+    ).toThrow(/not allowed when NODE_ENV=production/);
+  });
+
   it('rejects an unknown provider', () => {
     expect(() =>
       mpesaProviderFactory.useFactory(config({ 'payments.provider': 'mystery' }), consoleProvider),

@@ -393,7 +393,13 @@ describe('Owner answers 3 (e2e)', () => {
       .get(`/api/v1/errands/${errand.id}/dispute`)
       .set(bearer(customer.token))
       .expect(200);
-    expect(dispute.body).toMatchObject({ status: 'resolved', resolution: rationale, resolvedBy: admin.id });
+    // Row 79: the parties see the note and verdict, not the admin id.
+    expect(dispute.body).toMatchObject({
+      status: 'resolved',
+      resolution: rationale,
+      resolvedBy: null,
+      verdict: 'runner_favourable',
+    });
     expect(dispute.body.events.map((e: { eventType: string }) => e.eventType)).toEqual(['opened', 'resolved']);
     expect(dispute.body.events[1].payload).toMatchObject({ verdict: 'runner_favourable' });
 

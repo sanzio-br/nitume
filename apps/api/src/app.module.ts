@@ -5,6 +5,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { configuration } from './config/configuration';
+import { validateEnv } from './config/env.validation';
 import { CustomersModule } from './customers/customers.module';
 import { ENTITY_LIST } from './databases/entities';
 import { ErrandsModule } from './errands/errands.module';
@@ -28,7 +29,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate: validateEnv }),
     EventEmitterModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],

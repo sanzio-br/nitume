@@ -98,6 +98,23 @@ export class Errand {
   @Column({ type: 'varchar', length: 40, nullable: true })
   merchantAccountReference: string | null;
 
+  /**
+   * Row 80: when existing merchant Till/Paybill details were last changed
+   * (not set on the first entry). The customer app warns when this is after
+   * the start of their merchant-direct payment. Null if never changed.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  merchantDetailsUpdatedAt: Date | null;
+
+  /**
+   * Row 68: when the customer asked for a new quote after their quote
+   * expired ("Request a new quote"). Null when no request is pending; the
+   * admin re-quote clears it. The status does not change.
+   */
+  @Index('IDX_errands_quote_requested', { where: '"quoteRequestedAt" IS NOT NULL' })
+  @Column({ type: 'timestamptz', nullable: true })
+  quoteRequestedAt: Date | null;
+
   @VersionColumn({ type: 'int', default: 1 })
   version: number;
 
