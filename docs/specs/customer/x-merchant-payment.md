@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn.** Required by §6 of the system design ("show merchant Till/Paybill for merchant_amount, paid separately"), OA-5 (Till/Paybill shown only when merchant-direct is selected) and rows 42–44, 48 (send-to-runner is platform-mediated; price-change differences). Built from design-system patterns (card, list rows, buttons) and the `.stk-wrap` / `.form-card` mockup components; copy is **(proposed)** unless marked approved.
 - Shared conventions: `_shared.md` (OA-n §0, rows §0.1, payment flows §8)
-- Implementation: `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` on branch `feat/customer-integrations`
-- Status: partial (spec updated 2026-10-09 for row 80; see Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` on branch `feat/customer-owner-answers`
+- Status: matches-design (re-audited 2026-10-09 @ `c420265`)
 
 ## Purpose
 Show the customer exactly what to pay for the item/merchant amount and how, kept separate from the service and runner fees (three flows separate).
@@ -35,7 +35,7 @@ Layout (top to bottom):
 5. Muted how-to, 12.5 slate-600, padding `0 20 14`: M-Pesa menu steps.
 6. Fixed primary CTA (C-01) `Done`.
 
-**Details changed** (row 80: warn, never block): when the merchant details were changed after this merchant-direct payment started (the API's `merchantDetailsUpdatedAt` is later than the fee payment's confirmation time), show a C-40 notice **above the card** (margin `0 20 14`), with a leading info icon: `The merchant's payment details changed on Today, 4:45 PM. Check the number below before you pay.` (proposed; date/time in Fira Code). If the customer already paid the old Till/Paybill: a second line in the same notice, `Already paid the old number? Contact support.` with the Support link (C-04, `AppConfig.supportUri`; omitted when Support isn't configured). The card always shows the current details; the old number is never shown. The notice stays while the item amount is shown on this screen. No red or amber: it is information, not an error.
+**Details changed** (row 80: warn, never block): when the merchant details were changed after this merchant-direct payment started (the API's `merchantPayment.merchantDetailsChangedAfterPayment` flag: `merchantDetailsUpdatedAt` later than the creation of the merchant-direct payment, i.e. when it started; clarified in the 2026-10-09 round-4 re-audit), show a C-40 notice **above the card** (margin `0 20 14`), with a leading info icon: `The merchant's payment details changed on Today, 4:45 PM. Check the number below before you pay.` (proposed; date/time in Fira Code). If the customer already paid the old Till/Paybill: a second line in the same notice, `Already paid the old number? Contact support.` where `Contact support` is the Support link (C-04, `AppConfig.supportUri`; the line is omitted when Support isn't configured). The words `Contact support` appear once. The card always shows the current details; the old number is never shown. The notice stays while the item amount is shown on this screen. No red or amber: it is information, not an error.
 
 **Details pending** (route chosen while details existed, but they are no longer on the errand, or an increase arrived and details are missing): header and intro as above; the card shows only `Amount`; C-40 notice `The merchant's details aren't available yet. We'll notify you when they are.`; CTA `Done`. Details are supplied by the merchant or an admin (row 43); the customer never enters them.
 
@@ -118,6 +118,8 @@ Rules (same as `v-payment`): idempotency key per attempt, reused on resend of th
 - Q1 (payments): should the customer confirm "I've paid the merchant" (and attach the M-Pesa message), or does the runner confirm at the counter? Default: no confirmation; `Done` only closes the screen.
 
 ## Current vs design
+Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. Details-changed notice above the card with the Fira Code date/time and the optional Support line, reload on `merchant_details:changed` / `merchant_details:updated`; variant B shows the provider failure reason. Minor: `merchant_payment_screen.dart:393, :400` shows `Contact support` twice (in the text and as the trailing link).
+
 Spec update 2026-10-09 (rows 66, 67, 80, 86), against `main` @ `c7675dc` (`merchant_payment_screen.dart`): no details-changed warning exists. Now required: the **Details changed** notice in variant A (with the optional Support line), driven by `merchantDetailsUpdatedAt`, and a refresh when the new notification arrives. Rows 66/67/86 need no client change (wording only). Status set to `partial` until re-audited. Depends on api-contract (`merchantDetailsUpdatedAt`, notification type) and core-ui (model field).
 
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Variant A with details-pending state; variant B now follows the price-change difference STK only (row 76; spec updated); nothing-due close with `Nothing to pay right now.`; shared `StkStatusView`.

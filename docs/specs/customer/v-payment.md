@@ -2,7 +2,7 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 410–421 (`#v-payment`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
-- Implementation: `apps/customer_app/lib/src/screens/checkout/payment_screen.dart` on branch `feat/customer-integrations`
+- Implementation: `apps/customer_app/lib/src/screens/checkout/payment_screen.dart` on branch `feat/customer-owner-answers`
 - Status: matches-design
 
 ## Purpose
@@ -74,7 +74,7 @@ TIMEOUT is **not** a failure (OA-21): the screen keeps listening; a late SUCCESS
 
 ## Data
 - Initiate: `POST /api/v1/payments/:errandId/initiate` `{ merchantRoute?: 'merchant_direct' | 'send_to_runner', paymentMethodId? }` + `Idempotency-Key` header (exists; core `initiateWith`). Customers never send `runner_advance` (OA-5). Code `quote_expired` (row 46) → push back to `x-awaiting-quote` in its expired state.
-- Status: `GET /api/v1/payments/:errandId` (exists) → `stkStatus` (`PENDING | SUCCESS | FAILED | TIMEOUT`). needs: api-contract — the provider failure reason on the payment summary (open minor) and Daraja STK Query behind TIMEOUT (row 52).
+- Status: `GET /api/v1/payments/:errandId` (exists) → `stkStatus` (`PENDING | SUCCESS | FAILED | TIMEOUT`). `failureReason` (provider reason, e.g. Daraja `ResultDesc`, or null; on `feat/api-owner-answers-4`). needs: api-contract — Daraja STK Query behind TIMEOUT (row 52).
 - Live (rows 23, 29): STK status has no socket event (a FAILED or TIMEOUT push changes no errand state), so this screen polls `GET /payments/:errandId` every 5 s while PENDING/TIMEOUT and visible, then every 30 s up to 10 minutes, **whether or not the socket is connected** (accepted in the 2026-10-09 re-audit). `errand:status_changed` to PAYMENT_CONFIRMED still moves on at once.
 - Push: "Payment confirmed / failed" (§4.4); needs: api-contract — add `payment.confirmed` / `payment.failed` to `NotificationEventType` if not yet there.
 - Dev note: v1 STK is mocked. The app must never call `/payments/mpesa/callback` in any build.
@@ -89,6 +89,8 @@ TIMEOUT is **not** a failure (OA-21): the screen keeps listening; a late SUCCESS
 - Payer number: OA-21 (was Q3).
 
 ## Current vs design
+Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. Idempotency keys persisted per errand (core `SecureIdempotencyKeyStore`), cleared when the session ends; provider failure reason as a second line under FAILED (earlier minor closed).
+
 Spec update 2026-10-09 (rows 66, 76, 91): the `Includes KSh … for your runner's purchase.` line is approved as built (`payment_screen.dart:245`). No change; status unchanged.
 
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Combined STK amount for send_to_runner with `Includes KSh … for your runner's purchase.` (row 76; row 91 open, accepted as proposed), 120 s client window, `quote_expired` / `quote_not_accepted` back to checkout, polling while the socket is connected (accepted).

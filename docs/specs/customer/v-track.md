@@ -2,7 +2,7 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 257–284 (`#v-track`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-integrations`
+- Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-owner-answers`
 - Status: matches-design
 
 ## Purpose
@@ -29,7 +29,7 @@ PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAIT
    - Start pin (blue) = runner start / pickup; end pin (green) = task site / drop-off; runner dot 16px overall (border-box: green fill inside a 3px white ring, mockup `nitume_customer_app.html:18, :98`), animated between pings; dashed blue route.
    - Map body: Google Maps (`google_maps_flutter`, row 30) through `LiveTrackingMap(mapBuilder:)`; map gestures on, no map-type or my-location controls; camera fits the pins and the runner marker with 40 padding and refits when the runner marker leaves the visible area. No extra map buttons (the mockup draws none).
    - Loading, or a build without a maps key: blue-050 `#E9EDF3` fill (replaces mockup `#EAEEF4`, OA-14); no grid, no image asset.
-   - **Runner position window (rows 27, 65; `_shared.md` §10)**: the runner marker and ETA appear only in RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED and IN_PROGRESS, only for the current assignment, and only when the tracking snapshot or `location:update` provides a position. On AWAITING_CUSTOMER or any terminal state, on reassignment, or on a 403/404 from tracking, remove the marker and ETA immediately; never show a last-known position outside the window. Without a position, show only the task pins and the caption below.
+   - **Runner position window (rows 27, 65; `_shared.md` §10)**: the runner marker and ETA appear only in RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED and IN_PROGRESS, only for the current assignment, and only when the tracking snapshot or `location:update` provides a position. On AWAITING_CUSTOMER or any terminal state, on reassignment, on `errand:access_revoked` for the errand, or on a 403/404 from tracking, remove the marker and ETA immediately; never show a last-known position outside the window. Without a position, show only the task pins and the caption below.
 4. Runner info card (C-21 inside C-07, padding 15, margin `0 20 14`): avatar 36 (initials from the runner's name), name 13.5/600 = the API short name as returned (`Brian K.`, row 40; `Your runner` when absent), meta Fira Code 11 slate-600 `Verified · 4.9`, trailing status chip (C-05 per `_shared.md` §6: En route = amber).
 5. Item-payment notice (C-40 with a trailing C-03 small button), margin `0 20 14`. Only when an item amount is due: route `send_to_runner` (paid to Nitume by STK, row 42), or route `merchant_direct` with merchant details available (row 43). Includes an outstanding price-change difference (row 44).
 6. Action row (margin `0 20 14`, gap 8): equal-width small outline buttons (C-03 small, pill). Each button is shown only when relevant; with one button it takes the full width; with none the row is hidden:
@@ -100,6 +100,8 @@ States (proposed):
 - Q4: Show the action buttons only when relevant (default) or always (mockup).
 
 ## Current vs design
+Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. `errand:access_revoked` stops the watch and clears marker and ETA; schematic fallback dot 16 px overall (earlier minor closed). Minor: no test for the access-revoked path.
+
 Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: Runner marker confirmed: 16 px overall including the 3 px ring (the mockup sets `box-sizing: border-box`, `nitume_customer_app.html:18, :98`); the round-1 minor is withdrawn. Minor: the app's no-key fallback `SchematicMap` draws the dot at 22 px overall (`widgets/schematic_map.dart`, dev builds only).
 
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Google Maps body via core `GoogleTrackingMap` (schematic fallback without a key), socket with polling only while disconnected and `Reconnecting…`, runner marker/ETA only inside the assignment window and cleared on 403/404, Price change only in IN_PROGRESS, item notice only for a merchant-direct amount or an unpaid difference (row 76). Minor: core runner dot is 16 px including the ring (spec 16 px + 3 px ring).

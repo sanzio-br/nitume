@@ -567,3 +567,97 @@ See the "Owner answers round 3" addendum in `docs/audits/admin-gap-report.md`.
 - **SQ-11 (payments, no customer UI impact)**: on `send_to_runner`, when does Nitume pay the runner the item amount through the payout ledger: before the purchase (so the runner has the money to buy) or as a reimbursement after the receipt is uploaded? System design §6 now says "Nitume pays the runner through the payout ledger" without a timing. Needed by the runner app and the payout worker.
 - Carried over, still unanswered at screen level: `x-merchant-payment` Q1 (customer confirms paying the merchant), `x-awaiting-quote` Q2 (route change after payment), `x-payment-method-form` Q1, `x-report-problem` Q1, `x-legal` Q1, `x-support` Q1, `v-new-details` Q2.
 
+
+## Re-audit 2026-10-09: customer round 4 (owner answers round 3), round 1
+
+- Code audited, read only: `feat/customer-owner-answers` @ `c420265` in `/Users/san/Projects/nitume-customer-answers4`. Core `380084f` … `e304160`, `da5e58a`; app `e283201`, `6974c27`, `54a0f99`, `ddae9fe`, `1b61468`, `5e6f270`, `a55402f`, `c420265`. API shapes read from `feat/api-owner-answers-4` @ `124d81e` (not yet on `main`).
+- Specs: the round-4 customer specs on `docs/owner-answers-3` (rows 59–94), plus the addendum above.
+- This is round 1 for these changes.
+
+### Build health
+
+| Check | Result |
+|---|---|
+| `flutter analyze` apps/customer_app | No issues |
+| `flutter test` apps/customer_app | 108 passed (incl. `test/round4_test.dart`, new cases in `test/checkout_round2_test.dart`) |
+| `flutter analyze` packages/nitume_core | No issues |
+| `flutter test` packages/nitume_core | 223 passed |
+| Token scan of `apps/customer_app/lib` (`Color(0x`, Material `Colors.`, `fontFamily`, `GoogleFonts`, hex) | 0 hits (only `NitumeColors.*`) |
+| Escrow / wallet words | 0 user-facing hits (one code comment saying "No escrow wording") |
+| API shapes used by the app | All present on `feat/api-owner-answers-4`: `POST /errands/:id/quote-request`, `quoteRequestedAt`, `quoteExpiresAt`, `merchantPayment.merchantDetailsUpdatedAt` + `merchantDetailsChangedAfterPayment`, `failureReason` on the payment summary and difference payments, dispute `verdict` / `resolvedAt`, `title` on create, socket `merchant_details:changed`, `quote:requested`, `errand:access_revoked`, notification type `merchant_details.changed` |
+| Device builds | Not run (unchanged note from earlier rounds) |
+
+### Summary
+
+| Screen / item | Verdict | Blockers | Minors | SCREEN_MAP |
+|---|---|---|---|---|
+| x-awaiting-quote | PASS | 0 | 1 | partial → matches-design |
+| x-merchant-payment | PASS | 0 | 1 | partial → matches-design |
+| x-report-problem | PASS | 0 | 0 | matches-design |
+| v-notifications | PASS | 0 | 1 | matches-design |
+| v-track | PASS | 0 | 1 | matches-design |
+| v-payment | PASS | 0 | 0 | matches-design |
+| v-new-details | PASS | 0 | 0 | matches-design |
+| Row 59 setup | PASS | 0 | 0 | — |
+| Other screens (spot-check) | No regression | 0 | 0 | unchanged |
+
+All customer screens are `matches-design`. No blockers.
+
+### x-awaiting-quote — PASS
+
+Expired state on QUOTED and ACCEPTED: chip hidden, `Expired at …`, route and Pay-with cards hidden, notice `This quote has expired. Ask for a new quote to continue.`, fixed CTA `Request a new quote` (spinner while in flight, disabled while cancelling), decline still available. Success → snackbar `We've asked for a new quote.` and the **New quote requested** waiting layout (`Preparing a new quote`, spec body, `Requested Today, 4:45 PM` as a Fira Code meta line via `NitumeTextStyles.metaLarge`, summary card without chip, `Back to Home` / `Cancel task`, no second request button). `quote_still_valid` → reload to checkout; `quote_request_not_allowed` → reload (not in the spec; reasonable, accepted); other errors → `Couldn't request a new quote. Try again.` and the expired state stays. The open request is restored on every open from `quoteRequestedAt` later than the newest quote's `createdAt` (`_newQuoteRequested`). A re-quote (`quote:reissued`, status change, `quote:requested` from another device, or the 15 s poll while disconnected) switches back to checkout and announces `Your new quote is ready.`; on ACCEPTED the newest quote is accepted before paying (row 72, unchanged). Tests cover expired → requested → re-quoted, restore on open, `quote_still_valid` and the error path.
+
+1. Minor — `screens/checkout/awaiting_quote_screen.dart:579`: stale comment `// No quote-request endpoint yet (SQ-9): the spec's fallback.` above the expired notice. The endpoint now exists. Fix: update or remove the comment.
+
+### x-merchant-payment — PASS
+
+Variant A shows the **Details changed** C-40 notice (info icon, no red or amber) above the card, after the intro, with `The merchant's payment details changed on <Today, 4:45 PM>. Check the number below before you pay.` (date/time as a `NumSpan`, Fira Code); the second line `Already paid the old number? Contact support.` and a `Contact support` link appear only when Support is configured, opening `AppConfig.supportLink` (failure snackbar `Couldn't open support. Try again later.`). The card shows only the current details. The screen reloads on `merchant_details:changed` and `merchant_details:updated`. Driven by the API flag `merchantDetailsChangedAfterPayment` (the API compares `merchantDetailsUpdatedAt` with the payment's creation time, i.e. when the merchant-direct payment started, which is row 80's wording; the spec's "fee payment's confirmation time" is updated to match). Variant B's FAILED state shows the provider failure reason as a second line (shared `StkStatusView`). Tests with and without the change.
+
+1. Minor — `screens/checkout/merchant_payment_screen.dart:393` and `:400`: the notice text ends with `Contact support.` and the trailing link also reads `Contact support`, so the words appear twice side by side. Spec: one second line `Already paid the old number? Contact support.` where `Contact support` is the link. Fix: drop `Contact support.` from the text span (keep `Already paid the old number?`) and keep the link, or make the words themselves the link.
+
+### x-report-problem — PASS
+
+Read mode `Outcome` shows the admin's resolution note (the API's `rationale`, required, 20–2000 characters, so a resolved dispute always has one) with `Resolved <Mon, 2:15 PM>` from `resolvedAt` (fallback `updatedAt`), Fira Code meta. The API sends `resolvedBy: null` and no internal `comment` events to customers (row 79). Test covers note and time.
+
+**Judgement: verdict line (row 79).** Same decision as the admin re-audit (`e8f4196` on `docs/owner-answers-3`, recorded in `x-report-problem.md` Open questions): row 79 makes the resolution note visible; it does not ask for a label naming the side the admin took. The outcome is carried by the errand chip (`Completed` / `Cancelled`), the dispute chip `Resolved`, the note under `Outcome` and the refund group on `v-task-detail`. **Not required; no finding.** `x-report-problem.md` is taken unchanged from `e8f4196` on this branch so the two branches merge cleanly.
+
+### v-notifications — PASS
+
+`Mark all read` now sits in the header through the core `NitumePushedHeader.trailing` slot (C-04 small text button, 48 dp hit area), only while unread rows exist; the round-1 minor is closed. `merchant_details.changed` → `x-merchant-payment` (`navigation/nav.dart:160`) with the storefront icon; `quote.requested` is admin-feed only on the API (`ADMIN_FEED_KINDS`) and is ignored if it ever reaches the app. Bodies render as returned (`KSh` is now the API's wording, row 82).
+
+1. Minor — no test for the `merchant_details.changed` row/push deep link (`test/round4_test.dart` covers `Mark all read` only). Fix: add a `Nav.openNotification` case to the deep-link tests.
+
+### v-track — PASS
+
+`errand:access_revoked` for the selected errand cancels its watch, clears the runner marker and ETA at once and reloads (`screens/shell/track_tab.dart:154-160`); the reload then follows the existing 403/404 rule. A customer is only evicted if they lose access to their own errand, so in practice this is defensive; a re-join after reload is refused by the server (`forbidden` ack), so there is no loop. No-key fallback `SchematicMap` runner dot is now 16 × 16 overall with the 3 px white ring, centred with −8 offsets (round-2 minor closed; test `schematic fallback: runner dot is 16px overall`).
+
+1. Minor — no test for the access-revoked path. Fix: a Track test that emits `errand:access_revoked` on the fake realtime client and checks the marker and ETA are gone.
+
+### v-payment — PASS
+
+Idempotency keys now persist per errand in core `SecureIdempotencyKeyStore` through `PaymentAttemptKeys` (`keyFor` reuses, `newAttempt` removes), so a restart reuses the same attempt's key (row 24); keys are cleared when the session ends (`app.dart:98`, every signed-out cause). Provider failure reason (`failureReason` on the payment summary, Daraja `ResultDesc`) shows as a second line under the FAILED body; nothing when absent. The open minor from 2026-10-07 is closed. Test covers the reason line and key persistence / clearing.
+
+### v-new-details — PASS
+
+Core `PlaceAutocompleteField.onTextChanged` reports the field text; the screen keeps it per field key and, on Continue, marks a field with text but no pick as typed, so it shows `Choose a place from the list.`; clearing the text returns to the empty-field copy. The round-2 minor is closed. `title` now travels in `POST /errands` (`TaskDraft.toRequest`, trimmed, omitted when blank); the separate `updateTitle` call is gone, and the client's 3-character minimum matches the API's `MinLength(3)`. Tests cover both.
+
+### Row 59 setup — PASS
+
+`.env.example` committed with every compile-time key the app reads (`NITUME_API_BASE_URL`, `NITUME_PLACES_API_KEY`, `NITUME_MAPS_ENABLED`, `NITUME_TERMS_URL`, `NITUME_PRIVACY_URL`, `NITUME_SUPPORT_URI`, `NITUME_QUOTE_PREVIEW`) plus `NITUME_MAPS_API_KEY`, which the Android Gradle script reads from the dart-defines; `.env` gitignored (`.gitignore:56`); `.env` removed from pubspec assets and `flutter_dotenv` dropped; `resolveApiBaseUrl()` reads only `String.fromEnvironment`; README documents `cp .env.example .env` and `flutter run --dart-define-from-file=.env`. Tests run on a checkout without `.env`.
+
+Note (not a finding, unchanged from earlier rounds): the default base URL in `config/api_base_url.dart` is a temporary trycloudflare tunnel.
+
+### Regression spot-check
+
+- Session end: the app's `BeforeClearTokenStore` is replaced by core `beforeSessionCleared` (5 s cap, re-entry guarded); log out still unregisters itself first (`_loggingOut`); suspension still resets to `v-auth-phone` with `This account can't sign in. Contact support.` No regression.
+- v-task-detail refund group: core `CustomerRefund` no longer parses a payout reference (removed from the customer view, row 101) and adds `remainingRefundable`; the app never showed either. No regression.
+- v-home, v-history, v-rate, v-profile, v-evidence-confirm, v-price-auth, v-new-review, v-new-category, auth screens, x-address-form, x-evidence-viewer, v-payment-methods, x-payment-method-form, x-legal, x-support, shell: files unchanged in this round apart from shared widgets above; tests pass. No regression.
+
+### Needs raised
+
+- flutter-customer (minors, non-blocking): x-awaiting-quote 1 (stale comment), x-merchant-payment 1 (duplicated `Contact support`), v-notifications 1 and v-track 1 (tests).
+- core-ui, api-contract: none. The app depends on `feat/api-owner-answers-4`; it must merge with or before `feat/customer-owner-answers`.
+
+### Questions for the owner
+
+- None new.
