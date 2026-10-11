@@ -8,38 +8,38 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 
 | Screen | Stage | Owner agent | Branch | Needs / blocked by | Notes |
 |--------|-------|-------------|--------|--------------------|-------|
-| customer/v-auth-phone | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-auth-otp | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-home | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-new-category | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-new-details | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-new-review | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-price-auth | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-payment | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-payment-methods | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-track | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-task-detail | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-evidence-confirm | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-rate | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-history | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-notifications | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-addresses | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/v-profile | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/shell | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-name-capture | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-legal | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-awaiting-quote | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-merchant-payment | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-payment-method-form | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-report-problem | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-evidence-viewer | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-address-form | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| customer/x-support | merged | — | main | none | merged into main 2026-10-09 (d5a94f2) |
-| admin/p-refunds | merged | — | main | none | merged into main 2026-10-09 (22b708d) |
-| admin/drawer-refund | merged | — | main | none | merged into main 2026-10-09 (22b708d) |
-| admin/drawer-task-merchant-details | merged | — | main | none | merged into main 2026-10-09 (22b708d) |
-| admin/drawer-task-requote | merged | — | main | none | merged into main 2026-10-09 (22b708d) |
-| admin/drawer-dispute-outcome | merged | — | main | none | merged into main 2026-10-09 (22b708d) |
+| customer/v-auth-phone | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-auth-otp | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-home | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-new-category | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-new-details | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-new-review | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-price-auth | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-payment | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-payment-methods | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-track | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-task-detail | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-evidence-confirm | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-rate | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-history | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-notifications | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-addresses | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/v-profile | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/shell | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-name-capture | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-legal | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-awaiting-quote | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-merchant-payment | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-payment-method-form | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-report-problem | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-evidence-viewer | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-address-form | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| customer/x-support | merged | — | main | none | merged into main 2026-10-11 (round 4: 4c92d80) |
+| admin/p-refunds | merged | — | main | none | merged into main 2026-10-11 (round 4: 1df4daf) |
+| admin/drawer-refund | merged | — | main | none | merged into main 2026-10-11 (round 4: 1df4daf) |
+| admin/drawer-task-merchant-details | merged | — | main | none | merged into main 2026-10-11 (round 4: 1df4daf) |
+| admin/drawer-task-requote | merged | — | main | none | merged into main 2026-10-11 (round 4: 1df4daf) |
+| admin/drawer-dispute-outcome | merged | — | main | none | merged into main 2026-10-11 (round 4: 1df4daf) |
 
 All 17 existing customer specs + shell updated with owner answers on docs/customer-spec-answers (stages unchanged). x-recurring-tasks dropped (out of MVP).
 
@@ -98,10 +98,10 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | design-auditor | flutter-customer | (minor) v-new-details: "Choose a place from the list." also for text typed without any earlier pick; dev-only schematic map runner dot 22px → 16px overall | done: a55402f on feat/customer-owner-answers |
 | reviewer | api-contract | (follow-up, before runner location pings) remove sockets from errand rooms when a runner is reassigned | done: 9c75e12 on feat/api-owner-answers-4 (errand:access_revoked, room re-checks) |
 | reviewer | owner | Add PAYMENTS_PROVIDER, PAYHERO_*, FCM_*, TRUST_PROXY_HOPS, OTP_IP_*, EVIDENCE_SIGNED_URL_TTL_SECONDS and the queue vars to apps/api/.env.example | open |
-| orchestrator | design-auditor | Owner answers rows 59–94: System Design canonical copy (70) + §2.2/§6 (66); customer and admin specs for rows 67–69, 77–83, 86, 87, 91, 93; SA-1/SA-2 | done: docs/owner-answers-3 (d623f66, d014c00, 8685d91, 347cd6a, 7269c4a). Root system-design copy removed; WORKFLOW.md path fixed by orchestrator |
-| orchestrator | api-contract | Rows 89 (refuse console in prod), 86, 87/81 (net refund ceilings), 83 (quote expiry required), 68 (customer quote request), 82, 79/69, 80; socket room cleanup on reassignment | done: feat/api-owner-answers-4 (13 commits, 344 unit + 42 e2e on throwaway DB; migrations 1790100800000–1790101000000) |
-| orchestrator | web-parity | Rows 77 (Payments group), 78 (Side with customer), 82, 83; SA-1/SA-2; remove TODO(N-x) fallbacks | done: fix/angular-admin-owner-answers, 11 commits (… 8635346, 3ffe9d6, 073cbd4, 15f58cc, f1323de), 137 tests. Round-4 API fields optional, TODO(owner-answers-4) until feat/api-owner-answers-4 merges. Awaiting re-audit |
-| orchestrator | core-ui → flutter-customer | Row 68 Request a new quote, row 59 (.env.example + drop asset), row 80 merchant-details warning, row 79 resolution note, open customer minors (failure reason, title on create, persistent idempotency keys, pushed-header trailing slot, typed-place copy, dev map dot) | done: core 380084f … e304160; app e283201, 6974c27, 54a0f99, ddae9fe, 1b61468, 5e6f270, a55402f (107 app + 221 core tests). Awaiting re-audit |
+| orchestrator | design-auditor | Owner answers rows 59–94: System Design canonical copy (70) + §2.2/§6 (66); customer and admin specs for rows 67–69, 77–83, 86, 87, 91, 93; SA-1/SA-2 | merged into main 2026-10-11 |
+| orchestrator | api-contract | Rows 89 (refuse console in prod), 86, 87/81 (net refund ceilings), 83 (quote expiry required), 68 (customer quote request), 82, 79/69, 80; socket room cleanup on reassignment | merged into main 2026-10-11 |
+| orchestrator | web-parity | Rows 77 (Payments group), 78 (Side with customer), 82, 83; SA-1/SA-2; remove TODO(N-x) fallbacks | merged into main 2026-10-11 |
+| orchestrator | core-ui → flutter-customer | Row 68 Request a new quote, row 59 (.env.example + drop asset), row 80 merchant-details warning, row 79 resolution note, open customer minors (failure reason, title on create, persistent idempotency keys, pushed-header trailing slot, typed-place copy, dev map dot) | merged into main 2026-10-11 |
 | web-parity | design-auditor | Spec copy for 409 refund_payout_locked (builder proposed text) and 400 quote_expiry_in_past; confirm EXPIRED tasks get the refund link (always paid per §3.3) | open |
 | flutter-customer | core-ui | onTextChanged on PlaceAutocompleteField (app currently reads the field text from the widget tree for the typed-without-pick check) | done: core da5e58a, app c420265 |
 | flutter-customer | design-auditor | Customer copy for the dispute verdict, if it should be shown (built: resolution note + resolved time only) | open |
@@ -273,3 +273,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-09 | web-parity fixed p-refunds FAIL #1 (net ceiling in Refundable column) and m-6/m-7/m-9; 139 admin tests. p-refunds re-audit round 2 started | 0592e9f, d84b2aa, 1c87c75, c1630ec |
 | 2026-10-09 | Admin re-audit round 2: p-refunds PASS; m-6/m-7/m-9 closed; all round-4 admin and customer views PASS. Round-4 branches sent to reviewer | 64db731 |
 | 2026-10-11 | reviewer: all 5 round-4 branches READY (squash feat/customer-owner-answers: 6 non-compiling app commits 380084f..e304160). Owner approved rows 97 and 99. Merging into main | — |
+| 2026-10-11 | Round 4 merged into main: docs/owner-answers-3 (a464171), docs/customer-reaudit-3 (eddfac8), feat/api-owner-answers-4 (41a0578), fix/angular-admin-owner-answers (1df4daf), feat/customer-owner-answers squashed (4c92d80); no conflicts. migration:run on local `nitume`: 3 applied, 23 total. main: API tsc clean, 344 unit, lint 1 old warning; core 223; app 110; admin build + 139 | a464171 … 4c92d80 |
