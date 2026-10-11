@@ -8,7 +8,7 @@ import 'package:nitume_core/nitume_core.dart';
 
 import 'support/fakes.dart';
 
-Quote quote({DateTime? expiresAt}) => Quote(
+Quote quote({DateTime? expiresAt, DateTime? createdAt}) => Quote(
   id: 'q1',
   errandId: 'e1',
   baseFee: '1500.00',
@@ -20,6 +20,7 @@ Quote quote({DateTime? expiresAt}) => Quote(
   total: '2200.00',
   currency: 'KES',
   expiresAt: expiresAt,
+  createdAt: createdAt,
 );
 
 const _expired = NitumeApiException(
@@ -30,8 +31,9 @@ const _expired = NitumeApiException(
 
 void main() {
   priceAuthMain();
+  quoteRequestMain();
 
-  testWidgets('expired quote: no chip, notice, no CTA, decline stays', (
+  testWidgets('expired quote: no chip, notice, request CTA, decline stays', (
     t,
   ) async {
     final b = TestBackend();
@@ -48,11 +50,12 @@ void main() {
     await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
     expect(find.text('Quote ready'), findsNothing);
     expect(
-      find.text("This quote has expired. We'll send you a new one."),
+      find.text('This quote has expired. Ask for a new quote to continue.'),
       findsOneWidget,
     );
     expect(find.textContaining('Expired at', findRichText: true), findsOne);
     expect(find.textContaining('Confirm & pay'), findsNothing);
+    expect(find.text('Request a new quote'), findsOneWidget);
     expect(find.text('Decline and cancel task'), findsOneWidget);
   });
 
@@ -73,7 +76,7 @@ void main() {
     await t.tap(find.text('Confirm & pay KSh 2,200 →'));
     await t.pumpAndSettle();
     expect(
-      find.text("This quote has expired. We'll send you a new one."),
+      find.text('This quote has expired. Ask for a new quote to continue.'),
       findsOneWidget,
     );
     expect(b.payments.initiations, isEmpty);
@@ -124,13 +127,12 @@ void main() {
     );
     expect(find.byType(AwaitingQuoteScreen), findsOneWidget);
     expect(
-      find.text("This quote has expired. We'll send you a new one."),
+      find.text('This quote has expired. Ask for a new quote to continue.'),
       findsOneWidget,
     );
   });
 
-  testWidgets('ACCEPTED re-entry accepts the newest quote (row 72)',
-      (t) async {
+  testWidgets('ACCEPTED re-entry accepts the newest quote (row 72)', (t) async {
     final b = TestBackend();
     b.errands.put(
       errand(
@@ -147,8 +149,9 @@ void main() {
     expect(b.payments.initiations, hasLength(1));
   });
 
-  testWidgets('a pending re-quote is accepted before paying (row 72)',
-      (t) async {
+  testWidgets('a pending re-quote is accepted before paying (row 72)', (
+    t,
+  ) async {
     final b = TestBackend();
     b.errands.put(
       errand(
@@ -193,8 +196,9 @@ void main() {
     expect(find.text('Confirm & pay KSh 2,500 →'), findsOneWidget);
   });
 
-  testWidgets('v-payment: quote_not_accepted returns to the checkout',
-      (t) async {
+  testWidgets('v-payment: quote_not_accepted returns to the checkout', (
+    t,
+  ) async {
     final b = TestBackend();
     b.errands.put(errand(status: ErrandStatus.accepted, withRunner: false));
     b.payments.initiateError = const NitumeApiException(
@@ -250,16 +254,18 @@ void priceAuthMain() {
     expect(find.text('Approve new price'), findsOneWidget);
   });
 
-  testWidgets('v-price-auth: not IN_PROGRESS shows already answered',
-      (t) async {
+  testWidgets('v-price-auth: not IN_PROGRESS shows already answered', (
+    t,
+  ) async {
     final b = TestBackend();
     b.priceChanges.pendingValue = priceChange();
     await openPriceChange(t, b, errand(status: ErrandStatus.arrived));
     expect(find.text('This price change was already answered.'), findsOne);
   });
 
-  testWidgets('v-price-auth: merchant_details_missing asks for a route',
-      (t) async {
+  testWidgets('v-price-auth: merchant_details_missing asks for a route', (
+    t,
+  ) async {
     final b = TestBackend();
     b.priceChanges.pendingValue = priceChange();
     b.priceChanges.requireRoute = true;
@@ -271,8 +277,9 @@ void priceAuthMain() {
     expect(b.priceChanges.approved, isEmpty);
   });
 
-  testWidgets('v-price-auth: reject body mentions the refund review',
-      (t) async {
+  testWidgets('v-price-auth: reject body mentions the refund review', (
+    t,
+  ) async {
     final b = TestBackend();
     b.priceChanges.pendingValue = priceChange();
     await openPriceChange(t, b, errand());
@@ -285,5 +292,112 @@ void priceAuthMain() {
       ),
       findsOneWidget,
     );
+  });
+}
+
+void quoteRequestMain() {
+  Errand expiredErrand() => errand(
+    status: ErrandStatus.quoted,
+    quotedPrice: '2200.00',
+    withRunner: false,
+  );
+
+  testWidgets('row 68: expired → request → new quote requested → re-quote', (
+    t,
+  ) async {
+    final rt = FakeRealtime()..setState(RealtimeConnectionState.connected);
+    final b = TestBackend(realtime: rt);
+    b.errands.put(expiredErrand());
+    b.errands.quoteValue = quote(
+      expiresAt: DateTime.now().subtract(const Duration(minutes: 5)),
+    );
+    await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
+    expect(
+      find.text('This quote has expired. Ask for a new quote to continue.'),
+      findsOneWidget,
+    );
+    await t.tap(find.text('Request a new quote'));
+    await t.pumpAndSettle();
+    expect(b.errands.quoteRequests, ['e1']);
+    expect(find.text("We've asked for a new quote."), findsOneWidget);
+    expect(find.text('Preparing a new quote'), findsOneWidget);
+    expect(find.textContaining('Requested '), findsOneWidget);
+    expect(find.text('Request a new quote'), findsNothing);
+
+    // An admin re-quotes: back to checkout with the new figures.
+    b.errands.put(expiredErrand());
+    b.errands.quoteValue = Quote(
+      id: 'q2',
+      errandId: 'e1',
+      baseFee: '0.00',
+      distanceFee: '0.00',
+      timeFee: '0.00',
+      urgencyFee: '0.00',
+      complexityFee: '0.00',
+      premiumFee: '0.00',
+      total: '2500.00',
+      currency: 'KES',
+      createdAt: DateTime.now(),
+      expiresAt: DateTime.now().add(const Duration(hours: 24)),
+    );
+    rt.emitQuoteReissued('e1');
+    await t.pumpAndSettle();
+    expect(find.text('Preparing a new quote'), findsNothing);
+    expect(find.text('Confirm & pay KSh 2,500 →'), findsOneWidget);
+  });
+
+  testWidgets('an open request is restored on open', (t) async {
+    final b = TestBackend();
+    b.errands.put(
+      errand(
+        status: ErrandStatus.accepted,
+        quotedPrice: '2200.00',
+        withRunner: false,
+        quoteRequestedAt: DateTime.now(),
+      ),
+    );
+    b.errands.quoteValue = quote(
+      expiresAt: DateTime.now().subtract(const Duration(hours: 1)),
+    );
+    await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
+    expect(find.text('Preparing a new quote'), findsOneWidget);
+    expect(find.text('Awaiting payment'), findsNothing);
+  });
+
+  testWidgets('quote_still_valid reloads to checkout', (t) async {
+    final b = TestBackend();
+    b.errands.put(expiredErrand());
+    b.errands.quoteValue = quote(
+      expiresAt: DateTime.now().subtract(const Duration(minutes: 5)),
+    );
+    await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
+    b.errands.quoteRequestError = const NitumeApiException(
+      message: 'valid',
+      statusCode: 409,
+      code: ApiErrorCodes.quoteStillValid,
+    );
+    b.errands.quoteValue = quote(
+      expiresAt: DateTime.now().add(const Duration(hours: 1)),
+    );
+    await t.tap(find.text('Request a new quote'));
+    await t.pumpAndSettle();
+    expect(find.text('Confirm & pay KSh 2,200 →'), findsOneWidget);
+  });
+
+  testWidgets('request error keeps the expired state', (t) async {
+    final b = TestBackend();
+    b.errands.put(expiredErrand());
+    b.errands.quoteValue = quote(
+      expiresAt: DateTime.now().subtract(const Duration(minutes: 5)),
+    );
+    b.errands.quoteRequestError = const NitumeApiException(message: 'x');
+    await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
+    await t.tap(find.text('Request a new quote'));
+    await t.pumpAndSettle();
+    expect(
+      find.text("Couldn't request a new quote. Try again."),
+      findsOneWidget,
+    );
+    expect(find.text('Request a new quote'), findsOneWidget);
   });
 }

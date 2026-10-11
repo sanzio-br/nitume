@@ -28,25 +28,26 @@ class AppServices {
     this.placeSearch,
     this.push = const NoopPushService(),
     ShellController? shell,
-    PaymentAttempts? paymentAttempts,
+    IdempotencyKeyStore? idempotencyKeys,
     this.pollingEnabled = true,
   }) : live = live ?? LiveUpdates(null),
        shell = shell ?? ShellController(),
-       paymentAttempts = paymentAttempts ?? PaymentAttempts();
+       idempotencyKeys = idempotencyKeys ?? InMemoryIdempotencyKeyStore() {
+    paymentAttempts = PaymentAttemptKeys(this.idempotencyKeys);
+  }
 
   /// Production wiring against [baseUrl]: socket, Places, Maps flag, FCM
   /// and link opening from the build configuration (`_shared.md` §10).
   static Future<AppServices> create({required String baseUrl}) async {
     late final SessionController session;
-    // The API client clears the tokens before calling onAccountSuspended;
-    // the push device is unregistered first, while they still work.
-    final tokenStore = BeforeClearTokenStore(
-      SecureTokenStore(),
-      beforeClear: () => session.beforeTokensCleared(),
-    );
+    final tokenStore = SecureTokenStore();
     final api = NitumeApiClient(
       config: ApiConfig(baseUrl: baseUrl),
       tokenStore: tokenStore,
+      // The client ends the session (expiry, suspension) after this hook:
+      // unregister the push device while the tokens still work. Log out
+      // (the only other token clear) unregisters itself first.
+      beforeSessionCleared: () => session.beforeTokensCleared(),
       onUnauthenticated: () => session.expire(),
       onAccountSuspended: () => session.suspend(),
     );
@@ -65,6 +66,7 @@ class AppServices {
     return AppServices(
       session: session,
       auth: auth,
+      idempotencyKeys: SecureIdempotencyKeyStore(),
       errands: ErrandRepository(api),
       payments: PaymentsRepository(api),
       evidence: EvidenceRepository(api),
@@ -100,7 +102,11 @@ class AppServices {
   final RunnersRepository runners;
   final AppConfig appConfig;
   final ShellController shell;
-  final PaymentAttempts paymentAttempts;
+
+  /// Persisted per-attempt idempotency keys (row 24; survive a restart),
+  /// cleared on sign-out.
+  final IdempotencyKeyStore idempotencyKeys;
+  late final PaymentAttemptKeys paymentAttempts;
 
   /// Live updates over the app-wide socket (rows 23, 29).
   final LiveUpdates live;
@@ -118,24 +124,6 @@ class AppServices {
   /// Lets root tabs reload when a pushed screen above them closes.
   final RouteObserver<ModalRoute<void>> routeObserver =
       RouteObserver<ModalRoute<void>>();
-}
-
-/// One idempotency key per checkout attempt, per errand (v-payment "Safe
-/// retry"): reused for every retry of the attempt, replaced only when a new
-/// attempt starts (`Try again` after FAILED, `Send a new prompt`, or
-/// `idempotency_key_reused`).
-///
-/// Kept in memory for the app session. TODO(api-contract/core-ui): persist
-/// across restarts once a general key-value store exists in core.
-class PaymentAttempts {
-  final Map<String, String> _keys = {};
-
-  /// The current attempt's key for [errandId], creating one if needed.
-  String keyFor(String errandId) =>
-      _keys.putIfAbsent(errandId, PaymentsRepository.newIdempotencyKey);
-
-  /// Starts a new attempt: the next [keyFor] returns a fresh key.
-  void newAttempt(String errandId) => _keys.remove(errandId);
 }
 
 /// Provides [AppServices] to the widget tree.
@@ -165,37 +153,4 @@ class AppScope extends InheritedWidget {
 /// Shorthand: `context.services`.
 extension AppServicesContext on BuildContext {
   AppServices get services => AppScope.read(this);
-}
-
-/// [TokenStore] that runs [beforeClear] (best effort, bounded) before the
-/// tokens are cleared, so a session ended by the API (suspension, row 7 of
-/// `_shared.md` §7) can still unregister its push device.
-class BeforeClearTokenStore implements TokenStore {
-  BeforeClearTokenStore(this._inner, {required this.beforeClear});
-
-  final TokenStore _inner;
-  final Future<void> Function() beforeClear;
-  bool _clearing = false;
-
-  @override
-  Future<AuthTokens?> read() => _inner.read();
-
-  @override
-  Future<void> write(AuthTokens tokens) => _inner.write(tokens);
-
-  @override
-  Future<void> clear() async {
-    // Re-entrant clears (the unregister call itself refused) skip the hook.
-    if (!_clearing) {
-      _clearing = true;
-      try {
-        await beforeClear().timeout(const Duration(seconds: 5));
-      } on Object {
-        // Never block clearing the session.
-      } finally {
-        _clearing = false;
-      }
-    }
-    await _inner.clear();
-  }
 }

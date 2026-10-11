@@ -290,11 +290,17 @@ class _ReadReportState extends State<_ReadReport> {
                   d.resolution != null &&
                   d.resolution!.trim().isNotEmpty) ...[
                 const SectionLabel('Outcome'),
+                // Row 79: the admin's resolution note, shared with the
+                // runner; internal notes never reach this screen. The
+                // verdict has no customer copy in the spec: the errand chip
+                // (COMPLETED / CANCELLED) and the refund group on Task
+                // detail carry it.
                 BodyCard(
                   text: d.resolution!,
-                  meta: d.updatedAt == null
-                      ? null
-                      : 'Resolved ${formatDayTime(d.updatedAt!)}',
+                  meta: switch (d.resolvedAt ?? d.updatedAt) {
+                    final at? => 'Resolved ${formatDayTime(at)}',
+                    null => null,
+                  },
                 ),
               ],
             ],

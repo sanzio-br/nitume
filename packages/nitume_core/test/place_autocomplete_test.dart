@@ -180,4 +180,37 @@ void main() {
     expect(error, findsNothing);
     expect(find.text('Nyali'), findsOneWidget);
   });
+
+  testWidgets('onTextChanged reports typing and picks, once per change', (
+    tester,
+  ) async {
+    final texts = <String>[];
+    await pumpThemed(
+      tester,
+      PlaceAutocompleteField(
+        service: _FakePlaces(),
+        onPlaceSelected: (_) {},
+        initialValue: 'Home',
+        onTextChanged: texts.add,
+      ),
+    );
+    expect(texts, isEmpty, reason: 'the initial value is not an edit');
+
+    await tester.enterText(find.byType(TextField), 'Nya');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+    await tester.tap(find.text('Nyali'));
+    await tester.pump();
+    expect(texts, ['Nya', 'Nyali, Mombasa']);
+  });
+
+  testWidgets('works without onTextChanged', (tester) async {
+    await pumpThemed(
+      tester,
+      PlaceAutocompleteField(service: _FakePlaces(), onPlaceSelected: (_) {}),
+    );
+    await tester.enterText(find.byType(TextField), 'Ny');
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
 }

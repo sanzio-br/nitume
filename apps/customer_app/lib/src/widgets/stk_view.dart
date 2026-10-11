@@ -42,6 +42,7 @@ class StkStatusView extends StatelessWidget {
     this.copy = StkCopy.fees,
     this.onDone,
     this.caption,
+    this.failureReason,
     required this.phase,
     required this.stk,
     required this.payer,
@@ -62,6 +63,9 @@ class StkStatusView extends StatelessWidget {
 
   /// Optional 12.5 line under the amount.
   final Widget? caption;
+
+  /// Provider failure reason, shown under the FAILED body.
+  final String? failureReason;
   final StkPaymentState stk;
   final String? payer;
   final String? amount;
@@ -142,9 +146,13 @@ class StkStatusView extends StatelessWidget {
           ];
         case StkPaymentState.failed:
           heading = "Payment didn't go through";
-          body = const Text(
+          final reason = failureReason?.trim();
+          // The provider's reason (e.g. "Request cancelled by user") as a
+          // second line, when it gave one.
+          body = Text(
             "M-Pesa didn't confirm this payment. You haven't been charged. "
-            'You can try again.',
+            'You can try again.'
+            '${reason == null || reason.isEmpty ? '' : '\n$reason'}',
           );
           icon = _Icon.failed;
           buttons = [

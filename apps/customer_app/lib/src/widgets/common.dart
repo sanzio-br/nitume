@@ -14,7 +14,11 @@ class PushedScaffold extends StatelessWidget {
     this.step,
     this.onBack,
     this.showBack = true,
+    this.trailing,
   });
+
+  /// Header action on the right (e.g. `Mark all read`); not with [step].
+  final Widget? trailing;
 
   final String? title;
   final Widget body;
@@ -37,6 +41,7 @@ class PushedScaffold extends StatelessWidget {
         totalSteps: step == null ? null : 3,
         onBack: onBack,
         showBack: showBack,
+        trailing: trailing,
       ),
       body: body,
       bottomNavigationBar: cta,

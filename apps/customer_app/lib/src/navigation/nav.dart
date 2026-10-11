@@ -157,6 +157,12 @@ abstract final class Nav {
       case NotificationEventType.merchantDetailsAdded:
         // Checkout while QUOTED / ACCEPTED, else the item payment screen.
         await _openMerchantDetails(context, id);
+      case NotificationEventType.merchantDetailsChanged:
+        // Row 80: the changed Till/Paybill shows on x-merchant-payment.
+        await toMerchantPayment(context, id);
+      case NotificationEventType.quoteRequested:
+        // The customer's own request echoed to the feed: nothing to open.
+        return;
       case NotificationEventType.runnerAssigned:
       case NotificationEventType.runnerEnRoute:
       case NotificationEventType.arrived:

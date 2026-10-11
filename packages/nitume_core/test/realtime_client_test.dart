@@ -285,4 +285,70 @@ void main() {
       NotificationEventType.quoteReissued,
     );
   });
+
+  test('forwards merchant_details:changed and quote:requested', () async {
+    await client.connect(accessToken: 'tok');
+    final t = transports.single..serverConnects();
+    final changes = <MerchantDetailsChanged>[];
+    final requests = <QuoteRequested>[];
+    client.merchantDetailsChanges.listen(changes.add);
+    client.quoteRequests.listen(requests.add);
+
+    t.serverSends('merchant_details:changed', {
+      'errandId': 'e1',
+      'merchantName': 'Naivas',
+      'tillNumber': null,
+      'paybillNumber': '400200',
+      'accountReference': 'NT-10001',
+      'merchantDetailsUpdatedAt': '2026-10-09T13:45:00.000Z',
+    });
+    t.serverSends('merchant_details:changed', {'merchantName': 'no id'});
+    t.serverSends('quote:requested', {
+      'errandId': 'e1',
+      'reference': 'NT-10001',
+      'quoteId': 'q1',
+      'status': 'QUOTED',
+      'quoteRequestedAt': '2026-10-09T13:00:00.000Z',
+    });
+    await pumpEventQueue();
+
+    final c = changes.single;
+    expect(c.errandId, 'e1');
+    expect(c.paybillNumber, '400200');
+    expect(c.tillNumber, isNull);
+    expect(c.merchantDetailsUpdatedAt, DateTime.utc(2026, 10, 9, 13, 45));
+    final r = requests.single;
+    expect(r.reference, 'NT-10001');
+    expect(r.status, ErrandStatus.quoted);
+    expect(r.quoteRequestedAt, DateTime.utc(2026, 10, 9, 13));
+  });
+
+  test(
+    'errand:access_revoked is forwarded and the room is not re-joined',
+    () async {
+      await client.connect(accessToken: 'tok');
+      final t = transports.single..serverConnects();
+      await client.joinErrand('e1');
+      await client.joinErrand('e2');
+      final revoked = <ErrandAccessRevoked>[];
+      client.accessRevocations.listen(revoked.add);
+
+      t.serverSends('errand:access_revoked', {'errandId': 'e1'});
+      await pumpEventQueue();
+      expect(revoked.single.errandId, 'e1');
+      expect(client.joinedErrands, {'e2'});
+
+      t.serverDrops();
+      await pumpEventQueue();
+      final next = transports.last..serverConnects();
+      await pumpEventQueue();
+      expect(next.emitted, ['errand:join e2']);
+    },
+  );
+
+  test('round-4 event names', () {
+    expect(RealtimeEvents.merchantDetailsChanged, 'merchant_details:changed');
+    expect(RealtimeEvents.errandAccessRevoked, 'errand:access_revoked');
+    expect(RealtimeEvents.quoteRequested, 'quote:requested');
+  });
 }

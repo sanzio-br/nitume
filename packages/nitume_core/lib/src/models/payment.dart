@@ -95,6 +95,8 @@ class MerchantPayment {
     this.paybillNumber,
     this.accountReference,
     this.paidTo,
+    this.merchantDetailsUpdatedAt,
+    this.merchantDetailsChangedAfterPayment = false,
   });
 
   final MerchantRoute route;
@@ -112,6 +114,16 @@ class MerchantPayment {
   /// the customer's STK charge) or `merchant` (`merchant_direct`, paid by
   /// the customer to the Till/Paybill). `null` from older responses.
   final String? paidTo;
+
+  /// When the merchant's existing Till/Paybill details were last changed
+  /// (row 80); `null` when never changed. `merchant_direct` only.
+  final DateTime? merchantDetailsUpdatedAt;
+
+  /// True when the Till/Paybill changed after this merchant-direct payment
+  /// started (row 80): `x-merchant-payment` shows the "Details changed"
+  /// notice (warn, never block). Always `false` for `send_to_runner` and
+  /// older responses.
+  final bool merchantDetailsChangedAfterPayment;
 
   /// True when the customer pays this amount to Nitume by STK (row 42).
   bool get paidToNitume =>
@@ -133,6 +145,9 @@ class MerchantPayment {
       paybillNumber: parseOptionalString(json['paybillNumber']),
       accountReference: parseOptionalString(json['accountReference']),
       paidTo: parseOptionalString(json['paidTo']),
+      merchantDetailsUpdatedAt: parseDate(json['merchantDetailsUpdatedAt']),
+      merchantDetailsChangedAfterPayment:
+          json['merchantDetailsChangedAfterPayment'] == true,
     );
   }
 }

@@ -70,6 +70,8 @@ class _MerchantPaymentScreenState extends State<MerchantPaymentScreen> {
     _watch = _services.live.watch(
       widget.errandId,
       onMerchantDetails: (_) => _load(),
+      // Row 80: details changed after this payment started.
+      onMerchantDetailsChanged: (_) => _load(),
       onStatus: (_) => _load(),
       onReconnected: _load,
     );
@@ -221,6 +223,7 @@ class _MerchantPaymentScreenState extends State<MerchantPaymentScreen> {
         phase: StkPhase.stk,
         stk: state,
         copy: StkCopy.items,
+        failureReason: shown.failureReason,
         payer: null,
         amount: shown.amount,
         busy: _busy,
@@ -239,7 +242,17 @@ class _MerchantPaymentScreenState extends State<MerchantPaymentScreen> {
         mp.route == MerchantRoute.merchantDirect &&
         isPositiveAmount(mp.amount)) {
       body = mp.hasMerchantDetails
-          ? _MerchantDirect(mp: mp, increase: widget.approvedIncrease)
+          ? _MerchantDirect(
+              mp: mp,
+              increase: widget.approvedIncrease,
+              support: _services.appConfig.supportLink,
+              onSupport: (uri) async {
+                final ok = await _services.appConfig.open(uri);
+                if (!ok && context.mounted) {
+                  showSnack(context, "Couldn't open support. Try again later.");
+                }
+              },
+            )
           : _DetailsPending(amount: mp.amount);
     } else {
       body = const SizedBox.shrink();
@@ -285,10 +298,20 @@ class _DetailsPending extends StatelessWidget {
 
 /// Variant A: merchant Till or Paybill.
 class _MerchantDirect extends StatelessWidget {
-  const _MerchantDirect({required this.mp, required this.increase});
+  const _MerchantDirect({
+    required this.mp,
+    required this.increase,
+    this.support,
+    this.onSupport,
+  });
 
   final MerchantPayment mp;
   final String? increase;
+
+  /// Support target for the "already paid the old number" line; the line
+  /// is omitted when Support isn't configured.
+  final Uri? support;
+  final ValueChanged<Uri>? onSupport;
 
   @override
   Widget build(BuildContext context) {
@@ -344,6 +367,42 @@ class _MerchantDirect extends StatelessWidget {
             ],
           ),
         ),
+        if (mp.merchantDetailsChangedAfterPayment &&
+            mp.merchantDetailsUpdatedAt != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+            // Row 80: warn, never block; the card shows only the current
+            // details. Information tone (no red or amber).
+            child: NitumeNotice(
+              message:
+                  "The merchant's payment details changed on "
+                  '${formatDayTime(mp.merchantDetailsUpdatedAt!)}. Check the '
+                  'number below before you pay.'
+                  '${support == null ? '' : ' Already paid the old number? Contact support.'}',
+              richMessage: TextSpan(
+                children: [
+                  const TextSpan(
+                    text: "The merchant's payment details changed on ",
+                  ),
+                  NumSpan(formatDayTime(mp.merchantDetailsUpdatedAt!)),
+                  const TextSpan(
+                    text: '. Check the number below before you pay.',
+                  ),
+                  if (support != null)
+                    const TextSpan(
+                      // "Contact support" is the link button (once).
+                      text: '\nAlready paid the old number?',
+                    ),
+                ],
+              ),
+              action: support == null
+                  ? null
+                  : NitumeButton.link(
+                      label: 'Contact support',
+                      onPressed: () => onSupport?.call(support!),
+                    ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
           child: NitumeCard(

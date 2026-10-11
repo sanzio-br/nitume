@@ -51,3 +51,6 @@ app.*.map.json
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 ios/Flutter/Maps.xcconfig
+
+# Local build values (row 59); .env.example is committed.
+.env

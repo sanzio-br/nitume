@@ -1,6 +1,5 @@
 import 'package:customer_app/src/screens/account/address_form_screen.dart';
 import 'package:customer_app/src/screens/task/task_detail_screen.dart';
-import 'package:customer_app/src/services/app_services.dart';
 import 'package:customer_app/src/services/session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,28 +19,10 @@ class _RecordingPush implements PushTokenRegistrar {
   Future<void> unregisterBeforeSignOut() async => log.add('unregister');
 }
 
-class _RecordingStore implements TokenStore {
-  _RecordingStore(this.log);
-
-  final List<String> log;
-  AuthTokens? tokens = const AuthTokens(accessToken: 'a', refreshToken: 'r');
-
-  @override
-  Future<AuthTokens?> read() async => tokens;
-
-  @override
-  Future<void> write(AuthTokens t) async => tokens = t;
-
-  @override
-  Future<void> clear() async {
-    log.add('clear');
-    tokens = null;
-  }
-}
-
 void main() {
-  testWidgets('v-new-details: editing a picked place blocks Continue',
-      (t) async {
+  testWidgets('v-new-details: editing a picked place blocks Continue', (
+    t,
+  ) async {
     final b = TestBackend();
     b.account.addressList = const [
       SavedAddress(
@@ -86,8 +67,9 @@ void main() {
     expect(find.text('Step 3 of 3'), findsNothing);
   });
 
-  testWidgets('x-address-form: editing the address needs a new pick',
-      (t) async {
+  testWidgets('x-address-form: editing the address needs a new pick', (
+    t,
+  ) async {
     final b = TestBackend(placeSearch: FakePlaces());
     const saved = SavedAddress(
       id: 'ad1',
@@ -123,8 +105,9 @@ void main() {
     });
   });
 
-  testWidgets('v-task-detail: no payment-details link after a combined STK',
-      (t) async {
+  testWidgets('v-task-detail: no payment-details link after a combined STK', (
+    t,
+  ) async {
     final b = TestBackend();
     b.errands.put(errand(status: ErrandStatus.inProgress, budget: '40000.00'));
     b.payments.summary = PaymentSummary(
@@ -142,23 +125,22 @@ void main() {
     expect(find.text('View payment details'), findsNothing);
   });
 
-  test('suspension unregisters push before the tokens are cleared', () async {
+  test('the session-cleared hook unregisters push while signed in', () async {
+    // Core runs beforeSessionCleared before clearing the tokens (e304160);
+    // the app's hook unregisters the push device.
     final log = <String>[];
-    final auth = FakeAuth()..stored = const AuthTokens(
-      accessToken: 'a',
-      refreshToken: 'r',
-    );
+    final auth = FakeAuth()
+      ..stored = const AuthTokens(accessToken: 'a', refreshToken: 'r');
     final session = SessionController(auth: auth, push: _RecordingPush(log));
     await session.restore();
     log.clear();
-    final store = BeforeClearTokenStore(
-      _RecordingStore(log),
-      beforeClear: session.beforeTokensCleared,
-    );
-    await store.clear();
+    await session.beforeTokensCleared();
     session.suspend();
-    expect(log, ['unregister', 'clear']);
+    expect(log, ['unregister']);
     expect(session.status, SessionStatus.signedOut);
     expect(session.takeSuspendedFlag(), isTrue);
+    // Signed out: nothing more to unregister.
+    await session.beforeTokensCleared();
+    expect(log, ['unregister']);
   });
 }

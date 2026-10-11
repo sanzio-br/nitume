@@ -149,6 +149,14 @@ class _TrackTabState extends State<TrackTab> with ReloadOnReturn<TrackTab> {
             // New Till/Paybill details can make an item amount due.
             onMerchantDetails: (_) => _refreshSelected(autoOpen: false),
             onReconnected: () => _refreshSelected(autoOpen: false),
+            // No longer allowed to follow this errand (row 65): drop the
+            // runner position at once and reload what is still visible.
+            onAccessRevoked: () {
+              _runner.value = null;
+              _eta.value = null;
+              _watch = null;
+              _refreshSelected(autoOpen: false);
+            },
           );
   }
 

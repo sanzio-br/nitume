@@ -94,6 +94,8 @@ class _NitumeCustomerAppState extends State<NitumeCustomerApp> {
       }
     } else if (next == SessionStatus.signedOut) {
       live.stop();
+      // Checkout attempt keys belong to the signed-out account.
+      widget.services.idempotencyKeys.clear().catchError((Object _) {});
     }
     if (next != SessionStatus.signedOut) return;
     final String? message;

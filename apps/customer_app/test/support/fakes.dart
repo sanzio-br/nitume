@@ -51,6 +51,7 @@ Errand errand({
   bool? merchantDetailsAvailable,
   String? feeTotal,
   bool quoteAcceptanceRequired = false,
+  DateTime? quoteRequestedAt,
 }) => Errand(
   id: id,
   customerId: 'u1',
@@ -66,6 +67,7 @@ Errand errand({
   merchantDetailsAvailable: merchantDetailsAvailable,
   feeTotal: feeTotal,
   quoteAcceptanceRequired: quoteAcceptanceRequired,
+  quoteRequestedAt: quoteRequestedAt,
   createdAt: _epoch,
   updatedAt: updatedAt ?? _epoch,
   locations: const [
@@ -240,6 +242,37 @@ class FakeErrands extends ErrandRepository {
   Future<Quote?> quote(String errandId) async => quoteValue;
 
   List<CustomerRefund> refundsValue = const [];
+  Object? quoteRequestError;
+  final quoteRequests = <String>[];
+
+  /// Records the request like the API: `quoteRequestedAt` = now.
+  @override
+  Future<Errand> requestNewQuote(String errandId) async {
+    quoteRequests.add(errandId);
+    final err = quoteRequestError;
+    if (err != null) throw err;
+    final e = byId[errandId]!;
+    final next = Errand(
+      id: e.id,
+      customerId: e.customerId,
+      category: e.category,
+      description: e.description,
+      status: e.status,
+      urgency: e.urgency,
+      budget: e.budget,
+      quotedPrice: e.quotedPrice,
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+      reference: e.reference,
+      title: e.title,
+      locations: e.locations,
+      feeTotal: e.feeTotal,
+      quoteRequestedAt: DateTime.now(),
+    );
+    put(next);
+    return next;
+  }
+
   final quoteAccepts = <String>[];
 
   @override
@@ -267,15 +300,20 @@ class FakeErrands extends ErrandRepository {
     return QuoteAcceptanceResult(errand: current);
   }
 
+  Object? trackingError;
+
   @override
-  Future<TrackingSnapshot> tracking(String errandId) async =>
-      trackingValue ??
-      TrackingSnapshot(
-        errandId: errandId,
-        status: byId[errandId]?.status ?? ErrandStatus.inProgress,
-        live: false,
-        points: byId[errandId]?.locations ?? const [],
-      );
+  Future<TrackingSnapshot> tracking(String errandId) async {
+    final err = trackingError;
+    if (err != null) throw err;
+    return trackingValue ??
+        TrackingSnapshot(
+          errandId: errandId,
+          status: byId[errandId]?.status ?? ErrandStatus.inProgress,
+          live: false,
+          points: byId[errandId]?.locations ?? const [],
+        );
+  }
 
   Errand _withStatus(String id, ErrandStatus status) {
     final e = byId[id]!;
@@ -302,6 +340,7 @@ class FakeErrands extends ErrandRepository {
       feeTotal: e.feeTotal,
       quoteAcceptanceRequired: e.quoteAcceptanceRequired,
       quoteExpiresAt: e.quoteExpiresAt,
+      quoteRequestedAt: e.quoteRequestedAt,
     );
     put(next);
     return next;
@@ -790,6 +829,29 @@ class FakeRealtime implements RealtimeClient {
   final _prices = StreamController<PriceChangeRequested>.broadcast();
   final _quotes = StreamController<QuoteReissued>.broadcast();
   final _merchants = StreamController<MerchantDetailsUpdated>.broadcast();
+  final _merchantChanges = StreamController<MerchantDetailsChanged>.broadcast();
+  final _quoteRequests = StreamController<QuoteRequested>.broadcast();
+  final _revocations = StreamController<ErrandAccessRevoked>.broadcast();
+
+  void emitMerchantDetailsChanged(String errandId) => _merchantChanges.add(
+    MerchantDetailsChanged(errandId: errandId, tillNumber: '654321'),
+  );
+
+  void emitQuoteRequested(String errandId) =>
+      _quoteRequests.add(QuoteRequested(errandId: errandId));
+
+  void emitAccessRevoked(String errandId) =>
+      _revocations.add(ErrandAccessRevoked(errandId: errandId));
+
+  @override
+  Stream<MerchantDetailsChanged> get merchantDetailsChanges =>
+      _merchantChanges.stream;
+
+  @override
+  Stream<QuoteRequested> get quoteRequests => _quoteRequests.stream;
+
+  @override
+  Stream<ErrandAccessRevoked> get accessRevocations => _revocations.stream;
 
   void emitQuoteReissued(String errandId) => _quotes.add(
     QuoteReissued(errandId: errandId, quoteId: 'q2', total: '2500.00'),

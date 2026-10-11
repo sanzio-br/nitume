@@ -36,6 +36,8 @@ class Errand {
     this.feeTotal,
     this.quoteAcceptanceRequired = false,
     this.quoteExpiresAt,
+    this.quoteRequestedAt,
+    this.merchantDetailsUpdatedAt,
   });
 
   final String id;
@@ -105,6 +107,19 @@ class Errand {
   /// Expiry of the newest quote; `null` when not quoted or it never expires.
   final DateTime? quoteExpiresAt;
 
+  /// When the customer asked for a new quote after their quote expired (row
+  /// 68, `ErrandRepository.requestNewQuote`); `null` when no request is
+  /// open. The admin re-quote clears it, so a non-null value means the
+  /// "New quote requested" waiting state (`x-awaiting-quote`).
+  final DateTime? quoteRequestedAt;
+
+  /// When existing merchant Till/Paybill details were last changed (row
+  /// 80); `null` when never changed (the first entry does not set it).
+  final DateTime? merchantDetailsUpdatedAt;
+
+  /// True while a "Request a new quote" is waiting for an admin re-quote.
+  bool get quoteRequestPending => quoteRequestedAt != null;
+
   /// First pickup point in [locations], if any.
   ErrandLocation? get pickup => _point(ErrandPointType.pickup);
 
@@ -156,6 +171,8 @@ class Errand {
       feeTotal: _nullableDecimalString(json['feeTotal']),
       quoteAcceptanceRequired: json['quoteAcceptanceRequired'] == true,
       quoteExpiresAt: _date(json['quoteExpiresAt']),
+      quoteRequestedAt: _date(json['quoteRequestedAt']),
+      merchantDetailsUpdatedAt: _date(json['merchantDetailsUpdatedAt']),
     );
   }
 }

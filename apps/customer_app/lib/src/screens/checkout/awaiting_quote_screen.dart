@@ -78,6 +78,8 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
       // checkout without a status change.
       onQuoteReissued: (_) => _refreshErrand(force: true),
       onMerchantDetails: (_) => _refreshErrand(force: true),
+      // The customer's own request, possibly from another device.
+      onQuoteRequested: (_) => _refreshErrand(force: true),
       onReconnected: _refreshErrand,
     );
   }
@@ -156,22 +158,75 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
   Future<void> _refreshErrand({bool force = false}) async {
     final errand = await _services.errands.get(widget.errandId);
     if (!mounted || _routeAway(errand)) return;
-    final was = _data?.errand.status;
-    final detailsChanged =
-        _data?.errand.merchantDetailsAvailable !=
-        errand.merchantDetailsAvailable;
-    if (was == errand.status && !detailsChanged && !force) return;
-    // A fresh quote clears the expired state.
-    if (was == ErrandStatus.requested || force) _expiredByApi = false;
+    final old = _data;
+    final was = old?.errand.status;
+    final changed =
+        old?.errand.merchantDetailsAvailable !=
+            errand.merchantDetailsAvailable ||
+        old?.errand.quoteRequestedAt != errand.quoteRequestedAt ||
+        old?.errand.quoteExpiresAt != errand.quoteExpiresAt;
+    if (was == errand.status && !changed && !force) return;
+    final wasRequested = old != null && _newQuoteRequested(old);
     final data = await _checkoutData(errand);
     if (!mounted) return;
+    // A fresh quote clears the expired state.
+    if (was == ErrandStatus.requested || force || wasRequested) {
+      _expiredByApi = false;
+    }
     setState(() => _data = data);
+    final String? announce;
     if (was == ErrandStatus.requested && errand.status == ErrandStatus.quoted) {
+      announce = 'Your quote is ready.';
+    } else if (wasRequested && !_newQuoteRequested(data)) {
+      announce = 'Your new quote is ready.';
+    } else {
+      announce = null;
+    }
+    if (announce != null) {
       SemanticsService.sendAnnouncement(
         View.of(context),
-        'Your quote is ready.',
+        announce,
         TextDirection.ltr,
       );
+    }
+  }
+
+  /// Row 68: the customer asked for a new quote and none has arrived yet
+  /// (`quoteRequestedAt` later than the newest quote).
+  static bool _newQuoteRequested(_QuoteData d) {
+    final e = d.errand;
+    if (e.status != ErrandStatus.quoted && e.status != ErrandStatus.accepted) {
+      return false;
+    }
+    final at = e.quoteRequestedAt;
+    if (at == null) return false;
+    final quoted = d.quote?.createdAt;
+    return quoted == null || at.isAfter(quoted);
+  }
+
+  bool _requestingQuote = false;
+
+  /// `Request a new quote` (row 68).
+  Future<void> _requestNewQuote() async {
+    setState(() => _requestingQuote = true);
+    try {
+      await _services.errands.requestNewQuote(widget.errandId);
+      if (!mounted) return;
+      setState(() => _requestingQuote = false);
+      showSnack(context, "We've asked for a new quote.");
+      await _load();
+    } on NitumeApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _requestingQuote = false);
+      if (e.code == ApiErrorCodes.quoteStillValid) {
+        // The clock was wrong or an admin re-quoted meanwhile.
+        _expiredByApi = false;
+        await _load();
+      } else if (e.code == ApiErrorCodes.quoteRequestNotAllowed) {
+        await _load();
+      } else {
+        showSnack(context, "Couldn't request a new quote. Try again.");
+      }
     }
   }
 
@@ -309,6 +364,13 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
         cancelling: _cancelling,
         onCancel: _cancel,
       );
+    } else if (_newQuoteRequested(data)) {
+      body = _Waiting(
+        errand: data.errand,
+        requestedAt: data.errand.quoteRequestedAt,
+        cancelling: _cancelling,
+        onCancel: _cancel,
+      );
     } else {
       final expired = _expired(data);
       body = _Checkout(
@@ -320,10 +382,16 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
         onChangeMethod: data.methods.isEmpty ? null : _changeMethod,
         onDecline: _cancelling ? null : _cancel,
       );
-      // Expired (row 46): no CTA until a quote-request endpoint exists
-      // (SQ-9); the notice in the body explains what happens next.
+      // Expired (rows 46, 68): ask for a new quote.
       cta = expired
-          ? null
+          ? FixedCta(
+              child: NitumeButton.primary(
+                label: 'Request a new quote',
+                expand: true,
+                loading: _requestingQuote,
+                onPressed: _cancelling ? null : _requestNewQuote,
+              ),
+            )
           : FixedCta(
               child: NitumeButton.primary(
                 label: _ctaLabel(data),
@@ -338,7 +406,13 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
       title: 'Your quote',
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
-        child: KeyedSubtree(key: ValueKey(data?.errand.status), child: body),
+        child: KeyedSubtree(
+          key: ValueKey((
+            data?.errand.status,
+            data != null && _newQuoteRequested(data),
+          )),
+          child: body,
+        ),
       ),
       cta: cta,
     );
@@ -350,23 +424,32 @@ class _Waiting extends StatelessWidget {
     required this.errand,
     required this.cancelling,
     required this.onCancel,
+    this.requestedAt,
   });
 
   final Errand errand;
+
+  /// Set for the "New quote requested" variant (row 68).
+  final DateTime? requestedAt;
   final bool cancelling;
   final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
+    final again = requestedAt != null;
     return ListView(
       children: [
         const SizedBox(height: 32),
-        const Center(
-          child: PulsingDots(semanticLabel: 'Waiting for your quote'),
+        Center(
+          child: PulsingDots(
+            semanticLabel: again
+                ? 'Waiting for your new quote'
+                : 'Waiting for your quote',
+          ),
         ),
         const SizedBox(height: 20),
         Text(
-          'Preparing your quote',
+          again ? 'Preparing a new quote' : 'Preparing your quote',
           textAlign: TextAlign.center,
           style: NitumeTextStyles.dialogTitle.copyWith(
             fontWeight: FontWeight.w700,
@@ -377,15 +460,27 @@ class _Waiting extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 260),
             child: Text(
-              "We're pricing your task. This usually takes a few minutes, "
-              "and we'll notify you when it's ready.",
+              again
+                  ? "You asked for a new quote. We'll notify you when it's "
+                        'ready.'
+                  : "We're pricing your task. This usually takes a few "
+                        "minutes, and we'll notify you when it's ready.",
               textAlign: TextAlign.center,
               style: NitumeTextStyles.muted,
             ),
           ),
         ),
+        if (again) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Requested ${formatDayTime(requestedAt!)}',
+            textAlign: TextAlign.center,
+            style: NitumeTextStyles.metaLarge,
+          ),
+        ],
         const SizedBox(height: 22),
-        TaskSummaryCard(errand: errand),
+        // No chip while a new quote is requested (no invented label).
+        TaskSummaryCard(errand: errand, showChip: !again),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
@@ -481,9 +576,10 @@ class _Checkout extends StatelessWidget {
         if (expired)
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
-            // No quote-request endpoint yet (SQ-9): the spec's fallback.
+            // Row 68: the CTA below asks for a new quote.
             child: NitumeNotice(
-              message: "This quote has expired. We'll send you a new one.",
+              message:
+                  'This quote has expired. Ask for a new quote to continue.',
             ),
           ),
         if (!expired)

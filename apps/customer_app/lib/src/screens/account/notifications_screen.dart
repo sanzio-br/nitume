@@ -71,7 +71,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     NotificationEventType.failed => Icons.error_outline_rounded,
     NotificationEventType.priceChangeRequested => Icons.sell_outlined,
     NotificationEventType.quoteReissued => Icons.request_quote_outlined,
-    NotificationEventType.merchantDetailsAdded => Icons.storefront_outlined,
+    NotificationEventType.merchantDetailsAdded ||
+    NotificationEventType.merchantDetailsChanged => Icons.storefront_outlined,
+    NotificationEventType.quoteRequested => Icons.request_quote_outlined,
     NotificationEventType.refundApproved ||
     NotificationEventType.refundNoRefund ||
     NotificationEventType.refundRefunded => Icons.receipt_long_outlined,
@@ -92,25 +94,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } else if (items.isEmpty) {
       body = const NitumeEmptyState(message: "You're all caught up.");
     } else {
-      final unread = items.any((n) => !n.isRead);
       body = RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           children: [
-            if (unread)
-              Align(
-                alignment: Alignment.centerRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  // TODO(core-ui): trailing action slot on
-                  // NitumePushedHeader; until then the link sits under it.
-                  child: NitumeButton.text(
-                    label: 'Mark all read',
-                    size: NitumeButtonSize.small,
-                    onPressed: _markAll,
-                  ),
-                ),
-              ),
             for (final n in items)
               NotificationRow(
                 icon: _icon(n.event),
@@ -126,6 +113,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       );
     }
-    return PushedScaffold(title: 'Notifications', body: body);
+    final unread = items?.any((n) => !n.isRead) ?? false;
+    return PushedScaffold(
+      title: 'Notifications',
+      trailing: unread
+          ? NitumeButton.text(
+              label: 'Mark all read',
+              size: NitumeButtonSize.small,
+              onPressed: _markAll,
+            )
+          : null,
+      body: body,
+    );
   }
 }

@@ -99,8 +99,7 @@ class ErrandItemInput {
 /// Body of `POST /errands` (`CreateErrandDto`). The errand is created as
 /// DRAFT; call `ErrandRepository.submit` to move it to REQUESTED.
 ///
-/// No `title` field yet: the owner approved it (Q15) but the API does not
-/// accept it, so it is not sent until api-contract adds it. `reference` is
+/// [title] is the optional customer title (Q15). `reference` is
 /// backend-generated and never sent.
 class CreateErrandRequest {
   const CreateErrandRequest({
@@ -111,9 +110,15 @@ class CreateErrandRequest {
     this.deadlineAt,
     this.urgency,
     this.items = const [],
+    this.title,
   });
 
   final ErrandCategory category;
+
+  /// Optional task title, 3–120 characters after trimming. Sent trimmed;
+  /// omitted when `null` or blank. Shorter titles fail validation on the
+  /// API (400).
+  final String? title;
 
   /// 5–4000 characters.
   final String description;
@@ -129,6 +134,7 @@ class CreateErrandRequest {
 
   Map<String, dynamic> toJson() => {
         'category': category.wire,
+        if (title?.trim() case final t? when t.isNotEmpty) 'title': t,
         'description': description,
         'budget': budget,
         'locations': [for (final l in locations) l.toJson()],

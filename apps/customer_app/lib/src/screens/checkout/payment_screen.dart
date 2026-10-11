@@ -36,6 +36,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String? _payer;
   DateTime _startedAt = DateTime.now();
   bool _busy = false;
+  String? _failureReason;
   bool _stillPending = false;
   bool _retriedReusedKey = false;
   Timer? _timer;
@@ -68,6 +69,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _payer = await _payerNumber();
       if (!mounted) return;
       final p = summary.payment;
+      _failureReason = summary.failureReason;
       if (p != null) {
         _payment = p;
         _startedAt = p.createdAt ?? DateTime.now();
@@ -81,7 +83,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           _apply(s);
           return;
         }
-        _services.paymentAttempts.newAttempt(_id);
+        await _services.paymentAttempts.newAttempt(_id);
       } else if (errand.status == ErrandStatus.requested ||
           errand.status == ErrandStatus.quoted) {
         Nav.replaceWithAwaitingQuote(context, _id);
@@ -129,7 +131,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       final r = await _services.payments.initiateWith(
         _id,
-        idempotencyKey: _services.paymentAttempts.keyFor(_id),
+        idempotencyKey: await _services.paymentAttempts.keyFor(_id),
         merchantRoute: widget.args.route,
         paymentMethodId: widget.args.method?.id,
       );
@@ -147,7 +149,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _busy = false;
       if (e.code == ApiErrorCodes.idempotencyKeyReused && !_retriedReusedKey) {
         _retriedReusedKey = true;
-        _services.paymentAttempts.newAttempt(_id);
+        await _services.paymentAttempts.newAttempt(_id);
         return _initiate();
       }
       if (e.code == ApiErrorCodes.quoteNotAccepted) {
@@ -211,6 +213,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (!mounted) return;
       _busy = false;
       if (summary.payment != null) _payment = summary.payment;
+      _failureReason = summary.failureReason;
       final s = StkPaymentState.fromSummary(
         summary,
         elapsed: DateTime.now().difference(_startedAt),
@@ -250,10 +253,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  void _newAttempt() {
-    _services.paymentAttempts.newAttempt(_id);
+  Future<void> _newAttempt() async {
+    await _services.paymentAttempts.newAttempt(_id);
     _retriedReusedKey = false;
-    _initiate();
+    await _initiate();
   }
 
   @override
@@ -274,6 +277,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         payer: _payer,
         amount: _payment == null ? null : chargedAmount(_payment!),
         caption: _itemCaption(),
+        failureReason: _failureReason,
         busy: _busy,
         stillPending: _stillPending,
         onCheck: () => _check(manual: true),

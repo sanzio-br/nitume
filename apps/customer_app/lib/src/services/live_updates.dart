@@ -89,6 +89,9 @@ class LiveUpdates {
     void Function(PriceChangeRequested event)? onPriceChange,
     void Function(QuoteReissued event)? onQuoteReissued,
     void Function(MerchantDetailsUpdated event)? onMerchantDetails,
+    void Function(MerchantDetailsChanged event)? onMerchantDetailsChanged,
+    void Function(QuoteRequested event)? onQuoteRequested,
+    VoidCallback? onAccessRevoked,
     VoidCallback? onReconnected,
   }) {
     return ErrandWatch._(
@@ -100,6 +103,9 @@ class LiveUpdates {
       onPriceChange: onPriceChange,
       onQuoteReissued: onQuoteReissued,
       onMerchantDetails: onMerchantDetails,
+      onMerchantDetailsChanged: onMerchantDetailsChanged,
+      onQuoteRequested: onQuoteRequested,
+      onAccessRevoked: onAccessRevoked,
       onReconnected: onReconnected,
     );
   }
@@ -121,6 +127,9 @@ class ErrandWatch {
     void Function(PriceChangeRequested event)? onPriceChange,
     void Function(QuoteReissued event)? onQuoteReissued,
     void Function(MerchantDetailsUpdated event)? onMerchantDetails,
+    void Function(MerchantDetailsChanged event)? onMerchantDetailsChanged,
+    void Function(QuoteRequested event)? onQuoteRequested,
+    VoidCallback? onAccessRevoked,
     VoidCallback? onReconnected,
   }) {
     final c = _live.client;
@@ -161,6 +170,26 @@ class ErrandWatch {
             .listen(onMerchantDetails),
       );
     }
+    if (onMerchantDetailsChanged != null) {
+      _subs.add(
+        c.merchantDetailsChanges
+            .where((e) => mine(e.errandId))
+            .listen(onMerchantDetailsChanged),
+      );
+    }
+    if (onQuoteRequested != null) {
+      _subs.add(
+        c.quoteRequests.where((e) => mine(e.errandId)).listen(onQuoteRequested),
+      );
+    }
+    // errand:access_revoked: this errand is no longer ours to watch (e.g.
+    // a reassigned runner's room); stop its live data.
+    _subs.add(
+      c.accessRevocations.where((e) => mine(e.errandId)).listen((_) {
+        cancel();
+        onAccessRevoked?.call();
+      }),
+    );
     if (onReconnected != null) {
       var was = _live.isConnected;
       void listener() {

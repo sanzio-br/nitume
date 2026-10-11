@@ -71,7 +71,6 @@ class TaskDraft {
 
   /// Set once `POST /errands` created the DRAFT, so a retry only submits.
   String? createdErrandId;
-  bool titleSaved = false;
   bool submitted = false;
 
   /// True once step 2 holds anything worth a discard confirm.
@@ -111,7 +110,7 @@ class TaskDraft {
       if (i.name.trim().isNotEmpty) i,
   ];
 
-  /// `CreateErrandDto` body (title is set separately; see review).
+  /// `CreateErrandDto` body, title included (OA-15).
   CreateErrandRequest toRequest(DateTime now) {
     final locations = twoPoints
         ? [
@@ -119,8 +118,10 @@ class TaskDraft {
             dropoff!.toLocation(ErrandPointType.dropoff),
           ]
         : [first!.toLocation(ErrandPointType.taskSite)];
+    final t = title.trim();
     return CreateErrandRequest(
       category: category!,
+      title: t.isEmpty ? null : t,
       description: description.trim(),
       budget: hasBudget ? budget ?? 0 : 0,
       locations: locations,

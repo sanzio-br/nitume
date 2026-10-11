@@ -20,12 +20,14 @@ void main() {
     expect(errandTitle(errand(title: 'Flat check')), 'Flat check');
   });
 
-  testWidgets('expired signed links are re-fetched before viewing',
-      (t) async {
+  testWidgets('expired signed links are re-fetched before viewing', (t) async {
     final b = TestBackend();
     b.errands.put(errand(status: ErrandStatus.completed));
     b.evidence.items = [
-      photo('ev1', expires: DateTime.now().subtract(const Duration(minutes: 1))),
+      photo(
+        'ev1',
+        expires: DateTime.now().subtract(const Duration(minutes: 1)),
+      ),
     ];
     await b.pumpScreen(t, const TaskDetailScreen(errandId: 'e1'));
     final before = b.evidence.calls;

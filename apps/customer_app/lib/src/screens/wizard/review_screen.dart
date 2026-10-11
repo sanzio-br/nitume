@@ -42,13 +42,6 @@ class _ReviewScreenState extends State<ReviewScreen> {
         id = created.errand.id;
         _d.createdErrandId = id;
       }
-      final title = _d.title.trim();
-      if (title.isNotEmpty && !_d.titleSaved) {
-        // TODO(core-ui): send `title` in CreateErrandRequest (the API
-        // accepts it); until then it is set right after creation.
-        await services.errands.updateTitle(id, title);
-        _d.titleSaved = true;
-      }
       await services.errands.submit(id);
       _d.submitted = true;
       if (!mounted) return;

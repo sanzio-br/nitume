@@ -142,6 +142,26 @@ class ErrandRepository {
     }
   }
 
+  /// "Request a new quote" after the quote expired
+  /// (`POST /errands/:id/quote/request`, row 68). Records the request (no
+  /// state change) and returns the errand, whose [Errand.quoteRequestedAt]
+  /// is then set.
+  ///
+  /// Idempotent for the screen: when a request is already open (409
+  /// `quote_request_pending`) the errand is re-read and returned as on
+  /// success. Other failures rethrow: `quote_still_valid` (reload and show
+  /// checkout) and `quote_request_not_allowed` (reload the task).
+  Future<Errand> requestNewQuote(String errandId) async {
+    try {
+      return Errand.fromJson(
+        await _api.postMap('/errands/$errandId/quote/request'),
+      );
+    } on NitumeApiException catch (e) {
+      if (e.code != ApiErrorCodes.quoteRequestPending) rethrow;
+      return get(errandId);
+    }
+  }
+
   /// Every refund review of the errand, newest first
   /// (`GET /errands/:id/refunds`, row 71): the cancellation review and any
   /// price-decrease reviews. Empty when there are none; unreadable entries

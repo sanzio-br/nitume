@@ -10,18 +10,29 @@ import '../storage/token_store.dart';
 /// When the API refuses the session with `account_suspended` (on a call or
 /// on the refresh) the session is cleared and [_onAccountSuspended] runs
 /// instead of [_onUnauthenticated] (falls back to it when not set).
+///
+/// [_beforeSessionCleared] runs before the tokens are cleared, while they
+/// still work (e.g. to unregister the push device, `_shared.md` §7). It is
+/// best effort: bounded by [beforeClearTimeout], errors are ignored, and a
+/// clear triggered by the hook's own request skips it.
 class AuthInterceptor extends Interceptor {
   AuthInterceptor({
     required this._tokenStore,
     required this._refreshTokens,
     this._onUnauthenticated,
     this._onAccountSuspended,
+    this._beforeSessionCleared,
   });
+
+  /// Upper bound for the before-clear hook.
+  static const beforeClearTimeout = Duration(seconds: 5);
 
   final TokenStore _tokenStore;
   final Future<AuthTokens?> Function(String refreshToken) _refreshTokens;
   final void Function()? _onUnauthenticated;
   final void Function()? _onAccountSuspended;
+  final Future<void> Function()? _beforeSessionCleared;
+  bool _runningBeforeClear = false;
 
   Future<AuthTokens?>? _refreshInFlight;
 
@@ -141,6 +152,17 @@ class AuthInterceptor extends Interceptor {
   }
 
   Future<void> _failSession({bool suspended = false}) async {
+    final hook = _beforeSessionCleared;
+    if (hook != null && !_runningBeforeClear) {
+      _runningBeforeClear = true;
+      try {
+        await hook().timeout(beforeClearTimeout);
+      } on Object {
+        // Never block ending the session.
+      } finally {
+        _runningBeforeClear = false;
+      }
+    }
     await _tokenStore.clear();
     final suspendedHook = _onAccountSuspended;
     if (suspended && suspendedHook != null) {

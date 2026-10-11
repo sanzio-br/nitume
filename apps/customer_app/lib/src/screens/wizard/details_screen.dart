@@ -57,6 +57,27 @@ class _DetailsScreenState extends State<DetailsScreen> {
   /// one): the stored place was dropped until a new pick.
   final _typed = <_F>{};
 
+  /// Current text of each place field, from `onTextChanged`, keyed like
+  /// the field itself (category + field) so a category switch starts empty.
+  final _placeTexts = <String, String>{};
+
+  String _placeKey(_F field) => '${_d.category}-$field';
+
+  String _placeText(_F field) => (_placeTexts[_placeKey(field)] ?? '').trim();
+
+  /// Text typed without any pick also needs a pick (row 60).
+  void _markTypedWithoutPick() {
+    for (final f in const [_F.first, _F.dropoff]) {
+      final value = f == _F.first ? _d.first : _d.dropoff;
+      if (value != null) continue;
+      if (_placeText(f).isNotEmpty) {
+        _typed.add(f);
+      } else {
+        _typed.remove(f);
+      }
+    }
+  }
+
   Map<_F, String> _validate() {
     final e = <_F, String>{};
     final title = _d.title.trim();
@@ -96,6 +117,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
   }
 
   void _continue() {
+    _markTypedWithoutPick();
     final errors = _validate();
     if (errors.isNotEmpty) {
       setState(() => _showErrors = true);
@@ -147,7 +169,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
           _typed.add(field);
           set(null);
         }),
-        key: ValueKey('${_d.category}-$field'),
+        key: ValueKey(_placeKey(field)),
         service: search,
         label: label,
         hint: 'Search for a place',
@@ -165,6 +187,8 @@ class _DetailsScreenState extends State<DetailsScreen> {
         onSavedAddressSelected: (a) => onPicked(
           DraftPlace(addressText: a.addressText, lat: a.lat!, lng: a.lon!),
         ),
+        // Tracks typed text so text without any pick is refused (row 60).
+        onTextChanged: (text) => _placeTexts[_placeKey(field)] = text,
       );
     }
 

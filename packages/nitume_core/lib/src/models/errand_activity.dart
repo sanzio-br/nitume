@@ -226,6 +226,11 @@ class DisputeEvent {
 }
 
 /// A dispute (`POST /disputes`, `GET /disputes/:id`).
+///
+/// Once resolved (row 79) it carries the [verdict], [resolvedAt] and the
+/// admin's [resolution] note, which customer and runner both see. For them
+/// [resolvedBy] is always `null` (the API hides the admin) and internal
+/// `comment` events are left out.
 class Dispute {
   const Dispute({
     required this.id,
@@ -235,6 +240,8 @@ class Dispute {
     required this.status,
     this.resolution,
     this.resolvedBy,
+    this.verdict,
+    this.resolvedAt,
     this.createdAt,
     this.updatedAt,
     this.events = const [],
@@ -245,8 +252,18 @@ class Dispute {
   final String openedBy;
   final String reason;
   final DisputeStatus status;
+
+  /// The admin's resolution note; `null` while open.
   final String? resolution;
+
+  /// Admin who resolved it; `null` for customer and runner viewers.
   final String? resolvedBy;
+
+  /// Verdict of the resolution; `null` while open or when unknown.
+  final DisputeVerdict? verdict;
+
+  /// When the dispute was resolved; `null` while open.
+  final DateTime? resolvedAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final List<DisputeEvent> events;
@@ -257,8 +274,10 @@ class Dispute {
     openedBy: json['openedBy'] as String,
     reason: json['reason'] as String,
     status: DisputeStatus.fromWire(json['status'] as String),
-    resolution: json['resolution'] as String?,
-    resolvedBy: json['resolvedBy'] as String?,
+    resolution: parseOptionalString(json['resolution']),
+    resolvedBy: parseOptionalString(json['resolvedBy']),
+    verdict: DisputeVerdict.tryFromWire(json['verdict']),
+    resolvedAt: parseDate(json['resolvedAt']),
     createdAt: parseDate(json['createdAt']),
     updatedAt: parseDate(json['updatedAt']),
     events: asJsonList(json['events']).map(DisputeEvent.fromJson).toList(),

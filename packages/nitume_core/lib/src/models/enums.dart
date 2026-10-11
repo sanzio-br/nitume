@@ -313,6 +313,24 @@ enum DisputeStatus {
       _fromWire(values, (e) => e.wire, v);
 }
 
+/// Outcome of a resolved dispute (row 79), shown to customer and runner
+/// with the admin's resolution note. Unknown values parse as `null`.
+enum DisputeVerdict {
+  runnerFavourable('runner_favourable'),
+  customerFavourable('customer_favourable');
+
+  const DisputeVerdict(this.wire);
+  final String wire;
+
+  /// `null` for absent or unknown values (dispute still open).
+  static DisputeVerdict? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
 enum DisputeEventType {
   opened('opened'),
   comment('comment'),
@@ -367,7 +385,15 @@ enum NotificationEventType {
   quoteReissued('quote.reissued'),
 
   /// The merchant's Till/Paybill details were added (row 43).
-  merchantDetailsAdded('merchant_details.added');
+  merchantDetailsAdded('merchant_details.added'),
+
+  /// The merchant's Till/Paybill details changed after the customer's
+  /// merchant-direct payment started (row 80); open `x-merchant-payment`.
+  merchantDetailsChanged('merchant_details.changed'),
+
+  /// A customer asked for a new quote after expiry (row 68). Admin feed
+  /// only; a customer never receives it.
+  quoteRequested('quote.requested');
 
   const NotificationEventType(this.wire, [this.status]);
   final String wire;

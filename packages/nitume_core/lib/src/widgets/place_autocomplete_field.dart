@@ -33,6 +33,7 @@ class PlaceAutocompleteField extends StatefulWidget {
     this.debounce = const Duration(milliseconds: 300),
     this.onSelectionCleared,
     this.searchErrorText = defaultSearchErrorText,
+    this.onTextChanged,
   });
 
   /// `v-new-details` / `x-address-form` copy for a failed search.
@@ -60,6 +61,11 @@ class PlaceAutocompleteField extends StatefulWidget {
   /// Shown under the field when a search fails.
   final String searchErrorText;
 
+  /// Called with the field text whenever it changes: typing, a pick or saved
+  /// address filling the field, and an [initialValue] replacing it. Lets a
+  /// screen tell "typed without a pick" apart without reading the field.
+  final ValueChanged<String>? onTextChanged;
+
   @override
   State<PlaceAutocompleteField> createState() => _PlaceAutocompleteFieldState();
 }
@@ -77,13 +83,25 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
   /// Text of the current pick; `null` when nothing is picked.
   String? _selectedText;
 
+  /// Last text reported to [PlaceAutocompleteField.onTextChanged].
+  String _reportedText = '';
+
   @override
   void initState() {
     super.initState();
     _controller.text = widget.initialValue ?? '';
     final initial = widget.initialValue;
     if (initial != null && initial.isNotEmpty) _selectedText = initial;
+    _reportedText = _controller.text;
+    _controller.addListener(_reportText);
     _focus.addListener(() => setState(() {}));
+  }
+
+  void _reportText() {
+    final text = _controller.text;
+    if (text == _reportedText) return;
+    _reportedText = text;
+    widget.onTextChanged?.call(text);
   }
 
   @override

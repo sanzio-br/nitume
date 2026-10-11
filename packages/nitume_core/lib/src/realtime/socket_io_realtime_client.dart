@@ -47,7 +47,10 @@ typedef RealtimeTransportFactory = RealtimeTransport Function(
 ///   reconnect; screens refetch their snapshot once on `connected`.
 /// * Malformed payloads are dropped, never thrown.
 ///
-/// Also forwards `quote:reissued` and `merchant_details:updated` (round 3).
+/// Also forwards `quote:reissued` and `merchant_details:updated` (round 3),
+/// `merchant_details:changed`, `quote:requested` and
+/// `errand:access_revoked` (round 4). On `errand:access_revoked` the errand
+/// is no longer re-joined after a reconnect.
 ///
 /// One app-wide instance; call [connect] after sign-in and [disconnect] on
 /// log out. [dispose] closes the streams.
@@ -100,6 +103,9 @@ class SocketIoRealtimeClient implements RealtimeClient {
   final _priceChanges = StreamController<PriceChangeRequested>.broadcast();
   final _quotes = StreamController<QuoteReissued>.broadcast();
   final _merchantDetails = StreamController<MerchantDetailsUpdated>.broadcast();
+  final _merchantChanges = StreamController<MerchantDetailsChanged>.broadcast();
+  final _quoteRequests = StreamController<QuoteRequested>.broadcast();
+  final _revocations = StreamController<ErrandAccessRevoked>.broadcast();
 
   final _rooms = <String>{};
   RealtimeTransport? _transport;
@@ -133,6 +139,16 @@ class SocketIoRealtimeClient implements RealtimeClient {
   @override
   Stream<MerchantDetailsUpdated> get merchantDetailsUpdates =>
       _merchantDetails.stream;
+
+  @override
+  Stream<MerchantDetailsChanged> get merchantDetailsChanges =>
+      _merchantChanges.stream;
+
+  @override
+  Stream<QuoteRequested> get quoteRequests => _quoteRequests.stream;
+
+  @override
+  Stream<ErrandAccessRevoked> get accessRevocations => _revocations.stream;
 
   /// Rooms that are re-joined on reconnect.
   @visibleForTesting
@@ -170,6 +186,9 @@ class SocketIoRealtimeClient implements RealtimeClient {
       _priceChanges.close(),
       _quotes.close(),
       _merchantDetails.close(),
+      _merchantChanges.close(),
+      _quoteRequests.close(),
+      _revocations.close(),
     ]);
   }
 
@@ -240,6 +259,23 @@ class SocketIoRealtimeClient implements RealtimeClient {
       MerchantDetailsUpdated.fromJson,
       _merchantDetails,
     );
+    _listen(
+      t,
+      RealtimeEvents.merchantDetailsChanged,
+      MerchantDetailsChanged.fromJson,
+      _merchantChanges,
+    );
+    _listen(
+      t,
+      RealtimeEvents.quoteRequested,
+      QuoteRequested.fromJson,
+      _quoteRequests,
+    );
+    _listen(t, RealtimeEvents.errandAccessRevoked, (json) {
+      final revoked = ErrandAccessRevoked.fromJson(json);
+      _rooms.remove(revoked.errandId);
+      return revoked;
+    }, _revocations);
     t.connect();
   }
 

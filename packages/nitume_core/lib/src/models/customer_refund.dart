@@ -5,8 +5,9 @@ import 'json_utils.dart';
 /// rows 37, 48, 54, 71): `GET /errands/:id/refund` (one) or
 /// `GET /errands/:id/refunds` (all, newest first).
 ///
-/// Status and amounts only. The admin decision note (SQ-10) and the payout
-/// reference are never parsed, so no screen can show them.
+/// Status and amounts only. The admin decision note (SQ-10) is never
+/// parsed and the customer view carries no payout reference, so no screen
+/// can show either.
 class CustomerRefund {
   const CustomerRefund({
     required this.status,
@@ -14,6 +15,7 @@ class CustomerRefund {
     this.errandId,
     this.amountPaid,
     this.refundAmount,
+    this.remainingRefundable,
     this.trigger,
     this.priceChangeRequestId,
     this.createdAt,
@@ -31,6 +33,11 @@ class CustomerRefund {
   /// Decided refund amount (decimal string); `null` until an admin decides.
   /// Shown only for [RefundStatus.approved] and [RefundStatus.refunded].
   final String? refundAmount;
+
+  /// What can still be refunded on the whole task (row 87): everything paid
+  /// to Nitume minus every approved or refunded review's amount, as a
+  /// decimal string; `null` from older responses.
+  final String? remainingRefundable;
 
   /// What opened the review; `null` when absent or unknown.
   final RefundTrigger? trigger;
@@ -61,6 +68,7 @@ class CustomerRefund {
       errandId: parseOptionalString(json['errandId']),
       amountPaid: parseDecimal(json['amountPaid']),
       refundAmount: parseDecimal(json['refundAmount']),
+      remainingRefundable: parseDecimal(json['remainingRefundable']),
       trigger: RefundTrigger.tryFromWire(json['trigger']),
       priceChangeRequestId: parseOptionalString(json['priceChangeRequestId']),
       createdAt: parseDate(json['createdAt']),

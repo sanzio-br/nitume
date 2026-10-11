@@ -263,4 +263,33 @@ abstract final class ApiErrorCodes {
   /// `GET /errands/:id/refund`); `ErrandRepository.refund` maps it to
   /// `null`.
   static const refundNotFound = 'refund_not_found';
+
+  /// `POST /errands/:id/quote/request`: a new quote was already requested
+  /// (409, row 68). Details: `quoteRequestedAt`.
+  /// `ErrandRepository.requestNewQuote` treats it as success.
+  static const quoteRequestPending = 'quote_request_pending';
+
+  /// `POST /errands/:id/quote/request` outside QUOTED / ACCEPTED or without
+  /// a quote (409, row 68). Details: `status`. Reload the task.
+  static const quoteRequestNotAllowed = 'quote_request_not_allowed';
+
+  /// `POST /errands/:id/quote/request` while the newest quote is still valid
+  /// (409, row 68). Details: `quoteId`, `expiresAt`. Reload and show
+  /// checkout.
+  static const quoteStillValid = 'quote_still_valid';
+
+  /// Admin side (400, row 83): a quote expiry that is not in the future.
+  static const quoteExpiryInPast = 'quote_expiry_in_past';
+
+  /// Admin side (400, row 80): merchant Till/Paybill details on a category
+  /// other than Buy For Me / Get It For Me.
+  static const merchantDetailsNotApplicable = 'merchant_details_not_applicable';
+
+  /// Runner side (400, row 80): a merchant amount (price change) on a
+  /// category other than Buy For Me / Get It For Me.
+  static const merchantAmountNotApplicable = 'merchant_amount_not_applicable';
+
+  /// Admin side (409, row 82): the payout receipt of a refunded review is
+  /// final.
+  static const refundPayoutLocked = 'refund_payout_locked';
 }

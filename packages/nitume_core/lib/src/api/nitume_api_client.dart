@@ -13,13 +13,16 @@ import 'auth_interceptor.dart';
 /// by [AuthInterceptor]; `refresh`/`logout` intentionally bypass it to avoid
 /// refresh loops. `onUnauthenticated` runs when the session ends;
 /// `onAccountSuspended` (optional) runs instead when the API refused it with
-/// `account_suspended` (`_shared.md` §7).
+/// `account_suspended` (`_shared.md` §7). `beforeSessionCleared` (optional)
+/// runs before the tokens are cleared, while they still work, e.g. to
+/// unregister the push device (see [AuthInterceptor]).
 class NitumeApiClient {
   NitumeApiClient({
     required ApiConfig config,
     required TokenStore tokenStore,
     void Function()? onUnauthenticated,
     void Function()? onAccountSuspended,
+    Future<void> Function()? beforeSessionCleared,
     @visibleForTesting HttpClientAdapter? httpClientAdapter,
   }) {
     final options = BaseOptions(
@@ -43,6 +46,7 @@ class NitumeApiClient {
       refreshTokens: refresh,
       onUnauthenticated: onUnauthenticated,
       onAccountSuspended: onAccountSuspended,
+      beforeSessionCleared: beforeSessionCleared,
     );
     _dio.interceptors.add(interceptor);
   }

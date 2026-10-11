@@ -34,6 +34,18 @@ abstract final class RealtimeEvents {
 
   /// The merchant's Till/Paybill details were set or changed (row 43).
   static const merchantDetailsUpdated = 'merchant_details:updated';
+
+  /// The Till/Paybill changed after the customer's merchant-direct payment
+  /// started (row 80).
+  static const merchantDetailsChanged = 'merchant_details:changed';
+
+  /// The server removed this socket from `errand:{id}` because the user can
+  /// no longer view the errand (e.g. runner reassigned).
+  static const errandAccessRevoked = 'errand:access_revoked';
+
+  /// A customer asked for a new quote (row 68); sent to admins and the
+  /// errand room.
+  static const quoteRequested = 'quote:requested';
 }
 
 /// `location:update {errandId, lat, lng, eta, ts}`.
@@ -234,6 +246,95 @@ class MerchantDetailsUpdated {
   }
 }
 
+/// `merchant_details:changed {errandId, merchantName, tillNumber,
+/// paybillNumber, accountReference, merchantDetailsUpdatedAt}` (row 80): the
+/// details changed after the customer's merchant-direct payment started.
+/// Screens refetch the payment summary and show the "Details changed"
+/// notice on `x-merchant-payment`; the old number is never shown.
+class MerchantDetailsChanged {
+  const MerchantDetailsChanged({
+    required this.errandId,
+    this.merchantName,
+    this.tillNumber,
+    this.paybillNumber,
+    this.accountReference,
+    this.merchantDetailsUpdatedAt,
+  });
+
+  final String errandId;
+  final String? merchantName;
+  final String? tillNumber;
+  final String? paybillNumber;
+  final String? accountReference;
+
+  /// When the change was saved; `null` when absent or malformed.
+  final DateTime? merchantDetailsUpdatedAt;
+
+  factory MerchantDetailsChanged.fromJson(Map<String, dynamic> json) {
+    final updated = MerchantDetailsUpdated.fromJson(json);
+    final at = json['merchantDetailsUpdatedAt'];
+    return MerchantDetailsChanged(
+      errandId: updated.errandId,
+      merchantName: updated.merchantName,
+      tillNumber: updated.tillNumber,
+      paybillNumber: updated.paybillNumber,
+      accountReference: updated.accountReference,
+      merchantDetailsUpdatedAt: at is String ? DateTime.tryParse(at) : null,
+    );
+  }
+}
+
+/// `errand:access_revoked {errandId}`: the server removed this socket from
+/// the errand's room because the user can no longer view it. Stop showing
+/// live data for that errand (its stream ends; the client does not re-join
+/// it on reconnect).
+class ErrandAccessRevoked {
+  const ErrandAccessRevoked({required this.errandId});
+
+  final String errandId;
+
+  factory ErrandAccessRevoked.fromJson(Map<String, dynamic> json) =>
+      ErrandAccessRevoked(errandId: json['errandId'] as String);
+}
+
+/// `quote:requested {errandId, reference, quoteId, status,
+/// quoteRequestedAt}` (row 68): a new quote was requested on the errand
+/// (also from another device). Screens show the "New quote requested"
+/// waiting state.
+class QuoteRequested {
+  const QuoteRequested({
+    required this.errandId,
+    this.reference,
+    this.quoteId,
+    this.status,
+    this.quoteRequestedAt,
+  });
+
+  final String errandId;
+  final String? reference;
+
+  /// The expired quote the customer wants replaced.
+  final String? quoteId;
+
+  /// QUOTED or ACCEPTED; `null` when unknown.
+  final ErrandStatus? status;
+  final DateTime? quoteRequestedAt;
+
+  factory QuoteRequested.fromJson(Map<String, dynamic> json) {
+    final status = json['status'];
+    final at = json['quoteRequestedAt'];
+    return QuoteRequested(
+      errandId: json['errandId'] as String,
+      reference: json['reference'] is String
+          ? json['reference'] as String
+          : null,
+      quoteId: json['quoteId'] is String ? json['quoteId'] as String : null,
+      status: status is String ? _tryStatus(status) : null,
+      quoteRequestedAt: at is String ? DateTime.tryParse(at) : null,
+    );
+  }
+}
+
 /// Connection state of a [RealtimeClient].
 ///
 /// Screens poll their REST snapshot only while the state is not
@@ -289,4 +390,14 @@ abstract interface class RealtimeClient {
 
   /// `merchant_details:updated` (row 43).
   Stream<MerchantDetailsUpdated> get merchantDetailsUpdates;
+
+  /// `merchant_details:changed` (row 80).
+  Stream<MerchantDetailsChanged> get merchantDetailsChanges;
+
+  /// `quote:requested` (row 68).
+  Stream<QuoteRequested> get quoteRequests;
+
+  /// `errand:access_revoked`: stop showing live data for that errand. The
+  /// errand is dropped from the rooms re-joined on reconnect.
+  Stream<ErrandAccessRevoked> get accessRevocations;
 }

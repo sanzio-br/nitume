@@ -6,14 +6,16 @@ and the SDK integrations live in `packages/nitume_core`.
 ## Run
 
 ```sh
+cp .env.example .env          # local values; .env is gitignored
 flutter pub get
-flutter run \
-  --dart-define=NITUME_API_BASE_URL=http://10.0.2.2:3000/api/v1
+flutter run --dart-define-from-file=.env
 ```
 
-`NITUME_API_BASE_URL` can also come from a local `.env` file
-(`NITUME_API_BASE_URL=...`). `.env` is listed as a Flutter asset, so it must
-exist (an empty file is fine) for `flutter test` and builds: `touch .env`.
+`.env` holds `--dart-define` values (`NITUME_API_BASE_URL`, keys and flags
+below). It is read at build time through `--dart-define-from-file` and is
+**not** bundled as an asset, so `flutter test` and builds work without it
+(row 59). Single values can also be passed with
+`--dart-define=NITUME_API_BASE_URL=http://10.0.2.2:3000/api/v1`.
 
 Debug Android builds allow cleartext HTTP to `10.0.2.2` / `localhost` only
 (`android/app/src/debug/res/xml/network_security_config.xml`); release builds
@@ -27,7 +29,7 @@ runs with that feature off. **Never commit real keys or Firebase files.**
 | Setting | Where | Without it |
 |---|---|---|
 | `NITUME_PLACES_API_KEY` | `--dart-define` | Place search falls back to saved addresses with coordinates (notice on the wizard and address form) |
-| `NITUME_MAPS_ENABLED=true` + Maps SDK key | `--dart-define` + platform key (below) | Track keeps the map placeholder |
+| `NITUME_MAPS_ENABLED=true` + Maps SDK key | `.env` / `--dart-define` + platform key (below) | Track keeps the map placeholder |
 | `NITUME_TERMS_URL`, `NITUME_PRIVACY_URL`, `NITUME_SUPPORT_URI` | `--dart-define` | Legal links render as plain text; the Support row is hidden |
 | `NITUME_QUOTE_PREVIEW=true` | `--dart-define` | The wizard shows no price (row 47, default) |
 | Firebase config | platform files (below) | Push is off (no token registered) |

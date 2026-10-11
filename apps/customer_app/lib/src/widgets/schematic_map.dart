@@ -47,8 +47,8 @@ class SchematicMap extends StatelessWidget {
                       key: const ValueKey('runner-dot'),
                       duration: const Duration(milliseconds: 900),
                       curve: Curves.easeInOut,
-                      left: projection.at(position).dx - 11,
-                      top: projection.at(position).dy - 11,
+                      left: projection.at(position).dx - 8,
+                      top: projection.at(position).dy - 8,
                       child: const _RunnerDot(),
                     ),
                 ],
@@ -130,8 +130,9 @@ class _RunnerDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 22,
-      height: 22,
+      // 16 overall: 10 green + the 3px white ring each side (v-track).
+      width: 16,
+      height: 16,
       decoration: BoxDecoration(
         color: NitumeColors.green,
         shape: BoxShape.circle,

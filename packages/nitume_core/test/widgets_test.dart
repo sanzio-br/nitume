@@ -505,6 +505,44 @@ void main() {
       await tester.tap(find.byType(NitumeBackButton));
       expect(backs, 1);
     });
+
+    testWidgets('trailing action sits right of the title and taps',
+        (tester) async {
+      var taps = 0;
+      await pumpThemed(
+        tester,
+        NitumePushedHeader(
+          title: 'Notifications',
+          trailing: NitumeButton.text(
+            label: 'Mark all read',
+            onPressed: () => taps++,
+          ),
+        ),
+      );
+      final title = tester.getRect(find.text('Notifications'));
+      final action = tester.getRect(find.text('Mark all read'));
+      expect(action.left, greaterThan(title.left));
+      expect(
+        action.center.dy,
+        moreOrLessEquals(
+          tester.getRect(find.byType(NitumeBackButton)).center.dy,
+          epsilon: 1,
+        ),
+      );
+      await tester.tap(find.text('Mark all read'));
+      expect(taps, 1);
+    });
+
+    test('step counter and trailing action are exclusive', () {
+      expect(
+        () => NitumePushedHeader(
+          step: 1,
+          totalSteps: 2,
+          trailing: const SizedBox(),
+        ),
+        throwsAssertionError,
+      );
+    });
   });
 
   group('ReceiptCard / TaskHistoryCard', () {
