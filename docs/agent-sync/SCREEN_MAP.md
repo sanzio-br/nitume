@@ -8,7 +8,7 @@ View ids come from the `data-view` / `id="v-…"` / `data-p` / `page-…` attrib
 | What | Path |
 |---|---|
 | Mockups + design system | `docs/design/` (`nitume_customer_app.html`, `nitume_runner_app.html`, `nitume_admin_dashboard.html`, `nitume_website.html`, `nitume_design_system.html`) |
-| System design | `docs/design/Nitume_System_Design.md`. §3.3 updated 2026-10-08 (owner row 56) on `docs/customer-answers-2`; the copy at `docs/Nitume_System_Design.md` was not updated there and is stale for §3.3 until synced |
+| System design | `docs/design/Nitume_System_Design.md` (the only copy; canonical per owner row 70, 2026-10-09). The duplicate at `docs/Nitume_System_Design.md` had no content of its own (its §3.3 was the pre-row-56 version) and was removed on `docs/owner-answers-3`. Any reference to `Nitume_System_Design.md` without a folder means this file |
 | Business plan | `docs/Nitume_Business_Plan.docx` |
 | Specs | `docs/specs/<surface>/<view-id>.md`; customer shared conventions in `docs/specs/customer/_shared.md` |
 | Audits | `docs/audits/<surface>-gap-report.md` |
@@ -23,6 +23,8 @@ Status values: `missing` · `partial` · `built` · `matches-design` (only after
 ## Customer app — `docs/design/nitume_customer_app.html` → `apps/customer_app`
 
 **Re-audit 2026-10-09** of `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): 11 of the 12 audited screens PASS; v-new-details FAIL (`partial`). Round 2 @ `7192a77`: v-new-details PASS; x-address-form, v-task-detail and the suspension flow re-checked, no regression. All customer screens `matches-design`. Implementation paths below are on `feat/customer-integrations`.
+
+**Owner answers round 3 (rows 59–94, applied 2026-10-09 on `docs/owner-answers-3`)**: x-awaiting-quote (rows 68, 72, 83) and x-merchant-payment (row 80) set to `partial` until re-audited; the other customer specs changed wording only. Builder lists: addendum "Owner answers round 3" at the end of `docs/audits/customer-gap-report.md`. The customer app is on `main` since `d5a94f2`.
 
 Pre-build baseline: `docs/audits/customer-gap-report.md`. Post-build re-audit 2026-10-07 of `feat/customer-screens` @ `4312f49`: `docs/audits/customer-reaudit-2026-10-07.md` — round 1: 24 PASS, 3 FAIL (v-price-auth, x-awaiting-quote, x-address-form); round 2 @ `ba45633`: those 3 PASS; round 3 spot-check @ `08f9b26` (2026-10-08): 14 changed screens PASS, CC-1..CC-3 closed. All 27 were `matches-design` after round 3. **Owner answers round 2 (2026-10-08)** changed ten specs; those screens are `partial` until re-audited against the updated spec (addendum at the end of `docs/audits/customer-gap-report.md`). Implementation paths below exist on `feat/customer-screens` only (not yet on `main`).
 
@@ -54,8 +56,8 @@ Screens not drawn in the mockup. Specced 2026-10-07 from design-system patterns 
 | Id (auditor-assigned) | Purpose | Referenced from | Spec | Implementation file | Status |
 |---|---|---|---|---|---|
 | x-name-capture | Display name after first sign-in (OA-2) | `v-auth-otp` | `docs/specs/customer/x-name-capture.md` | `apps/customer_app/lib/src/screens/auth/name_capture_screen.dart` (branch `feat/customer-integrations`) | matches-design |
-| x-awaiting-quote | Waiting for quote (REQUESTED) + accept quote / checkout (QUOTED) (OA-3, OA-5) | `v-new-review`, `v-home`, `v-task-detail` | `docs/specs/customer/x-awaiting-quote.md` | `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` (branch `feat/customer-integrations`) | matches-design |
-| x-merchant-payment | Item amount: merchant Till/Paybill (merchant-direct) or STK to Nitume for the runner's purchase (row 42) | §6 payments sequence, `v-track`, `v-price-auth` | `docs/specs/customer/x-merchant-payment.md` | `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` (branch `feat/customer-integrations`) | matches-design |
+| x-awaiting-quote | Waiting for quote (REQUESTED) + accept quote / checkout (QUOTED) (OA-3, OA-5) | `v-new-review`, `v-home`, `v-task-detail` | `docs/specs/customer/x-awaiting-quote.md` | `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` (on `main`) | partial (spec 2026-10-09: `Request a new quote` + new-quote-requested state, rows 68/72) |
+| x-merchant-payment | Item amount: merchant Till/Paybill (merchant-direct) or STK to Nitume for the runner's purchase (row 42) | §6 payments sequence, `v-track`, `v-price-auth` | `docs/specs/customer/x-merchant-payment.md` | `apps/customer_app/lib/src/screens/checkout/merchant_payment_screen.dart` (on `main`) | partial (spec 2026-10-09: details-changed warning, row 80) |
 | x-report-problem | Report a problem / dispute (write + read) | `v-task-detail`, `v-evidence-confirm`, §3.2 `POST /disputes` | `docs/specs/customer/x-report-problem.md` | `apps/customer_app/lib/src/screens/task/report_problem_screen.dart` (branch `feat/customer-integrations`) | matches-design |
 | x-evidence-viewer | Full-screen photo/video viewer | `v-evidence-confirm`, `v-task-detail` thumbs | `docs/specs/customer/x-evidence-viewer.md` | `apps/customer_app/lib/src/widgets/evidence.dart` (`openEvidenceViewer`) + core `EvidenceViewer` (branch `feat/customer-integrations`) | matches-design |
 | x-address-form | Add / edit saved address | `v-addresses` | `docs/specs/customer/x-address-form.md` | `apps/customer_app/lib/src/screens/account/address_form_screen.dart` (branch `feat/customer-integrations`) | matches-design |
@@ -103,15 +105,15 @@ Marked completed by the owner (parity audit only). The panels and drawers below 
 | drawer-runner | Runner profile drawer | `apps/admin/src/app/features/admin/drawers/runner-drawer.ts` | unaudited |
 | drawer-dispute | Dispute drawer | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` | built (Resolution/outcome PASS, `docs/audits/admin-reaudit-2026-10-09.md`; `Evidence on file` parity audit pending) |
 
-Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced 2026-10-08 on `docs/admin-ops-spec`; they extend the panels/drawers above, copy "(proposed)"):
+Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced 2026-10-08 on `docs/admin-ops-spec`; they extend the panels/drawers above, copy "(proposed)"). **Owner answers round 3 (2026-10-09)** changed four of them back to `partial` until re-audited; builder lists in the "Owner answers round 3" addendum of `docs/audits/admin-gap-report.md`. **Re-audit round 4 (2026-10-09)** of `fix/angular-admin-owner-answers` @ `f1323de`: addendum "re-audit round 4" in the same report:
 
 | Id (auditor-assigned) | Purpose | Placed in | Spec | Implementation file | Status |
 |---|---|---|---|---|---|
-| p-refunds | Refund reviews list (`GET /refunds`), status filter, nav item + badge | new sidebar item under Network, after Disputes | `docs/specs/admin/p-refunds.md` | `apps/admin/src/app/features/admin/panels/refunds.panel.ts` | matches-design |
-| drawer-refund | Decide refund amount (`PATCH /refunds/:id/decision`), record manual M-Pesa payout (`POST /refunds/:id/mark-paid`) | new drawer kind in the shell drawer | `docs/specs/admin/drawer-refund.md` | `apps/admin/src/app/features/admin/drawers/refund-drawer.ts` (+ `refund-link.section.ts`) | matches-design |
-| drawer-task-merchant-details | Merchant Till/Paybill details (`PUT /errands/:id/merchant-details`) | section of `drawer-task` | `docs/specs/admin/drawer-task-merchant-details.md` | `apps/admin/src/app/features/admin/drawers/merchant-details.section.ts` | matches-design |
-| drawer-task-requote | Quote section + re-quote of an expired QUOTED task (`POST /errands/:id/quote`) | section/action of `drawer-task` | `docs/specs/admin/drawer-task-requote.md` | `apps/admin/src/app/features/admin/drawers/quote.section.ts`, `quote-dialog.ts` | matches-design |
-| drawer-dispute-outcome | Verdict copy and outcome: runner → COMPLETED, customer → CANCELLED + refund review | Resolution section of `drawer-dispute` | `docs/specs/admin/drawer-dispute-outcome.md` | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` | matches-design |
+| p-refunds | Refund reviews list (`GET /refunds`), status filter, nav item + badge | new `Payments` nav group between Network and Insights (row 77) | `docs/specs/admin/p-refunds.md` | `apps/admin/src/app/features/admin/panels/refunds.panel.ts` (branch `fix/angular-admin-owner-answers`) | matches-design (re-audit round 4 PASS in round 2; `Payments` nav group PASS) |
+| drawer-refund | Decide refund amount (`PATCH /refunds/:id/decision`), record manual M-Pesa payout (`POST /refunds/:id/mark-paid`) | new drawer kind in the shell drawer | `docs/specs/admin/drawer-refund.md` | `apps/admin/src/app/features/admin/drawers/refund-drawer.ts` (+ `refund-link.section.ts`) (branch `fix/angular-admin-owner-answers`) | matches-design (re-audit round 4 PASS) |
+| drawer-task-merchant-details | Merchant Till/Paybill details (`PUT /errands/:id/merchant-details`) | section of `drawer-task` | `docs/specs/admin/drawer-task-merchant-details.md` | `apps/admin/src/app/features/admin/drawers/merchant-details.section.ts` (branch `fix/angular-admin-owner-answers`) | matches-design (re-audit round 4 PASS; m-9 closed) |
+| drawer-task-requote | Quote section + re-quote of an expired QUOTED or ACCEPTED task (`POST /errands/:id/quote`) | section/action of `drawer-task` | `docs/specs/admin/drawer-task-requote.md` | `apps/admin/src/app/features/admin/drawers/quote.section.ts`, `quote-dialog.ts` (branch `fix/angular-admin-owner-answers`) | matches-design (re-audit round 4 PASS; m-6, m-7 closed; m-8 deferred to the API merge) |
+| drawer-dispute-outcome | Verdict copy and outcome: runner → COMPLETED, customer → CANCELLED + refund review | Resolution section of `drawer-dispute` | `docs/specs/admin/drawer-dispute-outcome.md` | `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` (branch `fix/angular-admin-owner-answers`) | matches-design (re-audit round 4 PASS) |
 
 ## Website — `docs/design/nitume_website.html` → `apps/website`
 

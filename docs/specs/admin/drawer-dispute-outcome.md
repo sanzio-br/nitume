@@ -1,9 +1,9 @@
 # drawer-dispute-outcome — Resolution section and outcome of the dispute drawer
 
-- Mockup: `#drawer-dispute` draws: chip `Open`, title, `Customer: … · Runner: … · Opened …`, `Customer's claim`, `Evidence on file`, `Timeline`, `Resolution` (textarea `Add a resolution note...`) and the actions `Side with runner` (`.btn-reject`, outline) / `Refund customer` (`.btn-approve`, green). This spec covers the **Resolution** section, the verdict actions and what the drawer shows afterwards. **EXTENDS MOCKUP**: outcome explanations, confirm step, rationale rules and the post-verdict result (incl. the link to the refund review). One **copy deviation**: `Refund customer` → `Side with customer` (AQ-2).
+- Mockup: `#drawer-dispute` draws: chip `Open`, title, `Customer: … · Runner: … · Opened …`, `Customer's claim`, `Evidence on file`, `Timeline`, `Resolution` (textarea `Add a resolution note...`) and the actions `Side with runner` (`.btn-reject`, outline) / `Refund customer` (`.btn-approve`, green). This spec covers the **Resolution** section, the verdict actions and what the drawer shows afterwards. **EXTENDS MOCKUP**: outcome explanations, confirm step, rationale rules and the post-verdict result (incl. the link to the refund review). One **copy deviation**, approved: `Refund customer` → `Side with customer` (row 78).
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/dispute-drawer.ts` (exists; see Current vs design)
-- Status: missing (the drawer and a verdict control exist, but none of this spec's outcome copy, rules, confirm or result is built; see Current vs design)
+- Status: matches-design (re-audit 2026-10-09 PASS; round-4 re-audit 2026-10-09 PASS)
 
 ## Purpose
 Let an admin resolve a dispute with a written rationale and make the consequence of each verdict explicit (row 36, §3.3 as updated by row 56):
@@ -26,7 +26,7 @@ Only DISPUTED tasks show the verdict form. Results: COMPLETED (runner) or CANCEL
 2. Outcome explainer `.drawer-card` (EXTENDS MOCKUP), two `.drawer-row`-like blocks separated by a hairline, each: 13/600 blue lead + 12.5 slate-600 line:
    - `Side with runner` — `The task moves to Completed. The runner is paid through the normal payout.`
    - `Side with customer` — `The task moves to Cancelled. If the customer paid, a refund review opens in Refunds, where you set the amount.`
-3. Field A-06 (label hidden visually, `aria-label="Resolution note"`): textarea 4 rows, `.field-input`, placeholder `Add a resolution note...` (mockup), max 2000; under it a row: hint left 12 slate-600 `At least 20 characters. The customer and runner can see this note.` (AQ-3), counter right Fira Code 11 slate-600 `0/2000` (turns `.field-error` red text below 20 once the field has been touched).
+3. Field A-06 (label hidden visually, `aria-label="Resolution note"`): textarea 4 rows, `.field-input`, placeholder `Add a resolution note...` (mockup), max 2000; under it a row: hint left 12 slate-600 `At least 20 characters. The customer and runner can see this note.` (row 79, decided). This is the **resolution note**; it is not an internal note. Internal admin-only notes are a separate thing (none in this drawer today); if one is added later it gets its own field labelled as internal and is never sent with the verdict, counter right Fira Code 11 slate-600 `0/2000` (turns `.field-error` red text below 20 once the field has been touched).
 4. `.drawer-actions` (mockup order and variants): left `.btn .btn-outline` `Side with runner`; right `.btn .btn-primary` `Side with customer`. Both flex 1, both disabled until the trimmed note has ≥ 20 characters. No amber or red fills.
 5. Click → A-08 confirm:
    - Runner: title `Side with runner?` · body `#NT-10441 moves to Completed and the runner is paid as normal. This can't be undone.` · buttons `Back` / `Side with runner`.
@@ -44,7 +44,7 @@ Replaces the Resolution section; the claim/evidence/timeline sections stay visib
   - Runner: success `Dispute resolved for the runner. The task is now Completed.`
   - Customer, refund review opened: success `Dispute resolved for the customer. The task is now Cancelled. A refund review is waiting in Refunds.` + `.btn .btn-outline` `Open refund review`.
   - Customer, no payment: info `Dispute resolved for the customer. The task is now Cancelled. The customer hadn't paid, so there is nothing to refund.`
-- Opening the drawer on a task that is no longer DISPUTED (resolved elsewhere): the same Outcome card built from the latest history row whose `fromStatus` is `DISPUTED`; no notice.
+- Opening the drawer on a task that is no longer DISPUTED (resolved elsewhere): the same Outcome card built from the latest history row whose `fromStatus` is `DISPUTED`; when no such row is loaded, from the dispute itself (`verdict` `runner_favourable` → `Completed`, `customer_favourable` → `Cancelled`; `resolvedAt` → `Decided`; `resolution` → note; `feat/api-owner-answers-4`, typed optional until merged); no notice.
 
 ## Validation
 | Field | Rule (mirrors `ResolveDisputeDto`: `@MinLength(20) @MaxLength(2000)` and the service's trimmed ≥ 20 check) | Message |
@@ -59,7 +59,8 @@ Replaces the Resolution section; the claim/evidence/timeline sections stay visib
 | Response | UI |
 |---|---|
 | 400 validation (`rationale must be longer than or equal to 20 characters`) | Field error (above) |
-| 409 (`ConflictException`, no code: not DISPUTED any more, or rationale < 20 after trim) | Reload errand + history; if no longer DISPUTED show the result view with A-11 info `This dispute was already resolved. Showing the outcome.`; otherwise the field error |
+| 409 `errand_not_disputed` (N-8, on `main`), or any 409 after which the task is no longer DISPUTED | Reload errand, history and dispute; show the result view with A-11 info `This dispute was already resolved. Showing the outcome.` |
+| 409 without a code while the task is still DISPUTED (rationale < 20 after trim) | Field error (Validation) |
 | 403 | `_shared.md` §2 |
 | 404 | A-11 info `This task no longer exists.` |
 | network / 5xx | A-11 danger `Couldn't record the decision. Try again.`; note kept |
@@ -78,7 +79,7 @@ Replaces the Resolution section; the claim/evidence/timeline sections stay visib
 
 ## Copy
 - Mockup: `Resolution`, `Add a resolution note...`, `Side with runner`, `Customer's claim`, `Evidence on file`, `Timeline`, `Dispute #NT-XXXXX`.
-- Changed from mockup (AQ-2): `Refund customer` → `Side with customer`.
+- Changed from mockup, approved (row 78): `Refund customer` → `Side with customer`.
 - Proposed: the explainer lines, hint, dialog, `Outcome`, `Task status`, `Decided`, notices and errors above, `Open refund review`.
 - Never: "refund issued", "money returned", "release", "held", "wallet", "escrow" (the verdict moves no money; `_shared.md` §3).
 
@@ -99,11 +100,19 @@ Task id in titles/dialogs, `Decided` date/time, timeline times, the note counter
 - Dialog focus starts on `Back` (destructive-ish, irreversible action).
 - Result notice `role="status"`.
 
+## Resolved by owner answers
+- `Side with customer` label (AQ-2, row 78): the verdict only opens a refund review, which may end at KSh 0.
+- Resolution note visible to customer and runner, separate from internal notes (AQ-3, row 79). N-6 is done on `main`, so the customer's `Your report` shows it.
+
 ## Open questions for the owner
-- AQ-2: `Side with customer` instead of the mockup's `Refund customer`.
-- AQ-3: the resolution note is visible to both customer and runner.
+None.
 
 ## Current vs design
+Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de`: **PASS**. `dispute-drawer.ts` reads `verdict`/`resolvedAt` as the Outcome fallback (`disputeOutcome`) and keys the 409 on `errand_not_disputed`; both tested. Row 79: the customer already sees the resolution note on `x-report-problem` (Outcome); the verdict itself needs no customer copy (see that spec).
+
+Re-audit 2026-10-09 (`docs/audits/admin-reaudit-2026-10-09.md`): PASS on `main`. The 2026-10-09 owner answers (rows 78, 79) confirm the built label and hint; no change. Minor m-4 (notice order) still applies on the next touch.
+
+Earlier record (2026-10-08, before the build):
 `dispute-drawer.ts` (and the shell, data service):
 1. Labels: `Admin verdict`, `Rule for runner`, `Rule for customer` instead of the mockup's `Resolution`, `Side with runner` and (AQ-2) `Side with customer`; placeholder `Resolution note (shown to both parties)…` instead of `Add a resolution note...`. No outcome explanation.
 2. `.btn-verdict.customer` is an **amber filled button** (`_ops.scss` `background: var(--nitume-amber)`), which the design system forbids (amber only as a chip accent). `.btn-verdict.runner` is green filled; the mockup draws the runner action as the outline button.

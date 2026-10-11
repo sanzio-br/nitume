@@ -2,8 +2,8 @@
 
 - Mockup: `#drawer-task` draws a `Payment` section with the rows `Service fee`, `Runner fee`, `Merchant amount`, `Total`, but nothing about where the merchant is paid. **EXTENDS MOCKUP**: a new `Merchant payment details` section in the same drawer, built from `.drawer-section` / `.drawer-card` / `.drawer-row` and the design-system form field. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md`
-- Implementation: none. Section goes into `apps/admin/src/app/features/admin/drawers/task-drawer.ts` (preferably as a child component `merchant-details.section.ts` in the same folder so the drawer file stays readable).
-- Status: missing
+- Implementation: `apps/admin/src/app/features/admin/drawers/merchant-details.section.ts` (in `task-drawer.ts`)
+- Status: matches-design (re-audit 2026-10-09 round 4: PASS; m-9 closed in round 2)
 
 ## Purpose
 Let ops enter or correct the merchant's Till (Buy Goods) or Paybill (+ account number) for a task, so the customer can choose to pay the merchant directly (`merchant_direct`). Row 43: the merchant/admin supplies these details; the customer only picks the route. Until details exist, the API refuses `merchant_direct` with `merchant_details_missing` and the customer app shows the "details not ready" state (`docs/specs/customer/x-merchant-payment.md`).
@@ -13,9 +13,10 @@ Let ops enter or correct the merchant's Till (Buy Goods) or Paybill (+ account n
 - Position in the drawer: after the summary card and Items/Locations sections, before `Admin actions` and `Status history`. If the mockup `Payment` section is built later, this section sits directly under it.
 
 ## When it shows
-- Shown when the errand's category is `buy_for_me` or `pickup_delivery` (Buy For Me, Get It For Me: the categories with an item amount, row 45), **or** when any merchant field is already set. AQ-4 asks the owner to confirm.
+- Shown, editable, only when the errand's category is `buy_for_me` or `pickup_delivery` (Buy For Me, Get It For Me): merchant amounts apply only to these two (row 80, decided).
+- Other categories: the section is hidden. If such an errand already carries merchant fields (legacy data), show layout B **read-only** (no `Add`/`Edit`) with 12 slate-600 `Merchant details only apply to Buy For Me and Get It For Me.` so nothing is silently hidden.
 - Editable in every non-terminal state. Read-only (no Add/Edit button) in the terminal states `SETTLED`, `CANCELLED`, `FAILED`, `EXPIRED` (the API's `ErrandStateMachine.isTerminal`; it answers `errand_closed` there).
-- Most useful while `REQUESTED`, `QUOTED`, `ACCEPTED` (before the customer pays), and during `IN_PROGRESS` when an approved price increase goes to the same Till (row 44, SQ-8).
+- Most useful while `REQUESTED`, `QUOTED`, `ACCEPTED` (before the customer pays), and during `IN_PROGRESS` when an approved price increase is paid by the customer, manually, to the same Till (rows 44, 67).
 
 ## Layout
 `.drawer-section`, `.drawer-label` `Merchant payment details`.
@@ -39,7 +40,7 @@ Let ops enter or correct the merchant's Till (Buy Goods) or Paybill (+ account n
 3. Till selected: Field `Till number`, `inputmode="numeric"`, Fira Code value, maxlength 10, placeholder `e.g. 5123456`.
    Paybill selected: Field `Paybill number` (same rules, placeholder `e.g. 247247`) and Field `Account number (optional)`, Fira Code, maxlength 40, hint `Only if the merchant gave you one.`
 4. `.drawer-actions`: `.btn .btn-outline` `Cancel` and `.btn .btn-primary` `Save details` (flex 1 each, as the mockup's paired buttons). Save disabled until valid and changed.
-5. Changing details that already existed on a task in `PAYMENT_CONFIRMED` or later opens A-08 first: title `Change the merchant details?` · body `The customer may already be paying the current {Till|Paybill} {number}. Let them know before you change it.` · buttons `Back` / `Save changes`.
+5. Changing details that already existed on a task in `PAYMENT_CONFIRMED` or later (a merchant-direct payment may have started) opens A-08 first. Row 80: **warn, never block**; the customer is warned by the app and a notification. Title `Change the merchant details?` · body `The customer may already be paying the current {Till|Paybill} {number}. If they've started paying the merchant, we'll tell them the details changed so they check before paying.` · buttons `Back` / `Save changes`. Success notice for this case (task PAYMENT_CONFIRMED or later and the response carries `merchantDetailsUpdatedAt`): `Merchant details updated. If the customer had started paying the merchant, they've been told to check them.`; otherwise `Merchant details updated.` (Corrected 2026-10-09 round 4, m-9: the API sends `merchant_details.changed` only when a `merchant_direct` payment has started (`merchant-details.watcher.ts`), which the admin client cannot see; PAYMENT_CONFIRMED alone does not mean the customer started paying the merchant, so the copy must not claim the customer was told.)
 
 ## Validation (client, mirrors `MerchantDetailsDto` and `setMerchantDetails`)
 | Field | Rule | Message |
@@ -60,6 +61,7 @@ Request body: `{ merchantName, tillNumber }` **or** `{ merchantName, paybillNumb
 |---|---|
 | 400 `merchant_details_invalid` | A-11 danger in the form: `Give either a Till number or a Paybill number. An account number only goes with a Paybill.` (client validation should prevent it) |
 | 400 validation (`message[]`, e.g. `tillNumber must be 5-10 digits`) | Map to the field errors above |
+| 400 `merchant_details_not_applicable` (N-14: category is not Buy For Me / Get It For Me) | Switch to read-only; A-11 info `Merchant details only apply to Buy For Me and Get It For Me.` |
 | 409 `errand_closed` | Switch to read-only; A-11 info `This task is {status label} and can no longer be edited.` (status label from A-02) and reload the errand |
 | 404 | A-11 info `This task no longer exists.` |
 | 403 | `_shared.md` §2 |
@@ -85,7 +87,7 @@ Till number, Paybill number, account number (display and input), task id in any 
 ## Data
 - Read: `GET /errands/:id` (exists) returns `merchantName`, `merchantTillNumber`, `merchantPaybillNumber`, `merchantAccountReference` (entity columns) and `merchantDetailsAvailable`. The admin client type `Errand` in `core/api-types.ts` lacks these five fields: add them.
 - Write: `PUT /errands/:id/merchant-details` (admin, exists) body as above → the updated `Errand`.
-- Customer side effect: none from the API today. **needs: api-contract**: a customer notification/socket event when merchant details are added (already listed in `x-merchant-payment.md` / `x-awaiting-quote.md`), so the customer's "details not ready" state updates.
+- Customer side effect: **needs: api-contract (N-14)**: a customer notification/socket event when merchant details are added (already listed in `x-merchant-payment.md` / `x-awaiting-quote.md`), and, on a change after a merchant-direct payment started, `merchantDetailsUpdatedAt` plus a `merchant_details.changed` notification (customer warning, row 80). The API refuses other categories (`merchant_details_not_applicable`).
 - Task states: shown in all states for the two categories; editable in non-terminal ones; triggers no transition.
 
 ## Accessibility
@@ -93,9 +95,26 @@ Till number, Paybill number, account number (display and input), task id in any 
 - Number inputs use `inputmode="numeric"` and `pattern="\d*"`, not `type="number"` (no spinners, keeps leading zeros).
 - Labels visible; errors tied with `aria-describedby`.
 
+## Resolved by owner answers
+- AQ-4 (row 80): merchant amounts only for Buy For Me and Get It For Me; a change after a merchant-direct payment started warns the customer, never blocks.
+- Row 67: a merchant-direct increase is paid manually by the customer to the same Till.
+
 ## Open questions for the owner
-- AQ-4: which categories can have a merchant amount (default Buy For Me, Get It For Me).
-- Should changing details after the customer has started a merchant-direct payment be blocked rather than confirmed? Build default: allowed with the A-08 warning (the API allows it).
+None.
 
 ## Current vs design
+Round 2 spot-check (2026-10-09, `c1630ec`): m-9 closed (`c1630ec`): dialog body and `savedCopy` use the corrected copy; both tests updated.
+
+Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de`: **PASS**, one minor:
+1. Row 80 built: editable only for `buy_for_me` / `pickup_delivery` in non-terminal states; other categories with legacy details read-only with `Merchant details only apply to Buy For Me and Get It For Me.`; 400 `merchant_details_not_applicable` switches to read-only with the same line (`merchant-details.section.ts` `merchantEditable`, `handleError`). Tested for both category groups.
+2. m-9 (minor, spec correction): the warning body (`merchant-details.section.ts:296-299`) and `savedCopy` (`:110-117`) say the customer will be / has been told after any change on a paid task. Use the corrected copy above.
+
+Earlier update (spec, 2026-10-09):
+Spec update 2026-10-09 against `main` @ `c7675dc` (built and PASS in `docs/audits/admin-reaudit-2026-10-09.md`; now changed):
+1. Visibility: `merchant-details.section.ts:54-60` shows and edits the section for any errand with a merchant field set. Editable only for `buy_for_me` / `pickup_delivery`; other categories read-only with the explanatory line.
+2. Warning dialog body (`:274-276`) and the success notice for a change after payment: new copy above.
+3. Map `merchant_details_not_applicable` (once N-14 lands).
+Status set to `partial` until re-audited.
+
+Earlier record (2026-10-08, before the build):
 No implementation. `task-drawer.ts` shows `Budget`, `Quoted`, Items, Locations, `Admin actions` and `Status history`; it has no merchant section and no `Payment` section (the mockup's `Payment` card with `Service fee` / `Runner fee` / `Merchant amount` / `Total` is not built either; out of this spec's scope, recorded for the parity audit).

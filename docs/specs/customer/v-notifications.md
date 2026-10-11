@@ -23,6 +23,8 @@ In-app feed of task events (quote ready, runner en route, price change, completi
 | payment confirmed / failed (types missing) | `v-task-detail` / `v-payment` |
 | item payment confirmed / failed, `send_to_runner` (types missing, row 42) | `x-merchant-payment` |
 | merchant details added (type missing, row 43) | `x-awaiting-quote` while QUOTED/ACCEPTED, else `x-merchant-payment` |
+| merchant details changed after a merchant-direct payment started (type missing, row 80) | `x-merchant-payment` |
+| new quote issued after a request or expiry (`quote.reissued`, rows 68, 72; already routed in `navigation/nav.dart:155`) | `x-awaiting-quote` |
 | quote expired (type missing, row 46; optional) | `x-awaiting-quote` |
 | refund status changed (type missing, rows 54, 62) | `v-task-detail` |
 | rate your last task (type missing) | `v-rate` if not yet rated |
@@ -63,6 +65,8 @@ States (proposed):
 
 ## Data
 - `GET /api/v1/notifications?limit=` → `{ items, unread }`; `PATCH /notifications/:id/read`; `PATCH /notifications/read-all`; `GET /notifications/unread-count` (exist). Core `AppNotification`.
+- **Money in notification text (row 82)**: `KSh`, formatted like the app (`KSh 40,000`, `KSh 1,250.50`; no `.00` on whole amounts). The bodies come from the API: needs: api-contract — `notifications.service.ts` writes `KES ${amount}` with raw decimals (`:331`, `:340-341`, `:360`, `:372`); change to the `KSh` format. The client renders the body as returned and never rewrites it.
+- Details-changed warning (row 80): the new `merchant_details.changed` type deep-links to `x-merchant-payment`.
 - `NotificationEventType` has only `errand.*` status types (CONFIRMED/SETTLED removed). needs: api-contract — add price change requested, payment confirmed / failed, item payment confirmed / failed, merchant details added, refund status changed, dispute resolved, rating reminder (and optionally quote expired).
 - Push (row 31): FCM through `firebase_messaging`; the same deep-link table applies to push taps, cold start included. Registration `POST /users/me/devices` exists. Delivery through BullMQ (row 26, no UI change).
 
@@ -78,6 +82,8 @@ States (proposed):
 - Q3: Fira Code inside sentence subtitles. Default: no (whole subtitle Fira Sans).
 
 ## Current vs design
+Spec update 2026-10-09 (rows 68, 72, 80, 82): one new deep-link row (`merchant_details.changed`; `quote.reissued` is already routed); `KSh` in bodies is an API change. Unknown types already fall back to Task detail, so the new row is a small routing addition (minor, flutter-customer). Status unchanged.
+
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Shared deep-link table for rows and push taps (`Nav.openNotification`), new event types routed; types the API does not send yet fall back to Task detail.
 
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `Mark all read` sits under the header, not in it (core header trailing slot, need open).

@@ -208,7 +208,12 @@ erDiagram
 
 - **`runner_profiles.current_location`** is a PostGIS `geography(Point, 4326)` column, updated on every location ping *only for the summary/last-known value* — the high-frequency raw ping stream lives in Redis (Section 4), not Postgres, to avoid write-amplifying the primary database.
 - **`errand_status_history`** is append-only — never update a row, always insert the next state. This is what powers both the customer-facing timeline and dispute resolution evidence.
-- **`payments`** never stores a "customer purchase money held by Nitume" balance — by design (per the business plan), the `merchant_amount` field exists for *accounting visibility* only; actual settlement of that amount is between customer and merchant, or is a documented Runner advance capped by `runner_profiles.max_purchase_advance`.
+- **`payments`** is a ledger of payment events per errand, never a stored balance: no customer wallet, no escrow, no "money held" figure (per the business plan). `merchant_amount` records the item/merchant amount, and `payment_flow` says how it was settled. The three flows stay separate records: service fee, runner fee, merchant/item amount.
+  - `merchant_direct`: the customer pays the merchant's Till/Paybill from their own M-Pesa. Nitume never receives it; `merchant_amount` is for accounting visibility only. A price increase on this route is also paid by the customer, manually, to the same Till/Paybill (row 67).
+  - `customer_to_runner` (customer-facing route `send_to_runner`): **platform-mediated** (rows 42, 66). The customer pays the item amount **to Nitume** in the same M-Pesa STK as the fees (one combined charge, row 76), and Nitume then pays the runner through the **payout ledger**. There is never a direct customer-to-runner transfer. The item amount stays its own line and its own ledger entry, never part of the service or runner fee.
+  - `runner_advance`: a documented Runner advance capped by `runner_profiles.max_purchase_advance`; runner-side only, never a customer choice.
+  - `platform_only`: no item amount.
+  - Owner rows quoted: row 66, "Update §2.2 and §6 to reflect the agreed platform-mediated send-to-runner flow: the customer pays Nitume, and Nitume subsequently facilitates payment to the runner." Row 76, "one combined STK (service + runner + item) as the API is built; receipt shows the item amount on its own line." Row 67, "The customer pays the additional amount manually to the same merchant Till."
 - Use **PostGIS** (`CREATE EXTENSION postgis`) for all geo columns and queries — `ST_DWithin`, `ST_Distance` power Runner search radius and matching.
 
 ### 2.3 Indexing Strategy
@@ -456,35 +461,53 @@ A `notification_log` table records every send attempt (channel, status, provider
 
 ## 6. Payments Orchestration
 
-Implements the three-flow model from the business plan (service fee / runner fee / merchant payment) as explicit, separate transactions — never a single "charge the customer the total" call that then needs to be manually split.
+Implements the three-flow model from the business plan (service fee / runner fee / merchant payment) as explicit, separate ledger records. One STK charge may carry more than one flow (fees, plus the item amount on `send_to_runner`), but each flow is recorded and shown on its own line and is never merged into a single "total" that is split by hand later.
+
+> Updated 2026-10-09 to the owner's answers. Row 66 (approved): "Update §2.2 and §6 to reflect the agreed platform-mediated send-to-runner flow: the customer pays Nitume, and Nitume subsequently facilitates payment to the runner." Row 76 (owner, 2026-10-08): "one combined STK (service + runner + item) as the API is built; receipt shows the item amount on its own line". Row 67 (approved): "For merchant_direct price increases, Nitume cannot initiate an STK push to the merchant's Till. The customer pays the additional amount manually to the same merchant Till." Row 91 (approved): "The displayed total must match the actual amount submitted to the payment provider."
 
 ```mermaid
 sequenceDiagram
     participant C as Customer App
     participant API as Payments Module
-    participant MP as M-Pesa Daraja
+    participant MP as M-Pesa provider
+    participant M as Merchant Till/Paybill
     participant R as Runner
 
-    C->>API: POST /payments/:errandId/initiate
-    API->>API: Split into service_fee, runner_fee, merchant_amount
-    API->>MP: STK Push (service_fee + runner_fee only)
+    C->>API: POST /payments/:errandId/initiate { merchantRoute? }
+    API->>API: Record service_fee, runner_fee, merchant_amount as separate lines
+    alt send_to_runner (customer_to_runner flow)
+        API->>MP: STK Push (service_fee + runner_fee + merchant_amount)
+    else merchant_direct, or no item amount
+        API->>MP: STK Push (service_fee + runner_fee only)
+    end
     MP-->>C: M-Pesa PIN prompt
     C-->>MP: Enters PIN
-    MP->>API: Callback: payment result
+    MP->>API: Callback / status query: payment result
     API->>API: Update payments.status, errand.status -> PAYMENT_CONFIRMED
-    alt merchant_direct flow
-        API-->>C: Show merchant Till/Paybill for merchant_amount (paid separately)
-    else runner_advance flow
+    alt merchant_direct
+        API-->>C: Show merchant Till/Paybill for merchant_amount
+        C->>M: Customer pays merchant_amount from own M-Pesa (Nitume never receives it)
+    else send_to_runner
+        API->>API: Payout ledger entry: merchant_amount owed to the runner for this errand
+        API-->>R: Nitume pays the runner through the payout ledger (never customer -> runner)
+    else runner_advance
         API->>API: Check runner.max_purchase_advance
         API-->>R: Authorize advance up to limit
     end
     API->>Q: Emit errand.payment_confirmed (queue -> matching + notifications)
 ```
 
-- **M-Pesa integration**: STK Push (Lipa Na M-Pesa Online) for customer-initiated payments; B2C API for Runner payouts; all callbacks land on a dedicated `/payments/mpesa/callback` endpoint that is idempotent (Daraja can retry callbacks) and verified against Safaricom's IP allowlist/signature.
-- **Payouts to Runners** are batched (e.g. daily or on-demand above a threshold) via B2C, not instant per-task, to control transaction fees — shown transparently in the Runner app as "available balance" vs "paid out."
-- **Reconciliation worker** runs periodically to compare `payments` records against Daraja transaction reports and flags mismatches for finance review — this is the safety net that makes "we don't hold customer purchase money" operationally trustworthy.
-- **No internal wallet** at MVP, per the business plan — `payments` and `payment_transactions` are a ledger of *events*, not a stored-balance system.
+- **Three flows, kept separate**:
+  1. **Service fee** and 2. **Runner fee**: always charged to the customer by STK to Nitume. The customer sees them as one line, `Total (service + runner fee)`, until pricing rates exist (row 34).
+  3. **Merchant/item amount**: depends on the route.
+     - `merchant_direct`: the customer pays the merchant's Till/Paybill directly. Nitume never receives it, so it is never part of a Nitume refund. A price **increase** is paid manually by the customer to the same Till/Paybill (row 67). A price decrease opens no automatic refund review (row 86).
+     - `send_to_runner` (ledger flow `customer_to_runner`): platform-mediated (rows 42, 66). The customer pays the item amount to Nitume in the **same STK as the fees** (row 76). The payment screen shows the full M-Pesa charge with the line "Includes KSh … for your runner's purchase." (row 91), and that total equals the amount sent to the provider. Nitume then pays the runner the item amount through the payout ledger. A price **increase** is a separate STK to Nitume for the difference; an approved **decrease** opens an admin refund review for the difference (rows 48, 71, 86).
+     - `runner_advance`: runner-side only, capped by `max_purchase_advance`.
+- **M-Pesa integration**: STK Push (Lipa Na M-Pesa Online) for customer-initiated payments, behind a `PaymentProvider` abstraction (PayHero first, row 73); payouts to runners and manual refunds are recorded on the ledger. Provider callbacks are idempotent (providers can retry callbacks), and production refuses to start with the console/mock provider (row 89).
+- **Payouts to Runners** are batched (e.g. daily or on-demand above a threshold), not instant per-task, to control transaction fees. A runner's payouts include their runner fee and, on `send_to_runner` tasks, the item amount Nitume pays them for the purchase, each as its own ledger line. The Runner app's "available balance" is a **view of the payout ledger** (amounts due minus amounts paid out), never a stored wallet.
+- **Refunds** (rows 37, 54, 77, 81, 87): refund reviews are records, not task states. Any authorized admin decides the amount and records the manual M-Pesa payout; no second approver for now (row 77). The ceiling of a review is what the customer paid **to Nitume** (including an item amount paid to Nitume, even if the runner already bought the item, row 81), **net of refunds already approved or sent on the same task** (row 87), so cumulative refunds never exceed what was paid. A payout receipt is never edited after `refunded`; a correction is a new auditable correction/reversal record (row 82).
+- **Reconciliation worker** runs periodically to compare `payments` records against the provider's transaction reports and flags mismatches for finance review. It also checks that every item amount received on `send_to_runner` tasks is matched by a runner payout ledger entry (or a refund), so money that passes through Nitume is always accounted for.
+- **No internal wallet** at MVP, per the business plan: `payments` and `payment_transactions` are a ledger of *events*, not a stored-balance system. Nitume does not hold customer funds for later use; amounts received for a runner's purchase are owed onward to that runner through the payout ledger.
 
 ---
 

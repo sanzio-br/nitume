@@ -3,12 +3,14 @@
 - Mockup: **not drawn.** Required by OA-3 (authoritative REQUESTED → QUOTED → ACCEPTED flow after the wizard preview) and OA-5 (merchant payment route chosen at checkout). Built from design-system patterns and existing mockup components (`.stk-wrap`, `.form-card`, `.receipt-row`, `.chip` column, `.pm-card`, `.cta-fixed`). Copy is **(proposed)** unless marked "mockup".
 - Shared conventions: `_shared.md` (OA-n §0, fees and routes §8)
 - Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-integrations`
-- Status: matches-design
+- Status: partial (spec updated 2026-10-09 for rows 68, 72, 80, 83, 88; see Current vs design)
 
 ## Purpose
-One screen per errand with two main states (plus the expired-quote state of checkout):
+One screen per errand with two main states, plus the expired-quote state of checkout and the "new quote requested" waiting state:
 - **Waiting** (REQUESTED): tell the customer the final quote is being prepared.
 - **Checkout** (QUOTED): show the final quote, let the customer choose how the item amount is paid (if any) and which M-Pesa number to charge, then accept and pay. This is the "accept-quote step".
+- **Quote expired** (QUOTED or ACCEPTED with an expired quote): offer `Request a new quote` (row 68).
+- **New quote requested** (QUOTED or ACCEPTED, the customer asked for a new quote and none has arrived yet): waiting layout (row 68).
 
 ## Entry / exit
 - Entry: `v-new-review` "Submit task →" (replaces the wizard stack); Home active card for REQUESTED ("View request") or QUOTED ("Review quote →"); `v-task-detail` for REQUESTED/QUOTED; push / notification `errand.QUOTED` deep link.
@@ -20,7 +22,7 @@ One screen per errand with two main states (plus the expired-quote state of chec
 - If the errand is already ACCEPTED when opened: show the checkout state again with chip `Awaiting payment` (the route and payer must be chosen before the STK push; amended in the 2026-10-07 re-audit to match the build). The CTA skips the accept call and pushes `v-payment`. `v-payment` sends an ACCEPTED errand with an item amount and no route back here. If PAYMENT_CONFIRMED or later: replace with `v-track`. CANCELLED / EXPIRED: replace with `v-task-detail`.
 
 ## Task states
-REQUESTED (waiting), QUOTED (checkout, or expired quote), ACCEPTED (checkout re-entry). Transitions fired here: QUOTED → ACCEPTED (customer); REQUESTED → CANCELLED, QUOTED → CANCELLED and ACCEPTED → CANCELLED (customer, §3.3 as updated 2026-10-08). An expired quote changes no state (row 46).
+REQUESTED (waiting), QUOTED (checkout, expired quote, or new quote requested), ACCEPTED (checkout re-entry, expired quote, or new quote requested). Transitions fired here: QUOTED → ACCEPTED (customer); REQUESTED → CANCELLED, QUOTED → CANCELLED and ACCEPTED → CANCELLED (customer, §3.3). An expired quote, a request for a new quote and an admin re-quote change no state (rows 46, 68, 72).
 
 ## Layout — waiting state (REQUESTED)
 1. Pushed header (C-10) title `Your quote`.
@@ -35,8 +37,8 @@ REQUESTED (waiting), QUOTED (checkout, or expired quote), ACCEPTED (checkout re-
 1. Pushed header (C-10) title `Your quote`.
 2. Scrollable body:
    1. Task summary card (same as above) with chip `Quote ready`.
-   2. Form card "Final quote" (C-17 form card + C-18): **one** total row `Total (service + runner fee)` (mockup wording) with the quote total. No `Service fee` / `Runner fee` lines (row 34 clarification, `_shared.md` §8.1). Caption 12 slate-600 under the total: `Valid until 4:30 PM` (Fira Code time) when `expiresAt` is set.
-   3. Only when the item amount > 0: form card **"How should this be paid?"** (mockup heading):
+   2. Form card "Final quote" (C-17 form card + C-18): **one** total row `Total (service + runner fee)` (mockup wording) with the quote total. No `Service fee` / `Runner fee` lines (row 34 clarification, `_shared.md` §8.1). Caption 12 slate-600 under the total: `Valid until 4:30 PM` (Fira Code time). Every quote has an expiry (row 83, 24 h default); if a legacy quote has none, hide the caption and rely on the API's `quote_expired`.
+   3. Only when the item amount > 0 (Buy For Me and Get It For Me only, row 80): form card **"How should this be paid?"** (mockup heading):
       - First line: `Item amount` left, amount right (Fira Code 13/600), padding-bottom 10, hairline.
       - Radio rows (C-16 radio-row variant: pill, slate bg, slate-line border, 12/600 left-aligned; selected = blue fill, white text; optional subtitle 11.5, slate-600 or white when selected), stacked, gap 8:
         - `Pay merchant directly (recommended)` (mockup) → `merchant_direct`. Merchant details come from the merchant or an admin, never from the customer (row 43):
@@ -48,7 +50,7 @@ REQUESTED (waiting), QUOTED (checkout, or expired quote), ACCEPTED (checkout re-
    4. Form card "Pay with" (used for the fee STK and, for `send_to_runner`, the item-amount STK): C-30 payment method card of the selected method (default M-Pesa method; else the sign-in phone as `M-Pesa` / `+254 712 ••• 678` / tag-less with the 11.5 slate-600 note `Your sign-in number`). Trailing green-700 link `Change` (C-04) when the customer has saved M-Pesa methods.
    5. Text button (C-04) `Decline and cancel task`, red (destructive, OA-13), centred, margin `4 20 20`.
 3. Fixed primary CTA (C-01): mockup copy `Confirm & pay KSh 2,200 →` with the amount in Fira Code: the fee total, or, when `send_to_runner` is selected, the fee total plus the item amount (one combined STK (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit)). The Final quote card still shows only the fee total.
-   - Expired quote: no CTA while no quote-request endpoint exists (row 68 / SQ-9 open; the fallback below). An admin re-quote (row 72, `quote:reissued`) switches the screen back to checkout.
+   - Expired quote: the CTA becomes `Request a new quote` (row 68; layout under States). An admin re-quote (rows 72, 88, `quote:reissued`) switches the screen back to checkout.
 
 ## Components
 | Element | Component | Status |
@@ -66,6 +68,8 @@ REQUESTED (waiting), QUOTED (checkout, or expired quote), ACCEPTED (checkout re-
 ## Copy (proposed unless marked mockup)
 - Header: `Your quote`
 - Waiting heading: `Preparing your quote`
+- Expired: caption `Expired at 4:30 PM`; notice `This quote has expired. Ask for a new quote to continue.`; CTA `Request a new quote`; snackbar `We've asked for a new quote.`; error `Couldn't request a new quote. Try again.`
+- New quote requested: heading `Preparing a new quote`; body `You asked for a new quote. We'll notify you when it's ready.`; meta `Requested 4:45 PM`; announcement `Your new quote is ready.`
 - Waiting body: `We're pricing your task. This usually takes a few minutes, and we'll notify you when it's ready.`
 - Waiting buttons: `Back to Home`, `Cancel task`
 - Checkout card headings: `Final quote`; `How should this be paid?` (mockup); `Pay with`
@@ -78,32 +82,42 @@ REQUESTED (waiting), QUOTED (checkout, or expired quote), ACCEPTED (checkout re-
 States:
 - Live update: when the errand moves REQUESTED → QUOTED while open, switch to the checkout state in place (fade), and announce `Your quote is ready.`
 - Quote differs from the wizard estimate: no special treatment; the checkout shows the final figures only (OA-3).
-- **Quote expired** (row 46): entered when `expiresAt` has passed on load or while the screen is open, or when accept returns code `quote_expired` (also on the ACCEPTED re-entry path if the API refuses initiation with that code). Layout: summary card **without** the status chip (the errand is still QUOTED; the chip would read `Quote ready`, which is no longer true, and the UI never invents a label); the Final quote card stays visible with the caption replaced by `Expired at 4:30 PM` (Fira Code time); the route and Pay-with cards are hidden; C-40 notice `This quote has expired. Ask for a new quote to continue.`; fixed CTA `Request a new quote` (C-01); `Decline and cancel task` stays available.
-  - Tap `Request a new quote` → API call (Data) → the screen shows the waiting layout with heading `Preparing a new quote` and body `We'll notify you when your new quote is ready.` (proposed), chip hidden, buttons `Back to Home` / `Cancel task`. A new quote (live status refresh or `errand.QUOTED` push) switches back to checkout with the new figures.
-  - Until the request endpoint exists (needs: api-contract; mechanism open as SQ-9): no CTA; the notice reads `This quote has expired. We'll send you a new one.` and decline stays available.
-  - Errors: `Couldn't request a new quote. Try again.` (snackbar).
+- **Quote expired** (rows 46, 68): entered when `expiresAt` has passed on load or while the screen is open, or when accept returns code `quote_expired` (also on the ACCEPTED re-entry path when the API refuses initiation with that code, row 72). Layout: summary card **without** the status chip (the errand is still QUOTED or ACCEPTED; the chip would read `Quote ready` / `Awaiting payment`, which is no longer true, and the UI never invents a label); the Final quote card stays visible with the caption replaced by `Expired at 4:30 PM` (Fira Code time); the route and Pay-with cards are hidden; C-40 notice `This quote has expired. Ask for a new quote to continue.`; fixed CTA `Request a new quote` (C-01); `Decline and cancel task` stays available.
+  - Tap `Request a new quote` → CTA spinner → `POST /errands/:id/quote-request` (Data) → success: snackbar `We've asked for a new quote.` (proposed) and the **New quote requested** state below. Already requested (the API answers with the existing request): same as success. Code `quote_still_valid` (the clock was wrong or an admin re-quoted meanwhile): reload and show checkout. Error: snackbar `Couldn't request a new quote. Try again.` and stay on the expired state.
+- **New quote requested** (row 68): shown after a successful request, and on any later open while the API reports an open request (`quoteRequestedAt` set and later than the newest quote's `createdAt`). It is the waiting layout:
+  1. Pushed header `Your quote`.
+  2. Centred block: `PulsingDots`; heading 17/700 `Preparing a new quote`; body 13 slate-600 `You asked for a new quote. We'll notify you when it's ready.` (proposed); under the body a meta line Fira Code 12 slate-600 `Requested 4:45 PM` (`Today, 4:45 PM` style per `_shared.md` §7; whole line Fira Code, meta rule §3).
+  3. Task summary card **without** a status chip (as in the expired state).
+  4. Buttons: outline `Back to Home`; red text button `Cancel task` (same confirm dialog as the waiting state; nothing has been charged).
+  - No `Request a new quote` button here (one open request at a time). The request does not expire on the client; ops re-quote it (rows 68, 88).
+  - A new quote (`quote:reissued` socket event, `errand:status_changed`, or the `errand.QUOTED` / new-quote push) switches to checkout with the new figures, `Valid until` from the new quote, and the route/payer cards shown again. On an ACCEPTED task the chip reads `Awaiting payment` and the CTA pays the new quote (row 72: the customer must accept/pay the new quote before anything proceeds).
+  - Live region announces `Your new quote is ready.` on the switch.
 - Accepting: CTA spinner; on success push `v-payment`. Code `quote_expired`: switch to the expired state above (no snackbar). Error 409 (state already changed): reload the errand and route per Entry rules. Other errors: snackbar `Couldn't accept the quote. Try again.`
 - Load error: C-33 `Couldn't load this task.` + `Try again`.
 - Cancel error: snackbar `Couldn't cancel the task. Try again.`
 
 ## Numeric fields (Fira Code)
-- Reference `#NT-10482`, timestamps, validity and expiry time, every amount, the amount inside the CTA, the masked phone number.
+- Reference `#NT-10482`, timestamps, validity and expiry time, the `Requested …` meta line, every amount, the amount inside the CTA, the masked phone number.
 
 ## Data
 - Errand: `GET /api/v1/errands/:id` (exists; `reference`, `title`). needs: api-contract — a customer-safe "merchant details available" flag on the errand (true/false only; the Till/Paybill numbers themselves are shown only after the fees are paid, OA-5), filled by the merchant/admin source (row 43).
 - Final quote: `GET /api/v1/errands/:id/quote` (exists) → `total`, `expiresAt`. The Final quote card shows only `Total (service + runner fee)` with `quote.total` (fallback `errand.quotedPrice`), and the CTA reads `Confirm & pay KSh <total> →` (row 34 clarification). The internal quote components are never listed (OA-4).
 - Accept: `PATCH /api/v1/errands/:id/status { to: 'ACCEPTED' }` (exists). needs: api-contract — refuse an expired quote with code `quote_expired` (row 46), on accept and on `POST /payments/:errandId/initiate`.
-- Fresh quote: needs: api-contract — e.g. `POST /api/v1/errands/:id/quote-request` (customer; QUOTED with an expired quote only; no state change; notifies ops). Mechanism open (SQ-9).
+- Fresh quote (row 68): needs: api-contract — `POST /api/v1/errands/:id/quote-request` (customer, own errand; allowed in QUOTED or ACCEPTED when the newest quote has expired; idempotent: a second call returns the open request; `quote_still_valid` (409) otherwise; no state change). It records the request time and makes the task visible to ops for re-quote (admin `drawer-task-requote` shows `Customer asked for a new quote …`). The errand detail returns `quoteRequestedAt` (null when no request is open; cleared, or older than the newest quote, once an admin re-quotes). How the request is stored is api-contract's call; if it needs a new column, that is a schema change for the owner.
+- Quote expiry (row 83): needs: api-contract — every quote gets `expiresAt` (24 h default when the admin sends none); the response never has `expiresAt: null` for new quotes.
 - Cancel: `PATCH /api/v1/errands/:id/status { to: 'CANCELLED' }` (exists for REQUESTED/QUOTED).
 - Route + payer: carried to `v-payment`, which calls `POST /payments/:errandId/initiate` with `{ merchantRoute?, paymentMethodId? }` and the `Idempotency-Key` header (row 24). `merchantRoute` is `merchant_direct` or `send_to_runner`, sent only when the item amount is > 0.
 - Payment methods: `GET /api/v1/customers/me/payment-methods` (M-Pesa only, OA-10); default = `isDefault`; fallback = `GET /users/me` phone (OA-21).
-- Live (rows 23, 29): `errand:join` room `errand:{id}`, `errand:status_changed`. Fallback only while the socket is disconnected: poll `GET /errands/:id` every 15 s while REQUESTED (or waiting for a new quote) and the screen is visible. Push `errand.QUOTED` (exists); needs: api-contract — a push or notification when merchant details are added (event type, see `v-notifications`).
+- Live (rows 23, 29): `errand:join` room `errand:{id}`, `errand:status_changed`. Fallback only while the socket is disconnected: poll `GET /errands/:id` every 15 s while REQUESTED (or waiting for a new quote) and the screen is visible. Push `errand.QUOTED` (exists) and the re-quote notification (`quote.reissued`, row 72; KSh wording, row 82); needs: api-contract — a push or notification when merchant details are added (event type, see `v-notifications`).
 
 ## Resolved by owner answers
 - Quote expiry (was Q1): `quote_expired`, fresh quote required, no new transition (row 46).
 - Send-to-runner mechanics (was SQ-5): platform-mediated STK to Nitume (row 42).
 - Merchant details source (was SQ-6): merchant or admin; customer only picks the route (row 43).
 - Fee lines: total only until pricing rates exist (row 34 clarification).
+- Fresh quote after expiry (was SQ-9): `Request a new quote`, then an admin re-quotes (row 68); only after expiry (row 88); ACCEPTED stays ACCEPTED and the new quote must be accepted/paid (row 72).
+- Every quote has an expiry, 24 h default (row 83).
+- Item amount only for Buy For Me / Get It For Me (row 80).
 
 ## Accessibility and mobile
 - Waiting dots: live region "Waiting for your quote".
@@ -111,10 +125,15 @@ States:
 - CTA amount must equal service + runner fee exactly.
 
 ## Open questions for the owner
-- SQ-9 (`_shared.md` §9): how the fresh quote is produced after `quote_expired` (customer request vs automatic re-quote). Default: `Request a new quote`.
 - Q2: Should the checkout allow changing the route after payment (e.g. merchant details arrive later)? Default: no; route is fixed once the fees are paid.
 
 ## Current vs design
+Spec update 2026-10-09 (owner rows 68, 72, 80, 83, 88), against `main` @ `c7675dc` (`awaiting_quote_screen.dart`): the build shows the expired state with the fallback notice `This quote has expired. We'll send you a new one.` (`:486`) and **no CTA**, because no quote-request endpoint existed. Now required:
+1. Expired state: notice `This quote has expired. Ask for a new quote to continue.` and the CTA `Request a new quote` calling the new endpoint, with the success snackbar and error copy above, on QUOTED and ACCEPTED.
+2. The **New quote requested** waiting state, restored from `quoteRequestedAt` on every open, and the switch back to checkout on a re-quote.
+3. `Valid until` stays as built (shown when `expiresAt` is present); no change needed for row 83 on the client.
+Status set to `partial` until re-audited. Depends on api-contract (quote-request endpoint, `quoteRequestedAt`) and core-ui (repository call and model field).
+
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Total-only fee row, route rows with merchant-details states, CTA with the combined amount for send_to_runner (row 76), quote expiry without a CTA (row 68 fallback), admin re-quote and merchant-details live refresh.
 
 Round 2 (2026-10-07, `feat/customer-screens` @ `ba45633`): PASS. Final quote shows only `Total (service + runner fee)` from `quote.total`; CTA `Confirm & pay KSh … →` (amount still Fira Sans, core CC-2); ACCEPTED shows checkout again. Round 1 FAIL details: `docs/audits/customer-reaudit-2026-10-07.md`.

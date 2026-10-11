@@ -5,8 +5,8 @@ Applies to every `docs/specs/customer/*.md`. Each view spec references the compo
 Sources (real paths):
 - Mockup: `docs/design/nitume_customer_app.html`
 - Design system: `docs/design/nitume_design_system.html`
-- System design: `docs/design/Nitume_System_Design.md`. §3.3 (state machine) was updated on 2026-10-08 per BOARD row 56; the copy at `docs/Nitume_System_Design.md` was not touched on this branch and is stale for §3.3 until someone syncs it
-- Owner answers: `docs/audits/customer-gap-report.md` → "Questions for the owner (consolidated)", answers 1–21 (= BOARD rows 2–22, cited as `OA-n`), plus BOARD rows 1 and 23–65 (answered 2026-10-07/08, cited as `row N`, index in §0.1). Rows 34, 48, 49 and 58 carry "Clarified 2026-10-08" notes; the clarified wording wins
+- System design: `docs/design/Nitume_System_Design.md`, the only copy (canonical per row 70; the duplicate at `docs/Nitume_System_Design.md` was removed 2026-10-09). §3.3 (state machine) follows row 56; §2.2 and §6 (payments) follow rows 66 and 76
+- Owner answers: `docs/audits/customer-gap-report.md` → "Questions for the owner (consolidated)", answers 1–21 (= BOARD rows 2–22, cited as `OA-n`), plus BOARD rows 1 and 23–94 (answered 2026-10-07/08/09, cited as `row N`, index in §0.1). Rows 34, 48, 49 and 58 carry "Clarified 2026-10-08" notes; the clarified wording wins
 - Implementation: `apps/customer_app/lib/src/**`; shared package `packages/nitume_core/lib/src/**`
 - Shared widgets and data layer: core-ui branches `feat/core-customer-widgets`, `feat/core-owner-decisions`, `feat/core-spec-widgets` (merged into `feat/customer-screens`, not yet on `main`)
 - API additions: api-contract branches `feat/api-customer-gaps`, `feat/api-owner-decisions` (not yet on `main`)
@@ -87,6 +87,22 @@ All answered. Specs no longer say "pending row N" for these.
 | 61 | `merchant_route_required` on price-change approval: the customer chooses an available route inside the modal | v-price-auth |
 | 63 | Placeholders approved as initial configurable values (24 h dispute window, 4 h / 72 h urgency, 120 s STK timeout, scrim) | §2, v-payment |
 | 65 | Errand and tracking visibility limited to the current runner assignment (API rule) | §10, v-track |
+| 62, 94 | Schema approved and closed: `refund_reviews` (several per errand, row 71) and `payments.priceChangeRequestId` | §11 |
+| 66 | System design §2.2/§6 updated (2026-10-09): send-to-runner is platform-mediated, the customer pays Nitume, and Nitume pays the runner through the payout ledger (was SQ-7) | §8.2, x-merchant-payment |
+| 67 | A `merchant_direct` price increase is paid **manually** by the customer to the same Till/Paybill; Nitume never STK-pushes to a merchant (was SQ-8) | §8.2, v-price-auth, x-merchant-payment |
+| 68 | After `quote_expired` the customer taps `Request a new quote`; the task is then available for an admin to re-quote (was SQ-9) | §8.3, x-awaiting-quote |
+| 69 | The admin's refund decision note is never shown to the customer; the customer sees the refund outcome/status only (was SQ-10) | §11, v-task-detail |
+| 72 | A quote that expires while ACCEPTED is re-quoted by an admin with the task staying ACCEPTED; the customer accepts/pays the new quote | §8.3, x-awaiting-quote |
+| 76 | `send_to_runner`: one combined STK (service + runner + item); the receipt shows the item amount on its own line | §8.1, §8.2, v-payment, x-awaiting-quote |
+| 79 | The dispute resolution note is shown to the customer and the runner; internal admin notes stay separate and are never shown | x-report-problem |
+| 80 | Merchant amounts only for Buy For Me and Get It For Me. If the merchant details change after a merchant-direct payment started, **warn** the customer (never block) | §8.2, x-awaiting-quote, x-merchant-payment |
+| 81 | A refund can include the item amount paid to Nitume, even when the runner already bought the item (admin ceiling; no customer copy change) | §11 |
+| 82 | `KSh` everywhere the customer reads money, including notifications and push text (never `KES`). Refund payout receipts are never edited after `refunded` | §7, v-notifications, §11 |
+| 83 | Every quote has an expiry, 24 h by default; a quote without one is not valid | §8.3, x-awaiting-quote |
+| 86 | Price **decrease** refund reviews open only on `send_to_runner` tasks (Nitume never received a `merchant_direct` item amount) | §8.2, §11, v-price-auth |
+| 87 | A cancellation refund's ceiling is net of refunds already approved or sent on the task; cumulative refunds never exceed what was paid | §11 |
+| 88 | An admin can re-quote only after the current quote expired; a valid quote is never silently replaced | §8.3 |
+| 91 | Copy approved: the payment screen shows the full M-Pesa charge with `Includes KSh … for your runner's purchase.`; the shown total equals the amount sent to the provider | §8.1, v-payment |
 | Needs 40 | Empty-title-safe `NitumeTopBar` approved | C-09, v-home |
 | Needs 41 | x-merchant-payment snackbar `Nothing to pay right now.` approved | x-merchant-payment |
 
@@ -95,9 +111,10 @@ All answered. Specs no longer say "pending row N" for these.
 | Row | Topic | Customer impact |
 |---|---|---|
 | 57 | Local DB incident (FYI) | none |
-| 59 | `.env` pubspec asset breaks `flutter test` on a fresh checkout | builders' test setup only |
-| 62 | Schema approval for `refund_reviews` and `payments.priceChangeRequestId` | §11 refund status and price-change difference records depend on these tables. Build the UI against the response shape in §11; it stays hidden while the API returns no refund |
 | 64 | Git housekeeping before merging | none |
+| 85 | PayHero contract to be verified against its documentation | none in the UI (STK states stay as specced) |
+
+Row 59 (answered 2026-10-09: `.env.example` plus a setup step, `.env` out of the pubspec assets) is a builders' setup item with no screen impact.
 
 ## 1. Navigation model
 
@@ -297,7 +314,7 @@ DRAFT errands are never listed (the wizard creates and submits in one step, see 
 - **Task title** (OA-15, row 41): show `title` when set. Otherwise show the **category display name** (e.g. `Check It For Me`). The earlier `<category> — <locality>` rule is withdrawn. If the API ever stores the fallback as `title`, the result is the same; the client never composes a title from addresses.
 - **Task reference** (OA-15): `#` + `reference` exactly as returned by the API (e.g. `#NT-10482`). Same format everywhere: the mockup's `#10482` on Home vs `#NT-10482` on Task detail is unified. Never derived client-side; hidden when null.
 - **No wallet or escrow words**: "balance", "hold", "release", "release payment", "escrow", "wallet" and "funds held" are banned (OA-6).
-- **Money**: `KSh 2,200` (space, thousands comma, no decimals unless non-zero), Fira Code (`formatKes`).
+- **Money**: `KSh 2,200` (space, thousands comma, no decimals unless non-zero), Fira Code (`formatKes`). **`KSh` everywhere the customer reads an amount (row 82)**, including notification rows and push text written by the API; `KES` is a wire/currency code only and never appears in UI copy.
 - **Times**: `10:03 AM`, `Today, 10:03 AM`, `Yesterday, 4:12 PM`, `Mon, 10:03 AM`; relative `2m`, `1h`, `Yesterday`, `Mon` in notifications. Fira Code.
 - **Generic errors**: network `Check your connection and try again.`; unknown `Something went wrong. Please try again.`; session expired → back to `v-auth-phone` with snackbar `Please sign in again.`
 - **Suspended or banned account**: at sign-in, `v-auth-otp` shows `This account can't sign in. Contact support.` (+ Support link when configured). If a signed-in session is refused with the same code (API `account_suspended`, on refresh or any call), clear the session, unregister the push token, reset to `v-auth-phone` and show the same sentence as a snackbar (proposed). Never show the reason or any internal note.
@@ -313,25 +330,28 @@ The three flows stay separate (§6 of the system design): service fee, runner fe
 - On the wizard estimate only (when shown at all, §8.3) the row reads `Estimated total (service + runner fee)`.
 - The **item amount** (merchant/item purchase) is shown separately, under a hairline, and never added into the fee total.
 - The API's internal commission split (20% / 30%) and the quote components (base, distance, time, urgency, complexity, premium) are never shown (OA-4).
-- The fee STK push amount = the fee total, **plus the item amount when the route is `send_to_runner`: one combined STK** (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit). The receipt still shows the item amount on its own line, never inside `Total (service + runner fee)`. The payment screen shows the combined amount with the line `Includes KSh 40,000 for your runner's purchase.` (amount in Fira Code; builder copy, accepted as proposed while BOARD row 91 is open).
+- The fee STK push amount = the fee total, **plus the item amount when the route is `send_to_runner`: one combined STK** (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit). The receipt still shows the item amount on its own line, never inside `Total (service + runner fee)`. The payment screen shows the combined amount with the line `Includes KSh 40,000 for your runner's purchase.` (amount in Fira Code; **wording approved, row 91**). The amount shown must equal the amount sent to the payment provider.
 
 ### 8.2 Merchant/item amount routes (OA-5, rows 42–44, 48, 49, 61)
 
-Wire values (`merchantRoute` on `POST /payments/:errandId/initiate`, core `MerchantRoute`): `merchant_direct` and `send_to_runner`. No purchase → no route choice (`platform_only` flow). `runner_advance` is never a customer option.
+Wire values (`merchantRoute` on `POST /payments/:errandId/initiate`, core `MerchantRoute`): `merchant_direct` and `send_to_runner` (ledger flow `customer_to_runner`). No purchase → no route choice (`platform_only` flow). `runner_advance` is never a customer option.
+
+**Which tasks carry an item amount (row 80)**: Buy For Me and Get It For Me only. Other categories never show an item amount, a route choice or merchant details.
 
 | Route | Customer label (checkout) | How the item amount is paid | Customer screen |
 |---|---|---|---|
-| `merchant_direct` | `Pay merchant directly (recommended)` | The customer pays the merchant's Till/Paybill from their own M-Pesa, after the fees are paid. Nitume does not collect it | `x-merchant-payment` variant A |
-| `send_to_runner` | `Send purchase amount to runner` | **Platform-mediated (row 42)**: the customer pays the item amount **to Nitume in the same M-Pesa STK as the fees** (one combined charge, (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit)). Nitume passes it on for the purchase. An approved price-change increase on this route is a separate STK for the difference (`x-merchant-payment` variant B). No runner phone number is ever shown for paying, and the app never offers a direct transfer to the runner | `x-merchant-payment` variant B |
+| `merchant_direct` | `Pay merchant directly (recommended)` | The customer pays the merchant's Till/Paybill from their own M-Pesa, after the fees are paid. Nitume does not collect it, and never STK-pushes to a merchant (row 67) | `x-merchant-payment` variant A |
+| `send_to_runner` | `Send purchase amount to runner` | **Platform-mediated (row 42)**: the customer pays the item amount **to Nitume in the same M-Pesa STK as the fees** (one combined charge, (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit)). Nitume then pays the runner through the payout ledger (row 66, system design §6). An approved price-change increase on this route is a separate STK for the difference (`x-merchant-payment` variant B). No runner phone number is ever shown for paying, and the app never offers a direct transfer to the runner | `x-merchant-payment` variant B |
 
 **Merchant details (row 43)**: the merchant or an admin supplies the Till/Paybill details; the customer never types them. Two customer states:
 - **Details pending** (none on the errand): at checkout `merchant_direct` is disabled with subtitle `Available once the merchant's details are added.`; `x-merchant-payment` variant A shows the notice `The merchant's details aren't available yet. We'll notify you when they are.`
 - **Details available**: `merchant_direct` is selectable at checkout; the Till/Paybill number is shown only on `x-merchant-payment` after the fees are paid (OA-5).
+- **Details changed after a merchant-direct payment started** (row 80): the change is allowed; the customer is **warned**, never blocked. "Started" = the fees are paid on the `merchant_direct` route (the customer can see the Till/Paybill). `x-merchant-payment` variant A shows the change notice, and a notification tells the customer (see `x-merchant-payment`, `v-notifications`).
 
 **Price changes** (rows 44, 48, 49, 55, 61):
 - Runners can request a price change **only in IN_PROGRESS** (row 49). The customer sees the modal (`v-price-auth`) only for IN_PROGRESS errands. No new transitions.
-- **Increase**: the difference is paid through the **same route as the original item payment** (row 44): `merchant_direct` → the extra is paid to the same Till/Paybill (`x-merchant-payment` A shows the new amount); `send_to_runner` → a new STK push to Nitume for the difference (`x-merchant-payment` B). If the original route is unavailable (no item payment so far, so `merchant_route_required`, or merchant details now missing), the customer **explicitly chooses** an available route inside the modal (row 61). The app never picks a route for the customer.
-- **Decrease** (row 48 clarification): approving it lowers the item amount. Any difference the customer has already paid goes to an **admin refund review**; the customer follows it on `v-task-detail` (§11).
+- **Increase**: the difference is paid through the **same route as the original item payment** (row 44): `merchant_direct` → the customer pays the extra **manually** to the same Till/Paybill from their own M-Pesa, no STK (row 67; `x-merchant-payment` A shows the new amount); `send_to_runner` → a new STK push to Nitume for the difference (`x-merchant-payment` B). If the original route is unavailable (no item payment so far, so `merchant_route_required`, or merchant details now missing), the customer **explicitly chooses** an available route inside the modal (row 61). The app never picks a route for the customer.
+- **Decrease** (row 48 clarification, row 86): approving it lowers the item amount. On `send_to_runner` (Nitume received the item amount) the difference goes to an **admin refund review**; the customer follows it on `v-task-detail` (§11). On `merchant_direct` no refund review opens (Nitume never received that money): the customer pays the merchant the new, lower amount shown on `x-merchant-payment` A, and the snackbar is the plain `Price change approved.`
 - **Reject** = `Reject & cancel task`: IN_PROGRESS → CANCELLED (customer, guarded, row 37), and an admin refund review of what was paid (§11).
 - An admin who rejects a request only rejects it; the task continues (row 55). An open modal shows the already-answered state.
 
@@ -339,16 +359,20 @@ Wire values (`merchantRoute` on `POST /payments/:errandId/initiate`, core `Merch
 
 - **Preview (row 47)**: the wizard estimate is non-authoritative and is **not shown until pricing rates exist**. `AppConfig.quotePreviewEnabled` (default `false`) gates it; while false, `v-new-review` makes no preview call and shows no price.
 - **Authoritative quote**: admin-generated; REQUESTED → QUOTED → ACCEPTED.
-- **Expiry (row 46)**: an expired quote cannot be accepted. The API answers accept with code `quote_expired`; the customer needs a fresh quote (`x-awaiting-quote` expired state). The errand stays QUOTED (no new transition).
+- **Every quote has an expiry (row 83)**: 24 h by default, set by the admin. The checkout always shows `Valid until …`. A quote without `expiresAt` is invalid data; the app hides the caption and treats the quote as valid until the API says `quote_expired`.
+- **Expiry (row 46)**: an expired quote cannot be accepted or paid. The API answers accept (or fee initiation) with code `quote_expired`. The errand stays QUOTED, or ACCEPTED (row 72), with no new transition.
+- **Fresh quote (row 68)**: on an expired quote the customer taps `Request a new quote`. The task is then available for an admin to re-quote; the screen shows the "new quote requested" waiting state until the new quote arrives (`x-awaiting-quote`). An admin can re-quote only after expiry (row 88), so a valid quote is never replaced under the customer. A new quote on an ACCEPTED task must be accepted/paid again before anything proceeds (row 72).
 
 ## 9. Shared questions
 
-SQ-1 … SQ-6 are answered (rows 38–43, see §0.1). New questions raised while applying the 2026-10-08 answers (each spec gives a build default):
+SQ-1 … SQ-6 are answered (rows 38–43). SQ-7 … SQ-10 are answered (2026-10-09):
 
-- **SQ-7 (payments, system design)**: Row 42 makes send-to-runner a payment *to Nitume* by STK. `Nitume_System_Design.md` §2.2 (`payments` notes) and §6 (reconciliation bullet: "we don't hold customer purchase money", and the sequence diagram showing only merchant-direct and runner-advance) still say Nitume never takes the purchase money. Please confirm the provider/legal settlement model so the system design text outside §3.3 can be updated. Build default: the row 42 flow as specced; no wallet or balance wording anywhere.
-- **SQ-8 (payments)**: Row 44 says the difference is paid "via a new STK to the same route". For `merchant_direct`, Nitume cannot send an STK push on the merchant's own Till/Paybill without a merchant integration. Build default: the customer pays the extra to the same Till/Paybill from their own M-Pesa (`x-merchant-payment` A shows the increased amount); only `send_to_runner` uses a new STK push to Nitume.
-- **SQ-9 (state machine, payments)**: After `quote_expired` (row 46), how is the fresh quote produced: the customer taps `Request a new quote` (needs a new endpoint; errand stays QUOTED), or ops re-quote automatically on expiry? Build default: `Request a new quote`, see `x-awaiting-quote`.
-- **SQ-10 (privacy)**: On a refund decision, may the customer see the admin's decision note? Build default: no; status and amount only (§11).
+- SQ-7 → row 66: system design §2.2/§6 updated; send-to-runner is platform-mediated and Nitume pays the runner through the payout ledger.
+- SQ-8 → row 67: a `merchant_direct` increase is paid manually by the customer to the same Till/Paybill.
+- SQ-9 → row 68: `Request a new quote`, then an admin re-quotes.
+- SQ-10 → row 69: the admin's refund decision note is never shown to the customer.
+
+No shared question is open. Screen-level questions stay in each spec.
 
 ## 10. Live data, push and places (rows 23, 25, 27, 29–31, 60, 65)
 
@@ -360,11 +384,13 @@ SQ-1 … SQ-6 are answered (rows 38–43, see §0.1). New questions raised while
 - **Push (row 31)**: after every successful sign-in (and after `x-name-capture` when it runs) register the FCM token with `POST /users/me/devices`; re-register when the token refreshes; on log out call `DELETE /users/me/devices/:id` (best effort, before clearing tokens). Notification taps deep-link per the `v-notifications` table. Push permission is asked once after sign-in; refusing it changes nothing else.
 - **Evidence links (row 25)**: short-lived signed URLs; on an expired link, re-fetch the evidence list once, then show the item's load-failure state.
 
-## 11. Refund status (rows 37, 48, 54; schema row 62 open)
+## 11. Refund status (rows 37, 48, 54, 69, 81, 82, 86, 87; schema approved, rows 62/94)
 
 The customer can see the status of any refund review on their task (row 54). Shown on `v-task-detail` (Payment section) only; nowhere else lists refunds. Payout is recorded manually by an admin for MVP; M-Pesa B2C/reversal comes later and does not change this UI.
 
-Opened by: price-change reject (IN_PROGRESS → CANCELLED), a customer-favourable dispute (DISPUTED → CANCELLED), a payment that completes after cancellation, and an approved price **decrease** (row 48).
+Opened by: price-change reject (IN_PROGRESS → CANCELLED), a customer-favourable dispute (DISPUTED → CANCELLED), a payment that completes after cancellation, and an approved price **decrease on a `send_to_runner` task only** (rows 48, 86).
+
+The refund amount is decided by an admin. Its ceiling (admin-side, not shown to the customer) is what the customer paid to Nitume, including an item amount paid to Nitume (row 81), net of refunds already approved or sent on the same task (row 87). So a task can show a decrease refund and later a cancellation refund, and the second is never larger than what is left.
 
 | API refund status | Chip (C-05) | Tone | Line under it (13 slate-600, proposed) | Amount row |
 |---|---|---|---|---|
@@ -373,4 +399,6 @@ Opened by: price-change reject (IN_PROGRESS → CANCELLED), a customer-favourabl
 | `refunded` | `Refunded` | success | `Sent <date, time>` (date/time Fira Code) | `Refund amount` + amount |
 | `no_refund` | `No refund` | info | `After review, no refund is due for this task.` | none |
 
-Never shown: the admin decision note (SQ-10), the payout reference, and any wording such as "balance", "wallet", "held" or "release" (OA-6).
+Never shown: the admin's refund decision note (row 69, decided: internal only), the payout reference, and any wording such as "balance", "wallet", "held" or "release" (OA-6). A sent refund is final on this screen: receipts are never edited after `refunded` (row 82); if ops ever correct one through a correction/reversal record, the customer still sees only the status and amount.
+
+Not to be confused with the **dispute resolution note**, which the customer does see (row 79) on `x-report-problem` read mode (`Outcome`).
