@@ -102,7 +102,7 @@ export class ApiService {
 
   /**
    * POST /errands/:id/quote — first quote (REQUESTED → QUOTED) or a re-quote
-   * of an expired quote (QUOTED, and ACCEPTED on round 3; no status change).
+   * of an expired quote (QUOTED or ACCEPTED; no status change).
    */
   quoteErrand(id: string, dto: QuoteErrandDto) {
     return this.http.post<QuoteErrandResult>(`${this.base}/errands/${id}/quote`, dto);
@@ -123,12 +123,12 @@ export class ApiService {
     return this.http.get<Dispute>(`${this.base}/errands/${errandId}/dispute`);
   }
 
-  /** GET /errands/:errandId/refund — one review; 404 `refund_not_found`. */
+  /** GET /errands/:errandId/refund — one review (cancellation first); 404 `refund_not_found`. */
   getErrandRefund(errandId: string) {
     return this.http.get<ErrandRefundView>(`${this.base}/errands/${errandId}/refund`);
   }
 
-  /** GET /errands/:errandId/refunds — every review, newest first (row 71, round 3). */
+  /** GET /errands/:errandId/refunds — every review, newest first (row 71); never 404s on none. */
   listErrandRefunds(errandId: string) {
     return this.http.get<{ items: ErrandRefundView[] }>(`${this.base}/errands/${errandId}/refunds`);
   }
@@ -142,14 +142,14 @@ export class ApiService {
     return this.http.get<ListRefundsResult>(`${this.base}/refunds`, { params });
   }
 
-  /** GET /refunds/count — N-7 (round 3). */
+  /** GET /refunds/count — `{ count }`, optionally for one status (sidebar badge). */
   countRefunds(status?: RefundStatus | null) {
     let params = new HttpParams();
     if (status) params = params.set('status', status);
     return this.http.get<{ count: number }>(`${this.base}/refunds/count`, { params });
   }
 
-  /** GET /refunds/:id — review + (round 3) errand, customer, paid breakdown. */
+  /** GET /refunds/:id — review + errand summary, admin names, customer, paid breakdown. */
   getRefund(id: string) {
     return this.http.get<RefundDetail>(`${this.base}/refunds/${id}`);
   }

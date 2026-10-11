@@ -189,10 +189,20 @@ export interface Errand {
   merchantPaybillNumber?: string | null;
   merchantAccountReference?: string | null;
   merchantDetailsAvailable?: boolean;
-  /** Newest quote expiry (N-5, feat/api-owner-answers-3); optional until merged. */
+  /**
+   * When existing merchant details were last changed (row 80, N-14); set by
+   * the API on a change. TODO(owner-answers-4): optional until merged.
+   */
+  merchantDetailsUpdatedAt?: string | null;
+  /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
-  /** ACCEPTED with an unaccepted admin re-quote (row 72); optional until merged. */
+  /** ACCEPTED with an unaccepted admin re-quote (row 72). */
   quoteAcceptanceRequired?: boolean;
+  /**
+   * When the customer asked for a new quote after expiry (row 68, N-13);
+   * null when none is pending. TODO(owner-answers-4): optional until merged.
+   */
+  quoteRequestedAt?: string | null;
 }
 
 export interface ErrandListItem {
@@ -207,8 +217,10 @@ export interface ErrandListItem {
   deadlineAt?: string | null;
   runnerProfileId?: string | null;
   createdAt: string;
-  /** N-5 (feat/api-owner-answers-3); absent on older APIs. */
+  /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
+  /** Pending customer request for a new quote (row 68). TODO(owner-answers-4). */
+  quoteRequestedAt?: string | null;
 }
 
 export interface ListErrandsResult {
@@ -262,6 +274,11 @@ export interface Dispute {
   createdAt: string;
   updatedAt?: string;
   events?: DisputeEvent[];
+  // Outcome (row 79). TODO(owner-answers-4): optional until merged.
+  /** Verdict of the resolution, or null while open. */
+  verdict?: 'runner_favourable' | 'customer_favourable' | null;
+  /** When it was resolved, or null while open. */
+  resolvedAt?: string | null;
 }
 
 // --- Refund reviews (rows 37, 48, 54, 71) ---
@@ -289,6 +306,16 @@ export interface RefundReview {
   paidAt?: string | null;
   createdAt: string;
   updatedAt?: string;
+  // Cumulative position on the task (rows 81, 87; N-9). Admin refund responses only.
+  // TODO(owner-answers-4): optional until feat/api-owner-answers-4 is on main.
+  /** Highest refund an admin may approve now; null once decided. */
+  refundCeiling?: string | null;
+  /** Refunds of the task's other approved/refunded reviews. */
+  alreadyRefunded?: string;
+  /** What is still refundable on the task after every approved/refunded review. */
+  remainingRefundable?: string;
+  /** Every completed STK amount paid to Nitume for the task. */
+  totalPaidToNitume?: string;
 }
 
 /** An admin who decided / paid a refund (N-2). */
@@ -307,11 +334,12 @@ export interface RefundErrandSummary {
   status: ErrandStatusString;
 }
 
-/** `GET /refunds` item. N-1/N-2 fields are optional so older APIs still work. */
+/** `GET /refunds` item: the review plus errand summary and admin names (N-1, N-2). */
 export interface RefundListItem extends RefundReview {
-  errand?: RefundErrandSummary | null;
-  decidedBy?: AdminRef | null;
-  paidBy?: AdminRef | null;
+  /** Null only when the errand row is gone. */
+  errand: RefundErrandSummary | null;
+  decidedBy: AdminRef | null;
+  paidBy: AdminRef | null;
 }
 
 export interface PaidBreakdown {
@@ -322,17 +350,17 @@ export interface PaidBreakdown {
   merchantDirectAmount: string;
 }
 
-/** `GET /refunds/:id` (N-1/N-2 fields optional). */
+/** `GET /refunds/:id`: list item + customer contact, paid breakdown, sibling reviews. */
 export interface RefundDetail extends RefundListItem {
-  customer?: {
+  customer: {
     userId: string;
     displayName: string | null;
     shortName: string | null;
     phone: string | null;
     mpesaPhone: string | null;
   } | null;
-  paid?: PaidBreakdown;
-  otherReviews?: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
+  paid: PaidBreakdown;
+  otherReviews: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
 }
 
 export interface ListRefundsResult {

@@ -16,7 +16,7 @@ import { apiError } from '../../../core/api-error';
 import { QUOTE_COMPONENTS, type Errand, type Quote } from '../../../core/api-types';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice.component';
-import { AdminDataService } from '../admin-data.service';
+import { AdminDataService, quoteRequested } from '../admin-data.service';
 import { formatDateTime, formatKshExact } from '../shared-format';
 import { QuoteConflict, QuoteDialogComponent, quoteExpired } from './quote-dialog';
 import type { QuoteErrandResult } from '../../../core/api-types';
@@ -34,19 +34,24 @@ const COMPONENT_LABELS: Record<string, string> = {
 const NO_QUOTE: string[] = ['DRAFT', 'REQUESTED'];
 
 /**
- * Whether `Issue new quote` is offered (drawer-task-requote "Task states").
- * QUOTED with an expired quote; ACCEPTED with an expired quote only when
- * the API supports it (row 72, feat/api-owner-answers-3: detected by the
- * round-3 `quoteAcceptanceRequired` field on the errand).
+ * Whether `Issue new quote` is offered (drawer-task-requote "Task states"):
+ * QUOTED or ACCEPTED (row 72) with an expired quote, as the API allows.
  */
 export function canRequote(errand: Errand, quote: Quote | null, now: number): boolean {
   if (!quoteExpired(quote, now)) return false;
-  if (errand.status === 'QUOTED') return true;
-  return errand.status === 'ACCEPTED' && acceptedRequoteSupported(errand);
+  return errand.status === 'QUOTED' || errand.status === 'ACCEPTED';
 }
 
-export function acceptedRequoteSupported(errand: Errand): boolean {
-  return typeof errand.quoteAcceptanceRequired === 'boolean';
+/**
+ * The customer's pending request for a new quote (row 68), when it is later
+ * than the newest quote; else null.
+ */
+export function pendingQuoteRequest(errand: Errand, quote: Quote | null): string | null {
+  // TODO(owner-answers-4): `quoteRequestedAt` arrives with N-13.
+  const at = errand.quoteRequestedAt;
+  if (!at || !quoteRequested(errand)) return null;
+  if (quote && new Date(at).getTime() <= new Date(quote.createdAt).getTime()) return null;
+  return at;
 }
 
 /**
@@ -117,22 +122,33 @@ export function acceptedRequoteSupported(errand: Errand): boolean {
               </button>
             </div>
           </div>
+          @if (requestedAt(); as at) {
+            <!-- Row 68: a flag, not a task state; clears once a new quote is issued. -->
+            <div class="quote-request">
+              <app-status-chip label="New quote requested" tone="pending" />
+              <div class="drawer-caption">
+                Customer asked for a new quote <span class="num">{{ formatDateTime(at) }}</span
+                >.
+              </div>
+            </div>
+          }
           @if (requote()) {
             <div class="drawer-actions">
               <button type="button" class="btn btn-primary" (click)="dialogOpen.set(true)">
                 Issue new quote
               </button>
             </div>
+            @if (errand().status === 'ACCEPTED') {
+              <div class="drawer-caption">
+                This quote expired after the customer accepted it. They can't pay until it is
+                re-quoted.
+              </div>
+            }
           } @else if (errand().status === 'QUOTED' && q.expiresAt && !expired()) {
             <div class="drawer-caption">
               You can issue a new quote after this one expires at
               <span class="num">{{ formatDateTime(q.expiresAt) }}</span
               >.
-            </div>
-          } @else if (errand().status === 'ACCEPTED' && expired()) {
-            <div class="drawer-caption">
-              This quote expired after the customer accepted it. They can't pay until it is
-              re-quoted.
             </div>
           }
         }
@@ -173,6 +189,7 @@ export class QuoteSectionComponent implements OnInit, OnDestroy {
   );
   protected readonly expired = computed(() => quoteExpired(this.quote(), this.now()));
   protected readonly requote = computed(() => canRequote(this.errand(), this.quote(), this.now()));
+  protected readonly requestedAt = computed(() => pendingQuoteRequest(this.errand(), this.quote()));
   protected readonly breakdown = computed(() => {
     const q = this.quote();
     if (!q) return [];
@@ -250,7 +267,10 @@ export class QuoteSectionComponent implements OnInit, OnDestroy {
     await this.load();
     this.notice.set({
       tone: 'info',
-      text: 'This task changed while you were editing. Showing the latest.',
+      text:
+        error.code === 'payment_in_progress'
+          ? "The customer has started paying this quote, so it can't be replaced now. Showing the latest."
+          : 'This task changed while you were editing. Showing the latest.',
     });
   }
 

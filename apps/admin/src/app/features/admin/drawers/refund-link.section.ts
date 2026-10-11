@@ -1,43 +1,46 @@
 import { Component, effect, inject, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
-import { apiError } from '../../../core/api-error';
 import type { ErrandRefundView } from '../../../core/api-types';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { DrawerNavService } from '../drawer-nav.service';
 import { refundTriggerLabel } from '../refund-labels';
 import { formatKshExact } from '../shared-format';
 
-/**
- * Every refund review of a task: `GET /errands/:id/refunds` (row 71,
- * feat/api-owner-answers-3), else the single `GET /errands/:id/refund`.
- * Returns [] when there is none (404 `refund_not_found`).
- */
+/** Every refund review of a task, newest first (`GET /errands/:id/refunds`, row 71). */
 export async function loadErrandRefunds(
   api: ApiService,
   errandId: string,
 ): Promise<ErrandRefundView[]> {
-  try {
-    const res = await firstValueFrom(api.listErrandRefunds(errandId));
-    return res.items;
-  } catch (e) {
-    // TODO(N-3): drop the single-review fallback once GET /errands/:id/refunds is on main.
-    if (apiError(e).status !== 404) throw e;
-  }
-  try {
-    return [await firstValueFrom(api.getErrandRefund(errandId))];
-  } catch (e) {
-    if (apiError(e).status === 404) return [];
-    throw e;
-  }
+  const res = await firstValueFrom(api.listErrandRefunds(errandId));
+  return res.items;
 }
 
-/** `Refund` section of the task drawer for a CANCELLED task (drawer-refund "Task drawer link"). */
+/** States before payment: no refund review can exist yet (§3.3). */
+const BEFORE_PAYMENT = new Set(['DRAFT', 'REQUESTED', 'QUOTED', 'ACCEPTED']);
+
+/** True from PAYMENT_CONFIRMED on (incl. CANCELLED, FAILED, DISPUTED, EXPIRED). */
+export function refundLinkApplies(status: string): boolean {
+  return !BEFORE_PAYMENT.has(status);
+}
+
+/**
+ * `Refund` section of the task drawer (drawer-refund "Task drawer link",
+ * SA-2): shown for any task from PAYMENT_CONFIRMED on that has reviews.
+ */
 @Component({
   selector: 'app-refund-link-section',
   imports: [StatusChipComponent],
   template: `
-    @if (items().length) {
+    @if (failed()) {
+      <section class="drawer-section">
+        <div class="drawer-label">Refund</div>
+        <div class="drawer-caption">
+          Couldn't load refunds.
+          <button type="button" class="btn btn-text btn-sm" (click)="retry()">Try again</button>
+        </div>
+      </section>
+    } @else if (items().length) {
       <section class="drawer-section">
         <div class="drawer-label">Refund</div>
         <div class="drawer-card">
@@ -69,14 +72,16 @@ export class RefundLinkSectionComponent {
   readonly status = input.required<string>();
 
   protected readonly items = signal<ErrandRefundView[]>([]);
+  protected readonly failed = signal(false);
 
   constructor() {
     effect(() => {
       const id = this.errandId();
-      const cancelled = this.status() === 'CANCELLED';
+      const applies = refundLinkApplies(this.status());
       untracked(() => {
         this.items.set([]);
-        if (cancelled) void this.load(id);
+        this.failed.set(false);
+        if (applies) void this.load(id);
       });
     });
   }
@@ -86,8 +91,14 @@ export class RefundLinkSectionComponent {
       const items = await loadErrandRefunds(this.api, id);
       if (id === this.errandId()) this.items.set(items);
     } catch {
-      /* the section stays hidden; the review is still reachable from Refunds */
+      // The rest of the drawer still renders; the section offers a retry.
+      if (id === this.errandId()) this.failed.set(true);
     }
+  }
+
+  protected retry(): void {
+    this.failed.set(false);
+    void this.load(this.errandId());
   }
 
   protected readonly triggerLabel = refundTriggerLabel;

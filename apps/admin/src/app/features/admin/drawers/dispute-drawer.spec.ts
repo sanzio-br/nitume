@@ -1,7 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpTestingController } from '@angular/common/http/testing';
 import { API, errandFixture, flushAsync, setupHttp } from '../../../testing/admin-test-utils';
-import { DisputeDrawerComponent, rationaleValid, verdictEntry } from './dispute-drawer';
+import {
+  DisputeDrawerComponent,
+  disputeOutcome,
+  rationaleValid,
+  verdictEntry,
+} from './dispute-drawer';
 
 const ID = errandFixture().id;
 const NOTE = 'Photos show the wrong item was delivered to the customer.';
@@ -37,6 +42,23 @@ describe('dispute rationale rule (G-20)', () => {
       ])?.id,
     ).toBe('2');
     expect(verdictEntry([])).toBeNull();
+  });
+});
+
+describe('dispute outcome from the dispute row (row 79)', () => {
+  it('maps verdict and resolvedAt; null while open', () => {
+    expect(
+      disputeOutcome({
+        verdict: 'customer_favourable',
+        resolvedAt: '2026-10-08T08:00:00Z',
+        resolution: 'note',
+      }),
+    ).toEqual({ status: 'CANCELLED', decidedAt: '2026-10-08T08:00:00Z', note: 'note' });
+    expect(
+      disputeOutcome({ verdict: 'runner_favourable', resolvedAt: 'x', resolution: null })?.status,
+    ).toBe('COMPLETED');
+    expect(disputeOutcome({ verdict: null, resolvedAt: null, resolution: null })).toBeNull();
+    expect(disputeOutcome(null)).toBeNull();
   });
 });
 
@@ -118,6 +140,54 @@ describe('DisputeDrawerComponent (G-6, G-19..G-22)', () => {
     expect(text).not.toContain('Dispute resolved');
     expect(el.querySelector('textarea')!.value).toBe(NOTE);
     expect(buttons(el, 'Side with runner')[0].disabled).toBe(false);
+  });
+
+  it('409 errand_not_disputed reloads and shows the other outcome (N-8)', async () => {
+    const fixture = await render('DISPUTED');
+    const el = fixture.nativeElement as HTMLElement;
+    type(fixture, NOTE);
+    buttons(el, 'Side with customer')[0].click();
+    fixture.detectChanges();
+    buttons(el, 'Side with customer').at(-1)!.click();
+    http
+      .expectOne(`${API}/errands/${ID}/resolve-dispute`)
+      .flush(
+        { code: 'errand_not_disputed', message: 'Only DISPUTED errands can be mediated' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await flushAsync();
+    http.expectOne(`${API}/errands/${ID}`).flush(errandFixture({ status: 'COMPLETED' }));
+    http.expectOne(`${API}/errands/${ID}/history`).flush([
+      {
+        id: 'h2',
+        errandId: ID,
+        fromStatus: 'DISPUTED',
+        toStatus: 'COMPLETED',
+        actorType: 'admin',
+        note: 'Resolved by another admin after checking the receipt.',
+        createdAt: '2026-10-08T08:00:00Z',
+      },
+    ]);
+    await flushAsync();
+    http.expectOne(`${API}/errands/${ID}/dispute`).flush({
+      id: 'd1',
+      errandId: ID,
+      openedBy: 'u',
+      reason: 'The runner delivered the wrong brand of milk.',
+      status: 'resolved',
+      resolution: 'Resolved by another admin after checking the receipt.',
+      resolvedBy: 'a2',
+      createdAt: '2026-10-08T07:00:00Z',
+      verdict: 'runner_favourable',
+      resolvedAt: '2026-10-08T08:00:00Z',
+    });
+    await flushAsync();
+    fixture.detectChanges();
+    const text = el.textContent as string;
+    expect(text).toContain('This dispute was already resolved. Showing the outcome.');
+    expect(text).toContain('Resolved by another admin after checking the receipt.');
+    expect(text).not.toMatch(/Refund customer/);
+    expect(el.querySelector('textarea')).toBeNull();
   });
 
   it('builds the outcome from the response and links the refund review', async () => {
@@ -204,5 +274,26 @@ describe('DisputeDrawerComponent (G-6, G-19..G-22)', () => {
     expect(el.textContent).toContain('This task no longer exists.');
     expect(el.querySelector('.notice .chip')?.classList).toContain('chip-info');
     expect(buttons(el, 'Try again')).toHaveLength(0);
+  });
+
+  it('409 without a code while still DISPUTED shows the note error (spec)', async () => {
+    const fixture = await render('DISPUTED');
+    const el = fixture.nativeElement as HTMLElement;
+    type(fixture, NOTE);
+    buttons(el, 'Side with runner')[0].click();
+    fixture.detectChanges();
+    buttons(el, 'Side with runner').at(-1)!.click();
+    http
+      .expectOne(`${API}/errands/${ID}/resolve-dispute`)
+      .flush({ message: 'x' }, { status: 409, statusText: 'Conflict' });
+    await flushAsync();
+    http.expectOne(`${API}/errands/${ID}`).flush(errandFixture({ status: 'DISPUTED' }));
+    http.expectOne(`${API}/errands/${ID}/history`).flush([]);
+    await flushAsync();
+    fixture.detectChanges();
+    expect(el.textContent).toContain(
+      'Write at least 20 characters so both sides understand the decision.',
+    );
+    expect(el.textContent).not.toContain('already resolved');
   });
 });

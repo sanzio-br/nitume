@@ -8,7 +8,7 @@ import { InlineNoticeComponent } from '../../../shared/inline-notice.component';
 import { LoadMoreComponent } from '../../../shared/load-more.component';
 import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
-import { refundTriggerLabel } from '../refund-labels';
+import { refundTriggerLabel, reviewCeiling } from '../refund-labels';
 import { formatDateTime, formatKshExact } from '../shared-format';
 import { PanelTopbarComponent } from './panel-topbar.component';
 
@@ -25,7 +25,7 @@ export const REFUND_FILTERS: { value: RefundFilter; label: string }[] = [
 const EMPTY: Record<RefundFilter, { title: string; text: string }> = {
   pending_review: {
     title: 'No refunds to review',
-    text: 'Tasks cancelled after the customer paid land here for a refund decision.',
+    text: 'Tasks cancelled after the customer paid, and price decreases on tasks paid to Nitume, land here for a refund decision.',
   },
   approved: {
     title: 'No payouts to record',
@@ -109,7 +109,7 @@ export function refundRowAction(status: string): string {
             <tr>
               <th>Task</th>
               <th class="col-reason">Reason</th>
-              <th>Paid to Nitume</th>
+              <th>Refundable</th>
               <th>Refund</th>
               <th>Status</th>
               <th class="col-opened">Opened</th>
@@ -124,7 +124,7 @@ export function refundRowAction(status: string): string {
                   <div class="task-id">{{ shortId(r.errandId) }}</div>
                 </td>
                 <td class="col-reason">{{ triggerLabel(r.trigger) }}</td>
-                <td class="num">{{ formatKshExact(r.amountPaid) }}</td>
+                <td class="num">{{ formatKshExact(reviewCeiling(r)) }}</td>
                 <td class="num">{{ formatKshExact(r.refundAmount) }}</td>
                 <td><app-status-chip [status]="r.status" kind="refund" /></td>
                 <td class="col-opened num cell-muted">{{ formatDateTime(r.createdAt) }}</td>
@@ -264,13 +264,9 @@ export class RefundsPanelComponent implements OnInit {
     return f === 'all' ? null : f;
   }
 
-  /**
-   * Errand title, else the description's first line, else the category.
-   * TODO(N-1): older APIs have no `errand` on the item: use the dashboard's
-   * last-100 errand window, never a per-row request.
-   */
+  /** Errand title, else the description's first line, else the category. */
   protected taskTitle(r: RefundListItem): string {
-    const e = r.errand ?? this.s.errands().find((x) => x.id === r.errandId);
+    const e = r.errand;
     if (!e) return 'Task';
     if (e.title) return e.title;
     const line = e.description?.split('\n')[0]?.trim();
@@ -291,6 +287,8 @@ export class RefundsPanelComponent implements OnInit {
 
   protected readonly rowAction = refundRowAction;
   protected readonly triggerLabel = refundTriggerLabel;
+  /** `Refundable` = the net ceiling (row 87). */
+  protected readonly reviewCeiling = reviewCeiling;
   protected readonly shortId = shortId;
   protected readonly formatKshExact = formatKshExact;
   protected readonly formatDateTime = formatDateTime;

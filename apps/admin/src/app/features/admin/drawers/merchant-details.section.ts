@@ -12,8 +12,9 @@ import {
 import { statusLabel } from '../../../shared/status-chip.component';
 import { AdminDataService } from '../admin-data.service';
 
-/** Categories with an item amount (row 45; AQ-4 default). */
-const MERCHANT_CATEGORIES = ['buy_for_me', 'pickup_delivery'];
+/** Merchant amounts apply only to Buy For Me and Get It For Me (row 80). */
+export const MERCHANT_CATEGORIES = ['buy_for_me', 'pickup_delivery'];
+export const NOT_APPLICABLE_COPY = 'Merchant details only apply to Buy For Me and Get It For Me.';
 /**
  * Read-only states: the API's terminal states (`errand_closed`). Not the
  * store's TERMINAL list, which also has COMPLETED and CONFIRMED.
@@ -49,6 +50,7 @@ export interface MerchantForm {
 
 type FieldKey = 'name' | 'till' | 'paybill' | 'account';
 
+/** Shown for the two merchant categories, or read-only for legacy data elsewhere. */
 export function showsMerchantSection(e: Errand): boolean {
   return (
     MERCHANT_CATEGORIES.includes(e.category) ||
@@ -59,6 +61,11 @@ export function showsMerchantSection(e: Errand): boolean {
       e.merchantAccountReference
     )
   );
+}
+
+/** Editable only for the two merchant categories in a non-terminal state. */
+export function merchantEditable(e: Errand): boolean {
+  return MERCHANT_CATEGORIES.includes(e.category) && !MERCHANT_READ_ONLY.includes(e.status);
 }
 
 export function validateMerchantForm(f: MerchantForm): Partial<Record<FieldKey, string>> {
@@ -96,6 +103,19 @@ function formFromErrand(e: Errand): MerchantForm {
   };
 }
 
+/**
+ * Success copy. A change after payment tells the customer (row 80) once the
+ * API records it (`merchantDetailsUpdatedAt`, N-14).
+ */
+export function savedCopy(first: boolean, afterPayment: boolean, res: Errand): string {
+  if (first) return 'Merchant details saved. The customer can now pay the merchant directly.';
+  // TODO(owner-answers-4): `merchantDetailsUpdatedAt` arrives with N-14.
+  if (afterPayment && res.merchantDetailsUpdatedAt) {
+    return "Merchant details updated. If the customer had started paying the merchant, they've been told to check them.";
+  }
+  return 'Merchant details updated.';
+}
+
 function hasDetails(e: Errand): boolean {
   return !!(e.merchantTillNumber || e.merchantPaybillNumber);
 }
@@ -128,6 +148,9 @@ function hasDetails(e: Errand): boolean {
             (dismissed)="notice.set(null)"
             ><app-num-text [text]="n.text"
           /></app-inline-notice>
+        }
+        @if (notApplicable()) {
+          <div class="drawer-caption">{{ notApplicableCopy }}</div>
         }
         @if (editing()) {
           <div class="drawer-card drawer-stack">
@@ -273,7 +296,8 @@ function hasDetails(e: Errand): boolean {
         <p>
           The customer may already be paying the current {{ currentKind() }}
           <span class="num">{{ currentNumber() }}</span
-          >. Let them know before you change it.
+          >. If they've started paying the merchant, we'll tell them the details changed so they
+          check before paying.
         </p>
       </app-confirm-dialog>
     }
@@ -306,7 +330,13 @@ export class MerchantDetailsSectionComponent {
   private initial: MerchantForm | null = null;
 
   protected readonly shown = computed(() => showsMerchantSection(this.errand()));
-  protected readonly readOnly = computed(() => MERCHANT_READ_ONLY.includes(this.errand().status));
+  /** The API refused this category (`merchant_details_not_applicable`). */
+  private readonly refused = signal(false);
+  protected readonly notApplicable = computed(
+    () => this.refused() || !MERCHANT_CATEGORIES.includes(this.errand().category),
+  );
+  protected readonly readOnly = computed(() => this.refused() || !merchantEditable(this.errand()));
+  protected readonly notApplicableCopy = NOT_APPLICABLE_COPY;
   protected readonly hasDetails = computed(() => hasDetails(this.errand()));
   private readonly errors = computed(() => validateMerchantForm(this.form()));
   protected readonly valid = computed(() => Object.keys(this.errors()).length === 0);
@@ -372,17 +402,13 @@ export class MerchantDetailsSectionComponent {
 
   protected async send(): Promise<void> {
     const first = !hasDetails(this.errand());
+    const afterPayment = !first && PAID_OR_LATER.includes(this.errand().status);
     this.saving.set(true);
     this.notice.set(null);
     try {
-      await this.s.setMerchantDetails(this.errand().id, buildMerchantBody(this.form()));
+      const res = await this.s.setMerchantDetails(this.errand().id, buildMerchantBody(this.form()));
       this.editing.set(false);
-      this.notice.set({
-        tone: 'success',
-        text: first
-          ? 'Merchant details saved. The customer can now pay the merchant directly.'
-          : 'Merchant details updated.',
-      });
+      this.notice.set({ tone: 'success', text: savedCopy(first, afterPayment, res) });
     } catch (e) {
       await this.handleError(e as ApiErrorInfo);
     } finally {
@@ -392,7 +418,11 @@ export class MerchantDetailsSectionComponent {
   }
 
   private async handleError(err: ApiErrorInfo): Promise<void> {
-    if (err.status === 400 && err.code === 'merchant_details_invalid') {
+    if (err.code === 'merchant_details_not_applicable') {
+      this.editing.set(false);
+      this.refused.set(true);
+      this.notice.set({ tone: 'info', text: NOT_APPLICABLE_COPY });
+    } else if (err.status === 400 && err.code === 'merchant_details_invalid') {
       this.notice.set({
         tone: 'danger',
         text: 'Give either a Till number or a Paybill number. An account number only goes with a Paybill.',

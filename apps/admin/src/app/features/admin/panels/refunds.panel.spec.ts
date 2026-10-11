@@ -16,6 +16,8 @@ function item(id: string, patch: Partial<RefundListItem> = {}): RefundListItem {
     status: 'pending_review',
     createdAt: '2026-10-08T06:00:00Z',
     errand: null,
+    decidedBy: null,
+    paidBy: null,
     ...patch,
   };
 }
@@ -67,6 +69,41 @@ describe('RefundsPanelComponent (G-1)', () => {
     expect(btn.textContent?.trim()).toBe('Review');
     expect(btn.getAttribute('aria-label')).toMatch(/^Review refund for #NT-/);
     expect(TestBed.inject(AdminDataService).refundBadge().count).toBe(3);
+  });
+
+  it('labels the amountPaid column Refundable (SA-1)', async () => {
+    const fixture = await render();
+    http.expectOne(list('pending_review')).flush({ items: [item('1')], nextCursor: null });
+    await flushAsync();
+    fixture.detectChanges();
+    const heads = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('th'), (th) =>
+      th.textContent?.trim(),
+    );
+    expect(heads.slice(0, 4)).toEqual(['Task', 'Reason', 'Refundable', 'Refund']);
+    expect(heads).not.toContain('Paid to Nitume');
+  });
+
+  it('Refundable shows the net ceiling while pending (row 87)', async () => {
+    const fixture = await render();
+    http.expectOne(list('pending_review')).flush({
+      items: [
+        item('1', { amountPaid: '1500.00', refundCeiling: '1200.00' }),
+        item('2', {
+          status: 'refunded',
+          amountPaid: '800.00',
+          refundAmount: '800.00',
+          refundCeiling: null,
+        }),
+      ],
+      nextCursor: null,
+    });
+    await flushAsync();
+    fixture.detectChanges();
+    const cells = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr'),
+      (tr) => tr.querySelectorAll('td')[2].textContent?.trim(),
+    );
+    expect(cells).toEqual(['KSh 1,200', 'KSh 800']);
   });
 
   it('shows the filter-specific empty state', async () => {
@@ -137,24 +174,29 @@ describe('RefundsPanelComponent (G-1)', () => {
   });
 });
 
-describe('refund badge fallback (N-7)', () => {
+describe('refund badge (N-7)', () => {
   let http: HttpTestingController;
   beforeEach(() => {
     http = setupHttp();
   });
   afterEach(() => http.verify());
 
-  it('counts a limit=100 page when /refunds/count is missing, 99+ with a next cursor', async () => {
+  it('reads GET /refunds/count and caps at 99+', async () => {
     const s = TestBed.inject(AdminDataService);
+    const p = s.refreshRefundBadge();
+    http.expectOne(`${API}/refunds/count?status=pending_review`).flush({ count: 140 });
+    await p;
+    expect(s.refundBadge()).toEqual({ count: 99, more: true });
+  });
+
+  it('keeps the last badge on an error, with no list fallback', async () => {
+    const s = TestBed.inject(AdminDataService);
+    s.refundBadge.set({ count: 4, more: false });
     const p = s.refreshRefundBadge();
     http
       .expectOne(`${API}/refunds/count?status=pending_review`)
       .flush({ statusCode: 404 }, { status: 404, statusText: 'Not Found' });
-    await flushAsync();
-    const req = http.expectOne(list('pending_review'));
-    expect(req.request.params.get('limit')).toBe('100');
-    req.flush({ items: Array.from({ length: 100 }, (_, i) => item(String(i))), nextCursor: 'c' });
     await p;
-    expect(s.refundBadge()).toEqual({ count: 99, more: true });
+    expect(s.refundBadge()).toEqual({ count: 4, more: false });
   });
 });

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { HttpTestingController } from '@angular/common/http/testing';
 import { API, errandFixture, flushAsync, setupHttp } from '../../../testing/admin-test-utils';
 import {
+  alreadyRefunded,
   AMOUNT_FORMAT,
   AMOUNT_REQUIRED,
   decisionLabel,
@@ -12,6 +13,7 @@ import {
   validateRefundAmount,
 } from './refund-drawer';
 import { AdminDataService } from '../admin-data.service';
+import { reviewCeiling } from '../refund-labels';
 import type { RefundDetail } from '../../../core/api-types';
 
 const RID = 'rrrrrrrr-0000-0000-0000-000000000001';
@@ -47,6 +49,8 @@ function review(patch: Partial<RefundDetail> = {}): RefundDetail {
       merchantDirectAmount: '0.00',
     },
     otherReviews: [],
+    decidedBy: null,
+    paidBy: null,
     ...patch,
   };
 }
@@ -65,7 +69,7 @@ describe('refund decision bounds (G-2)', () => {
 
   it('rejects more than the amount paid, by a cent', () => {
     expect(validateRefundAmount('1200.01', '1200.00')).toBe(
-      "The refund can't be more than the KSh 1,200 the customer paid.",
+      "The refund can't be more than the KSh 1,200 refundable in this review.",
     );
   });
 
@@ -80,6 +84,51 @@ describe('refund decision bounds (G-2)', () => {
     expect(decisionLabel('0', '1200')).toBe('Close with no refund');
     expect(decisionLabel('1200', '1200')).toBe('Approve refund · KSh 1,200');
     expect(decisionLabel('1300', '1200')).toBe('Approve refund');
+  });
+
+  it('caps at refundCeiling while pending, else amountPaid (rows 81, 87)', () => {
+    expect(
+      reviewCeiling({ status: 'pending_review', amountPaid: '1200.00', refundCeiling: '900.00' }),
+    ).toBe('900.00');
+    expect(reviewCeiling({ status: 'pending_review', amountPaid: '1200.00' })).toBe('1200.00');
+    expect(reviewCeiling({ status: 'approved', amountPaid: '1200.00', refundCeiling: null })).toBe(
+      '1200.00',
+    );
+  });
+
+  it('sums earlier approved/refunded reviews, preferring the API figure', () => {
+    const otherReviews = [
+      {
+        id: 'a',
+        trigger: 'price_change_decrease',
+        status: 'refunded',
+        amountPaid: '300',
+        refundAmount: '300.00',
+      },
+      {
+        id: 'b',
+        trigger: 'price_change_decrease',
+        status: 'approved',
+        amountPaid: '50',
+        refundAmount: '50.00',
+      },
+      {
+        id: 'c',
+        trigger: 'price_change_decrease',
+        status: 'no_refund',
+        amountPaid: '80',
+        refundAmount: '0.00',
+      },
+      {
+        id: 'd',
+        trigger: 'price_change_decrease',
+        status: 'pending_review',
+        amountPaid: '90',
+        refundAmount: null,
+      },
+    ];
+    expect(alreadyRefunded({ otherReviews })).toBe(350);
+    expect(alreadyRefunded({ otherReviews, alreadyRefunded: '300.00' })).toBe(300);
   });
 
   it('validates the M-Pesa receipt', () => {
@@ -127,7 +176,7 @@ describe('RefundDrawerComponent', () => {
   it('keeps the three flows apart and shows where the refund goes', async () => {
     const fixture = await render(
       review({
-        paid: { ...review().paid!, merchantDirectAmount: '4000.00', itemAmountToNitume: '0.00' },
+        paid: { ...review().paid, merchantDirectAmount: '4000.00', itemAmountToNitume: '0.00' },
       }),
     );
     const text = (fixture.nativeElement.textContent as string).replace(/\s+/g, ' ');
@@ -138,6 +187,48 @@ describe('RefundDrawerComponent', () => {
     expect(text).toContain('+254 712 345 678');
     expect(text).toContain('Needs review');
     expect(text).not.toMatch(/wallet|escrow|balance/i);
+  });
+
+  it('adds Refundable in this review when the ceiling is not the total paid (SA-1)', async () => {
+    const fixture = await render(
+      review({ trigger: 'price_change_decrease', amountPaid: '300.00' }),
+    );
+    const el = fixture.nativeElement as HTMLElement;
+    const rows = Array.from(el.querySelectorAll('.drawer-row'), (r) =>
+      (r.textContent ?? '').replace(/\s+/g, ''),
+    );
+    const total = rows.indexOf('TotalpaidtoNitumeKSh1,200');
+    expect(total).toBeGreaterThan(-1);
+    expect(rows[total + 1]).toBe('RefundableinthisreviewKSh300');
+    expect(el.textContent).toContain('Between KSh 0 and KSh 300.');
+  });
+
+  it('nets earlier refunds: Already refunded row, ceiling caps the form (row 87)', async () => {
+    const fixture = await render(
+      review({ refundCeiling: '900.00', alreadyRefunded: '300.00', totalPaidToNitume: '1200.00' }),
+    );
+    const el = fixture.nativeElement as HTMLElement;
+    const rows = Array.from(el.querySelectorAll('.drawer-row'), (r) =>
+      (r.textContent ?? '').replace(/\s+/g, ''),
+    );
+    const total = rows.indexOf('TotalpaidtoNitumeKSh1,200');
+    expect(rows[total + 1]).toBe('AlreadyrefundedonthistaskKSh300');
+    expect(rows[total + 2]).toBe('RefundableinthisreviewKSh900');
+    expect(el.textContent).toContain('Between KSh 0 and KSh 900.');
+    byText(el, 'Full refund')[0].click();
+    fixture.detectChanges();
+    expect((el.querySelector('input') as HTMLInputElement).value).toBe('900');
+    typeAmount(fixture, '901');
+    (el.querySelector('input') as HTMLInputElement).dispatchEvent(new Event('blur'));
+    fixture.detectChanges();
+    expect(el.querySelector('.field-error')?.textContent).toContain(
+      "The refund can't be more than the KSh 900 refundable in this review.",
+    );
+  });
+
+  it('has no Refundable row when the ceiling equals the total paid', async () => {
+    const fixture = await render(review());
+    expect(fixture.nativeElement.textContent).not.toContain('Refundable in this review');
   });
 
   it('keeps "Opened" in Fira Sans and only the date/time in Fira Code (m-1)', async () => {
@@ -170,18 +261,42 @@ describe('RefundDrawerComponent', () => {
     drawer.remove();
   });
 
-  it('falls back to the total when there is no breakdown (N-1)', async () => {
-    const fixture = await render(
-      review({ paid: undefined, customer: undefined, errand: undefined }),
-    );
-    http
-      .expectOne(`${API}/errands/${errandFixture().id}`)
-      .flush(errandFixture({ status: 'CANCELLED' }));
-    await flushAsync();
-    fixture.detectChanges();
+  it('reads the task and customer from the detail alone; no errand call (N-1)', async () => {
+    const fixture = await render(review());
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain("Breakdown by payment isn't available yet.");
+    expect(text).toContain('Weekly shopping');
+    expect(text).toContain('Amina W.');
+    expect(text).not.toContain("Breakdown by payment isn't available yet.");
+    // http.verify() in afterEach: no GET /errands/:id was made.
+  });
+
+  it('keeps going when the errand and customer are gone', async () => {
+    const fixture = await render(review({ customer: null, errand: null }));
+    const text = fixture.nativeElement.textContent as string;
+    expect(fixture.nativeElement.querySelector('.drawer-summary-title').textContent).toBe('Task');
     expect(text).toContain("Customer's M-Pesa number not available");
+  });
+
+  it("names the deciding admin, or masks the id when there's no name (N-2)", async () => {
+    const fixture = await render(
+      review({
+        status: 'no_refund',
+        refundAmount: '0.00',
+        decidedAt: '2026-10-08T07:00:00Z',
+        decidedByUserId: 'aaaaaaaa-0000-0000-0000-00000000beef',
+        decidedBy: { id: 'aaaaaaaa-0000-0000-0000-00000000beef', displayName: 'Otieno K.' },
+      }),
+    );
+    expect(fixture.nativeElement.textContent).toContain('Otieno K.');
+    const unnamed = await render(
+      review({
+        status: 'no_refund',
+        refundAmount: '0.00',
+        decidedByUserId: 'aaaaaaaa-0000-0000-0000-00000000beef',
+        decidedBy: { id: 'aaaaaaaa-0000-0000-0000-00000000beef', displayName: null },
+      }),
+    );
+    expect(unnamed.nativeElement.textContent).toContain('…beef');
   });
 
   it('Full refund fills the field; the button reads the amount; confirm sends a number', async () => {
@@ -277,7 +392,7 @@ describe('RefundDrawerComponent', () => {
     await flushAsync();
     fixture.detectChanges();
     expect(el.querySelector('.field-error')?.textContent).toContain(
-      "The refund can't be more than the KSh 1,000 the customer paid.",
+      "The refund can't be more than the KSh 1,000 refundable in this review.",
     );
   });
 
@@ -307,5 +422,64 @@ describe('RefundDrawerComponent', () => {
     http.match(() => true).forEach((r) => r.flush({ count: 0 }));
     fixture.detectChanges();
     expect(el.textContent).toContain('Refund marked as sent.');
+  });
+  it('shows a refunded payout read-only: no receipt input or edit control (row 82)', async () => {
+    const fixture = await render(
+      review({
+        status: 'refunded',
+        refundAmount: '1200.00',
+        decidedAt: '2026-10-08T07:00:00Z',
+        payoutReference: 'SLK4H7XQ2P',
+        paidAt: '2026-10-08T09:00:00Z',
+      }),
+    );
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('input, textarea')).toBeNull();
+    const labels = Array.from(el.querySelectorAll('button'), (b) => b.textContent?.trim());
+    expect(labels).toEqual(['Open task']);
+    expect(el.textContent).toContain('SLK4H7XQ2P');
+    expect(el.textContent).toContain('Refund sent');
+  });
+
+  it('writes every amount as KSh, never KES (row 82)', async () => {
+    const fixture = await render(review({ status: 'approved', refundAmount: '1200.50' }));
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('KSh 1,200.50');
+    expect(text).not.toMatch(/\bKES\b/);
+  });
+  it('409 refund_payout_locked reloads read-only and explains (row 82)', async () => {
+    const fixture = await render(
+      review({ status: 'approved', refundAmount: '1200.00', decidedAt: '2026-10-08T07:00:00Z' }),
+    );
+    const el = fixture.nativeElement as HTMLElement;
+    const input = el.querySelector('input') as HTMLInputElement;
+    input.value = 'SLK4H7XQ2P';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    byText(el, 'Mark as refunded')[0].click();
+    fixture.detectChanges();
+    byText(el, 'Mark as refunded').at(-1)!.click();
+    http
+      .expectOne(`${API}/refunds/${RID}/mark-paid`)
+      .flush(
+        { statusCode: 409, code: 'refund_payout_locked', message: 'x' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await flushAsync();
+    http.expectOne(`${API}/refunds/${RID}`).flush(
+      review({
+        status: 'refunded',
+        refundAmount: '1200.00',
+        payoutReference: 'QWE123RTY9',
+        paidAt: '2026-10-08T08:00:00Z',
+      }),
+    );
+    await flushAsync();
+    fixture.detectChanges();
+    expect(el.textContent).toContain(
+      "This refund was already marked as sent. Its receipt can't be changed. Showing the latest.",
+    );
+    expect(el.textContent).toContain('QWE123RTY9');
+    expect(el.querySelector('input')).toBeNull();
   });
 });

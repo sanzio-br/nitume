@@ -1,6 +1,7 @@
 import { Component, inject, input } from '@angular/core';
 import { AdminDataService, shortId, timeAgo } from '../admin-data.service';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
+import { formatKsh } from '../shared-format';
 
 /**
  * Runner drawer: full profile row for a runner from the directory feed.
@@ -96,10 +97,9 @@ export class RunnerDrawerComponent {
     return Number.isNaN(n) ? value : `${Math.round(n)}%`;
   }
 
+  /** Row 82: money is always `KSh`, through the shared formatter. */
   protected advance(value: string | undefined): string {
-    if (!value) return '—';
-    const n = Number(value);
-    return Number.isNaN(n) ? value : `KSh ${Math.round(n).toLocaleString('en-KE')}`;
+    return formatKsh(value);
   }
 
   protected readonly shortId = shortId;

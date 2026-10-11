@@ -110,6 +110,11 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'refun
               <span class="badge-count">{{ s.disputeCount() }}</span>
             }
           </button>
+        </div>
+
+        <!-- Row 77: Refunds sits under Payments. Any admin may approve and record payouts. -->
+        <div class="ops-nav-group">
+          <div class="ops-nav-label">Payments</div>
           <button
             class="ops-nav-item"
             [class.active]="panel() === 'refunds'"

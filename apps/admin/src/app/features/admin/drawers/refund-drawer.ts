@@ -14,14 +14,14 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
 import { apiError, ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
-import type { Errand, RefundDetail, RefundReview } from '../../../core/api-types';
+import type { RefundDetail, RefundReview } from '../../../core/api-types';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice.component';
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
 import { AdminDataService, categoryLabel, maskedId, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
-import { refundTriggerLabel } from '../refund-labels';
+import { refundTriggerLabel, reviewCeiling } from '../refund-labels';
 import { formatDateTime, formatKshExact, isBlank, parseKsh } from '../shared-format';
 
 export const AMOUNT_REQUIRED = 'Enter a refund amount, or KSh 0 for no refund.';
@@ -29,15 +29,28 @@ export const AMOUNT_FORMAT = 'Enter an amount in KSh, up to 2 decimal places.';
 export const RECEIPT_ERROR = 'Enter the M-Pesa receipt code, letters and numbers only.';
 const RECEIPT_PATTERN = /^[A-Za-z0-9-]{4,64}$/;
 
-/** Refund amount rule (mirrors `DecideRefundDto` + `RefundsService.decide`). */
-export function validateRefundAmount(input: string, amountPaid: string | number): string | null {
+export function ceilingError(ceiling: string | number | null): string {
+  return `The refund can't be more than the ${formatKshExact(ceiling)} refundable in this review.`;
+}
+
+/**
+ * Refund amount rule (mirrors `DecideRefundDto` + `RefundsService.decide`).
+ * `ceiling` is the review's refund ceiling (rows 81, 87).
+ */
+export function validateRefundAmount(input: string, ceiling: string | number): string | null {
   if (isBlank(input)) return AMOUNT_REQUIRED;
   const value = parseKsh(input);
   if (value === null) return AMOUNT_FORMAT;
-  if (value > Number(amountPaid)) {
-    return `The refund can't be more than the ${formatKshExact(amountPaid)} the customer paid.`;
-  }
+  if (value > Number(ceiling)) return ceilingError(ceiling);
   return null;
+}
+
+/** Refunds already approved or sent on the task's other reviews (row 87). */
+export function alreadyRefunded(r: Pick<RefundDetail, 'alreadyRefunded' | 'otherReviews'>): number {
+  if (r.alreadyRefunded !== undefined) return Number(r.alreadyRefunded);
+  return r.otherReviews
+    .filter((o) => o.status === 'approved' || o.status === 'refunded')
+    .reduce((sum, o) => sum + Number(o.refundAmount ?? 0), 0);
 }
 
 export function validateReceipt(input: string): string | null {
@@ -136,28 +149,33 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
       <section class="drawer-section">
         <div class="drawer-label">What the customer paid</div>
         <div class="drawer-card">
-          @if (r.paid; as p) {
+          <div class="drawer-row">
+            <span>Service + runner fee</span><b>{{ formatKshExact(r.paid.serviceAndRunnerFee) }}</b>
+          </div>
+          @if (positive(r.paid.itemAmountToNitume)) {
             <div class="drawer-row">
-              <span>Service + runner fee</span><b>{{ formatKshExact(p.serviceAndRunnerFee) }}</b>
+              <span>Item amount (paid to Nitume)</span
+              ><b>{{ formatKshExact(r.paid.itemAmountToNitume) }}</b>
             </div>
-            @if (positive(p.itemAmountToNitume)) {
-              <div class="drawer-row">
-                <span>Item amount (paid to Nitume)</span
-                ><b>{{ formatKshExact(p.itemAmountToNitume) }}</b>
-              </div>
-            }
-            @if (positive(p.priceChangeDifferences)) {
-              <div class="drawer-row">
-                <span>Price change difference</span
-                ><b>{{ formatKshExact(p.priceChangeDifferences) }}</b>
-              </div>
-            }
-            <div class="drawer-row drawer-row-total">
-              <span>Total paid to Nitume</span><b>{{ formatKshExact(p.totalPaidToNitume) }}</b>
+          }
+          @if (positive(r.paid.priceChangeDifferences)) {
+            <div class="drawer-row">
+              <span>Price change difference</span
+              ><b>{{ formatKshExact(r.paid.priceChangeDifferences) }}</b>
             </div>
-          } @else {
-            <div class="drawer-row drawer-row-total">
-              <span>Total paid to Nitume</span><b>{{ formatKshExact(r.amountPaid) }}</b>
+          }
+          <div class="drawer-row drawer-row-total">
+            <span>Total paid to Nitume</span><b>{{ formatKshExact(r.paid.totalPaidToNitume) }}</b>
+          </div>
+          @if (refunded() > 0) {
+            <div class="drawer-row">
+              <span>Already refunded on this task</span><b>{{ formatKshExact(refunded()) }}</b>
+            </div>
+          }
+          @if (differs(ceiling(), r.paid.totalPaidToNitume)) {
+            <!-- SA-1: this review's ceiling (e.g. a price decrease) is not the total paid. -->
+            <div class="drawer-row drawer-row-strong">
+              <span>Refundable in this review</span><b>{{ formatKshExact(ceiling()) }}</b>
             </div>
           }
           <div class="drawer-row">
@@ -169,10 +187,7 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
             }
           </div>
         </div>
-        @if (!r.paid) {
-          <!-- TODO(N-1): breakdown arrives with feat/api-owner-answers-3. -->
-          <div class="drawer-caption">Breakdown by payment isn't available yet.</div>
-        } @else if (positive(r.paid.merchantDirectAmount)) {
+        @if (positive(r.paid.merchantDirectAmount)) {
           <div class="drawer-caption">
             The item amount (<span class="num">{{
               formatKshExact(r.paid.merchantDirectAmount)
@@ -212,7 +227,7 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
                 type="button"
                 class="btn btn-outline btn-sm"
                 [disabled]="saving()"
-                (click)="setAmount(plain(r.amountPaid))"
+                (click)="setAmount(plain(ceiling()))"
               >
                 Full refund
               </button>
@@ -249,7 +264,7 @@ type Dialog = 'approve' | 'no_refund' | 'mark_paid' | 'discard' | null;
                 @if (amountValue(); as v) {
                   Approve refund · <span class="num">{{ formatKshExact(v) }}</span>
                 } @else {
-                  {{ decisionLabel(amount(), r.amountPaid) }}
+                  {{ decisionLabel(amount(), ceiling()) }}
                 }
               </button>
             </div>
@@ -415,8 +430,6 @@ export class RefundDrawerComponent implements OnInit {
   readonly reviewId = input.required<string>();
 
   readonly review = signal<RefundDetail | null>(null);
-  /** Task summary from `GET /errands/:id` when the API has no N-1 errand summary. */
-  private readonly errand = signal<Errand | null>(null);
   readonly loading = signal(true);
   readonly loadError = signal<{ tone: NoticeTone; text: string } | null>(null);
   readonly notice = signal<{ tone: NoticeTone; text: string } | null>(null);
@@ -435,9 +448,19 @@ export class RefundDrawerComponent implements OnInit {
   private readonly amountInput = viewChild<ElementRef<HTMLInputElement>>('amountInput');
   private readonly receiptInput = viewChild<ElementRef<HTMLInputElement>>('receiptInput');
 
+  /** The decision form's maximum (rows 81, 87). */
+  protected readonly ceiling = computed(() => {
+    const r = this.review();
+    return r ? reviewCeiling(r) : '0';
+  });
+  protected readonly refunded = computed(() => {
+    const r = this.review();
+    return r ? alreadyRefunded(r) : 0;
+  });
+
   readonly amountError = computed(() => {
     const r = this.review();
-    return r ? validateRefundAmount(this.amount(), r.amountPaid) : AMOUNT_REQUIRED;
+    return r ? validateRefundAmount(this.amount(), this.ceiling()) : AMOUNT_REQUIRED;
   });
   protected readonly amountShown = computed(
     () => this.amountServerError() ?? (this.amountTouched() ? this.amountError() : null),
@@ -457,7 +480,7 @@ export class RefundDrawerComponent implements OnInit {
   protected readonly amountHint = computed(() => {
     const r = this.review();
     return r
-      ? `Between KSh 0 and ${formatKshExact(r.amountPaid)}. KSh 0 closes the review with no refund.`
+      ? `Between KSh 0 and ${formatKshExact(this.ceiling())}. KSh 0 closes the review with no refund.`
       : '';
   });
 
@@ -470,7 +493,7 @@ export class RefundDrawerComponent implements OnInit {
   });
 
   protected readonly taskTitle = computed(() => {
-    const e = this.review()?.errand ?? this.errand();
+    const e = this.review()?.errand;
     if (e?.title) return e.title;
     const firstLine = e?.description?.split('\n')[0]?.trim();
     if (firstLine) return firstLine;
@@ -478,9 +501,7 @@ export class RefundDrawerComponent implements OnInit {
     return 'Task';
   });
 
-  protected readonly taskStatus = computed(
-    () => this.review()?.errand?.status ?? this.errand()?.status ?? null,
-  );
+  protected readonly taskStatus = computed(() => this.review()?.errand?.status ?? null);
 
   protected readonly phone = computed(() => {
     const c = this.review()?.customer;
@@ -493,7 +514,7 @@ export class RefundDrawerComponent implements OnInit {
     const parts: { text: string; num: boolean; prefix?: string }[] = [];
     const name = r.customer?.shortName;
     if (name) parts.push({ text: name, num: false });
-    const category = r.errand?.category ?? this.errand()?.category;
+    const category = r.errand?.category;
     if (category) parts.push({ text: categoryLabel(category), num: false });
     // Only the date/time is numeric: "Opened" stays Fira Sans.
     parts.push({ prefix: 'Opened ', text: formatDateTime(r.createdAt), num: true });
@@ -548,10 +569,6 @@ export class RefundDrawerComponent implements OnInit {
       const review = await firstValueFrom(this.api.getRefund(this.reviewId()));
       this.review.set(review);
       this.resetForms();
-      if (!review.errand) {
-        // TODO(N-1): the round-3 detail embeds the errand; older APIs need this call.
-        void this.loadErrand(review.errandId);
-      }
     } catch (e) {
       const err = apiError(e);
       this.loadError.set(
@@ -564,14 +581,6 @@ export class RefundDrawerComponent implements OnInit {
     } finally {
       this.loading.set(false);
       afterNextRender(() => this.focusForm(), { injector: this.injector });
-    }
-  }
-
-  private async loadErrand(id: string): Promise<void> {
-    try {
-      this.errand.set(await firstValueFrom(this.api.getErrand(id)));
-    } catch {
-      /* the summary falls back to `Task` */
     }
   }
 
@@ -608,6 +617,11 @@ export class RefundDrawerComponent implements OnInit {
     this.receiptServerError.set(null);
   }
 
+  /** Two decimal strings differ by at least a cent. */
+  protected differs(a: string, b: string): boolean {
+    return Math.round(Number(a) * 100) !== Math.round(Number(b) * 100);
+  }
+
   protected positive(value: string | null | undefined): boolean {
     return Number(value ?? 0) > 0;
   }
@@ -624,7 +638,7 @@ export class RefundDrawerComponent implements OnInit {
     const id = ref?.id ?? userId;
     if (!id) return '—';
     if (id === this.s.me()?.id) return 'You';
-    // TODO(N-2): older APIs send only the user id.
+    // An admin with no name on file shows as a masked id.
     return ref?.displayName ?? maskedId(id);
   }
 
@@ -708,18 +722,18 @@ export class RefundDrawerComponent implements OnInit {
 
   /** The write endpoints return the bare review: keep the enriched parts. */
   private applySaved(saved: RefundReview): void {
-    const current = this.review();
+    const current = this.review()!;
     const me = this.s.me();
     const meRef = me ? { id: me.id, displayName: null } : null;
     this.review.set({
       ...current,
       ...saved,
-      errand: current?.errand,
-      customer: current?.customer,
-      paid: current?.paid,
-      otherReviews: current?.otherReviews,
-      decidedBy: saved.decidedByUserId ? (current?.decidedBy ?? meRef) : null,
-      paidBy: saved.paidByUserId ? (current?.paidBy ?? meRef) : null,
+      errand: current.errand,
+      customer: current.customer,
+      paid: current.paid,
+      otherReviews: current.otherReviews,
+      decidedBy: saved.decidedByUserId ? (current.decidedBy ?? meRef) : null,
+      paidBy: saved.paidByUserId ? (current.paidBy ?? meRef) : null,
     });
     this.resetForms();
     this.s.refundUpdated(saved);
@@ -742,16 +756,21 @@ export class RefundDrawerComponent implements OnInit {
         tone: 'info',
         text: "This refund isn't approved, so it can't be marked as sent. Showing the latest.",
       });
+    } else if (err.code === 'refund_payout_locked') {
+      // Row 82: a recorded receipt is final.
+      await this.reloadWith({
+        tone: 'info',
+        text: "This refund was already marked as sent. Its receipt can't be changed. Showing the latest.",
+      });
     } else if (err.code === 'refund_exceeds_amount_paid') {
-      const paid = (err.extra['amountPaid'] as string | undefined) ?? this.review()?.amountPaid;
+      // `amountPaid` in the error is the effective ceiling (N-9).
+      const ceiling = (err.extra['amountPaid'] as string | undefined) ?? this.ceiling();
       const amount = this.amount();
       const note = this.note();
       await this.load();
       this.amount.set(amount);
       this.note.set(note);
-      this.amountServerError.set(
-        `The refund can't be more than the ${formatKshExact(paid ?? null)} the customer paid.`,
-      );
+      this.amountServerError.set(ceilingError(ceiling));
     } else if (err.status === 400) {
       if (kind === 'decision') this.amountServerError.set(AMOUNT_FORMAT);
       else this.receiptServerError.set(RECEIPT_ERROR);
