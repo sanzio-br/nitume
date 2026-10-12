@@ -292,3 +292,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-12 | api-contract round 5: paid EXPIRED/FAILED tasks open refund reviews (row 102); append-only payout corrections with effective payout (row 100); tests prove runner amounts are never payable before CONFIRMED (row 95). Admin and customer builds started | d5b56db … 6ce9ad2 |
 | 2026-10-12 | Customer round 5 on feat/customer-owner-answers-5: core refund triggers (ad44dc6, app kept compiling) and trigger-specific pending refund lines on task detail (5cbd081); 115 app + 225 core tests | ad44dc6, 5cbd081 |
 | 2026-10-12 | web-parity round 5: Task expired/failed labels, payout corrections section + correction card + Payout reversed chip, EAT 12h everywhere (UTC on the wire), round-4 fields required, m-8 quote-request filter/count; 176 admin tests. Round-5 re-audits started | 1d3da2b … 5f4d4ba |
+| 2026-10-12 | Customer round-5 re-audit: v-task-detail PASS, no findings | fe81a05 |
