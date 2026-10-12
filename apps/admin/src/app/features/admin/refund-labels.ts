@@ -33,6 +33,17 @@ export function reviewCeiling(
   return r.status === 'pending_review' && r.refundCeiling !== null ? r.refundCeiling : r.amountPaid;
 }
 
+const CORRECTION_KIND_LABELS: Record<string, string> = {
+  corrected: 'Payout corrected',
+  reversed: 'Payout reversed',
+  resent: 'New payout sent',
+};
+
+/** Payout correction kind → card / form label (drawer-refund "Kinds", row 100). */
+export function correctionKindLabel(kind: string): string {
+  return CORRECTION_KIND_LABELS[kind] ?? refundTriggerLabel(kind);
+}
+
 /**
  * The effective payout of a review (row 100): the API's `effectivePayout`,
  * else (API before N-15) the original payout of a `refunded` review.
