@@ -10,21 +10,26 @@ import {
 import { RefundReview } from './refund-review.entity';
 
 /**
- * - `correction`: the recorded payout receipt was wrong or the refund was
- *   paid again under another M-Pesa receipt (`newPayoutReference` required).
- * - `reversal`: the recorded payout was reversed (money returned to Nitume).
+ * Kinds of payout correction (spec drawer-refund "Corrections", N-15):
+ * - `corrected`: effective payout sent; receipt and/or amount replaced
+ *   (a partial reversal is a `corrected` record with the lower amount);
+ * - `reversed`: effective payout sent; the M-Pesa payment was reversed and
+ *   the money came back (`newReference` = the reversal's M-Pesa code);
+ * - `resent`: effective payout reversed; the refund was sent again.
  */
 export enum RefundPayoutCorrectionKind {
-  CORRECTION = 'correction',
-  REVERSAL = 'reversal',
+  CORRECTED = 'corrected',
+  REVERSED = 'reversed',
+  RESENT = 'resent',
 }
 
 /**
  * Append-only audit record of a change to a refund's payout after it was
- * recorded (owner answer row 100). The review's own `payoutReference`,
- * `paidAt` and `paidByUserId` stay as first recorded; the effective payout is
- * derived from the latest record (see `effectivePayoutOf`). Rows are never
- * updated or deleted.
+ * recorded (owner answer row 100, system design §2.2). The review's own
+ * `payoutReference`, `paidAt` and `paidByUserId` stay as first recorded;
+ * the effective payout is the original with these records applied in order
+ * (see `effectivePayoutOf`). No update or delete path exists in code and a
+ * database trigger rejects UPDATE/DELETE.
  */
 @Entity('refund_payout_corrections')
 @Index('IDX_refund_payout_corrections_review', ['refundReviewId', 'createdAt'])
@@ -36,7 +41,10 @@ export class RefundPayoutCorrection {
   refundReviewId: string;
 
   @ManyToOne(() => RefundReview, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'refundReviewId', foreignKeyConstraintName: 'FK_refund_payout_corrections_review' })
+  @JoinColumn({
+    name: 'refundReviewId',
+    foreignKeyConstraintName: 'FK_refund_payout_corrections_review',
+  })
   refundReview?: RefundReview;
 
   @Column({
@@ -46,23 +54,21 @@ export class RefundPayoutCorrection {
   })
   kind: RefundPayoutCorrectionKind;
 
-  /** The effective payout receipt when this record was made. */
-  @Column({ type: 'varchar', length: 64 })
-  previousPayoutReference: string;
-
-  /**
-   * Correction: the receipt that replaces it. Reversal: the M-Pesa reversal
-   * transaction id when the admin has one, else null.
-   */
+  /** Effective receipt before this record (null after a reversal). */
   @Column({ type: 'varchar', length: 64, nullable: true })
-  newPayoutReference: string | null;
+  previousReference: string | null;
 
-  /**
-   * Correction: the amount paid under the new receipt. Reversal: the amount
-   * reversed (always the full effective payout). KES.
-   */
+  /** Effective amount sent before this record ("0.00" after a reversal). */
+  @Column({ type: 'numeric', precision: 12, scale: 2 })
+  previousAmount: string;
+
+  /** Corrected receipt, reversal M-Pesa code, or re-sent receipt; upper-case. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  newReference: string | null;
+
+  /** Amount actually sent, when it changes (`corrected`) or on `resent`. */
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
-  amount: string | null;
+  newAmount: string | null;
 
   @Column({ type: 'text' })
   reason: string;

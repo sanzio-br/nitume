@@ -61,7 +61,11 @@ const build = (
   const manager = {
     query,
     getRepository: (entity: { name: string }) =>
-      entity.name === 'RefundReview' ? reviews : transactions,
+      entity.name === 'RefundReview'
+        ? reviews
+        : entity.name === 'RefundPayoutCorrection'
+          ? { find: vi.fn(() => Promise.resolve([])) }
+          : transactions,
   };
   reviews.manager.transaction = vi.fn((fn) => fn(manager));
   let hook: ((m: unknown, c: object) => Promise<void>) | undefined;

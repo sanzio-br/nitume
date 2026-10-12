@@ -11,6 +11,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  IsUUID,
   ValidateIf,
 } from 'class-validator';
 import { RefundPayoutCorrectionKind } from '../refund-payout-correction.entity';
@@ -59,9 +60,12 @@ export class MarkRefundPaidDto {
 }
 
 /**
- * POST /refunds/:id/corrections (row 100). Correction: `newPayoutReference`
- * required, `amount` optional (defaults to the current effective amount).
- * Reversal: `newPayoutReference` optional (M-Pesa reversal id), no `amount`.
+ * POST /refunds/:id/corrections (row 100, spec drawer-refund "Corrections").
+ * - `corrected`: `newReference` and/or `newAmount` (at least one changed);
+ * - `reversed`: `newReference` = the reversal M-Pesa code, no `newAmount`;
+ * - `resent`: `newReference` and `newAmount` required.
+ * `expectedLatestCorrectionId`: the latest correction id the admin saw, or
+ * null when there was none (required key).
  */
 export class CreateRefundPayoutCorrectionDto {
   @IsEnum(RefundPayoutCorrectionKind)
@@ -69,22 +73,32 @@ export class CreateRefundPayoutCorrectionDto {
 
   @ValidateIf(
     (o: CreateRefundPayoutCorrectionDto) =>
-      o.kind === RefundPayoutCorrectionKind.CORRECTION ||
-      (o.newPayoutReference !== undefined && o.newPayoutReference !== null),
+      o.kind !== RefundPayoutCorrectionKind.CORRECTED ||
+      (o.newReference !== undefined && o.newReference !== null),
   )
   @IsString()
-  @Matches(/^[A-Za-z0-9-]{4,64}$/, { message: 'newPayoutReference must be an M-Pesa receipt' })
-  newPayoutReference?: string | null;
+  @Matches(/^\s*[A-Za-z0-9-]{4,64}\s*$/, {
+    message: 'newReference must be an M-Pesa code (letters, digits, dashes)',
+  })
+  newReference?: string | null;
 
-  /** KES. Correction only: the amount paid under the new receipt. */
-  @IsOptional()
+  /** KES, > 0, 2 dp, <= correctionCeiling. */
+  @ValidateIf(
+    (o: CreateRefundPayoutCorrectionDto) =>
+      o.kind === RefundPayoutCorrectionKind.RESENT ||
+      (o.newAmount !== undefined && o.newAmount !== null),
+  )
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
-  amount?: number;
+  newAmount?: number | null;
 
-  /** Why the payout is corrected or reversed (audit; never shown to customers). */
+  /** Why (audit; never shown to customers). 5-500 characters after trimming. */
   @IsString()
-  @MinLength(10)
-  @MaxLength(1000)
+  @MinLength(5)
+  @MaxLength(500)
   reason: string;
+
+  @ValidateIf((o: CreateRefundPayoutCorrectionDto) => o.expectedLatestCorrectionId !== null)
+  @IsUUID()
+  expectedLatestCorrectionId: string | null;
 }

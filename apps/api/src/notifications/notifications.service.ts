@@ -46,6 +46,11 @@ export interface RefundUpdatedEvent {
   refundId: string;
   status: string;
   refundAmount: string | null;
+  /**
+   * False for changes that only refresh admin views without telling the
+   * customer (payout corrections and reversals, AQ-9 default). Absent = true.
+   */
+  notifyCustomer?: boolean;
 }
 
 interface PriceChangeRequested {
@@ -171,7 +176,7 @@ export class NotificationsService {
 
   @OnEvent('refund.updated', { async: true })
   async onRefundUpdated(event: RefundUpdatedEvent): Promise<void> {
-    if (!refundCopy(event.status, event.refundAmount)) {
+    if (event.notifyCustomer === false || !refundCopy(event.status, event.refundAmount)) {
       return;
     }
     await this.enqueue({

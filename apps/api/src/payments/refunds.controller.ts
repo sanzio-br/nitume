@@ -12,13 +12,14 @@ import {
 } from './dto/refund.dto';
 import { AdminRefundDetail, AdminRefundReview, RefundsService } from './refunds.service';
 
-/** Admin refund reviews for tasks cancelled after payment. */
+/** Admin refund reviews for paid tasks that ended CANCELLED, EXPIRED or FAILED, and price decreases. */
 @Controller('refunds')
 @UseGuards(JwtAuthGuard)
 @Roles(UserRole.ADMIN)
 export class RefundsController {
   constructor(private readonly refunds: RefundsService) {}
 
+  /** `status=approved` (Payout due) also returns refunded reviews whose payout was reversed (row 100). */
   @Get()
   list(@Query() query: ListRefundsQueryDto) {
     return this.refunds.list(query);
@@ -57,9 +58,15 @@ export class RefundsController {
   }
 
   /**
-   * Records a payout correction or reversal on a `refunded` review (row 100).
-   * Returns the updated detail (with `corrections` and the effective payout).
-   * 409 `refund_not_refunded`, 409 `refund_payout_already_reversed`.
+   * Records a payout correction (`corrected | reversed | resent`) on a
+   * `refunded` review (row 100, N-15). Append-only; the original payout is
+   * unchanged. 201 with the updated detail (`effectivePayout`,
+   * `corrections[]`, `correctionCeiling`). Errors: 409 refund_not_refunded,
+   * payout_correction_conflict, payout_correction_kind_invalid,
+   * payout_reference_reused; 400 correction_no_change,
+   * refund_exceeds_amount_paid (with correctionCeiling),
+   * payout_reference_required, payout_amount_required,
+   * payout_amount_not_allowed, correction_reason_invalid.
    */
   @Post(':id/corrections')
   @HttpCode(201)
