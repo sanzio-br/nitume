@@ -1,5 +1,5 @@
 import { Component, Directive, computed, inject, input } from '@angular/core';
-import { NumTextComponent } from './num-text.component';
+import { NumTextComponent, TextPart } from './num-text.component';
 
 let nextId = 0;
 
@@ -29,10 +29,12 @@ let nextId = 0;
         }
         <ng-content />
       </div>
-      @if (hint() || counter()) {
+      @if (hasHint() || counter()) {
         <div class="field-foot">
           <span class="field-hint" [id]="hintId">
-            @if (plainHint()) {
+            @if (hintParts(); as parts) {
+              <app-num-text [parts]="parts" />
+            } @else if (plainHint()) {
               {{ hint() }}
             } @else {
               <app-num-text [text]="hint()" />
@@ -55,6 +57,12 @@ export class FormFieldComponent {
   readonly hint = input<string>('');
   /** Hint is a rule, not data (e.g. `At least 20 characters`): all Fira Sans. */
   readonly plainHint = input(false);
+  /**
+   * Hint as explicit parts, for data the numeric pattern can't be trusted to
+   * catch (e.g. a 4-character or all-letter M-Pesa code). Wins over `hint`.
+   */
+  readonly hintParts = input<TextPart[] | null>(null);
+  protected readonly hasHint = computed(() => !!this.hint() || !!this.hintParts()?.length);
   readonly error = input<string | null>(null);
   readonly counter = input<string>('');
   readonly counterError = input(false);
@@ -69,7 +77,7 @@ export class FormFieldComponent {
   readonly describedBy = computed(() => {
     const ids: string[] = [];
     if (this.error()) ids.push(this.errorId);
-    if (this.hint()) ids.push(this.hintId);
+    if (this.hasHint()) ids.push(this.hintId);
     return ids.length ? ids.join(' ') : null;
   });
 }

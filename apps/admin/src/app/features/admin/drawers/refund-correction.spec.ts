@@ -8,6 +8,7 @@ import {
   CorrectionForm,
   correctionBody,
   correctionDialogBody,
+  correctionDialogParts,
   correctionDialogTitle,
   validateCorrection,
 } from './refund-correction';
@@ -90,6 +91,16 @@ describe('payout correction rules (row 100)', () => {
       reason: 'Typed it wrong',
       expectedLatestCorrectionId: 'c1',
     });
+  });
+
+  it('makes every receipt and amount its own Fira Code part, even short or all-letter codes (m-11)', () => {
+    const nums = (f: CorrectionForm) =>
+      correctionDialogParts(f)
+        .filter((p) => p.num)
+        .map((p) => p.text);
+    expect(nums(form({ reference: 'ab12', amount: '1100' }))).toEqual(['AB12', 'KSh 1,100']);
+    expect(nums(form({ kind: 'reversed', reference: 'REVERSAL' }))).toEqual(['REVERSAL']);
+    expect(nums(form({ kind: 'resent', reference: 'abcd', amount: '1200' }))).toEqual(['ABCD']);
   });
 
   it('words the confirm dialogs per kind', () => {

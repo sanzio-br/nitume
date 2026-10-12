@@ -943,6 +943,25 @@ describe('RefundDrawerComponent corrections (row 100)', () => {
     expect(document.activeElement).toBe(record());
   });
 
+  it('sets short or all-letter receipts in Fira Code in the hint and the dialog (m-11)', async () => {
+    const fixture = await render(refunded({ effectivePayout: sent({ reference: 'ABCD' }) }));
+    button(fixture, 'Record a correction')[0].click();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const hint = el.querySelector('.field-hint')!;
+    expect(hint.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Leave empty if the receipt was right. Current: ABCD',
+    );
+    expect(Array.from(hint.querySelectorAll('.num'), (n) => n.textContent)).toEqual(['ABCD']);
+    type(fixture, 'Correct M-Pesa receipt', 'wxyz');
+    type(fixture, 'Reason', 'Typed the receipt wrong');
+    button(fixture, 'Save correction')[0].click();
+    fixture.detectChanges();
+    const body = el.querySelector('.confirm-body')!;
+    expect(body.textContent?.replace(/\s+/g, ' ')).toContain('New receipt WXYZ.');
+    expect(Array.from(body.querySelectorAll('.num'), (n) => n.textContent)).toEqual(['WXYZ']);
+  });
+
   it('Cancel asks before discarding typed input', async () => {
     const fixture = await render(refunded());
     button(fixture, 'Record a correction')[0].click();

@@ -1,5 +1,6 @@
 import type { CreateRefundCorrectionDto, RefundCorrectionKind } from '../../../core/api-types';
 import { formatKshExact, isBlank, parseKsh } from '../shared-format';
+import type { TextPart } from '../../../shared/num-text.component';
 
 /**
  * Payout correction form logic (row 100, drawer-refund "Corrections"):
@@ -137,22 +138,49 @@ export function correctionDialogTitle(f: CorrectionForm): string {
   }
 }
 
-/** A-08 confirm body (amounts and receipts are rendered in Fira Code by the caller). */
-export function correctionDialogBody(f: CorrectionForm): string {
+const txt = (text: string): TextPart => ({ text, num: false });
+const num = (text: string): TextPart => ({ text, num: true });
+
+/**
+ * A-08 confirm body as parts: every receipt / reversal code and amount is
+ * its own Fira Code part (m-11), never left to the numeric pattern.
+ */
+export function correctionDialogParts(f: CorrectionForm): TextPart[] {
   const reference = f.reference.trim().toUpperCase();
   switch (f.kind) {
     case 'corrected': {
       const parts = [
-        "The original payout record stays as it is. This correction is added to the history and can't be edited or deleted.",
+        txt(
+          "The original payout record stays as it is. This correction is added to the history and can't be edited or deleted.",
+        ),
       ];
-      if (reference) parts.push(`New receipt ${reference}.`);
+      if (reference) parts.push(txt(' New receipt '), num(reference), txt('.'));
       const amount = parseKsh(f.amount);
-      if (amount !== null) parts.push(`Amount sent ${formatKshExact(amount)}.`);
-      return parts.join(' ');
+      if (amount !== null) parts.push(txt(' Amount sent '), num(formatKshExact(amount)), txt('.'));
+      return parts;
     }
     case 'reversed':
-      return `Reversal code ${reference}. The refund will show as not sent until you record a new payout. This can't be edited or deleted.`;
+      return [
+        txt('Reversal code '),
+        num(reference),
+        txt(
+          ". The refund will show as not sent until you record a new payout. This can't be edited or deleted.",
+        ),
+      ];
     default:
-      return `M-Pesa receipt ${reference}. The customer will be told the refund has been sent. This can't be edited or deleted.`;
+      return [
+        txt('M-Pesa receipt '),
+        num(reference),
+        txt(
+          ". The customer will be told the refund has been sent. This can't be edited or deleted.",
+        ),
+      ];
   }
+}
+
+/** The dialog body as plain text. */
+export function correctionDialogBody(f: CorrectionForm): string {
+  return correctionDialogParts(f)
+    .map((p) => p.text)
+    .join('');
 }

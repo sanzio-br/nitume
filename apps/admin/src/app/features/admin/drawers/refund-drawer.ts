@@ -42,7 +42,7 @@ import {
   CorrectionForm,
   correctionBody,
   correctionCeilingError,
-  correctionDialogBody,
+  correctionDialogParts,
   correctionDialogTitle,
   hasCorrectionErrors,
   validateCorrection,
@@ -441,10 +441,7 @@ const CORRECTION_KINDS = [
                 @case ('corrected') {
                   <app-form-field
                     label="Correct M-Pesa receipt"
-                    [hint]="
-                      'Leave empty if the receipt was right. Current: ' +
-                      (effective()?.reference ?? '—')
-                    "
+                    [hintParts]="receiptHintParts()"
                     [error]="correctionShown('reference')"
                   >
                     <input
@@ -718,7 +715,7 @@ const CORRECTION_KINDS = [
             <p>The amount and note you entered will be lost.</p>
           }
           @case ('correction') {
-            <p><app-num-text [text]="correctionDialogBody()" /></p>
+            <p><app-num-text [parts]="correctionDialogParts()" /></p>
           }
           @case ('correction_discard') {
             <p>What you entered will be lost.</p>
@@ -873,8 +870,16 @@ export class RefundDrawerComponent implements OnInit {
         !isBlank(this.correctionReason()) ||
         this.correctionAmount().trim() !== this.correctionAmountPrefill()),
   );
-  protected readonly correctionDialogBody = computed(() =>
-    correctionDialogBody(this.correctionForm()),
+  /** `Current: {receipt}` with the receipt as its own Fira Code part (m-11). */
+  protected readonly receiptHintParts = computed(() => {
+    const reference = this.effective()?.reference;
+    return [
+      { text: 'Leave empty if the receipt was right. Current: ', num: false },
+      reference ? { text: reference, num: true } : { text: '—', num: false },
+    ];
+  });
+  protected readonly correctionDialogParts = computed(() =>
+    correctionDialogParts(this.correctionForm()),
   );
   protected readonly meId = computed(() => this.s.me()?.id ?? null);
 

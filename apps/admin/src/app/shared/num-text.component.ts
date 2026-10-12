@@ -49,5 +49,10 @@ export function splitNumeric(text: string): TextPart[] {
 })
 export class NumTextComponent {
   readonly text = input<string>('');
-  protected readonly parts = computed(() => splitNumeric(this.text()));
+  /**
+   * Explicit parts, for data the numeric pattern can't be trusted to catch
+   * (e.g. a 4-character or all-letter M-Pesa code). Wins over `text`.
+   */
+  readonly explicit = input<TextPart[] | null>(null, { alias: 'parts' });
+  protected readonly parts = computed(() => this.explicit() ?? splitNumeric(this.text()));
 }
