@@ -15,6 +15,13 @@ function item(id: string, patch: Partial<RefundListItem> = {}): RefundListItem {
     refundAmount: null,
     status: 'pending_review',
     createdAt: '2026-10-08T06:00:00Z',
+    refundCeiling:
+      (patch.status ?? 'pending_review') === 'pending_review'
+        ? (patch.amountPaid ?? '1200.50')
+        : null,
+    alreadyRefunded: '0.00',
+    remainingRefundable: '1200.50',
+    totalPaidToNitume: '1200.50',
     errand: null,
     decidedBy: null,
     paidBy: null,

@@ -27,6 +27,14 @@ function review(patch: Partial<RefundDetail> = {}): RefundDetail {
     refundAmount: null,
     status: 'pending_review',
     createdAt: '2026-10-08T06:00:00Z',
+    // The API's ceiling: the basis while pending, null once decided.
+    refundCeiling:
+      (patch.status ?? 'pending_review') === 'pending_review'
+        ? (patch.amountPaid ?? '1200.00')
+        : null,
+    alreadyRefunded: '0.00',
+    remainingRefundable: '1200.00',
+    totalPaidToNitume: '1200.00',
     errand: {
       id: errandFixture().id,
       title: 'Weekly shopping',
@@ -90,45 +98,17 @@ describe('refund decision bounds (G-2)', () => {
     expect(
       reviewCeiling({ status: 'pending_review', amountPaid: '1200.00', refundCeiling: '900.00' }),
     ).toBe('900.00');
-    expect(reviewCeiling({ status: 'pending_review', amountPaid: '1200.00' })).toBe('1200.00');
+    expect(
+      reviewCeiling({ status: 'pending_review', amountPaid: '1200.00', refundCeiling: null }),
+    ).toBe('1200.00');
     expect(reviewCeiling({ status: 'approved', amountPaid: '1200.00', refundCeiling: null })).toBe(
       '1200.00',
     );
   });
 
-  it('sums earlier approved/refunded reviews, preferring the API figure', () => {
-    const otherReviews = [
-      {
-        id: 'a',
-        trigger: 'price_change_decrease',
-        status: 'refunded',
-        amountPaid: '300',
-        refundAmount: '300.00',
-      },
-      {
-        id: 'b',
-        trigger: 'price_change_decrease',
-        status: 'approved',
-        amountPaid: '50',
-        refundAmount: '50.00',
-      },
-      {
-        id: 'c',
-        trigger: 'price_change_decrease',
-        status: 'no_refund',
-        amountPaid: '80',
-        refundAmount: '0.00',
-      },
-      {
-        id: 'd',
-        trigger: 'price_change_decrease',
-        status: 'pending_review',
-        amountPaid: '90',
-        refundAmount: null,
-      },
-    ];
-    expect(alreadyRefunded({ otherReviews })).toBe(350);
-    expect(alreadyRefunded({ otherReviews, alreadyRefunded: '300.00' })).toBe(300);
+  it('reads Already refunded from the API figure (row 87)', () => {
+    expect(alreadyRefunded({ alreadyRefunded: '300.00' })).toBe(300);
+    expect(alreadyRefunded({ alreadyRefunded: '0.00' })).toBe(0);
   });
 
   it('validates the M-Pesa receipt', () => {

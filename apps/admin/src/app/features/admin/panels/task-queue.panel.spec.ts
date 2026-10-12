@@ -15,6 +15,7 @@ function row(id: string, patch: Partial<ErrandListItem> = {}): ErrandListItem {
     status: 'QUOTED',
     budget: '2000.00',
     createdAt: '2026-10-08T06:00:00Z',
+    quoteRequestedAt: null,
     ...patch,
   };
 }

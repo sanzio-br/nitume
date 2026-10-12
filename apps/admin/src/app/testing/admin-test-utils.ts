@@ -32,6 +32,8 @@ export function errandFixture(patch: Partial<Errand> = {}): Errand {
     quotedPrice: '1450.00',
     createdAt: '2026-10-08T06:00:00Z',
     updatedAt: '2026-10-08T06:00:00Z',
+    merchantDetailsUpdatedAt: null,
+    quoteRequestedAt: null,
     ...patch,
   };
 }

@@ -190,19 +190,19 @@ export interface Errand {
   merchantAccountReference?: string | null;
   merchantDetailsAvailable?: boolean;
   /**
-   * When existing merchant details were last changed (row 80, N-14); set by
-   * the API on a change. TODO(owner-answers-4): optional until merged.
+   * When existing merchant details were last changed after a merchant-direct
+   * payment started (row 80, N-14); null otherwise.
    */
-  merchantDetailsUpdatedAt?: string | null;
+  merchantDetailsUpdatedAt: string | null;
   /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
   /** ACCEPTED with an unaccepted admin re-quote (row 72). */
   quoteAcceptanceRequired?: boolean;
   /**
    * When the customer asked for a new quote after expiry (row 68, N-13);
-   * null when none is pending. TODO(owner-answers-4): optional until merged.
+   * null when none is pending.
    */
-  quoteRequestedAt?: string | null;
+  quoteRequestedAt: string | null;
 }
 
 export interface ErrandListItem {
@@ -219,8 +219,8 @@ export interface ErrandListItem {
   createdAt: string;
   /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
-  /** Pending customer request for a new quote (row 68). TODO(owner-answers-4). */
-  quoteRequestedAt?: string | null;
+  /** Pending customer request for a new quote (row 68); null when none. */
+  quoteRequestedAt: string | null;
 }
 
 export interface ListErrandsResult {
@@ -274,11 +274,11 @@ export interface Dispute {
   createdAt: string;
   updatedAt?: string;
   events?: DisputeEvent[];
-  // Outcome (row 79). TODO(owner-answers-4): optional until merged.
+  // Outcome (row 79).
   /** Verdict of the resolution, or null while open. */
-  verdict?: 'runner_favourable' | 'customer_favourable' | null;
+  verdict: 'runner_favourable' | 'customer_favourable' | null;
   /** When it was resolved, or null while open. */
-  resolvedAt?: string | null;
+  resolvedAt: string | null;
 }
 
 // --- Refund reviews (rows 37, 48, 54, 71) ---
@@ -309,16 +309,15 @@ export interface RefundReview {
   paidAt?: string | null;
   createdAt: string;
   updatedAt?: string;
-  // Cumulative position on the task (rows 81, 87; N-9). Admin refund responses only.
-  // TODO(owner-answers-4): optional until feat/api-owner-answers-4 is on main.
+  // Cumulative position on the task (rows 81, 87; N-9). Every admin refund response.
   /** Highest refund an admin may approve now; null once decided. */
-  refundCeiling?: string | null;
+  refundCeiling: string | null;
   /** Refunds of the task's other approved/refunded reviews. */
-  alreadyRefunded?: string;
+  alreadyRefunded: string;
   /** What is still refundable on the task after every approved/refunded review. */
-  remainingRefundable?: string;
+  remainingRefundable: string;
   /** Every completed STK amount paid to Nitume for the task. */
-  totalPaidToNitume?: string;
+  totalPaidToNitume: string;
 }
 
 /** An admin who decided / paid a refund (N-2). */

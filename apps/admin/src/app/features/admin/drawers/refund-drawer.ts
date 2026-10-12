@@ -45,12 +45,9 @@ export function validateRefundAmount(input: string, ceiling: string | number): s
   return null;
 }
 
-/** Refunds already approved or sent on the task's other reviews (row 87). */
-export function alreadyRefunded(r: Pick<RefundDetail, 'alreadyRefunded' | 'otherReviews'>): number {
-  if (r.alreadyRefunded !== undefined) return Number(r.alreadyRefunded);
-  return r.otherReviews
-    .filter((o) => o.status === 'approved' || o.status === 'refunded')
-    .reduce((sum, o) => sum + Number(o.refundAmount ?? 0), 0);
+/** Refunds already approved or sent on the task's other reviews (row 87, the API figure). */
+export function alreadyRefunded(r: Pick<RefundDetail, 'alreadyRefunded'>): number {
+  return Number(r.alreadyRefunded);
 }
 
 export function validateReceipt(input: string): string | null {

@@ -29,6 +29,5 @@ export function refundTriggerLabel(trigger: string | null | undefined): string {
 export function reviewCeiling(
   r: Pick<RefundReview, 'status' | 'amountPaid' | 'refundCeiling'>,
 ): string {
-  // TODO(owner-answers-4): `refundCeiling` is optional until N-9 is on main.
-  return r.status === 'pending_review' ? (r.refundCeiling ?? r.amountPaid) : r.amountPaid;
+  return r.status === 'pending_review' && r.refundCeiling !== null ? r.refundCeiling : r.amountPaid;
 }
