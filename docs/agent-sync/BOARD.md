@@ -293,3 +293,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-12 | Customer round 5 on feat/customer-owner-answers-5: core refund triggers (ad44dc6, app kept compiling) and trigger-specific pending refund lines on task detail (5cbd081); 115 app + 225 core tests | ad44dc6, 5cbd081 |
 | 2026-10-12 | web-parity round 5: Task expired/failed labels, payout corrections section + correction card + Payout reversed chip, EAT 12h everywhere (UTC on the wire), round-4 fields required, m-8 quote-request filter/count; 176 admin tests. Round-5 re-audits started | 1d3da2b … 5f4d4ba |
 | 2026-10-12 | Customer round-5 re-audit: v-task-detail PASS, no findings | fe81a05 |
+| 2026-10-12 | Admin round-5 re-audit: all views PASS (p-refunds, drawer-refund, re-quote, EAT, dispute outcome); m-1..m-9 closed; new minors m-10..m-12 sent to web-parity before review | 6930dc5, 5c33e1e |
