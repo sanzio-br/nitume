@@ -720,3 +720,28 @@ The same lists appear in the customer and admin gap reports. Order: api-contract
 - **SQ-16 (payments, row 95)**: since the runner pays out of pocket first, is a `send_to_runner` purchase limited by `runner_profiles.max_purchase_advance`, and may a runner decline a task whose item amount is above their limit?
 - **AQ-9 (payments, row 100)**: customer notification on a correction or reversal. Default: only a new payout after a reversal notifies (`Refund sent`).
 - **AQ-10 (payments, row 100)**: a correction amount above the review's ceiling (an over-payment): default refused, handled outside the app.
+
+
+## Re-audit 2026-10-12: customer round 5
+
+Build: `feat/customer-owner-answers-5` — core `ad44dc6` (`feat(core-ui): add expired/failed-after-payment refund triggers`), app `5cbd081` (`feat(customer): refund lines for expired and failed paid tasks (row 102)`). API checked read-only on `feat/api-owner-answers-5` @ `6ce9ad2`. Branch-only diff (`main...HEAD`): `enums.dart`, `task_widgets.dart`, two test files; no BOARD or out-of-area edits.
+
+### v-task-detail — PASS
+
+Checked against `docs/specs/customer/v-task-detail.md` (row 102 update) and `_shared.md` §11.
+
+1. **Structure and flow.** Paid EXPIRED/FAILED tasks keep the receipt (`task_detail_screen.dart:209`, `paid` = status outside DRAFT..ACCEPTED and a payment record; EXPIRED is reachable only from RUNNER_ASSIGNED and FAILED only from RUNNER_EN_ROUTE, both after payment), with the refund group(s) inside the dashed receipt card (`:269`, `:288`). An EXPIRED task with no payment and no review shows `Not paid yet.` and nothing about refunds (`:259`). Refunds are loaded for every status and refreshed on `errand:status_changed` / reconnect (unchanged).
+2. **Copy (row 102).** `RefundGroup` (`widgets/task_widgets.dart:158-170`): `expired_after_payment` → `We couldn't find a runner for this task in time. We're reviewing a refund and will let you know the outcome.`; `failed_after_payment` → `This task couldn't be completed. We're reviewing a refund and will let you know the outcome.`; other/unknown triggers → the common pending line. Exact match with §11. No copy says a refund is automatic or guaranteed (the word appears only in a code comment).
+3. **Row 100.** The client has no correction UI. API `toCustomerView` (`apps/api/src/payments/refunds.service.ts:1012-1033` on the API branch) maps a reversed, not re-sent payout to `status: approved`, `refundAmount` = the review's decided amount, `paidAt: null`; `RefundGroup` renders `Refund approved`, its line `We'll send you this refund and update this page when it's sent.` and `Refund amount` with the amount; the `Sent …` line exists only in the `refunded` branch. No reasons, receipts, admin ids or payout reference reach the client.
+4. **Tokens / typography / contrast.** No new colours, font families or hex values in the diff. Amounts and the sent time stay in Fira Code (unchanged code paths). Chip tones unchanged (pending amber, approved/no-refund info, refunded success).
+5. **Reuse.** The trigger logic lives in the shared `RefundGroup`, not inline in the screen. Core enum extended with doc comment advising wildcard switches; `tryFromWire` still returns `null` for unknown values.
+6. **Domain.** Trigger wire values match the API enum and migration (`expired_after_payment`, `failed_after_payment`). State names unchanged; no wallet/escrow wording; refund kept separate from the fee total and item amount.
+7. **Build health.** `flutter analyze` clean in `packages/nitume_core` and `apps/customer_app`; tests 225/225 (core) and 115/115 (app) pass. New tests: `apps/customer_app/test/round5_test.dart` (paid EXPIRED pending, paid FAILED pending, other-trigger fallback, unpaid EXPIRED with no group, reversed payout `Refund approved` with amount and no `Sent`), `packages/nitume_core/test/owner_answers_models_test.dart` (both triggers parse, unknown → null, reversed-payout JSON parses with `paidAt: null` and shows the amount).
+
+### Regression spot-check
+
+No other customer code reads `RefundTrigger` (`rg` over `apps/customer_app/lib`), so the new enum values cannot break an exhaustive switch elsewhere; analyzer confirms. Refund group for price-change reject, decrease and dispute triggers unchanged (fallback test). x-merchant-payment, v-payment, v-track not touched by the diff; the full app suite passes.
+
+### Questions for the owner
+
+- None new. AQ-9 (customer notification on a correction/reversal) remains open; it affects API push text only, not this screen.
