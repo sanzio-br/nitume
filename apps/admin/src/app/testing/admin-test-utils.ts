@@ -39,3 +39,23 @@ export function errandFixture(patch: Partial<Errand> = {}): Errand {
 export function httpError(status: number, body: Record<string, unknown> | null = null) {
   return { status, statusText: 'Error', body };
 }
+
+/**
+ * Switches the process (browser) time zone to `tz` and back, so tests prove
+ * a time is shown in EAT and not the local zone (row 96). Use as
+ * `beforeAll(zone.pin); afterAll(zone.restore);`.
+ */
+export function timeZoneSwitch(tz: string): { pin: () => void; restore: () => void } {
+  const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
+    .process.env;
+  const saved = env['TZ'];
+  return {
+    pin: () => {
+      env['TZ'] = tz;
+    },
+    restore: () => {
+      if (saved === undefined) delete env['TZ'];
+      else env['TZ'] = saved;
+    },
+  };
+}

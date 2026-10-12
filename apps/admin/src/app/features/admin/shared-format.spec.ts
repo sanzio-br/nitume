@@ -1,11 +1,16 @@
 import {
+  eatDayKey,
   eatLocalInputToIso,
+  eatWeekday,
   formatDateTime,
+  formatDateTimeEat,
+  formatTime,
   formatKsh,
   formatKshExact,
   parseKsh,
   toEatLocalInput,
 } from './shared-format';
+import { timeZoneSwitch } from '../../testing/admin-test-utils';
 
 describe('formatKsh (row 82)', () => {
   it('rounds to whole shillings with the KSh prefix', () => {
@@ -80,15 +85,47 @@ describe('formatDateTime (East Africa Time)', () => {
   it('shows a dash for null', () => {
     expect(formatDateTime(null, now)).toBe('—');
   });
+
+  it('adds the year outside the current EAT year (§3.1)', () => {
+    expect(formatDateTime('2025-10-12T13:30:00Z', now)).toBe('Sun 12 Oct 2025, 4:30 PM');
+    // 31 Dec 2025 22:30 UTC is already 1 Jan 2026 in EAT: no year.
+    expect(formatDateTime('2025-12-31T22:30:00Z', now)).toBe('Thu 1 Jan, 1:30 AM');
+  });
+
+  it('suffixes EAT for dialogs', () => {
+    expect(formatDateTimeEat('2026-10-08T13:30:00Z', now)).toBe('Today, 4:30 PM EAT');
+    expect(formatDateTimeEat(null, now)).toBe('—');
+  });
+});
+
+describe('EAT regardless of the browser zone (row 96)', () => {
+  // A zone far from Nairobi: local getters would be 10 hours off.
+  const zone = timeZoneSwitch('America/Los_Angeles');
+  beforeAll(zone.pin);
+  afterAll(zone.restore);
+
+  it('formats times in 12-hour EAT', () => {
+    const at = new Date('2026-10-08T13:30:00Z');
+    expect(at.getHours()).not.toBe(16);
+    expect(formatTime(at)).toBe('4:30 PM');
+    expect(formatTime(null)).toBe('—');
+    expect(formatDateTime(at, new Date('2026-10-08T20:00:00Z'))).toBe('Today, 4:30 PM');
+  });
+
+  it('buckets days by the EAT calendar', () => {
+    // 22:30 UTC on Sunday 11 Oct is 01:30 EAT on Monday 12 Oct.
+    expect(eatDayKey('2026-10-11T22:30:00Z')).toBe('2026-10-12');
+    expect(eatWeekday('2026-10-11T22:30:00Z')).toBe(1);
+  });
 });
 
 describe('datetime-local helpers', () => {
-  it('round-trips through EAT with an explicit offset', () => {
+  it('shows EAT and sends canonical UTC (row 96)', () => {
     const d = new Date('2026-10-08T09:00:00Z');
     const local = toEatLocalInput(d);
     expect(local).toBe('2026-10-08T12:00');
     const iso = eatLocalInputToIso(local);
-    expect(iso).toBe('2026-10-08T12:00:00+03:00');
+    expect(iso).toBe('2026-10-08T09:00:00.000Z');
     expect(new Date(iso!).getTime()).toBe(d.getTime());
   });
 

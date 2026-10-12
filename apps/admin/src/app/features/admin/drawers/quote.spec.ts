@@ -54,7 +54,7 @@ function quote(patch: Partial<Quote> = {}): Quote {
 }
 
 describe('quote form (G-15)', () => {
-  it('sends numbers only, omits empty components and currency, keeps the EAT offset', () => {
+  it('sends numbers only, omits empty components and currency, converts EAT to UTC (row 96)', () => {
     const body = buildQuoteBody(
       form({
         components: { ...form().components, baseFee: '1,000', distanceFee: '450.5' },
@@ -65,7 +65,8 @@ describe('quote form (G-15)', () => {
       total: 1450,
       baseFee: 1000,
       distanceFee: 450.5,
-      expiresAt: '2026-10-09T12:00:00+03:00',
+      // 12:00 EAT typed → 09:00 UTC sent.
+      expiresAt: '2026-10-09T09:00:00.000Z',
       note: 'traffic',
     });
     expect(typeof body.total).toBe('number');
@@ -138,7 +139,8 @@ describe('QuoteDialogComponent expiry (row 83)', () => {
     fixture.detectChanges();
     confirm.click();
     const req = http.expectOne(`${API}/errands/${errandFixture().id}/quote`);
-    expect(req.request.body.expiresAt).toMatch(/\+03:00$/);
+    expect(req.request.body.expiresAt).toBe(eatLocalInputToIso(kept));
+    expect(req.request.body.expiresAt).toMatch(/Z$/);
     req.flush(null, { status: 500, statusText: 'Server Error' });
     await flushAsync();
   });

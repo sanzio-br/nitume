@@ -15,7 +15,7 @@ import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice
 import { AdminDataService, shortId } from '../admin-data.service';
 import {
   eatLocalInputToIso,
-  formatDateTime,
+  formatDateTimeEat,
   formatKshExact,
   isBlank,
   parseKsh,
@@ -129,7 +129,7 @@ export interface QuoteConflict {
       @if (previous(); as p) {
         <p>
           The last quote for <span class="num">{{ shortId(errandId()) }}</span> expired
-          <span class="num">{{ formatDateTime(p.expiresAt) }}</span
+          <span class="num">{{ formatDateTimeEat(p.expiresAt) }}</span
           >. {{ staysLine() }}
         </p>
       } @else {
@@ -355,7 +355,7 @@ export class QuoteDialogComponent {
   }
 
   protected readonly shortId = shortId;
-  protected readonly formatDateTime = formatDateTime;
+  protected readonly formatDateTimeEat = formatDateTimeEat;
 }
 
 /** `"1450.00"` → `"1450"`, `"10.50"` → `"10.50"` for prefilled inputs. */
