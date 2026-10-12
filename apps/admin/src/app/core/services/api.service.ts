@@ -68,13 +68,26 @@ export class ApiService {
     return this.http.get<UserMe>(`${this.base}/users/me`);
   }
 
-  /** GET /errands — admins see all errands; optional status + cursor pagination. */
-  listErrands(status?: ErrandStatus | null, cursor?: string | null, limit = 100) {
-    let params = new HttpParams();
-    if (status) params = params.set('status', status);
+  /**
+   * GET /errands — admins see all errands; optional status (one or several),
+   * cursor pagination and `quoteRequested` (row 68: customer asked for a new quote).
+   */
+  listErrands(
+    status?: ErrandStatus | ErrandStatus[] | null,
+    cursor?: string | null,
+    limit = 100,
+    opts: { quoteRequested?: boolean } = {},
+  ) {
+    let params = errandFilter(status, opts.quoteRequested);
     if (cursor) params = params.set('cursor', cursor);
     params = params.set('limit', String(limit));
     return this.http.get<ListErrandsResult>(`${this.base}/errands`, { params });
+  }
+
+  /** GET /errands/count — `{ count }` with the same filters as the list. */
+  countErrands(status?: ErrandStatus | ErrandStatus[] | null, quoteRequested?: boolean) {
+    const params = errandFilter(status, quoteRequested);
+    return this.http.get<{ count: number }>(`${this.base}/errands/count`, { params });
   }
 
   /** GET /errands/:id — full errand row. */
@@ -185,4 +198,16 @@ export class ApiService {
     params = params.set('limit', String(limit));
     return this.http.get<ListRunnersResult>(`${this.base}/runners`, { params });
   }
+}
+
+/** `status=A,B` and `quoteRequested=true|false` query params for the errand list/count. */
+function errandFilter(
+  status: ErrandStatus | ErrandStatus[] | null | undefined,
+  quoteRequested: boolean | undefined,
+): HttpParams {
+  let params = new HttpParams();
+  const statuses = Array.isArray(status) ? status : status ? [status] : [];
+  if (statuses.length) params = params.set('status', statuses.join(','));
+  if (quoteRequested !== undefined) params = params.set('quoteRequested', String(quoteRequested));
+  return params;
 }

@@ -8,6 +8,7 @@ import type {
   AssignErrandResult,
   Errand,
   ErrandListItem,
+  ErrandStatus,
   ErrandStatusHistoryEntry,
   MerchantDetailsDto,
   QuoteErrandDto,
@@ -136,15 +137,35 @@ export class AdminDataService {
   readonly disputes = computed(() => this.errands().filter((e) => e.status === 'DISPUTED'));
 
   /**
-   * Nav badges. The task queue counts tasks needing a quote: REQUESTED,
-   * QUOTED, and any task whose customer asked for a new quote (row 68).
+   * Tasks whose customer asked for a new quote (row 68, m-8), from
+   * `GET /errands?quoteRequested=true`, so a request on a task older than the
+   * newest 100 is never missed.
    */
-  readonly pendingCount = computed(
-    () =>
-      this.tasks().filter(
-        (e) => e.status === 'REQUESTED' || e.status === 'QUOTED' || quoteRequested(e),
-      ).length,
-  );
+  readonly requestedErrands = signal<ErrandListItem[]>([]);
+  /** `GET /errands/count?quoteRequested=true`; null until it has loaded. */
+  readonly requestedCount = signal<number | null>(null);
+
+  /** The task queue: the loaded window plus requested tasks outside it (deduped by id). */
+  readonly queueTasks = computed(() => {
+    const tasks = this.tasks();
+    const seen = new Set(tasks.map((e) => e.id));
+    const extra = this.requestedErrands().filter((e) => !seen.has(e.id) && e.status !== 'DRAFT');
+    return extra.length ? [...tasks, ...extra] : tasks;
+  });
+
+  /**
+   * Nav badges. The task queue counts tasks needing a quote: REQUESTED,
+   * QUOTED, and any task whose customer asked for a new quote (row 68). The
+   * requested part comes from the count endpoint (m-8); until it loads, or
+   * if it fails, from the queue rows.
+   */
+  readonly pendingCount = computed(() => {
+    const awaiting = this.tasks().filter(
+      (e) => (e.status === 'REQUESTED' || e.status === 'QUOTED') && !quoteRequested(e),
+    ).length;
+    const requested = this.requestedCount() ?? this.queueTasks().filter(quoteRequested).length;
+    return awaiting + requested;
+  });
   readonly disputeCount = computed(() => this.disputes().length);
 
   readonly topStats = computed(() => {
@@ -267,6 +288,7 @@ export class AdminDataService {
       this.me.set(me);
       this.refreshedAt.set(Date.now());
       void this.refreshRefundBadge();
+      void this.refreshQuoteRequests();
     } catch (e) {
       this.error.set(syncErrorCopy(e));
     } finally {
@@ -279,9 +301,30 @@ export class AdminDataService {
       const res = await firstValueFrom(this.api.listErrands());
       this.errands.set(res.items);
       this.refreshedAt.set(Date.now());
+      void this.refreshQuoteRequests();
     } catch {
       /* op-level refresh failures surface on next full refresh */
     }
+  }
+
+  /**
+   * Loads the customer requests for a new quote (row 68, m-8): up to 100
+   * requested tasks for the queue and their count for the badge. Only
+   * QUOTED / ACCEPTED tasks can be re-quoted (`quoteRequested()`). Each part
+   * keeps its last value on error.
+   */
+  async refreshQuoteRequests(): Promise<void> {
+    const statuses: ErrandStatus[] = ['QUOTED', 'ACCEPTED'];
+    await Promise.all([
+      firstValueFrom(this.api.listErrands(statuses, null, 100, { quoteRequested: true })).then(
+        (res) => this.requestedErrands.set(res.items),
+        () => undefined,
+      ),
+      firstValueFrom(this.api.countErrands(statuses, true)).then(
+        (res) => this.requestedCount.set(res.count),
+        () => undefined,
+      ),
+    ]);
   }
 
   // --- Drawer data: errand detail + status history (per selection) ---
@@ -344,7 +387,21 @@ export class AdminDataService {
     ] as const) {
       if (key in patch) (listPatch as Record<string, unknown>)[key] = patch[key];
     }
+    const wasRequested = [...this.errands(), ...this.requestedErrands()].some(
+      (e) => e.id === id && quoteRequested(e),
+    );
     this.errands.update((items) => items.map((e) => (e.id === id ? { ...e, ...listPatch } : e)));
+    this.requestedErrands.update((items) =>
+      items.map((e) => (e.id === id ? { ...e, ...listPatch } : e)),
+    );
+    // A request answered here (new quote, or the task moved on) leaves the badge now.
+    const count = this.requestedCount();
+    const isRequested = [...this.errands(), ...this.requestedErrands()].some(
+      (e) => e.id === id && quoteRequested(e),
+    );
+    if (count !== null && wasRequested && !isRequested) {
+      this.requestedCount.set(Math.max(0, count - 1));
+    }
     const d = this.detail();
     if (d && d.id === id) {
       this.detail.set({ ...d, ...patch });
