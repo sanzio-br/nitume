@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { UserRole } from '../common/enums';
 import {
   CountRefundsQueryDto,
+  CreateRefundPayoutCorrectionDto,
   DecideRefundDto,
   ListRefundsQueryDto,
   MarkRefundPaidDto,
@@ -53,5 +54,20 @@ export class RefundsController {
     @CurrentUser() user: AuthContext,
   ): Promise<AdminRefundReview> {
     return this.refunds.markPaid(id, dto.payoutReference, user.userId);
+  }
+
+  /**
+   * Records a payout correction or reversal on a `refunded` review (row 100).
+   * Returns the updated detail (with `corrections` and the effective payout).
+   * 409 `refund_not_refunded`, 409 `refund_payout_already_reversed`.
+   */
+  @Post(':id/corrections')
+  @HttpCode(201)
+  addCorrection(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateRefundPayoutCorrectionDto,
+    @CurrentUser() user: AuthContext,
+  ): Promise<AdminRefundDetail> {
+    return this.refunds.addCorrection(id, dto, user.userId);
   }
 }

@@ -20,6 +20,7 @@ import { UsersService } from '../users/users.service';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
 import { Payment } from './payment.entity';
+import { RefundPayoutCorrection, RefundPayoutCorrectionKind } from './refund-payout-correction.entity';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
 
 /** What the customer sees of a refund review (no admin notes or user ids). */
@@ -48,7 +49,74 @@ export interface CustomerRefundView {
   createdAt: Date;
   decidedAt: Date | null;
   paidAt: Date | null;
+  /**
+   * Effective payout state once refunded (row 100): `paid`, or `reversed`
+   * when an admin recorded a reversal of the payout. A receipt correction
+   * still shows `paid`. Null before the refund is paid out.
+   */
+  payoutStatus: 'paid' | 'reversed' | null;
+  /** Effective amount paid out after corrections/reversals ("0.00" once reversed); null before payout. */
+  paidAmount: string | null;
 }
+
+/**
+ * Derived payout state of a refunded review (row 100). The review row keeps
+ * the first recorded receipt; corrections and reversals are separate,
+ * append-only records and the latest one decides:
+ * - `paid`: refunded, no correction recorded;
+ * - `corrected`: the latest record is a correction (new receipt/amount);
+ * - `reversed`: the latest record is a reversal (nothing paid out now).
+ * Null while the review is not `refunded`.
+ */
+export type PayoutStatus = 'paid' | 'corrected' | 'reversed';
+
+export interface EffectivePayout {
+  payoutStatus: PayoutStatus | null;
+  /** Latest valid receipt: the newest correction's, else the original. */
+  effectivePayoutReference: string | null;
+  /** What is paid out now: "0.00" after a reversal. */
+  effectivePaidAmount: string | null;
+}
+
+/** Pure derivation of the effective payout from corrections, oldest first. */
+export const effectivePayoutOf = (
+  row: Pick<RefundReview, 'status' | 'payoutReference' | 'refundAmount'>,
+  corrections: Pick<RefundPayoutCorrection, 'kind' | 'newPayoutReference' | 'amount'>[],
+): EffectivePayout => {
+  if (row.status !== RefundStatus.REFUNDED) {
+    return { payoutStatus: null, effectivePayoutReference: null, effectivePaidAmount: null };
+  }
+  let payoutStatus: PayoutStatus = 'paid';
+  let reference = row.payoutReference;
+  let amount = row.refundAmount ?? '0.00';
+  for (const c of corrections) {
+    if (c.kind === RefundPayoutCorrectionKind.CORRECTION) {
+      payoutStatus = 'corrected';
+      reference = c.newPayoutReference ?? reference;
+      amount = c.amount ?? amount;
+    } else {
+      payoutStatus = 'reversed';
+      amount = '0.00';
+    }
+  }
+  return { payoutStatus, effectivePayoutReference: reference, effectivePaidAmount: amount };
+};
+
+/** One correction/reversal as the admin sees it (row 100). */
+export type RefundPayoutCorrectionView = Omit<RefundPayoutCorrection, 'refundReview'> & {
+  createdBy: AdminRef;
+};
+
+/** Input of `addCorrection`. */
+export interface PayoutCorrectionInput {
+  kind: RefundPayoutCorrectionKind;
+  newPayoutReference?: string | null;
+  amount?: number;
+  reason: string;
+}
+
+/** Shortest accepted correction/reversal reason, after trimming. */
+export const CORRECTION_REASON_MIN_LENGTH = 10;
 
 /**
  * Cumulative refund position of one review on its task (rows 81, 87).
@@ -108,8 +176,12 @@ export interface AdminRef {
   displayName: string | null;
 }
 
-/** Admin view of a review: the row plus its cumulative position (row 87). */
-export type AdminRefundReview = RefundReview & RefundPosition;
+/**
+ * Admin view of a review: the row plus its cumulative position (row 87) and
+ * its effective payout (row 100). `payoutReference`/`paidAt` remain the
+ * original, immutable receipt.
+ */
+export type AdminRefundReview = RefundReview & RefundPosition & EffectivePayout;
 
 /** Admin list item: the review plus errand summary and admin names. */
 export type AdminRefundItem = AdminRefundReview & {
@@ -150,6 +222,8 @@ export type AdminRefundDetail = AdminRefundItem & {
   paid: PaidBreakdown;
   /** Other refund reviews of the same task (e.g. cancellation + decreases). */
   otherReviews: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
+  /** Payout corrections and reversals, oldest first (row 100). */
+  corrections: RefundPayoutCorrectionView[];
 };
 
 interface StatusChanged {
@@ -174,6 +248,8 @@ export class RefundsService implements OnModuleInit {
     private readonly users?: UsersService,
     private readonly accounts?: CustomerAccountsService,
     private readonly customers?: CustomersService,
+    @InjectRepository(RefundPayoutCorrection)
+    private readonly corrections?: Repository<RefundPayoutCorrection>,
   ) {}
 
   /** Tells the notifications module the customer-visible status changed. */
@@ -344,14 +420,23 @@ export class RefundsService implements OnModuleInit {
   async detail(id: string): Promise<AdminRefundDetail> {
     const row = await this.get(id);
     const [item] = await this.enrich([row]);
-    const [customer, paid, siblings] = await Promise.all([
+    const [customer, paid, siblings, corrections] = await Promise.all([
       this.customerContact(item.errand ? row.errandId : null),
       this.paidBreakdown(row.errandId),
       this.reviews.find({ where: { errandId: row.errandId }, order: { createdAt: 'ASC' } }),
+      this.correctionsOf([row.id]),
     ]);
+    const own = corrections.get(row.id) ?? [];
+    const names = this.users && own.length > 0
+      ? await this.users.displayNames([...new Set(own.map((c) => c.createdByUserId))])
+      : new Map<string, string>();
     return Object.assign(item, {
       customer,
       paid,
+      corrections: own.map(({ refundReview: _review, ...c }) => ({
+        ...c,
+        createdBy: { id: c.createdByUserId, displayName: names.get(c.createdByUserId) ?? null },
+      })),
       otherReviews: siblings
         .filter((r) => r.id !== row.id)
         .map((r) => ({
@@ -366,7 +451,7 @@ export class RefundsService implements OnModuleInit {
 
   /** Adds errand summaries and admin display names (batched). */
   private async enrich(rows: RefundReview[]): Promise<AdminRefundItem[]> {
-    const [errands, names, positions] = await Promise.all([
+    const [errands, names, positions, corrections] = await Promise.all([
       this.errands.findByIds(rows.map((r) => r.errandId)),
       this.users
         ? this.users.displayNames(
@@ -374,13 +459,15 @@ export class RefundsService implements OnModuleInit {
           )
         : Promise.resolve(new Map<string, string>()),
       this.positions(rows),
+      this.correctionsOf(rows.map((r) => r.id)),
     ]);
     const byId = new Map(errands.map((e) => [e.id, e]));
     const ref = (userId: string | null): AdminRef | null =>
       userId ? { id: userId, displayName: names.get(userId) ?? null } : null;
     return rows.map((row) => {
       const e = byId.get(row.errandId);
-      return Object.assign(row, positions.get(row.id), {
+      const payout = effectivePayoutOf(row, corrections.get(row.id) ?? []);
+      return Object.assign(row, positions.get(row.id), payout, {
         errand: e
           ? {
               id: e.id,
@@ -493,14 +580,16 @@ export class RefundsService implements OnModuleInit {
     if (!row) {
       throw new ApiError(HttpStatus.NOT_FOUND, 'refund_not_found', 'No refund for this task');
     }
-    const positions = await this.positions([row]);
-    return toCustomerView(row, positions.get(row.id));
+    return this.customerViewOf(row);
   }
 
-  /** Customer view of one review with its cumulative position (row 87). */
+  /** Customer view of one review with its position (row 87) and effective payout (row 100). */
   async customerViewOf(row: RefundReview): Promise<CustomerRefundView> {
-    const positions = await this.positions([row]);
-    return toCustomerView(row, positions.get(row.id));
+    const [positions, corrections] = await Promise.all([
+      this.positions([row]),
+      this.correctionsOf([row.id]),
+    ]);
+    return toCustomerView(row, positions.get(row.id), corrections.get(row.id));
   }
 
   /** Every refund review of the errand, newest first (row 71); may be empty. */
@@ -510,8 +599,13 @@ export class RefundsService implements OnModuleInit {
   ): Promise<{ items: CustomerRefundView[] }> {
     await this.errands.getById(errandId, viewer);
     const rows = await this.reviews.find({ where: { errandId }, order: { createdAt: 'DESC' } });
-    const positions = await this.positions(rows);
-    return { items: rows.map((r) => toCustomerView(r, positions.get(r.id))) };
+    const [positions, corrections] = await Promise.all([
+      this.positions(rows),
+      this.correctionsOf(rows.map((r) => r.id)),
+    ]);
+    return {
+      items: rows.map((r) => toCustomerView(r, positions.get(r.id), corrections.get(r.id))),
+    };
   }
 
   /**
@@ -572,7 +666,7 @@ export class RefundsService implements OnModuleInit {
       return { saved: out, position: refundPositionOf(out, totalPaid, siblings) };
     });
     this.announce(saved);
-    return Object.assign(saved, position);
+    return Object.assign(saved, position, effectivePayoutOf(saved, []));
   }
 
   /**
@@ -585,13 +679,13 @@ export class RefundsService implements OnModuleInit {
     adminUserId: string,
   ): Promise<AdminRefundReview> {
     const row = await this.get(id);
-    // Row 82: the payout receipt is final once recorded. A correction needs
-    // an auditable correction/reversal flow, which does not exist yet.
+    // Row 82: the payout receipt is final once recorded. Changes go through
+    // POST /refunds/:id/corrections as separate audit records (row 100).
     if (row.status === RefundStatus.REFUNDED) {
       throw new ApiError(
         HttpStatus.CONFLICT,
         'refund_payout_locked',
-        'The payout receipt of a refunded review cannot be changed',
+        'The payout receipt of a refunded review cannot be changed; record a correction or reversal instead',
         { payoutReference: row.payoutReference, paidAt: row.paidAt?.toISOString() ?? null },
       );
     }
@@ -609,7 +703,138 @@ export class RefundsService implements OnModuleInit {
     const saved = await this.reviews.save(row);
     this.announce(saved);
     const positions = await this.positions([saved]);
-    return Object.assign(saved, positions.get(saved.id));
+    return Object.assign(saved, positions.get(saved.id), effectivePayoutOf(saved, []));
+  }
+
+  /**
+   * Admin records a correction or reversal of a refund's payout (row 100).
+   * Only on a `refunded` review; the review row itself is never changed.
+   * The review row is locked so concurrent records serialise and each one's
+   * `previousPayoutReference` is the effective receipt at that moment.
+   * - correction: `newPayoutReference` required; `amount` defaults to the
+   *   current effective amount (the approved refund after a reversal) and
+   *   must be > 0 and <= the approved refund amount.
+   * - reversal: reverses the whole effective payout (the server records the
+   *   amount; partial reversals are not supported); 409 when already
+   *   reversed. `newPayoutReference` optionally holds the M-Pesa reversal id.
+   * Returns the updated admin detail.
+   */
+  async addCorrection(
+    id: string,
+    input: PayoutCorrectionInput,
+    adminUserId: string,
+  ): Promise<AdminRefundDetail> {
+    const reason = input.reason.trim();
+    if (reason.length < CORRECTION_REASON_MIN_LENGTH) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'correction_reason_required',
+        `Give a reason of at least ${CORRECTION_REASON_MIN_LENGTH} characters`,
+        { minLength: CORRECTION_REASON_MIN_LENGTH },
+      );
+    }
+    await this.reviews.manager.transaction(async (manager) => {
+      const row = await manager
+        .getRepository(RefundReview)
+        .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!row) {
+        throw new NotFoundException('Refund review not found');
+      }
+      if (row.status !== RefundStatus.REFUNDED) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'refund_not_refunded',
+          `Only a refunded review's payout can be corrected or reversed (status ${row.status})`,
+          { status: row.status },
+        );
+      }
+      const repo = manager.getRepository(RefundPayoutCorrection);
+      const prior = await repo.find({
+        where: { refundReviewId: id },
+        order: { createdAt: 'ASC', id: 'ASC' },
+      });
+      const current = effectivePayoutOf(row, prior);
+      const approved = Number(row.refundAmount ?? 0);
+      const newPayoutReference = input.newPayoutReference?.trim() || null;
+      let amount: number;
+      if (input.kind === RefundPayoutCorrectionKind.REVERSAL) {
+        if (current.payoutStatus === 'reversed') {
+          throw new ApiError(
+            HttpStatus.CONFLICT,
+            'refund_payout_already_reversed',
+            'This payout is already reversed; record a correction with the new receipt if it was paid again',
+          );
+        }
+        if (input.amount !== undefined) {
+          throw new ApiError(
+            HttpStatus.BAD_REQUEST,
+            'reversal_amount_not_supported',
+            'A reversal always reverses the whole payout; do not send an amount',
+          );
+        }
+        amount = Number(current.effectivePaidAmount ?? 0);
+      } else {
+        if (!newPayoutReference) {
+          throw new ApiError(
+            HttpStatus.BAD_REQUEST,
+            'payout_reference_required',
+            'A correction needs the new M-Pesa receipt',
+          );
+        }
+        amount =
+          input.amount ??
+          (current.payoutStatus === 'reversed' ? approved : Number(current.effectivePaidAmount));
+        if (amount <= 0 || amount > approved) {
+          throw new ApiError(
+            HttpStatus.BAD_REQUEST,
+            'correction_amount_exceeds_refund',
+            `The corrected amount must be more than 0 and at most the approved refund of KSh ${approved.toFixed(2)}`,
+            { refundAmount: approved.toFixed(2) },
+          );
+        }
+        if (
+          current.payoutStatus !== 'reversed' &&
+          newPayoutReference === current.effectivePayoutReference &&
+          amount.toFixed(2) === Number(current.effectivePaidAmount).toFixed(2)
+        ) {
+          throw new ApiError(
+            HttpStatus.BAD_REQUEST,
+            'correction_no_change',
+            'The correction must change the receipt or the amount',
+          );
+        }
+      }
+      await repo.save(
+        repo.create({
+          refundReviewId: id,
+          kind: input.kind,
+          previousPayoutReference: current.effectivePayoutReference ?? '',
+          newPayoutReference,
+          amount: amount.toFixed(2),
+          reason,
+          createdByUserId: adminUserId,
+        }),
+      );
+    });
+    return this.detail(id);
+  }
+
+  /** Corrections/reversals per review id, oldest first (batched). */
+  private async correctionsOf(
+    reviewIds: string[],
+  ): Promise<Map<string, RefundPayoutCorrection[]>> {
+    const out = new Map<string, RefundPayoutCorrection[]>();
+    if (!this.corrections || reviewIds.length === 0) {
+      return out;
+    }
+    const rows = await this.corrections.find({
+      where: { refundReviewId: In(reviewIds) },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+    for (const c of rows) {
+      out.set(c.refundReviewId, [...(out.get(c.refundReviewId) ?? []), c]);
+    }
+    return out;
   }
 
   /**
@@ -664,19 +889,27 @@ export class RefundsService implements OnModuleInit {
 export const toCustomerView = (
   row: RefundReview,
   position: Pick<RefundPosition, 'remainingRefundable'> | undefined,
-): CustomerRefundView => ({
-  id: row.id,
-  errandId: row.errandId,
-  trigger: row.trigger,
-  priceChangeRequestId: row.priceChangeRequestId ?? null,
-  status: row.status,
-  amountPaid: row.amountPaid,
-  refundAmount: row.refundAmount,
-  remainingRefundable: position?.remainingRefundable ?? '0.00',
-  createdAt: row.createdAt,
-  decidedAt: row.decidedAt,
-  paidAt: row.paidAt,
-});
+  corrections: Pick<RefundPayoutCorrection, 'kind' | 'newPayoutReference' | 'amount'>[] = [],
+): CustomerRefundView => {
+  // Only the effective state and amount: no receipts, reasons or admin ids.
+  const payout = effectivePayoutOf(row, corrections);
+  return {
+    id: row.id,
+    errandId: row.errandId,
+    trigger: row.trigger,
+    priceChangeRequestId: row.priceChangeRequestId ?? null,
+    status: row.status,
+    amountPaid: row.amountPaid,
+    refundAmount: row.refundAmount,
+    remainingRefundable: position?.remainingRefundable ?? '0.00',
+    createdAt: row.createdAt,
+    decidedAt: row.decidedAt,
+    paidAt: row.paidAt,
+    payoutStatus:
+      payout.payoutStatus === null ? null : payout.payoutStatus === 'reversed' ? 'reversed' : 'paid',
+    paidAmount: payout.effectivePaidAmount,
+  };
+};
 
 /** "Amina Wanjiru" -> "Amina W."; one word stays as is; null without a name. */
 export const shortNameOf = (displayName: string | null): string | null => {

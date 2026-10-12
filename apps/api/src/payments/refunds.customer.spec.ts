@@ -72,6 +72,8 @@ describe('RefundsService.forCustomer (row 55)', () => {
       createdAt: new Date('2026-10-08T08:00:00Z'),
       decidedAt: new Date('2026-10-08T09:00:00Z'),
       paidAt: null,
+      payoutStatus: null,
+      paidAmount: null,
     });
   });
 
@@ -121,6 +123,8 @@ describe('RefundsService with several reviews (row 71)', () => {
         createdAt: decrease.createdAt,
         decidedAt: null,
         paidAt: null,
+        payoutStatus: null,
+        paidAmount: null,
       },
     ]);
   });

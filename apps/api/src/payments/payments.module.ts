@@ -10,6 +10,7 @@ import { PaymentType } from './payment-type.entity';
 import { ErrandRefundController } from './errand-refund.controller';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { RefundPayoutCorrection } from './refund-payout-correction.entity';
 import { RefundReview } from './refund-review.entity';
 import { RefundsController } from './refunds.controller';
 import { RefundsService } from './refunds.service';
@@ -31,6 +32,7 @@ import { mpesaProviderFactory } from './providers/mpesa-provider.factory';
       PaymentType,
       CustomerProfile,
       RefundReview,
+      RefundPayoutCorrection,
     ]),
   ],
   controllers: [PaymentsController, RefundsController, ErrandRefundController],
