@@ -43,4 +43,15 @@ describe('FormFieldComponent (A-06)', () => {
     expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(input.classList).toContain('is-invalid');
   });
+
+  it('sets the numeric data in the hint in Fira Code, the words in Fira Sans', () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    const hint = (fixture.nativeElement as HTMLElement).querySelector('.field-hint')!;
+    expect(hint.textContent).toBe('Between KSh 0 and KSh 1,200.');
+    expect(Array.from(hint.querySelectorAll('.num'), (n) => n.textContent)).toEqual([
+      'KSh 0',
+      'KSh 1,200',
+    ]);
+  });
 });

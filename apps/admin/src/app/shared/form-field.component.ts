@@ -1,4 +1,5 @@
 import { Component, Directive, computed, inject, input } from '@angular/core';
+import { NumTextComponent } from './num-text.component';
 
 let nextId = 0;
 
@@ -8,12 +9,14 @@ let nextId = 0;
  * on the projected input/textarea/select: it gets the id, `.field-input`,
  * `aria-describedby` (error + hint) and `aria-invalid`.
  *
+ * Numeric data inside the hint (amounts, receipts) renders in Fira Code.
+ *
  * `prefix` renders a static Fira Sans prefix inside the field (money inputs:
  * `KSh`); the value text of a money input is Fira Code (`numeric`).
  */
 @Component({
   selector: 'app-form-field',
-  imports: [],
+  imports: [NumTextComponent],
   template: `
     <div class="field">
       <label class="field-label" [class.sr-only]="hideLabel()" [attr.for]="controlId">{{
@@ -27,7 +30,7 @@ let nextId = 0;
       </div>
       @if (hint() || counter()) {
         <div class="field-foot">
-          <span class="field-hint" [id]="hintId">{{ hint() }}</span>
+          <span class="field-hint" [id]="hintId"><app-num-text [text]="hint()" /></span>
           @if (counter()) {
             <span class="field-counter" [class.is-error]="counterError()">{{ counter() }}</span>
           }
