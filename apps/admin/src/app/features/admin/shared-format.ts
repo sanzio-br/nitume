@@ -72,11 +72,33 @@ const DATE_PARTS = new Intl.DateTimeFormat('en-GB', {
   weekday: 'short',
   day: 'numeric',
   month: 'short',
+  year: 'numeric',
 });
 
+/** `YYYY-MM-DD` of the East Africa Time day an instant falls on. */
+export function eatDayKey(at: string | number | Date): string {
+  return DAY_KEY.format(new Date(at));
+}
+
+/** Day of week (0 = Sunday) of the East Africa Time day an instant falls on. */
+export function eatWeekday(at: string | number | Date): number {
+  return new Date(new Date(at).getTime() + EAT_OFFSET_MS).getUTCDay();
+}
+
+/** Time of day only, 12-hour East Africa Time: `4:30 PM` (row 96). `—` for null. */
+export function formatTime(iso: string | number | Date | null | undefined): string {
+  if (iso === null || iso === undefined || iso === '') {
+    return '—';
+  }
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '—' : TIME.format(date);
+}
+
 /**
- * Absolute date/time in East Africa Time (A-13): `Today, 4:30 PM`,
- * `Yesterday, 4:30 PM`, `Mon 12 Oct, 4:30 PM`. `—` for null.
+ * Absolute date/time in East Africa Time (A-13, `_shared.md` §3.1):
+ * `Today, 4:30 PM`, `Yesterday, 4:30 PM`, `Mon 12 Oct, 4:30 PM`, with the
+ * year (`Mon 12 Oct 2025, 4:30 PM`) outside the current EAT year. Never the
+ * browser's zone. `—` for null.
  */
 export function formatDateTime(
   iso: string | Date | null | undefined,
@@ -99,7 +121,20 @@ export function formatDateTime(
   }
   const parts = DATE_PARTS.formatToParts(date);
   const part = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${part('weekday')} ${part('day')} ${part('month')}, ${time}`;
+  const year = day.slice(0, 4) === DAY_KEY.format(now).slice(0, 4) ? '' : ` ${part('year')}`;
+  return `${part('weekday')} ${part('day')} ${part('month')}${year}, ${time}`;
+}
+
+/**
+ * `formatDateTime` with an `EAT` suffix, for times next to text that could be
+ * read as another zone (A-08 dialogs, `_shared.md` §3.1).
+ */
+export function formatDateTimeEat(
+  iso: string | Date | null | undefined,
+  now: Date = new Date(),
+): string {
+  const text = formatDateTime(iso, now);
+  return text === '—' ? text : `${text} EAT`;
 }
 
 /** `YYYY-MM-DDTHH:mm` in East Africa Time, for a `datetime-local` input. */
@@ -108,13 +143,14 @@ export function toEatLocalInput(date: Date): string {
 }
 
 /**
- * A `datetime-local` value read as East Africa Time → ISO 8601 with the
- * explicit `+03:00` offset. Null when the value is not a valid date/time.
+ * A `datetime-local` value read as East Africa Time → canonical UTC ISO 8601
+ * (`2026-10-08T09:00:00.000Z`, `_shared.md` §3.1: the client never sends a
+ * local-zone string). Null when the value is not a valid date/time.
  */
 export function eatLocalInputToIso(value: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
     return null;
   }
-  const iso = `${value}:00+03:00`;
-  return Number.isNaN(new Date(iso).getTime()) ? null : iso;
+  const date = new Date(`${value}:00+03:00`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }

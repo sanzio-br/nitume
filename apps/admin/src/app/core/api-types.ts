@@ -190,19 +190,19 @@ export interface Errand {
   merchantAccountReference?: string | null;
   merchantDetailsAvailable?: boolean;
   /**
-   * When existing merchant details were last changed (row 80, N-14); set by
-   * the API on a change. TODO(owner-answers-4): optional until merged.
+   * When existing merchant details were last changed after a merchant-direct
+   * payment started (row 80, N-14); null otherwise.
    */
-  merchantDetailsUpdatedAt?: string | null;
+  merchantDetailsUpdatedAt: string | null;
   /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
   /** ACCEPTED with an unaccepted admin re-quote (row 72). */
   quoteAcceptanceRequired?: boolean;
   /**
    * When the customer asked for a new quote after expiry (row 68, N-13);
-   * null when none is pending. TODO(owner-answers-4): optional until merged.
+   * null when none is pending.
    */
-  quoteRequestedAt?: string | null;
+  quoteRequestedAt: string | null;
 }
 
 export interface ErrandListItem {
@@ -219,8 +219,8 @@ export interface ErrandListItem {
   createdAt: string;
   /** Newest quote expiry (N-5); null when not quoted. */
   quoteExpiresAt?: string | null;
-  /** Pending customer request for a new quote (row 68). TODO(owner-answers-4). */
-  quoteRequestedAt?: string | null;
+  /** Pending customer request for a new quote (row 68); null when none. */
+  quoteRequestedAt: string | null;
 }
 
 export interface ListErrandsResult {
@@ -274,11 +274,11 @@ export interface Dispute {
   createdAt: string;
   updatedAt?: string;
   events?: DisputeEvent[];
-  // Outcome (row 79). TODO(owner-answers-4): optional until merged.
+  // Outcome (row 79).
   /** Verdict of the resolution, or null while open. */
-  verdict?: 'runner_favourable' | 'customer_favourable' | null;
+  verdict: 'runner_favourable' | 'customer_favourable' | null;
   /** When it was resolved, or null while open. */
-  resolvedAt?: string | null;
+  resolvedAt: string | null;
 }
 
 // --- Refund reviews (rows 37, 48, 54, 71) ---
@@ -287,7 +287,10 @@ export type RefundTrigger =
   | 'price_change_rejected'
   | 'dispute_customer_favourable'
   | 'cancelled_after_payment'
-  | 'price_change_decrease';
+  | 'price_change_decrease'
+  // Row 102 (N-16): a paid task that ended EXPIRED or FAILED.
+  | 'expired_after_payment'
+  | 'failed_after_payment';
 
 /** Bare `refund_reviews` row (decision / mark-paid responses). Amounts: decimal strings. */
 export interface RefundReview {
@@ -306,16 +309,61 @@ export interface RefundReview {
   paidAt?: string | null;
   createdAt: string;
   updatedAt?: string;
-  // Cumulative position on the task (rows 81, 87; N-9). Admin refund responses only.
-  // TODO(owner-answers-4): optional until feat/api-owner-answers-4 is on main.
+  // Cumulative position on the task (rows 81, 87; N-9). Every admin refund response.
   /** Highest refund an admin may approve now; null once decided. */
-  refundCeiling?: string | null;
+  refundCeiling: string | null;
   /** Refunds of the task's other approved/refunded reviews. */
-  alreadyRefunded?: string;
+  alreadyRefunded: string;
   /** What is still refundable on the task after every approved/refunded review. */
-  remainingRefundable?: string;
+  remainingRefundable: string;
   /** Every completed STK amount paid to Nitume for the task. */
-  totalPaidToNitume?: string;
+  totalPaidToNitume: string;
+  /**
+   * The payout as it stands after corrections (row 100, N-15); null unless
+   * `refunded`. The review's own `payoutReference` / `paidAt` stay the
+   * original, immutable payout. TODO(owner-answers-5): optional until
+   * feat/api-owner-answers-5 is on main.
+   */
+  effectivePayout?: EffectivePayout | null;
+}
+
+/** Effective payout of a refunded review (row 100): `reference` null and `amount` 0 while reversed. */
+export interface EffectivePayout {
+  state: 'sent' | 'reversed';
+  amount: string;
+  reference: string | null;
+  /** Latest sent payout (original or re-sent), or the reversal while reversed. */
+  at: string | null;
+}
+
+/** Kinds of payout correction record (row 100, drawer-refund "Corrections"). */
+export type RefundCorrectionKind = 'corrected' | 'reversed' | 'resent';
+
+/** One append-only payout correction record, as the admin sees it (oldest first). */
+export interface RefundPayoutCorrection {
+  id: string;
+  kind: RefundCorrectionKind | string;
+  /** Effective receipt before this record (null after a reversal). */
+  previousReference: string | null;
+  /** Effective amount sent before this record. */
+  previousAmount: string;
+  newReference: string | null;
+  newAmount: string | null;
+  reason: string;
+  createdByUserId: string;
+  /** Admin name (N-2). */
+  createdBy?: AdminRef | null;
+  createdAt: string;
+}
+
+/** `POST /refunds/:id/corrections` body (N-15). Amounts are JSON numbers. */
+export interface CreateRefundCorrectionDto {
+  kind: RefundCorrectionKind;
+  newReference?: string;
+  newAmount?: number;
+  reason: string;
+  /** Latest correction id this drawer saw, or null when there was none (required key). */
+  expectedLatestCorrectionId: string | null;
 }
 
 /** An admin who decided / paid a refund (N-2). */
@@ -361,6 +409,11 @@ export interface RefundDetail extends RefundListItem {
   } | null;
   paid: PaidBreakdown;
   otherReviews: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
+  // Row 100 (N-15). TODO(owner-answers-5): optional until feat/api-owner-answers-5 is on main.
+  /** Payout corrections, oldest first; empty unless refunded. */
+  corrections?: RefundPayoutCorrection[];
+  /** Highest `newAmount` a correction or new payout may carry; null unless refunded. */
+  correctionCeiling?: string | null;
 }
 
 export interface ListRefundsResult {

@@ -125,7 +125,7 @@ export class TaskQueuePanelComponent {
   ];
 
   protected sub(): string {
-    const total = this.s.tasks().length;
+    const total = this.s.queueTasks().length;
     const pending = this.s.pendingCount();
     return pending > 0
       ? `${pending} pending · ${total} listed across Nairobi`
@@ -147,7 +147,7 @@ export class TaskQueuePanelComponent {
     const cat = this.category();
     const now = this.now();
     // Customer requests, then expired quotes first (drawer-task-requote Data); else API order.
-    const rows = [...this.s.tasks()].sort((a, b) => queueRank(b, now) - queueRank(a, now));
+    const rows = [...this.s.queueTasks()].sort((a, b) => queueRank(b, now) - queueRank(a, now));
     return rows.filter((t) => {
       if (cat !== 'all' && t.category !== cat) return false;
       if (!q) return true;

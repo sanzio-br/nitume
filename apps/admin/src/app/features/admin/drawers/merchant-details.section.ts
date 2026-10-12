@@ -109,7 +109,6 @@ function formFromErrand(e: Errand): MerchantForm {
  */
 export function savedCopy(first: boolean, afterPayment: boolean, res: Errand): string {
   if (first) return 'Merchant details saved. The customer can now pay the merchant directly.';
-  // TODO(owner-answers-4): `merchantDetailsUpdatedAt` arrives with N-14.
   if (afterPayment && res.merchantDetailsUpdatedAt) {
     return "Merchant details updated. If the customer had started paying the merchant, they've been told to check them.";
   }

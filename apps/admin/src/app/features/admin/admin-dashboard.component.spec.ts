@@ -23,6 +23,12 @@ describe('AdminDashboardComponent sidebar (row 77)', () => {
     http.expectOne(`${API}/users/me`).flush({ id: 'admin-1', firstName: 'Wanjiru' });
     await flushAsync();
     http.expectOne(`${API}/refunds/count?status=pending_review`).flush({ count: 120 });
+    http
+      .expectOne(`${API}/errands?status=QUOTED,ACCEPTED&quoteRequested=true&limit=100`)
+      .flush({ items: [], nextCursor: null });
+    http
+      .expectOne(`${API}/errands/count?status=QUOTED,ACCEPTED&quoteRequested=true`)
+      .flush({ count: 0 });
     await flushAsync();
     fixture.detectChanges();
     return fixture;

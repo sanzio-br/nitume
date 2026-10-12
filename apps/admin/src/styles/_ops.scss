@@ -964,6 +964,47 @@ tr.clickable:hover {
 .drawer-row-strong {
   font-weight: 600;
 }
+/* Long text value in a drawer row (e.g. a correction reason): wraps, never truncated. */
+.drawer-row-wrap {
+  gap: 16px;
+}
+.drawer-row-wrap .val-text {
+  font-weight: 400;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Fira Sans arrow between two Fira Code values (`OLD → NEW`). */
+.drawer-arrow {
+  font-family: var(--nitume-font-ui);
+  font-weight: 400;
+}
+// --- Refund payout corrections (row 100) ---
+.correction-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--nitume-slate-line);
+}
+.correction-kind {
+  font-family: var(--nitume-font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nitume-blue);
+}
+.correction-time {
+  font-family: var(--nitume-font-num);
+  font-size: 11px;
+  color: var(--nitume-slate-600);
+  white-space: nowrap;
+}
+.form-error {
+  font-family: var(--nitume-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nitume-red);
+}
 .quote-request {
   display: flex;
   flex-direction: column;

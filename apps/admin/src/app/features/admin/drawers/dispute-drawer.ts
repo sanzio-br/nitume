@@ -198,6 +198,7 @@ interface Notice {
               label="Resolution note"
               [hideLabel]="true"
               hint="At least 20 characters. The customer and runner can see this note."
+              [plainHint]="true"
               [counter]="rationale().length + '/' + max"
               [counterError]="touched() && !valid()"
               [error]="fieldError()"

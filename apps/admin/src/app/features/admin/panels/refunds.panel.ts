@@ -8,7 +8,12 @@ import { InlineNoticeComponent } from '../../../shared/inline-notice.component';
 import { LoadMoreComponent } from '../../../shared/load-more.component';
 import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
-import { refundTriggerLabel, reviewCeiling } from '../refund-labels';
+import {
+  refundChipStatus,
+  refundRowAction,
+  refundTriggerLabel,
+  reviewCeiling,
+} from '../refund-labels';
 import { formatDateTime, formatKshExact } from '../shared-format';
 import { PanelTopbarComponent } from './panel-topbar.component';
 
@@ -25,11 +30,11 @@ export const REFUND_FILTERS: { value: RefundFilter; label: string }[] = [
 const EMPTY: Record<RefundFilter, { title: string; text: string }> = {
   pending_review: {
     title: 'No refunds to review',
-    text: 'Tasks cancelled after the customer paid, and price decreases on tasks paid to Nitume, land here for a refund decision.',
+    text: 'Paid tasks that were cancelled, expired or failed, and price decreases on tasks paid to Nitume, land here for a refund decision.',
   },
   approved: {
     title: 'No payouts to record',
-    text: 'Approved refunds wait here until you record the M-Pesa payout.',
+    text: 'Approved refunds, and payouts that were reversed, wait here until you record the M-Pesa payout.',
   },
   refunded: { title: 'No refunds sent yet', text: 'Refunds you mark as paid appear here.' },
   no_refund: {
@@ -38,7 +43,7 @@ const EMPTY: Record<RefundFilter, { title: string; text: string }> = {
   },
   all: {
     title: 'No refund reviews yet',
-    text: 'A review opens when a task is cancelled after the customer paid.',
+    text: 'A review opens when a paid task is cancelled, expires or fails.',
   },
 };
 
@@ -57,12 +62,6 @@ export function refundSubLine(filter: RefundFilter, count: number, more: boolean
     default:
       return `${n} refund reviews`;
   }
-}
-
-export function refundRowAction(status: string): string {
-  if (status === 'pending_review') return 'Review';
-  if (status === 'approved') return 'Record payout';
-  return 'View';
 }
 
 /**
@@ -126,7 +125,7 @@ export function refundRowAction(status: string): string {
                 <td class="col-reason">{{ triggerLabel(r.trigger) }}</td>
                 <td class="num">{{ formatKshExact(reviewCeiling(r)) }}</td>
                 <td class="num">{{ formatKshExact(r.refundAmount) }}</td>
-                <td><app-status-chip [status]="r.status" kind="refund" /></td>
+                <td><app-status-chip [status]="chipStatus(r)" kind="refund" /></td>
                 <td class="col-opened num cell-muted">{{ formatDateTime(r.createdAt) }}</td>
                 <td>
                   <button
@@ -135,7 +134,7 @@ export function refundRowAction(status: string): string {
                     [attr.aria-label]="ariaAction(r)"
                     (click)="$event.stopPropagation(); open(r.id)"
                   >
-                    {{ rowAction(r.status) }}
+                    {{ rowAction(r) }}
                   </button>
                 </td>
               </tr>
@@ -187,7 +186,13 @@ export class RefundsPanelComponent implements OnInit {
         this.rows.update((rows) =>
           rows.map((r) =>
             r.id === saved.id
-              ? { ...r, status: saved.status, refundAmount: saved.refundAmount }
+              ? {
+                  ...r,
+                  status: saved.status,
+                  refundAmount: saved.refundAmount,
+                  // A correction can reverse or re-send the payout (row 100).
+                  ...('effectivePayout' in saved ? { effectivePayout: saved.effectivePayout } : {}),
+                }
               : r,
           ),
         );
@@ -275,10 +280,10 @@ export class RefundsPanelComponent implements OnInit {
 
   protected ariaAction(r: RefundListItem): string {
     const id = shortId(r.errandId);
-    switch (r.status) {
-      case 'pending_review':
+    switch (refundRowAction(r)) {
+      case 'Review':
         return `Review refund for ${id}`;
-      case 'approved':
+      case 'Record payout':
         return `Record payout for ${id}`;
       default:
         return `View refund for ${id}`;
@@ -286,6 +291,8 @@ export class RefundsPanelComponent implements OnInit {
   }
 
   protected readonly rowAction = refundRowAction;
+  /** `Payout reversed` instead of `Refunded` while the payout is reversed (row 100). */
+  protected readonly chipStatus = refundChipStatus;
   protected readonly triggerLabel = refundTriggerLabel;
   /** `Refundable` = the net ceiling (row 87). */
   protected readonly reviewCeiling = reviewCeiling;

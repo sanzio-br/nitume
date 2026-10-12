@@ -1,4 +1,5 @@
 import { Component, Directive, computed, inject, input } from '@angular/core';
+import { NumTextComponent, TextPart } from './num-text.component';
 
 let nextId = 0;
 
@@ -8,12 +9,15 @@ let nextId = 0;
  * on the projected input/textarea/select: it gets the id, `.field-input`,
  * `aria-describedby` (error + hint) and `aria-invalid`.
  *
+ * Numeric data inside the hint (amounts, receipts) renders in Fira Code;
+ * `plainHint` opts out when the digits are a rule, not data.
+ *
  * `prefix` renders a static Fira Sans prefix inside the field (money inputs:
  * `KSh`); the value text of a money input is Fira Code (`numeric`).
  */
 @Component({
   selector: 'app-form-field',
-  imports: [],
+  imports: [NumTextComponent],
   template: `
     <div class="field">
       <label class="field-label" [class.sr-only]="hideLabel()" [attr.for]="controlId">{{
@@ -25,9 +29,17 @@ let nextId = 0;
         }
         <ng-content />
       </div>
-      @if (hint() || counter()) {
+      @if (hasHint() || counter()) {
         <div class="field-foot">
-          <span class="field-hint" [id]="hintId">{{ hint() }}</span>
+          <span class="field-hint" [id]="hintId">
+            @if (hintParts(); as parts) {
+              <app-num-text [parts]="parts" />
+            } @else if (plainHint()) {
+              {{ hint() }}
+            } @else {
+              <app-num-text [text]="hint()" />
+            }
+          </span>
           @if (counter()) {
             <span class="field-counter" [class.is-error]="counterError()">{{ counter() }}</span>
           }
@@ -43,6 +55,14 @@ let nextId = 0;
 export class FormFieldComponent {
   readonly label = input<string>('');
   readonly hint = input<string>('');
+  /** Hint is a rule, not data (e.g. `At least 20 characters`): all Fira Sans. */
+  readonly plainHint = input(false);
+  /**
+   * Hint as explicit parts, for data the numeric pattern can't be trusted to
+   * catch (e.g. a 4-character or all-letter M-Pesa code). Wins over `hint`.
+   */
+  readonly hintParts = input<TextPart[] | null>(null);
+  protected readonly hasHint = computed(() => !!this.hint() || !!this.hintParts()?.length);
   readonly error = input<string | null>(null);
   readonly counter = input<string>('');
   readonly counterError = input(false);
@@ -57,7 +77,7 @@ export class FormFieldComponent {
   readonly describedBy = computed(() => {
     const ids: string[] = [];
     if (this.error()) ids.push(this.errorId);
-    if (this.hint()) ids.push(this.hintId);
+    if (this.hasHint()) ids.push(this.hintId);
     return ids.length ? ids.join(' ') : null;
   });
 }

@@ -47,7 +47,6 @@ export function canRequote(errand: Errand, quote: Quote | null, now: number): bo
  * than the newest quote; else null.
  */
 export function pendingQuoteRequest(errand: Errand, quote: Quote | null): string | null {
-  // TODO(owner-answers-4): `quoteRequestedAt` arrives with N-13.
   const at = errand.quoteRequestedAt;
   if (!at || !quoteRequested(errand)) return null;
   if (quote && new Date(at).getTime() <= new Date(quote.createdAt).getTime()) return null;

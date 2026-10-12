@@ -2,11 +2,13 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { apiError, FORBIDDEN_COPY } from '../../core/api-error';
+import { eatDayKey, eatWeekday } from './shared-format';
 import type {
   AssignErrandDto,
   AssignErrandResult,
   Errand,
   ErrandListItem,
+  ErrandStatus,
   ErrandStatusHistoryEntry,
   MerchantDetailsDto,
   QuoteErrandDto,
@@ -135,15 +137,35 @@ export class AdminDataService {
   readonly disputes = computed(() => this.errands().filter((e) => e.status === 'DISPUTED'));
 
   /**
-   * Nav badges. The task queue counts tasks needing a quote: REQUESTED,
-   * QUOTED, and any task whose customer asked for a new quote (row 68).
+   * Tasks whose customer asked for a new quote (row 68, m-8), from
+   * `GET /errands?quoteRequested=true`, so a request on a task older than the
+   * newest 100 is never missed.
    */
-  readonly pendingCount = computed(
-    () =>
-      this.tasks().filter(
-        (e) => e.status === 'REQUESTED' || e.status === 'QUOTED' || quoteRequested(e),
-      ).length,
-  );
+  readonly requestedErrands = signal<ErrandListItem[]>([]);
+  /** `GET /errands/count?quoteRequested=true`; null until it has loaded. */
+  readonly requestedCount = signal<number | null>(null);
+
+  /** The task queue: the loaded window plus requested tasks outside it (deduped by id). */
+  readonly queueTasks = computed(() => {
+    const tasks = this.tasks();
+    const seen = new Set(tasks.map((e) => e.id));
+    const extra = this.requestedErrands().filter((e) => !seen.has(e.id) && e.status !== 'DRAFT');
+    return extra.length ? [...tasks, ...extra] : tasks;
+  });
+
+  /**
+   * Nav badges. The task queue counts tasks needing a quote: REQUESTED,
+   * QUOTED, and any task whose customer asked for a new quote (row 68). The
+   * requested part comes from the count endpoint (m-8); until it loads, or
+   * if it fails, from the queue rows.
+   */
+  readonly pendingCount = computed(() => {
+    const awaiting = this.tasks().filter(
+      (e) => (e.status === 'REQUESTED' || e.status === 'QUOTED') && !quoteRequested(e),
+    ).length;
+    const requested = this.requestedCount() ?? this.queueTasks().filter(quoteRequested).length;
+    return awaiting + requested;
+  });
   readonly disputeCount = computed(() => this.disputes().length);
 
   readonly topStats = computed(() => {
@@ -157,8 +179,9 @@ export class AdminDataService {
     const activeTasks = tasks.filter(
       (t) => !TERMINAL.includes(t.status) && t.status !== 'EXPIRED',
     ).length;
-    const today = new Date().toDateString();
-    const todayErrands = tasks.filter((t) => new Date(t.createdAt).toDateString() === today).length;
+    // "Today" is the East Africa Time day, never the browser's (row 96).
+    const today = eatDayKey(Date.now());
+    const todayErrands = tasks.filter((t) => eatDayKey(t.createdAt) === today).length;
     const completed = tasks.filter((t) => TERMINAL.slice(0, 3).includes(t.status)).length;
     const pending = tasks.filter((t) => t.status === 'REQUESTED' || t.status === 'QUOTED').length;
     const awaitingQuote = tasks.filter((t) => t.status === 'REQUESTED').length;
@@ -224,7 +247,7 @@ export class AdminDataService {
     const days = lastNDates(7);
     return days.map((d) => ({
       label: d.label,
-      count: this.tasks().filter((t) => new Date(t.createdAt).toDateString() === d.key).length,
+      count: this.tasks().filter((t) => eatDayKey(t.createdAt) === d.key).length,
     }));
   });
 
@@ -265,6 +288,7 @@ export class AdminDataService {
       this.me.set(me);
       this.refreshedAt.set(Date.now());
       void this.refreshRefundBadge();
+      void this.refreshQuoteRequests();
     } catch (e) {
       this.error.set(syncErrorCopy(e));
     } finally {
@@ -277,9 +301,30 @@ export class AdminDataService {
       const res = await firstValueFrom(this.api.listErrands());
       this.errands.set(res.items);
       this.refreshedAt.set(Date.now());
+      void this.refreshQuoteRequests();
     } catch {
       /* op-level refresh failures surface on next full refresh */
     }
+  }
+
+  /**
+   * Loads the customer requests for a new quote (row 68, m-8): up to 100
+   * requested tasks for the queue and their count for the badge. Only
+   * QUOTED / ACCEPTED tasks can be re-quoted (`quoteRequested()`). Each part
+   * keeps its last value on error.
+   */
+  async refreshQuoteRequests(): Promise<void> {
+    const statuses: ErrandStatus[] = ['QUOTED', 'ACCEPTED'];
+    await Promise.all([
+      firstValueFrom(this.api.listErrands(statuses, null, 100, { quoteRequested: true })).then(
+        (res) => this.requestedErrands.set(res.items),
+        () => undefined,
+      ),
+      firstValueFrom(this.api.countErrands(statuses, true)).then(
+        (res) => this.requestedCount.set(res.count),
+        () => undefined,
+      ),
+    ]);
   }
 
   // --- Drawer data: errand detail + status history (per selection) ---
@@ -342,7 +387,21 @@ export class AdminDataService {
     ] as const) {
       if (key in patch) (listPatch as Record<string, unknown>)[key] = patch[key];
     }
+    const wasRequested = [...this.errands(), ...this.requestedErrands()].some(
+      (e) => e.id === id && quoteRequested(e),
+    );
     this.errands.update((items) => items.map((e) => (e.id === id ? { ...e, ...listPatch } : e)));
+    this.requestedErrands.update((items) =>
+      items.map((e) => (e.id === id ? { ...e, ...listPatch } : e)),
+    );
+    // A request answered here (new quote, or the task moved on) leaves the badge now.
+    const count = this.requestedCount();
+    const isRequested = [...this.errands(), ...this.requestedErrands()].some(
+      (e) => e.id === id && quoteRequested(e),
+    );
+    if (count !== null && wasRequested && !isRequested) {
+      this.requestedCount.set(Math.max(0, count - 1));
+    }
     const d = this.detail();
     if (d && d.id === id) {
       this.detail.set({ ...d, ...patch });
@@ -532,27 +591,31 @@ function hashCoord(id: string, salt: number, bound: number): number {
   return h % bound;
 }
 
-function lastNDates(n: number): { key: string; label: string }[] {
+const DAY_MS = 24 * 3600 * 1000;
+
+/** The last `n` East Africa Time days, oldest first (row 96). */
+export function lastNDates(n: number, now = Date.now()): { key: string; label: string }[] {
   const out: { key: string; label: string }[] = [];
   const DAY_NAMES = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   for (let i = n - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    out.push({ key: d.toDateString(), label: DAY_NAMES[d.getDay() === 0 ? 6 : d.getDay() - 1] });
+    const at = now - i * DAY_MS;
+    const day = eatWeekday(at);
+    out.push({ key: eatDayKey(at), label: DAY_NAMES[day === 0 ? 6 : day - 1] });
   }
   return out;
 }
 
-function lastNWeeks(n: number): { label: string; start: Date; end: Date }[] {
+/** The last `n` weeks, Monday 00:00 East Africa Time to the next Monday (row 96). */
+export function lastNWeeks(
+  n: number,
+  now = Date.now(),
+): { label: string; start: Date; end: Date }[] {
   const out: { label: string; start: Date; end: Date }[] = [];
-  const now = new Date();
+  const midnight = Date.parse(`${eatDayKey(now)}T00:00:00+03:00`);
+  const monday = midnight - ((eatWeekday(now) + 6) % 7) * DAY_MS;
   for (let i = n - 1; i >= 0; i--) {
-    const start = new Date(now);
-    start.setDate(now.getDate() - (now.getDay() || 7) + 1 - i * 7); // Monday of week
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 7);
-    out.push({ label: `W${i + 1}`, start, end });
+    const start = new Date(monday - i * 7 * DAY_MS);
+    out.push({ label: `W${i + 1}`, start, end: new Date(start.getTime() + 7 * DAY_MS) });
   }
   return out;
 }

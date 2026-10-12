@@ -43,4 +43,33 @@ describe('FormFieldComponent (A-06)', () => {
     expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(input.classList).toContain('is-invalid');
   });
+
+  it('sets the numeric data in the hint in Fira Code, the words in Fira Sans', () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    const hint = (fixture.nativeElement as HTMLElement).querySelector('.field-hint')!;
+    expect(hint.textContent).toBe('Between KSh 0 and KSh 1,200.');
+    expect(Array.from(hint.querySelectorAll('.num'), (n) => n.textContent)).toEqual([
+      'KSh 0',
+      'KSh 1,200',
+    ]);
+  });
+
+  it('plainHint keeps a rule like "At least 20 characters" in Fira Sans (m-12)', () => {
+    const fixture = TestBed.createComponent(PlainHintHost);
+    fixture.detectChanges();
+    const hint = (fixture.nativeElement as HTMLElement).querySelector('.field-hint')!;
+    expect(hint.textContent?.trim()).toBe('At least 20 characters.');
+    expect(hint.querySelector('.num')).toBeNull();
+  });
 });
+
+@Component({
+  imports: [FormFieldComponent, FieldControlDirective],
+  template: `
+    <app-form-field label="Note" hint="At least 20 characters." [plainHint]="true">
+      <textarea appFieldControl></textarea>
+    </app-form-field>
+  `,
+})
+class PlainHintHost {}
