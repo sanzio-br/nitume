@@ -54,4 +54,22 @@ describe('FormFieldComponent (A-06)', () => {
       'KSh 1,200',
     ]);
   });
+
+  it('plainHint keeps a rule like "At least 20 characters" in Fira Sans (m-12)', () => {
+    const fixture = TestBed.createComponent(PlainHintHost);
+    fixture.detectChanges();
+    const hint = (fixture.nativeElement as HTMLElement).querySelector('.field-hint')!;
+    expect(hint.textContent?.trim()).toBe('At least 20 characters.');
+    expect(hint.querySelector('.num')).toBeNull();
+  });
 });
+
+@Component({
+  imports: [FormFieldComponent, FieldControlDirective],
+  template: `
+    <app-form-field label="Note" hint="At least 20 characters." [plainHint]="true">
+      <textarea appFieldControl></textarea>
+    </app-form-field>
+  `,
+})
+class PlainHintHost {}

@@ -9,7 +9,8 @@ let nextId = 0;
  * on the projected input/textarea/select: it gets the id, `.field-input`,
  * `aria-describedby` (error + hint) and `aria-invalid`.
  *
- * Numeric data inside the hint (amounts, receipts) renders in Fira Code.
+ * Numeric data inside the hint (amounts, receipts) renders in Fira Code;
+ * `plainHint` opts out when the digits are a rule, not data.
  *
  * `prefix` renders a static Fira Sans prefix inside the field (money inputs:
  * `KSh`); the value text of a money input is Fira Code (`numeric`).
@@ -30,7 +31,13 @@ let nextId = 0;
       </div>
       @if (hint() || counter()) {
         <div class="field-foot">
-          <span class="field-hint" [id]="hintId"><app-num-text [text]="hint()" /></span>
+          <span class="field-hint" [id]="hintId">
+            @if (plainHint()) {
+              {{ hint() }}
+            } @else {
+              <app-num-text [text]="hint()" />
+            }
+          </span>
           @if (counter()) {
             <span class="field-counter" [class.is-error]="counterError()">{{ counter() }}</span>
           }
@@ -46,6 +53,8 @@ let nextId = 0;
 export class FormFieldComponent {
   readonly label = input<string>('');
   readonly hint = input<string>('');
+  /** Hint is a rule, not data (e.g. `At least 20 characters`): all Fira Sans. */
+  readonly plainHint = input(false);
   readonly error = input<string | null>(null);
   readonly counter = input<string>('');
   readonly counterError = input(false);

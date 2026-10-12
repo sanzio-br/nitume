@@ -107,6 +107,15 @@ describe('DisputeDrawerComponent (G-6, G-19..G-22)', () => {
     expect(text).not.toContain('Buy groceries at Naivas');
   });
 
+  it('keeps the "At least 20 characters" rule in Fira Sans; only the counter is Fira Code (m-12)', async () => {
+    const fixture = await render('DISPUTED');
+    const el = fixture.nativeElement as HTMLElement;
+    const hint = el.querySelector('.field-hint')!;
+    expect(hint.textContent).toContain('At least 20 characters.');
+    expect(hint.querySelector('.num')).toBeNull();
+    expect(el.querySelector('.field-counter')).not.toBeNull();
+  });
+
   it('uses outline + primary buttons, disabled until 20 characters', async () => {
     const fixture = await render('DISPUTED');
     const el = fixture.nativeElement as HTMLElement;
