@@ -8,7 +8,7 @@
 ## Purpose
 Show the customer exactly what to pay for the item/merchant amount and how, kept separate from the service and runner fees (three flows separate).
 - `merchant_direct`: the customer pays the merchant's Till/Paybill from their own M-Pesa. Nitume does not collect this money and never STK-pushes to a merchant; an approved increase is paid the same way, manually, to the same Till/Paybill (row 67).
-- `send_to_runner`: the customer pays the item amount **to Nitume** (rows 42, 66): the original amount inside the combined fee STK (row 76), an approved increase by its own STK (variant B). Nitume then pays the runner through the payout ledger. There is no direct customer-to-runner transfer and no runner number is shown.
+- `send_to_runner`: the customer pays the item amount **to Nitume** (rows 42, 66): the original amount inside the combined fee STK (row 76), an approved increase by its own STK (variant B). Nitume then reimburses the runner through the payout ledger after the purchase receipt is accepted, never in advance (row 95); this screen says nothing about it. There is no direct customer-to-runner transfer and no runner number is shown.
 - Only Buy For Me and Get It For Me tasks carry an item amount (row 80); this screen never opens for other categories.
 
 ## Entry / exit

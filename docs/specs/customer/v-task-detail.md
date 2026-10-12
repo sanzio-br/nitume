@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 482–506 (`#v-task-detail`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
 - Implementation: `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` on branch `feat/customer-integrations`
-- Status: matches-design
+- Status: partial (spec update 2026-10-12, row 102: refund copy for EXPIRED/FAILED; was matches-design)
 
 ## Purpose
 Record of one task in any state: status, reference and time, runner, evidence, payment, **refund status** (row 54), the next action, and a way to report a problem.
@@ -61,6 +61,11 @@ States (proposed):
 - Loading: skeleton cards. Error: C-33 `Couldn't load this task.` + `Try again`.
 - Not paid (before PAYMENT_CONFIRMED): Payment section shows the 13 slate-600 line `Not paid yet.` instead of the receipt.
 - Cancelled after payment (price-change reject, customer-favourable dispute, late payment): receipt as paid, plus the refund group. If the API has not opened the review yet, show nothing about refunds.
+- **Expired or failed after payment (row 102)**: an EXPIRED or FAILED task that was paid shows the receipt as paid (not `Not paid yet.`), plus the refund group. While the review is `pending_review` the line under the chip follows the trigger (`_shared.md` §11):
+  - EXPIRED (`expired_after_payment`): `We couldn't find a runner for this task in time. We're reviewing a refund and will let you know the outcome.`
+  - FAILED (`failed_after_payment`): `This task couldn't be completed. We're reviewing a refund and will let you know the outcome.`
+  - Decided reviews use the common lines (`Refund approved`, `Refunded`, `No refund`). Never write that a refund is automatic or guaranteed: it is a review (row 102). Before the API opens the review (and for an EXPIRED/FAILED task that was never paid), show nothing about refunds.
+- **Corrected payouts (row 100)**: nothing extra. The refund group shows whatever effective status and amount the API returns (a reversed payout reads `Refund approved` until a new payout is sent).
 - Refund status changes live: refresh on `errand:status_changed` and on a refund notification (event type needs api-contract).
 
 ## Numeric fields (Fira Code)
@@ -86,12 +91,21 @@ States (proposed):
 - Refund decision note never shown (row 69, was SQ-10); status and amount only.
 - Refund ceilings (rows 81, 87) are admin-side; nothing changes here. Several reviews per task are listed newest first, as specced.
 - Decrease reviews appear only on `send_to_runner` tasks (row 86). Amounts in `KSh` (row 82).
+- Row 102 (2026-10-12): paid EXPIRED/FAILED tasks get a refund review; trigger-specific pending lines above.
+- Row 100 (2026-10-12): payout corrections are invisible to the customer; the group reflects the latest effective payout.
+- Row 101 (2026-10-12): no `payoutReference` in the customer refund view (already handled).
 
 ## Open questions (non-blocking; build default given)
 - Q2: Active tasks open this screen with a `Track live` button (default, as the table above).
 - Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
 
 ## Current vs design
+Spec update 2026-10-12 (row 102) against `main` @ `4963a1c`: status set to **partial**.
+1. Core `RefundTrigger` (`packages/nitume_core/lib/src/models/enums.dart:436-443`) has no `expired_after_payment` / `failed_after_payment`; `tryFromWire` returns `null` for them, so the app cannot pick the trigger-specific line. Needs core-ui.
+2. The refund group shows the generic pending line for every trigger. Add the two trigger-specific lines (via the shared refund-group widget, not inline in the screen) and tests for EXPIRED and FAILED tasks with a pending review, plus an EXPIRED task with no review (no refund group).
+3. Confirm the Payment section treats a paid EXPIRED/FAILED task as paid (receipt, not `Not paid yet.`); `task_detail_screen.dart:259` keys on `paid`, which should already hold. Test it.
+4. Row 100: no client change (the API maps the effective payout into the existing fields).
+
 Spec update 2026-10-09 (rows 69, 81, 82, 86, 87): no client change; the build already hides the decision note. Status unchanged.
 
 Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: PASS. `View payment details` now uses Track's `itemAmountDue()` (round-1 minor closed).
