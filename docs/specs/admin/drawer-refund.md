@@ -3,7 +3,7 @@
 - Mockup: **not drawn. EXTENDS MOCKUP**: a fourth drawer next to `#drawer-task`, `#drawer-runner`, `#drawer-dispute`, built from the same drawer anatomy (`.drawer-head`, `.drawer-section`, `.drawer-label`, `.drawer-card`, `.drawer-row`, `.drawer-timeline`, `.drawer-actions`) and the design-system form field. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/refund-drawer.ts` (hosted by the shell's `app-ops-drawer`, `DrawerKind` `'refund'`) and `refund-link.section.ts` (task drawer link)
-- Status: partial (spec update 2026-10-12 for rows 100, 102 and 96; was matches-design after the 2026-10-09 round-4 PASS; see Current vs design)
+- Status: matches-design (re-audit round 5, 2026-10-12, `fix/angular-admin-owner-answers-5` @ `053fbc6`: PASS, minors m-10, m-11; see Current vs design)
 
 ## Purpose
 Show one refund review and let any authorized admin (row 77: no second approver, no amount threshold) (1) decide the refund amount, KSh 0 up to the review's ceiling, and (2) for an approved refund, record the manual M-Pesa payout with its receipt (rows 37, 54). The ceiling is what the customer paid **to Nitume** (including an item amount paid to Nitume even if the runner already bought the item, row 81) **minus refunds already approved or sent on the same task** (row 87); for a `Price decrease` review it is the decrease (`send_to_runner` tasks only, row 86). A review opens for every **paid** task that ends CANCELLED, EXPIRED or FAILED (row 102: "a review trigger, not an automatic refund") and for an approved price decrease. (3) After a payout is recorded, record an auditable **correction or reversal** of it without touching the original receipt (row 100). The refund is a record attached to the task, not a task state.
@@ -11,7 +11,7 @@ Show one refund review and let any authorized admin (row 77: no second approver,
 ## Entry / exit
 - Entry: a row in `p-refunds`; `Open refund review` in the dispute drawer after a customer-favourable verdict (`drawer-dispute-outcome.md`); a row in the task drawer's `Refund` section of any task from PAYMENT_CONFIRMED on that has reviews (see "Task drawer link" below, SA-2).
 - Drawer head title: `Refund review`.
-- Exit: ✕, overlay, ESC (A-01). With unsaved input in the decision or payout form, closing asks via A-08: title `Discard this decision?`, body `The amount and note you entered will be lost.`, buttons `Back` / `Discard` (outline/primary, no red).
+- Exit: ✕, overlay, ESC (A-01). With unsaved input in the decision or payout form, closing asks via A-08: title `Discard this decision?`, body `The amount and note you entered will be lost.`, buttons `Back` / `Discard` (outline/primary, no red). With unsaved input in a correction form (closing the drawer, or `Cancel` on the form): title `Discard this correction?`, body `What you entered will be lost.`, buttons `Back` / `Discard` (builder copy, accepted in the 2026-10-12 round-5 re-audit; a correction has a receipt, an amount and a reason, so the decision wording does not fit). The resent form's prefilled amount alone does not count as input.
 - `Open task` (link-style `.btn .btn-text`) replaces the drawer content with the task drawer for the errand (same shell drawer, kind `task`).
 
 ## States of the review
@@ -98,7 +98,7 @@ No edit, delete or undo control on a card. A mistake in a correction is fixed wi
    - A-06 `M-Pesa receipt` (required), same input rules.
    - A-06 `Amount sent` (required), money input prefilled with `refundAmount`. Hint: `Up to KSh {ceiling}.`
 5. A-06 `Reason` (required, all kinds): textarea 3 rows, max 500, Fira Code counter `0/500`. Hint: `Kept in the audit history. Not shown to the customer.`
-6. `.drawer-actions`: `.btn .btn-outline` `Cancel` (closes the form; asks the A-08 discard dialog if anything was typed) + `.btn .btn-primary` `Save correction` / `Record reversal` / `Record new payout`, disabled while any field is invalid.
+6. `.drawer-actions`: `.btn .btn-outline` `Cancel` (closes the form; asks the A-08 discard dialog `Discard this correction?` / `What you entered will be lost.` if anything was typed) + `.btn .btn-primary` `Save correction` / `Record reversal` / `Record new payout`, disabled while any field is invalid. The `resent` form has **no** `Cancel`: while the payout is reversed the form is the drawer's standing action (as the `approved` payout form), not something the admin opened (accepted 2026-10-12, round 5).
 
 The ceiling for `newAmount` is the API's `correctionCeiling` (the review's own basis `amountPaid`, net of the effective payouts of the task's **other** approved/refunded reviews, row 87).
 
@@ -229,7 +229,8 @@ Task id, every amount (paid rows, total, already refunded, refundable in this re
 - Task states: a cancellation-type review's task is CANCELLED, EXPIRED or FAILED (row 102); a decrease review's task is usually active. No transition is triggered here.
 
 ## Accessibility
-- Drawer is `role="dialog"` with the title as its label (A-01). Focus moves to the first focusable element (the refund amount input in `pending_review`, the receipt input in `approved`, the close button otherwise).
+- Drawer is `role="dialog"` with the title as its label (A-01). Focus moves to the first focusable element (the refund amount input in `pending_review`, the receipt input in `approved`, the new payout's `M-Pesa receipt` input on a `refunded` review whose effective payout is reversed (amended 2026-10-12, round 5: that form is the next action, as in `approved`), the close button otherwise). The same rule applies after a reload or a save (e.g. right after `Record reversal`).
+- Opening the correction form moves focus to its first input; closing it (`Cancel`, or `Discard` in the dialog) returns focus to `Record a correction` (amended 2026-10-12, round 5).
 - Inputs have visible labels; hints and errors are tied with `aria-describedby`; invalid fields get `aria-invalid="true"`.
 - Success notices are `role="status"`; errors `role="alert"`.
 - Buttons are at least 36px tall; the primary action is a single full-width button so it is not confused with the quick-fill buttons.
@@ -250,6 +251,14 @@ Task id, every amount (paid rows, total, already refunded, refundable in this re
 - AQ-10 (payments, default given): a correction amount above the ceiling (an over-payment) is refused (default); the over-payment is handled outside the app.
 
 ## Current vs design
+Re-audit round 5 (2026-10-12) against `fix/angular-admin-owner-answers-5` @ `053fbc6` (`docs/audits/admin-gap-report.md`, "Re-audit round 5"): **PASS**. API round-5 fields typed optional with `TODO(owner-answers-5)` until `feat/api-owner-answers-5` merges (accepted).
+1. Row 100 built: `Current payout` card above `Original payout` (original card unchanged after corrections, tested), `Corrections` history with one `app-refund-correction-card` per record (no edit/delete/undo, tested), inline form with the A-09 kind toggle (reason kept across the switch, tested) or the `resent` form prefilled with `refundAmount`, validation table, the three A-08 dialogs, A-11 notices, every error code in the table (conflict reload keeps the reason, reused receipt, ceiling, no change; tested), Activity items, `expectedLatestCorrectionId` sent. Form rules live in `refund-correction.ts` (unit-tested).
+2. Row 102: `Task expired` / `Task failed` from the shared `refund-labels.ts` (tested).
+3. Discard copy for the correction form `Discard this correction?` / `What you entered will be lost.`: accepted (Entry / exit).
+4. Form-field hints now render amounts and receipts in Fira Code through `app-num-text` (`6f7f39d`): accepted (`_shared.md` A-06).
+5. m-10 (minor, a11y): `refund-drawer.ts:996-1002` `focusForm()` (and `:1083`, `:1121` for Cancel/Discard) focuses only the decision amount or the payout receipt, so a review that opens, reloads or is saved into the reversed state sends focus to the close button, and `Cancel`/`Discard` on the correction form drops focus to the page. Spec amended (Accessibility); fix on the next touch.
+6. m-11 (minor, typography): receipts inside the correction dialog body and the `Current: {receipt}` hint reach Fira Code only through the `app-num-text` regex, which needs at least six characters with a digit and a letter; the API accepts 4–64 character codes. Real M-Pesa codes (10 characters) match. Fix on the next touch: pass the receipt as its own Fira Code part (as the `mark_paid` dialog does).
+
 Spec update 2026-10-12 (owner rows 96, 100, 102) against `main` @ `4963a1c`: status set to **partial**.
 1. Row 100: nothing built for corrections (`refund-drawer.ts` has the read-only Payout card only, correct for row 82). Build the "Corrections" section: Current/Original payout cards, correction cards, the inline form with the A-09 kind toggle, validation, dialogs, notices, error mapping, Activity items. Needs N-15 from api-contract first.
 2. Row 102: `refund-labels.ts` has no labels for `expired_after_payment` / `failed_after_payment` (falls back to title-cased raw values). Add `Task expired` / `Task failed`; add the `Payout reversed` chip label (effective payout). Needs N-16 for real data; the labels can ship first.

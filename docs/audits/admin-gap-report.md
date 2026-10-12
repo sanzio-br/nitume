@@ -472,3 +472,59 @@ The same lists appear in the customer and admin gap reports. Order: api-contract
 - **SQ-16 (payments, row 95)**: since the runner pays out of pocket first, is a `send_to_runner` purchase limited by `runner_profiles.max_purchase_advance`, and may a runner decline a task whose item amount is above their limit?
 - **AQ-9 (payments, row 100)**: customer notification on a correction or reversal. Default: only a new payout after a reversal notifies (`Refund sent`).
 - **AQ-10 (payments, row 100)**: a correction amount above the review's ceiling (an over-payment): default refused, handled outside the app.
+
+
+## Re-audit round 5 (2026-10-12): `fix/angular-admin-owner-answers-5`
+
+Audited `fix/angular-admin-owner-answers-5` @ `053fbc6` (9 commits on `main` @ `2c7251a`: `1d3da2b`, `c333cd8`, `16ad907`, `6f7f39d`, `6eef84e`, `053fbc6`, `c42aff3`, `311c989`, `5f4d4ba`) against the round-5 specs on `docs/owner-answers-5` and the round-4 cleanup / m-8. From a `git archive` of `apps/admin`: `ng test` **176 tests pass** (21 files), `ng build` clean, Prettier clean on the 27 changed files, no hex outside `_tokens.scss`, no `font-family` outside the token variables, no forbidden words, no `TODO(owner-answers-4)` left. The builder's commits touch no docs. The API round-5 fields (`effectivePayout`, `corrections[]`, `correctionCeiling`) are typed optional with `TODO(owner-answers-5)` while `feat/api-owner-answers-5` is unmerged: accepted. Field names, error codes and the corrections endpoint (201 with the updated detail) were checked against that branch with `git show`.
+
+| View | Verdict | Findings |
+|---|---|---|
+| p-refunds | **PASS** | none |
+| drawer-refund (Corrections, row 102 labels) | **PASS** | m-10, m-11 (minor) |
+| drawer-task-requote (m-8, `Valid until` UTC) | **PASS** | m-8 closed |
+| `_shared.md` §3.1 EAT (app-wide) | **PASS** | none |
+| drawer-dispute-outcome (affected by the A-06 hint change) | **PASS** | m-12 (minor) |
+
+### Decisions on the points raised by the builder
+
+1. **`status=QUOTED,ACCEPTED` on the m-8 calls: accepted, and required.** `main`'s `ErrandStatusFilterDto` accepts `status=A,B`. The API clears `quoteRequestedAt` only when a new quote is issued (`errands.service.ts:1135-1138`), so a task cancelled or expired after the request keeps the timestamp; without the filter the count would include those tasks and the badge would over-count. The filter makes the server match the client rule `quoteRequested()` (`admin-data.service.ts:57-59`). Written into `drawer-task-requote.md` Data.
+2. **Correction discard copy `Discard this correction?` / `What you entered will be lost.` (buttons `Back` / `Discard`): accepted.** The decision wording (`The amount and note…`) does not fit a receipt + amount + reason form. Written into `drawer-refund.md` Entry / exit and Corrections → Form. The `resent` form having no `Cancel` (it is the standing action while reversed, like the `approved` payout form) is also accepted and written in.
+3. **Focus not moving into the new-payout form on a reversed review: spec gap, minor (m-10).** The builder followed the spec's wording ("the close button otherwise"), so this does not fail the view. The reversed state is the `approved` state's equivalent (it sits under `Payout due` with `Record payout`), so the spec is amended: focus goes to the new payout's `M-Pesa receipt` input on open, reload and right after `Record reversal`; and closing the correction form returns focus to `Record a correction`.
+4. **`app-form-field` hints rendering numbers in Fira Code app-wide: accepted** (`_shared.md` A-06 updated). It is what the refund hints need (`Between KSh 0 and KSh 1,200…`, `Current: SLK4H7XQ2P`, `Up to KSh …`). I checked every hint in the app: `East Africa Time`, `Only if the merchant gave you one.`, `Not shown to the customer.`, `The code M-Pesa gave for the reversal.` and `Kept in the audit history…` have no digits. The one false positive is m-12.
+5. **`Valid until` sent as UTC `…Z`: accepted.** `_shared.md` §3.1 says the client converts to a UTC ISO string; `eatLocalInputToIso` (`shared-format.ts:150`) now returns `Date#toISOString()` (12:00 EAT → `09:00:00.000Z`), the API's ISO validation accepts it, and the tests pin a non-EAT process zone. §3.1 now names the format.
+
+### p-refunds: PASS
+- Row 102: `Task expired` / `Task failed` in the one shared map (`refund-labels.ts:5-12`); `Needs review`, `Payout due` and `All statuses` empty states match Copy (tested).
+- Row 100: `refundChipStatus` / `refundRowAction` (`refund-labels.ts:79-92`) give `Payout reversed` (A-02 `payout_reversed`, pending tone, `status-chip.component.ts:83-92`) and `Record payout` for a reversed payout; a sent payout with corrections still reads `Refunded`; a drawer save patches `effectivePayout` in place (`refunds.panel.ts:186-198`). Tested.
+
+### drawer-refund: PASS (minor)
+- Corrections (row 100) built as specced: `Current payout` card (chip, `Amount sent` `KSh 0` and receipt `—` after a reversal, `Last changed`), `Original payout` card unchanged (tested), oldest-first `app-refund-correction-card` (one component, no edit/delete/undo, `→` in Fira Sans, reason wraps; tested per kind), inline form with the A-09 toggle (reason kept, other fields cleared; tested), `resent` form prefilled with `refundAmount`, validation table (`refund-correction.ts`, unit-tested), the three dialogs, the three notices, every error code including the conflict reload that keeps the reason (tested), Activity items, `expectedLatestCorrectionId` on every save.
+- Row 102 labels and row 96 times: from the shared helpers.
+
+10. m-10 (minor, accessibility) `drawers/refund-drawer.ts:996-1002` (`focusForm`), `:1083` (`cancelCorrection`), `:1121` (discard). Spec (amended): on a reversed payout focus goes to the new payout's `M-Pesa receipt` input on open, reload and after `Record reversal`; closing the correction form returns focus to `Record a correction`. Code: focus goes to the close button on a reversed review; after `Cancel`/`Discard` the focused button disappears and focus drops to the document. Fix: include `correctionReferenceInput` in `focusForm()` when `reversed()`; focus the `Record a correction` button after `resetCorrection()` from Cancel/Discard; add tests.
+11. m-11 (minor, typography) `refund-drawer.ts` correction dialog body (`app-num-text` on `correctionDialogBody()`) and the `Correct M-Pesa receipt` hint. Spec: every receipt and reversal code in Fira Code. Code: the receipt reaches Fira Code only through the `app-num-text` regex, which needs six or more characters with both a digit and a letter; the API accepts 4–64 character codes, so `AB12` or an all-letter code renders in Fira Sans. Real 10-character M-Pesa codes match, so this is an edge case. Fix: render the receipt as its own `.num` part, as the `mark_paid` dialog already does.
+
+### drawer-task-requote: PASS
+- m-8 closed (`5f4d4ba`): `refreshQuoteRequests()` (`admin-data.service.ts:316`) on load and refresh; `queueTasks` merges and dedupes; `pendingCount` adds the count endpoint's requested part to REQUESTED/QUOTED rows that are not requested (no double count); on an error each part keeps its last value; an answered request leaves the badge at once. Tested, with the query params asserted.
+- Row 96: `Valid until` UTC (decision 5); the dialog's expired-quote time carries `EAT` (`formatDateTimeEat`).
+
+### `_shared.md` §3.1 EAT (app-wide): PASS
+- `live-map.panel.ts` sync time now `formatTime` (EAT); `Today` KPI, daily bars and Monday-start weeks on the EAT calendar (`admin-data.service.ts` `lastNDates` / `lastNWeeks`, `eatDayKey`, `eatWeekday`); `formatDateTime` adds the year outside the current EAT year. No `toLocale*Time`, `toDateString` or local `getHours/getDate` calls remain in app code. Tests switch the process zone to `America/Los_Angeles` (`testing/admin-test-utils.ts` `timeZoneSwitch`).
+
+### drawer-dispute-outcome: PASS (minor)
+12. m-12 (minor, typography) `drawers/dispute-drawer.ts:200`. Spec: Fira Code for numeric data only (the counter `0/2000`). Code: since `6f7f39d` the hint `At least 20 characters. The customer and runner can see this note.` renders `20` in Fira Code; it is a rule, not data. Fix: a plain-text opt-out on `app-form-field` (e.g. a `plainHint` input) used by this field.
+
+### Carried minors
+m-1, m-2, m-3, m-4, m-5 (first re-audit) are closed at `053fbc6`: tests for m-1 and m-2 exist, `detailErrorTone` carries the 404 info tone, the dispute notice sits under the Outcome card, `.row-assign` is declared once. m-6 … m-9 were closed earlier.
+
+### Notes for the orchestrator and reviewer
+- The worktree `/Users/san/Projects/nitume-admin-answers5` has **uncommitted** copies of the round-5 docs (`docs/specs/**`, `docs/audits/**`, `SCREEN_MAP.md`, `Nitume_System_Design.md`, customer specs). They are not in any commit on the branch; they must not be committed there (the `docs/owner-answers-5` branch owns them). Discard them before the branch is handed to the reviewer.
+- The `TODO(owner-answers-5)` markers (`core/api-types.ts:324`, `:412`; `refund-labels.ts:56`; `refund-drawer.ts:817`, `:830`) go once `feat/api-owner-answers-5` is on `main`; until then `correctionCeiling` falls back to `amountPaid` (not net of other reviews). The API enforces the real ceiling and the drawer maps the 400.
+- The API also defines `payout_amount_not_allowed` (an amount sent with `reversed`). The client never sends one, so the generic 400 path is enough.
+
+### Builder list (web-parity, next touch; none blocks the merge)
+1. m-10 focus on the reversed payout form and after closing the correction form.
+2. m-11 receipts as explicit Fira Code parts in the correction dialog and hint.
+3. m-12 plain-text hint opt-out for the dispute note.
+4. Remove `TODO(owner-answers-5)` and make the N-15 fields required once `feat/api-owner-answers-5` is on `main`.

@@ -3,7 +3,7 @@
 - Mockup: `#drawer-task` has no quote content; the queue's `Assign` / `View` row buttons are the only admin actions drawn. The current build already adds an `Admin actions` card with `Issue quote` (REQUESTED). **EXTENDS MOCKUP**: a `Quote` section showing the current quote and its expiry, and an `Issue new quote` action for a QUOTED task whose quote has expired (row 46). Built from `.drawer-section` / `.drawer-card` / `.drawer-row`, A-08 for the form dialog and the design-system form field. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/quote.section.ts`, `quote-dialog.ts` (in `task-drawer.ts`)
-- Status: matches-design (re-audit 2026-10-09 round 4: PASS; m-6, m-7 closed in round 2, m-8 deferred; see Current vs design)
+- Status: matches-design (re-audit round 5, 2026-10-12, `fix/angular-admin-owner-answers-5` @ `053fbc6`: PASS; m-8 closed; see Current vs design)
 
 ## Purpose
 A customer cannot accept or pay an expired quote (`quote_expired`, row 46). Ops must see that a quote has expired and issue a fresh one. On a QUOTED or ACCEPTED errand with an expired newest quote, `POST /errands/:id/quote` writes a new quote and updates the quoted price **without a status change** (QUOTED stays QUOTED; ACCEPTED stays ACCEPTED and the customer must accept/pay the new quote, row 72). A quote that has not expired cannot be replaced (`quote_still_valid`, row 88). Every quote has an expiry, 24 h by default (row 83). After expiry the customer can ask for a new quote (row 68); the section shows that request.
@@ -100,12 +100,12 @@ Quoted total, every fee component (display and input values), `Issued` and `Vali
 - Customer notification: **needs: api-contract (N-4)**: a re-quote emits nothing (no status change, no history row), so the customer never learns of the new price. Needs a push + socket event (e.g. `quote.reissued`) and an audit row.
 - Customer request for a new quote (row 68): N-13 built on `feat/api-owner-answers-4` (not on `main` yet): `quoteRequestedAt` on the errand detail and list items (cleared by the next quote), `GET /errands?quoteRequested=true` and `GET /errands/count?quoteRequested=true`, an admin feed notification `quote_requested`, and a PROPOSED `quote:requested` socket to an `admins` room. The admin types `quoteRequestedAt` optional with `TODO(owner-answers-4)`.
   - **Now (accepted 2026-10-09 round 4)**: the queue flag, the requested-first sort and the `Task queue` badge come from the dashboard's loaded window (the newest 100 tasks), the same source as every other shell badge. No filter, count or socket call: the filter/count params would be rejected by `main` (unknown query property), and the admin app has no socket client (manual refresh, as the other panels).
-  - **When `feat/api-owner-answers-4` is on `main`** (m-8, with the `TODO(owner-answers-4)` cleanup): load `GET /errands?quoteRequested=true&limit=100` on dashboard load and refresh, merge it into the queue (dedupe by id) so a request on a task older than the newest 100 is never missed, and take the requested part of the badge from `GET /errands/count?quoteRequested=true`. A live `quote:requested` push stays out of scope until the admin app gets a socket client.
+  - **Now that `feat/api-owner-answers-4` is on `main`** (m-8, built in round 5): load `GET /errands?status=QUOTED,ACCEPTED&quoteRequested=true&limit=100` on dashboard load and refresh, merge it into the queue (dedupe by id; KPIs keep the newest-100 window) so a request on a task older than the newest 100 is never missed, and take the requested part of the badge from `GET /errands/count?status=QUOTED,ACCEPTED&quoteRequested=true`. The `status=QUOTED,ACCEPTED` filter is required (accepted 2026-10-12): the API clears `quoteRequestedAt` only when a new quote is issued, so a task cancelled or expired after the request keeps the timestamp, and the filter makes the server count match the client rule (`quoteRequested()`: QUOTED or ACCEPTED only). On an error each part keeps its last value (the badge falls back to the loaded rows). A live `quote:requested` push stays out of scope until the admin app gets a socket client.
 
 ## Accessibility
 - The `Quote expired` chip also changes the row label to `Expired`, so the state is not colour-only.
 - Dialog: focus trap, initial focus on `Total (KSh)`, ESC = Back (asks nothing; inputs are discarded).
-- `datetime-local` has a visible label and a hint with the timezone: `East Africa Time`.
+- `datetime-local` has a visible label and a hint with the timezone: `East Africa Time`. The value is sent as UTC ISO-8601 with `Z` (`_shared.md` §3.1).
 
 ## Resolved by owner answers
 - AQ-R1 (row 72): admin re-quote while ACCEPTED, no state change; the customer accepts/pays the new quote.
@@ -117,6 +117,11 @@ Quoted total, every fee component (display and input values), `Issued` and `Vali
 None.
 
 ## Current vs design
+Re-audit round 5 (2026-10-12) against `fix/angular-admin-owner-answers-5` @ `053fbc6`: **PASS**.
+1. m-8 closed (`5f4d4ba`): requested tasks merged into the queue and the badge's requested part from the count endpoint, both with `status=QUOTED,ACCEPTED` (accepted, Data); deduped by id; count error falls back to the rows; an answered request leaves the badge at once. Tested (params asserted).
+2. Row 96 (`c42aff3`): `Valid until` is typed and shown in EAT and sent as UTC `…Z` (`eatLocalInputToIso`, `shared-format.ts:150`): accepted. The expired-quote line in the re-quote dialog body uses `formatDateTimeEat` (`… EAT`), as §3.1 asks for A-08 dialogs. Tested with a non-EAT process zone.
+3. Round-4 cleanup (`16ad907`): `quoteRequestedAt` required; `TODO(owner-answers-4)` removed.
+
 Round 2 spot-check (2026-10-09, `c1630ec`): m-6 closed (`d84b2aa`, notice `The expiry time has passed. Choose a later time.`, tested); m-7 closed (`1c87c75`, 409 `payment_in_progress` copy per Errors, tested). m-8 stays deferred until `feat/api-owner-answers-4` is on `main`.
 
 Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de`: **PASS**, minors to fix on the next touch (the same branch is reopened for p-refunds):

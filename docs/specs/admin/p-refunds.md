@@ -3,7 +3,7 @@
 - Mockup: **not drawn. EXTENDS MOCKUP**: a new sidebar item and panel. Built from the mockup's `#p-queue` panel (topbar + `.table-card`) and sidebar nav pattern. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md` (A-n components, §3 money, §6 refund vocabulary, §7 API gaps, §8 questions)
 - Implementation: `apps/admin/src/app/features/admin/panels/refunds.panel.ts`; nav item in `features/admin/admin-dashboard.component.ts`
-- Status: partial (spec update 2026-10-12 for rows 100, 102; was matches-design after the 2026-10-09 round-4 PASS; see Current vs design)
+- Status: matches-design (re-audit round 5, 2026-10-12, `fix/angular-admin-owner-answers-5` @ `053fbc6`: PASS; see Current vs design)
 
 ## Purpose
 One place where ops sees every refund review (opened when a **paid** task ends CANCELLED, EXPIRED or FAILED, rows 37, 54, 102, or for an approved price decrease on a `send_to_runner` task, rows 48, 86; row 102: "a review trigger, not an automatic refund"), works the ones that need a decision, and records the manual M-Pesa payout of approved refunds. Refund reviews are records, not task states (§3.3 note). Any authorized admin works them; there is no second approver (row 77).
@@ -102,6 +102,11 @@ Widths: the panel uses the main column (`.ops-main` padding 26 34 50). Below 110
 None.
 
 ## Current vs design
+Re-audit round 5 (2026-10-12) against `fix/angular-admin-owner-answers-5` @ `053fbc6`: **PASS**.
+1. Row 102: `Task expired` / `Task failed` from the shared `refund-labels.ts` (tested); the three changed empty states match Copy word for word (tested).
+2. Row 100: chip `Payout reversed` (pending/amber, A-02 `payout_reversed` label, not an API status) and row button `Record payout` from the shared helpers `refundChipStatus` / `refundRowAction` (`refund-labels.ts`, also used by the drawer); a sent effective payout with corrections still reads `Refunded` (tested). A save in the drawer patches `effectivePayout` in place. `effectivePayout` is optional with `TODO(owner-answers-5)` until the API merges (accepted).
+3. Round-4 cleanup (`16ad907`): the round-4 fields are required now that `feat/api-owner-answers-4` is on `main`; no `TODO(owner-answers-4)` left.
+
 Spec update 2026-10-12 (owner rows 100, 102) against `main` @ `4963a1c`: status set to **partial**.
 1. Row 102: `refund-labels.ts:4-9` has no `expired_after_payment` / `failed_after_payment` labels; add `Task expired` / `Task failed` (one map, shared with the drawer). Empty-state texts for `Needs review`, `Payout due` and `All statuses` changed (Copy).
 2. Row 100: the Status chip and row button must follow `effectivePayout.state` (`Payout reversed`, `Record payout`). Needs N-15.
