@@ -225,3 +225,37 @@ Built by the agent team, 2026-10-09 to 2026-10-11, after the owner answered BOAR
 - Device builds still unverified; restrict the Places/Maps keys by app.
 - Runner app (runner notes, location pings) not started.
 
+## Owner answers round 5: rows 95–102 — fourth branch stack
+
+Built by the agent team, 2026-10-12, after the owner answered BOARD rows 95–102.
+Reviewed READY; merged into main 2026-10-12 with merge commits (every commit compiles).
+
+**Completed**
+
+- **Docs** (`docs/owner-answers-5`, `docs/customer-reaudit-5`): System Design updated for
+  rows 95, 98 and 100–102 (runner item reimbursement after an accepted receipt; single API
+  instance; payout corrections; refund reviews on paid EXPIRED/FAILED); admin and customer
+  specs; re-audits PASS.
+- **API** (`feat/api-owner-answers-5`): paid tasks ending EXPIRED or FAILED open a refund
+  review in the same transaction (row 102); auditable, append-only payout corrections,
+  reversals and re-sends with a derived effective payout (row 100); tests proving runner
+  amounts are never payable before CONFIRMED (row 95). 2 migrations.
+- **Admin** (`fix/angular-admin-owner-answers-5`): Task expired / Task failed labels,
+  Payout reversed chip and Record payout action, Corrections section with history cards,
+  12-hour EAT everywhere with UTC on the wire (row 96), round-4 fields required, quote
+  requests beyond the newest 100 tasks (m-8), minors m-10..m-12. 182 tests.
+- **Customer** (`feat/customer-owner-answers-5`): refund triggers in core; trigger-specific
+  pending refund lines on task detail; reversed payouts read "Refund approved".
+- Verified: API 380 unit; admin 182; core 225; app 115. Re-audits PASS. Reviewer: all READY.
+
+**Deferred**
+
+- Rows 104–111 open (runner reimbursement rules SQ-12..SQ-16, AQ-9, AQ-10, row 111 cap after
+  a reversal; built with the stated defaults where applicable). No runner payout ledger
+  until row 107 is approved.
+- API follow-ups (minor, admin-only): lock sibling reviews in addCorrection (cap race), an
+  advisory lock on the payout reference (reuse race; no unique index), BEFORE TRUNCATE
+  trigger on refund_payout_corrections.
+- Admin: make the TODO(owner-answers-5) fields required now that the API is merged.
+- Migration 1790101100000 down is a no-op (Postgres can't drop enum values).
+
