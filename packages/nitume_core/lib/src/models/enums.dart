@@ -431,8 +431,9 @@ enum RefundStatus {
   }
 }
 
-/// What opened a refund review (rows 37, 48, 71). Unknown values parse as
-/// `null`.
+/// What opened a refund review (rows 37, 48, 71, 102). Unknown values parse
+/// as `null`; switch with a wildcard so new server values never break a
+/// client.
 enum RefundTrigger {
   priceChangeRejected('price_change_rejected'),
   disputeCustomerFavourable('dispute_customer_favourable'),
@@ -440,7 +441,13 @@ enum RefundTrigger {
 
   /// An approved price decrease of an already-paid amount (rows 48, 71);
   /// the review carries `priceChangeRequestId`.
-  priceChangeDecrease('price_change_decrease');
+  priceChangeDecrease('price_change_decrease'),
+
+  /// The task expired after the customer had paid (row 102).
+  expiredAfterPayment('expired_after_payment'),
+
+  /// The task failed after the customer had paid (row 102).
+  failedAfterPayment('failed_after_payment');
 
   const RefundTrigger(this.wire);
   final String wire;
