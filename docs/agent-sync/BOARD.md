@@ -106,8 +106,8 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | flutter-customer | core-ui | onTextChanged on PlaceAutocompleteField (app currently reads the field text from the widget tree for the typed-without-pick check) | done: core da5e58a, app c420265 |
 | flutter-customer | design-auditor | Customer copy for the dispute verdict, if it should be shown (built: resolution note + resolved time only) | open |
 | orchestrator | design-auditor | Rows 95, 96, 100, 102 into specs + System Design §2.2/§6 (reimburse after accepted receipt; 12h EAT; payout corrections; refund reviews on EXPIRED/FAILED) | done: docs/owner-answers-5 (b0ab6a9, 871c49e, 25b3c6c, 2fc93bc, bc6c66b); p-refunds, drawer-refund, v-task-detail → partial |
-| orchestrator | api-contract | Row 102 refund reviews on paid EXPIRED/FAILED; row 100 payout correction/reversal records; row 95 reimbursement only after accepted evidence | in progress: feat/api-owner-answers-5 (../nitume-api-answers5) |
-| orchestrator | web-parity / core-ui → flutter-customer | Admin: 12h EAT (96), correction UI (100), new trigger labels (102), make round-4 fields required, m-8 quote-requested filter. Customer: new refund triggers (102) | queued (after specs + API) |
+| orchestrator | api-contract | Row 102 refund reviews on paid EXPIRED/FAILED; row 100 payout correction/reversal records; row 95 reimbursement only after accepted evidence | done: feat/api-owner-answers-5 (d5b56db, 079512a, cca2005, 0e9446d, 6d2fd99, 6ce9ad2; ~380 unit + 45 e2e on throwaway DB; migrations 1790101100000, 1790101200000). No runner ledger (row 107 open) |
+| orchestrator | web-parity / core-ui → flutter-customer | Admin: 12h EAT (96), correction UI (100), new trigger labels (102), make round-4 fields required, m-8 quote-requested filter. Customer: new refund triggers (102) | in progress: fix/angular-admin-owner-answers-5 (../nitume-admin-answers5); feat/customer-owner-answers-5 (../nitume-customer-answers5), core-ui first |
 | design-auditor | web-parity | (row 96) live-map.panel.ts:148-151 formats time without the Africa/Nairobi zone | open |
 
 ## Questions for the project owner
@@ -224,6 +224,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 108 | design-auditor (round 5 specs) | SQ-16: Are runner out-of-pocket purchases limited by max_purchase_advance, and may a runner decline a task over their limit? | open |
 | 109 | design-auditor (round 5 specs) | AQ-9: Does the customer get a notification on a payout correction or reversal? Default: only a re-sent payout notifies | open |
 | 110 | design-auditor (round 5 specs) | AQ-10: Can a correction record an amount above the refund ceiling? Default: refused | open |
+| 111 | api-contract (round 5) | Cumulative refund cap after a reversal: a reversed, not-yet-re-sent payout counts as committed at the decided refund amount (owed again). Confirm or change | open |
 
 ## Session log
 
@@ -288,3 +289,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-12 | Owner answered rows 95 (reimburse after receipt), 96 (12h EAT in admin), 98 (no Redis adapter yet, single instance), 100 (build correction/reversal records now), 101 (breaking changes accepted), 102 (EXPIRED/FAILED paid tasks open refund reviews) | — |
 | 2026-10-12 | Round 5 started from main: design-auditor and api-contract in parallel; admin and customer queued | — |
 | 2026-10-12 | design-auditor round 5: rows 95–102 folded into System Design + specs; questions 104–110 | b0ab6a9 … bc6c66b |
+| 2026-10-12 | api-contract round 5: paid EXPIRED/FAILED tasks open refund reviews (row 102); append-only payout corrections with effective payout (row 100); tests prove runner amounts are never payable before CONFIRMED (row 95). Admin and customer builds started | d5b56db … 6ce9ad2 |
