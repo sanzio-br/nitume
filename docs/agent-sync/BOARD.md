@@ -105,10 +105,12 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | web-parity | design-auditor | Spec copy for 409 refund_payout_locked (builder proposed text) and 400 quote_expiry_in_past; confirm EXPIRED tasks get the refund link (always paid per §3.3) | open |
 | flutter-customer | core-ui | onTextChanged on PlaceAutocompleteField (app currently reads the field text from the widget tree for the typed-without-pick check) | done: core da5e58a, app c420265 |
 | flutter-customer | design-auditor | Customer copy for the dispute verdict, if it should be shown (built: resolution note + resolved time only) | open |
-| orchestrator | design-auditor | Rows 95, 96, 100, 102 into specs + System Design §2.2/§6 (reimburse after accepted receipt; 12h EAT; payout corrections; refund reviews on EXPIRED/FAILED) | done: docs/owner-answers-5 (b0ab6a9, 871c49e, 25b3c6c, 2fc93bc, bc6c66b); p-refunds, drawer-refund, v-task-detail → partial |
-| orchestrator | api-contract | Row 102 refund reviews on paid EXPIRED/FAILED; row 100 payout correction/reversal records; row 95 reimbursement only after accepted evidence | done: feat/api-owner-answers-5 (d5b56db, 079512a, cca2005, 0e9446d, 6d2fd99, 6ce9ad2; ~380 unit + 45 e2e on throwaway DB; migrations 1790101100000, 1790101200000). No runner ledger (row 107 open) |
-| orchestrator | web-parity / core-ui → flutter-customer | Admin: 12h EAT (96), correction UI (100), new trigger labels (102), make round-4 fields required, m-8 quote-requested filter. Customer: new refund triggers (102) | done: admin fix/angular-admin-owner-answers-5 (9 commits, 176 tests); customer feat/customer-owner-answers-5 (ad44dc6, 5cbd081). Awaiting re-audit |
+| orchestrator | design-auditor | Rows 95, 96, 100, 102 into specs + System Design §2.2/§6 (reimburse after accepted receipt; 12h EAT; payout corrections; refund reviews on EXPIRED/FAILED) | merged into main 2026-10-12 |
+| orchestrator | api-contract | Row 102 refund reviews on paid EXPIRED/FAILED; row 100 payout correction/reversal records; row 95 reimbursement only after accepted evidence | merged into main 2026-10-12 |
+| orchestrator | web-parity / core-ui → flutter-customer | Admin: 12h EAT (96), correction UI (100), new trigger labels (102), make round-4 fields required, m-8 quote-requested filter. Customer: new refund triggers (102) | merged into main 2026-10-12 |
 | design-auditor | web-parity | (row 96) live-map.panel.ts:148-151 formats time without the Africa/Nairobi zone | done: 311c989 |
+| reviewer | api-contract | (minor follow-ups) lock sibling reviews in addCorrection (cap race); advisory lock on payout reference (reuse race, no unique index); BEFORE TRUNCATE trigger on refund_payout_corrections | open |
+| reviewer | web-parity | Make the TODO(owner-answers-5) fields required now that the round-5 API is on main | open |
 
 ## Questions for the project owner
 
@@ -296,3 +298,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-12 | Admin round-5 re-audit: all views PASS (p-refunds, drawer-refund, re-quote, EAT, dispute outcome); m-1..m-9 closed; new minors m-10..m-12 sent to web-parity before review | 6930dc5, 5c33e1e |
 | 2026-10-12 | web-parity fixed admin round-5 minors m-10 (focus), m-11 (receipts in Fira Code), m-12 (plain-text hint); 182 admin tests. Round 5 sent to reviewer | 44996ad, 1709b82, c94bf53 |
 | 2026-10-12 | reviewer: all 5 round-5 branches READY, merge commits (no squash). PROGRESS round-5 entry added. Merging into main | — |
+| 2026-10-12 | Round 5 merged into main: docs/owner-answers-5 (b7a606c), docs/customer-reaudit-5 (1b686e7), feat/api-owner-answers-5 (8e26376), fix/angular-admin-owner-answers-5 (6c186b1), feat/customer-owner-answers-5 (6194396); no conflicts. migration:run on local `nitume`: 2 applied, none pending. main: API tsc clean, 380 unit, lint 1 old warning; core 225; app 115; admin build + 182 | b7a606c … 6194396 |
