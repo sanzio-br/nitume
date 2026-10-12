@@ -174,6 +174,46 @@ void main() {
       expect(p.trigger, isNull);
     });
 
+    test('row 102: expired/failed after payment triggers parse', () {
+      expect(
+        RefundTrigger.tryFromWire('expired_after_payment'),
+        RefundTrigger.expiredAfterPayment,
+      );
+      expect(
+        RefundTrigger.tryFromWire('failed_after_payment'),
+        RefundTrigger.failedAfterPayment,
+      );
+      expect(RefundTrigger.tryFromWire('not_yet_known'), isNull);
+      expect(RefundTrigger.tryFromWire(null), isNull);
+      expect(RefundTrigger.tryFromWire(42), isNull);
+      final r = CustomerRefund.tryParse({
+        'status': 'pending_review',
+        'trigger': 'failed_after_payment',
+      })!;
+      expect(r.trigger, RefundTrigger.failedAfterPayment);
+    });
+
+    test('reversed payout: approved with paidAt null shows the amount', () {
+      final r = CustomerRefund.tryParse({
+        'id': 'rr2',
+        'errandId': 'e1',
+        'trigger': 'expired_after_payment',
+        'priceChangeRequestId': null,
+        'status': 'approved',
+        'amountPaid': '2500.00',
+        'refundAmount': '2500.00',
+        'remainingRefundable': '0.00',
+        'createdAt': '2026-10-10T09:00:00.000Z',
+        'decidedAt': '2026-10-10T10:00:00.000Z',
+        'paidAt': null,
+      })!;
+      expect(r.status, RefundStatus.approved);
+      expect(r.trigger, RefundTrigger.expiredAfterPayment);
+      expect(r.paidAt, isNull);
+      expect(r.refundAmount, '2500.00');
+      expect(r.showsAmount, isTrue);
+    });
+
     test('ErrandRepository.refund maps 404 to null', () async {
       final adapter = _Adapter({
         'GET /errands/e1/refund': (

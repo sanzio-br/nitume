@@ -155,11 +155,19 @@ class RefundGroup extends StatelessWidget {
     final c = _chip(refund.status);
     final style = NitumeTextStyles.muted;
     final Widget line = switch (refund.status) {
-      RefundStatus.pendingReview => Text(
-        "We're reviewing a refund for this task. We'll let you know the "
-        'outcome.',
-        style: style,
-      ),
+      // Row 102: paid EXPIRED / FAILED tasks get trigger-specific lines.
+      // Never say a refund is automatic: it is a review.
+      RefundStatus.pendingReview => Text(switch (refund.trigger) {
+        RefundTrigger.expiredAfterPayment =>
+          "We couldn't find a runner for this task in time. We're reviewing "
+              'a refund and will let you know the outcome.',
+        RefundTrigger.failedAfterPayment =>
+          "This task couldn't be completed. We're reviewing a refund and "
+              'will let you know the outcome.',
+        _ =>
+          "We're reviewing a refund for this task. We'll let you know the "
+              'outcome.',
+      }, style: style),
       RefundStatus.approved => Text(
         "We'll send you this refund and update this page when it's sent.",
         style: style,
