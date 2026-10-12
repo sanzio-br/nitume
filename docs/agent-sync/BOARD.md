@@ -105,6 +105,9 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | web-parity | design-auditor | Spec copy for 409 refund_payout_locked (builder proposed text) and 400 quote_expiry_in_past; confirm EXPIRED tasks get the refund link (always paid per §3.3) | open |
 | flutter-customer | core-ui | onTextChanged on PlaceAutocompleteField (app currently reads the field text from the widget tree for the typed-without-pick check) | done: core da5e58a, app c420265 |
 | flutter-customer | design-auditor | Customer copy for the dispute verdict, if it should be shown (built: resolution note + resolved time only) | open |
+| orchestrator | design-auditor | Rows 95, 96, 100, 102 into specs + System Design §2.2/§6 (reimburse after accepted receipt; 12h EAT; payout corrections; refund reviews on EXPIRED/FAILED) | in progress: docs/owner-answers-5 (../nitume-docs-answers5) |
+| orchestrator | api-contract | Row 102 refund reviews on paid EXPIRED/FAILED; row 100 payout correction/reversal records; row 95 reimbursement only after accepted evidence | in progress: feat/api-owner-answers-5 (../nitume-api-answers5) |
+| orchestrator | web-parity / core-ui → flutter-customer | Admin: 12h EAT (96), correction UI (100), new trigger labels (102), make round-4 fields required, m-8 quote-requested filter. Customer: new refund triggers (102) | queued (after specs + API) |
 
 ## Questions for the project owner
 
@@ -275,3 +278,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-11 | reviewer: all 5 round-4 branches READY (squash feat/customer-owner-answers: 6 non-compiling app commits 380084f..e304160). Owner approved rows 97 and 99. Merging into main | — |
 | 2026-10-11 | Round 4 merged into main: docs/owner-answers-3 (a464171), docs/customer-reaudit-3 (eddfac8), feat/api-owner-answers-4 (41a0578), fix/angular-admin-owner-answers (1df4daf), feat/customer-owner-answers squashed (4c92d80); no conflicts. migration:run on local `nitume`: 3 applied, 23 total. main: API tsc clean, 344 unit, lint 1 old warning; core 223; app 110; admin build + 139 | a464171 … 4c92d80 |
 | 2026-10-12 | Owner answered rows 95 (reimburse after receipt), 96 (12h EAT in admin), 98 (no Redis adapter yet, single instance), 100 (build correction/reversal records now), 101 (breaking changes accepted), 102 (EXPIRED/FAILED paid tasks open refund reviews) | — |
+| 2026-10-12 | Round 5 started from main: design-auditor and api-contract in parallel; admin and customer queued | — |
