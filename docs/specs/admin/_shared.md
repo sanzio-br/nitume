@@ -36,9 +36,15 @@
 | 86 | Decrease refund reviews only on `send_to_runner` tasks; an admin can still record KSh 0 where applicable | §6, p-refunds, drawer-refund |
 | 87 | "The cancellation refund ceiling must be based on the customer's remaining refundable exposure after all previous refunds, including approved decrease refunds, so cumulative refunds cannot exceed the amount actually paid." | drawer-refund, p-refunds |
 | 88 | Admin re-quote only after the existing quote has expired; a still-valid quote is never silently replaced | drawer-task-requote |
+| 95 | "Runner send_to_runner item amounts are reimbursed after the receipt is uploaded/accepted, not advanced before purchase." | §3 |
+| 96 | "Admin times should be displayed in 12-hour East Africa Time (EAT), while backend timestamps remain canonical." | §3.1, A-13 |
+| 98 | Socket.IO Redis adapter not approved yet: the API stays single-instance until horizontal scaling is required | §7 (note) |
+| 100 | "Build the auditable correction/reversal schema now. Original payout/receipt records remain immutable; corrections/reversals are represented separately." | drawer-refund (Corrections), §6, §7 N-15 |
+| 101 | Round-4 breaking API changes accepted as specified (customer/runner `resolvedBy: null` on disputes; no `payoutReference` in customer refund views; price changes outside Buy For Me / Get It For Me answer 400) | (no admin change) |
+| 102 | "Paid tasks ending CANCELLED, EXPIRED, or FAILED should create a refund review. This is a review trigger, not an automatic refund." | §6, p-refunds, drawer-refund |
 | 93 | The four admin tones `#DCE3EE`, `#C3CADC`, `#7E8CA8`, `#EEF1F5` are approved admin palette tokens in `_tokens.scss` | §4.1 |
 
-Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94 (AQ-1 … AQ-6, AQ-R1, AQ-R2). Still open on the BOARD and relevant here: row 85 (PayHero contract, no admin UI impact).
+Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94 (AQ-1 … AQ-6, AQ-R1, AQ-R2). Answered 2026-10-12 and applied on `docs/owner-answers-5`: rows 95, 96 (AQ-7), 98, 100, 101, 102 (AQ-8). Still open on the BOARD and relevant here: row 85 (PayHero contract, no admin UI impact).
 
 ## 2. Access
 
@@ -55,10 +61,19 @@ Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94
 - Money inputs: `<input type="text" inputmode="decimal">` in a `.field-input` with Fira Code value text, a static `KSh` prefix label in Fira Sans 13 slate-600 inside the field's left padding. Accept digits and one `.`, max 2 decimals; strip `,` and spaces before sending; send a JSON **number** (the DTOs use `@IsNumber`).
 - The three flows stay separate in every label:
   - **Service + runner fee**: one STK charge to Nitume (row 34 hides the split from the customer; the admin may see components where the API gives them).
-  - **Item amount, paid to Nitume** (`send_to_runner`, rows 42, 66, 76): part of the combined STK charge to Nitume; Nitume pays the runner through the payout ledger. It counts toward the refund ceiling even when the runner already bought the item (row 81).
+  - **Item amount, paid to Nitume** (`send_to_runner`, rows 42, 66, 76): part of the combined STK charge to Nitume. The runner buys the item with their own money; Nitume **reimburses** the runner through the payout ledger after the receipt is uploaded and accepted (task CONFIRMED), never in advance (row 95, system design §6 "Runner reimbursement"). It counts toward the refund ceiling even when the runner already bought the item (row 81).
   - **Item amount, paid to the merchant** (`merchant_direct`): the customer pays the merchant's Till/Paybill, including any increase, manually (row 67); Nitume never holds it and can't refund it; a decrease opens no refund review (row 86).
 - **Refund ceiling (rows 37, 81, 87)**: what the customer paid **to Nitume** on the task (fees, item amount on `send_to_runner`, completed differences), **minus refunds already approved or sent** on the same task. Cumulative refunds never exceed what was paid. The API returns the ceiling as the review's `amountPaid` (needs N-9 for the net rule) and enforces it again at decision time.
 - Forbidden words in this surface (copy, tooltips, code identifiers shown to users): wallet, balance, escrow, held, hold, release, credit, top up. Use "paid to Nitume", "paid to the merchant", "refund", "payout".
+
+## 3.1 Times (row 96, decided 2026-10-12)
+
+- **Display**: every time an admin reads is **12-hour East Africa Time (EAT, `Africa/Nairobi`, UTC+3, no daylight saving)** with `AM`/`PM`, as drawn in the mockup: `Today, 4:30 PM`, `Yesterday, 4:30 PM`, `Mon 12 Oct, 4:30 PM` (add the year, `Mon 12 Oct 2025, 4:30 PM`, when it is not the current year). Render with `Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', hour: 'numeric', minute: '2-digit', hour12: true, … })` (A-13 `formatDateTime`); never the browser's local zone, so an admin abroad sees the same times as ops in Kenya. "Today"/"Yesterday" are computed in EAT too. Fira Code, as all timestamps.
+- **Backend stays canonical**: the API sends and stores UTC ISO-8601 (`2026-10-12T13:30:00.000Z`, `timestamptz`). The client never sends a formatted or local-zone string.
+- **Inputs** (e.g. `Valid until` in `drawer-task-requote`): the admin types EAT; the client converts to a UTC ISO string ending in `Z` (`2026-10-09T09:00:00.000Z` for 12:00 EAT; built as `eatLocalInputToIso`, accepted in the 2026-10-12 round-5 re-audit) before sending and shows the hint `East Africa Time`. Defaults (e.g. now + 24 h) are computed in UTC and displayed in EAT.
+- **Relative times** (`timeAgo`, `4 min ago`) may stay where the mockup draws them; any absolute time follows this section.
+- Where a time sits next to text that could be read as another zone (exports, tooltips, the A-08 dialogs), suffix `EAT` (`4:30 PM EAT`, helper `formatDateTimeEat`). In tables and drawer rows the suffix is not needed.
+- Day buckets (the `Today` KPI, daily and weekly bars) use the EAT calendar too (`eatDayKey`, `eatWeekday`; weeks start Monday 00:00 EAT). Time-only labels use `formatTime` (`4:30 PM`).
 
 ## 4. Layout tokens (from the mockup CSS, already ported to `styles/_ops.scss`)
 
@@ -99,14 +114,14 @@ An audit treats these four as palette, not as violations. Any other new hex is s
 | A-03 | `PanelTopbarComponent` (`app-panel-topbar`): title, Fira Code sub, search, `[topbar-actions]` slot | exists (`features/admin/panels/panel-topbar.component.ts`; the queue and disputes panels re-implement it inline, out of scope here) |
 | A-04 | Table card (`.table-card`, `th`, `td`, `tr.clickable`, `.task-cat`, `.task-id`, `.row-assign`) | exists (global SCSS) |
 | A-05 | Drawer section/label/card/row/timeline (`.drawer-section`, `.drawer-label`, `.drawer-card`, `.drawer-row`, `.drawer-timeline`, `.dt-item`, `.dt-time`, `.drawer-actions`) | exists (global SCSS) |
-| A-06 | Form field (`.field`, `.field-label`, `.field-input`, `.field-input.is-invalid`) | exists (global `styles.scss`). **NEW**: `.field-hint` (12 slate-600, Fira Sans) and `.field-error` (12/600 red, text only) plus a `FormFieldComponent` (`app-form-field`: label, hint, error, projected control, wires `aria-describedby`) |
+| A-06 | Form field (`.field`, `.field-label`, `.field-input`, `.field-input.is-invalid`) | exists (global `styles.scss`). **NEW**: `.field-hint` (12 slate-600, Fira Sans) and `.field-error` (12/600 red, text only) plus a `FormFieldComponent` (`app-form-field`: label, hint, error, projected control, wires `aria-describedby`). The hint renders through `app-num-text`, so amounts, receipts and times in a hint are Fira Code and the words Fira Sans (accepted app-wide, round 5, 2026-10-12). A number that is a rule rather than data (e.g. `At least 20 characters`) must stay Fira Sans: such a hint needs a plain-text opt-out (m-12) |
 | A-07 | Buttons `.btn` + `.btn-primary` / `.btn-outline` / `.btn-text` | exists (global). Every button in this set uses the `.btn` base class (the current drawers use `btn-primary` without `.btn`, so they render unstyled) |
 | A-08 | `ConfirmDialogComponent` (`app-confirm-dialog`): scrim over the drawer, white card radius 14 padding 20 max-width 360, `h3` 16/700, body 13 slate-600 (amounts Fira Code), actions right-aligned: outline `Back` + primary confirm; focus trapped, initial focus on `Back`, ESC = Back | **NEW** (the task drawer's `.drawer-modal` markup has no styles at all) |
 | A-09 | `SegmentedToggleComponent` (`app-segmented-toggle`): 2–3 options in a 1px slate-line pill, radius 999, height 36; active segment green fill, white 13/600 text; inactive white, blue 13/600; `role="radiogroup"` | **NEW** |
 | A-10 | Empty and loading (`.ops-empty` with `b` title + text; `.ops-loading`) | exists (global SCSS) |
 | A-11 | `InlineNoticeComponent` (`app-inline-notice`, tones `success` / `danger` / `info`): a `.drawer-card` with a status chip of that tone (A-02 styling) followed by 13 blue text; `role="status"` (success/info) or `role="alert"` (danger) | **NEW**. Replaces red/green filled banners for these features: the design system allows amber/red only at chip size, so `.dispute-result.bad` and `.ops-banner` (red-050 fills) are not reused |
 | A-12 | "Load more" pagination (centered `.btn .btn-outline`, label `Load more` / `Loading…`) | exists as a pattern in `verifications.panel.ts` (no `.pagination` style yet) |
-| A-13 | Format helpers: `formatKshExact(value)` (§3), `formatDateTime(iso)` → `Today, 4:30 PM` / `Yesterday, 4:30 PM` / `Mon 12 Oct, 4:30 PM` (12-hour with AM/PM as in the mockup, East Africa Time; see AQ-6) | **NEW** (`timeAgo` and `formatKsh` exist; neither fits exact money or absolute times) |
+| A-13 | Format helpers: `formatKshExact(value)` (§3), `formatDateTime(iso)` → `Today, 4:30 PM` / `Yesterday, 4:30 PM` / `Mon 12 Oct, 4:30 PM` (12-hour with AM/PM as in the mockup, East Africa Time; §3.1, row 96 decided) | **NEW** (`timeAgo` and `formatKsh` exist; neither fits exact money or absolute times) |
 | A-14 | `apiError(err)` helper → `{ status, code?, message, extra }` read from `HttpErrorResponse.error` (API body `{ statusCode, code, message, ...extra }`; class-validator 400s carry `message: string[]`) | **NEW** (`core/`). Today every drawer shows `HttpErrorResponse.message` ("Http failure response for …"), which is not user copy |
 | A-15 | Sidebar nav item with badge (`.ops-nav-item`, `.badge-count`) | exists (admin-dashboard shell) |
 
@@ -129,8 +144,12 @@ API `RefundTrigger` → `Reason` label:
 | `dispute_customer_favourable` | `Dispute: sided with customer` |
 | `cancelled_after_payment` | `Cancelled after payment` |
 | `price_change_decrease` (rows 48, 71; `send_to_runner` tasks only, row 86) | `Price decrease` |
+| `expired_after_payment` (row 102; RUNNER_ASSIGNED → EXPIRED, no runner accepted in time) | `Task expired` |
+| `failed_after_payment` (row 102; RUNNER_EN_ROUTE → FAILED) | `Task failed` |
 
-Unknown values: show the raw value title-cased (never hide a row).
+Unknown values: show the raw value title-cased (never hide a row). Row 102: these are **review triggers**, not automatic refunds; the admin still decides the amount (KSh 0 up to the ceiling).
+
+Effective payout state (row 100, see `drawer-refund` "Corrections"): a `refunded` review whose latest correction is a reversal shows the chip `Payout reversed` (pending, amber; next action: send again and record the new payout) instead of `Refunded`. A `refunded` review with corrections that leave it sent still shows `Refunded`.
 
 ## 7. Cross-cutting API gaps (needs: api-contract)
 
@@ -149,7 +168,9 @@ Collected here; each spec repeats the ones it depends on.
 - N-12 (row 82) Customer notification bodies use `KSh` with the app's money format (`notifications.service.ts:331, 340-341, 360, 372` write `KES ${raw}`).
 - N-13 (row 68) **Built on `feat/api-owner-answers-4`** (not on `main`), plus `GET /errands?quoteRequested=` and `GET /errands/count?quoteRequested=` (drawer-task-requote Data). Original requirement: customer `POST /errands/:id/quote-request` (QUOTED or ACCEPTED with an expired quote; idempotent; no state change), `quoteRequestedAt` on `GET /errands/:id` and on `GET /errands` items, and an admin notification/live-feed item `Customer asked for a new quote`. If storing it needs a new column, that is a schema change for the owner.
 - N-14 (row 80) `PUT /errands/:id/merchant-details` refuses categories other than `buy_for_me` / `pickup_delivery` (e.g. 400 `merchant_details_not_applicable`); a change on a task whose `merchant_direct` payment has started records `merchantDetailsUpdatedAt` and notifies the customer (`merchant_details.changed`).
-- N-15 (row 82, spec only, not for this build) A payout-receipt correction/reversal record: append-only, linked to the refund review, with the original receipt, the corrected receipt or reversal, reason, admin and time. Needs an owner-approved schema before anyone builds it (see `drawer-refund` "Corrections").
+- N-15 (rows 82, 100; **schema approved 2026-10-12, build now**) Payout correction/reversal records, append-only table `refund_payout_corrections` (system design §2.2): `POST /refunds/:id/corrections`, `corrections[]` and `effectivePayout` on admin refund responses, customer view on the effective payout. Full contract in `drawer-refund.md` "Corrections" → Data.
+- N-16 (row 102, **approved 2026-10-12**) New `RefundTrigger` values `expired_after_payment` and `failed_after_payment` (enum migration); open a review (same upsert as the cancellation review, `priceChangeRequestId` null, so at most one cancellation-type review per errand) when a **paid** errand moves RUNNER_ASSIGNED → EXPIRED or RUNNER_EN_ROUTE → FAILED, with the same ceiling rules (rows 81, 87) and the same customer notification as a cancellation review. "Paid" = at least one completed STK leg to Nitume, as for `cancelled_after_payment`. A late STK completion on an EXPIRED/FAILED errand refreshes `amountPaid` while `pending_review`, as for CANCELLED.
+- Row 98 (note, no admin change): the API runs as **one instance** (no Socket.IO Redis adapter). The `admins` room and live events assume that; nothing in these screens needs a change.
 - N-8 Non-`ApiError` conflicts (`ConflictException` in `performDisputeResolution`, state-machine 409s) have no `code`; the client can only switch on status 409. A code such as `errand_not_disputed` would let the UI word it precisely.
 
 ## 8. Owner questions (AQ-n)
@@ -167,6 +188,13 @@ All answered 2026-10-09:
 | AQ-R1 | 72 | Re-quote while ACCEPTED, no state change |
 | AQ-R2 | 83 | Every quote requires an expiry, default 24 h |
 
-Open since the 2026-10-09 round-4 re-audit (payments, AGENT_BUILD_INSTRUCTIONS §3): **AQ-8**: a paid task can end EXPIRED (RUNNER_ASSIGNED → EXPIRED) or FAILED (RUNNER_EN_ROUTE → FAILED), but the API opens a refund review only on CANCELLED. Should EXPIRED and FAILED after payment open a refund review too (new trigger values, so a schema/enum change)? No default is built; the admin task drawer's refund link already lists any review that exists (`drawer-refund.md`).
+Answered 2026-10-12:
 
-Still open (minor, build default stays): **AQ-7** (left over from AQ-6, not covered by row 82): 12-hour `4:30 PM` times as drawn in the mockup, East Africa Time? Default: yes.
+| AQ | BOARD row | Answer |
+|---|---|---|
+| AQ-7 | 96 | 12-hour East Africa Time in the admin; backend timestamps stay canonical (§3.1) |
+| AQ-8 | 102 | Paid tasks ending CANCELLED, EXPIRED or FAILED open a refund review (review trigger, not an automatic refund); labels `Task expired`, `Task failed` (§6) |
+
+New, from the row-100 corrections spec (payments; defaults given, nothing blocks the build):
+- **AQ-9**: Is the customer notified when a payout is corrected or reversed? Default: notify only when a new payout is recorded after a reversal (`Refund sent`, same as today); a receipt or amount correction and a reversal send nothing, and the refund status/amount on the customer's task updates silently to the effective payout.
+- **AQ-10**: If ops sent **more** than the review's ceiling by mistake, can a correction record an amount above the ceiling (so the record is true), or must it be capped (default: capped at the ceiling, with the over-payment handled outside the app)?

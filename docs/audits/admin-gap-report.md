@@ -412,3 +412,119 @@ Audited `fix/angular-admin-owner-answers` @ `c1630ec` (`0592e9f`, `d84b2aa`, `1c
 | drawer-task-merchant-details | PASS | m-9 closed (`merchant-details.section.ts` dialog body and `savedCopy` match the corrected spec copy; both tests updated). |
 
 Every view from this round is now PASS. Still open: m-1, m-2, m-4 (carried from the first re-audit), m-8 (after the API merge) and **AQ-8** (owner).
+
+
+## Addendum 2026-10-12: owner answers round 5 (BOARD rows 95–102)
+
+Applied on `docs/owner-answers-5` (from `main` @ `4963a1c`). Rows 97 and 99 were answered 2026-10-11 and are already built; no doc change. AQ-7 (row 96) and AQ-8 (row 102) are closed; `docs/specs/admin/_shared.md` §1 quotes the rows and §8 records the answers.
+
+### What changed in the docs
+
+| Row | Decision | Docs changed | Admin screen status |
+|---|---|---|---|
+| 95 | `send_to_runner` item amount reimbursed to the runner after the receipt is accepted, never advanced | system design §2.2, §6; `_shared.md` §3; drawer-refund (Resolved) | no admin UI change |
+| 96 | Admin times in 12-hour EAT; backend timestamps stay canonical UTC ISO-8601 | `_shared.md` §3.1 (new), A-13 | app-wide: one fix (`live-map.panel.ts`), panels unchanged |
+| 98 | API single-instance, no Redis adapter | system design §4.1; `_shared.md` §7 (note) | — |
+| 100 | Auditable payout correction/reversal records, original immutable | system design §2.2, §6; `_shared.md` §6, §7 N-15; drawer-refund ("Corrections"); p-refunds | drawer-refund, p-refunds → **partial** |
+| 101 | Round-4 breaking changes accepted | system design §3.2 (note) | — |
+| 102 | Paid EXPIRED/FAILED tasks open a review too: `Task expired`, `Task failed` | system design §3.3, §6; `_shared.md` §6, §7 N-16; p-refunds; drawer-refund | drawer-refund, p-refunds → **partial** |
+
+### Builder lists
+
+The same lists appear in the customer and admin gap reports. Order: api-contract and core-ui first, then the screen builders.
+
+#### api-contract (`apps/api`)
+
+1. **N-16, row 102 (schema approved)**: add `RefundTrigger` values `expired_after_payment` and `failed_after_payment` (enum migration on `refund_trigger_enum`, reversible). In `refunds.service.ts` (`onCancelled` / `onStatusChanged`, `:196-233`) open the cancellation-type review (`priceChangeRequestId` null, same unique index, same upsert) when a **paid** errand moves RUNNER_ASSIGNED → EXPIRED or RUNNER_EN_ROUTE → FAILED; same ceiling (rows 81, 87), same late-payment refresh while `pending_review`, same `refund.updated` customer notification as a cancellation review. Unpaid EXPIRED/FAILED tasks open nothing. Customer view and admin responses carry the new trigger values. Tests: paid EXPIRED, paid FAILED, unpaid EXPIRED (no review), late STK after EXPIRED.
+2. **N-15, row 100 (schema approved)**: table `refund_payout_corrections` and `POST /refunds/:id/corrections` exactly as `docs/specs/admin/drawer-refund.md` → "Corrections" and Data: kinds `corrected | reversed | resent`, required reason (5–500), snapshot of the previous effective payout, `createdByUserId`, append-only (no update/delete path; DB guard recommended), optimistic check `expectedLatestCorrectionId`, reference uniqueness across payouts and corrections, `newAmount` ≤ `correctionCeiling`. Responses: `corrections[]` (detail), `effectivePayout` (list and detail), `correctionCeiling` (detail). `GET /refunds?status=approved` also returns refunded reviews whose effective payout is reversed. The `refund_reviews` payout columns stay locked (`refund_payout_locked` unchanged). Error codes `refund_not_refunded`, `payout_correction_conflict`, `payout_correction_kind_invalid`, `payout_reference_reused`, `correction_no_change`, `refund_exceeds_amount_paid` (with `correctionCeiling`).
+3. **Row 100, customer view**: `toCustomerView` returns the **effective** payout: reversed and not re-sent → `status: approved`, `paidAt: null`; otherwise `refunded`, `refundAmount` = effective amount, `paidAt` = latest sent time. Never corrections, reasons, receipts or admin ids. Cumulative cap (row 87, `alreadyRefunded`) uses effective amounts. Notification only on `resent` (AQ-9 default). Tests for each case.
+4. **Row 95, runner reimbursement**: today no item amount is paid or recorded for the runner before CONFIRMED (`settleErrand`, `payments.service.ts:1024-1072`, only transitions to SETTLED), which matches "never advanced". There is **no runner payout ledger table** yet, so the reimbursement line (system design §6 "Runner reimbursement") needs an owner-approved schema first (SQ-15). Build nothing that writes money records for it until then. When approved: at CONFIRMED → SETTLED write a separate `item reimbursement` line for `send_to_runner` errands (item amount paid to Nitume, plus completed increases, minus approved/sent decrease refunds), only when a `receipt` evidence exists (else flag for ops, SQ-13), and extend reconciliation. Keep the internal word `released` (`settleErrand` return value) out of any user-facing text.
+5. **Row 98**: keep one API instance; do not add `@socket.io/redis-adapter`. If any deployment config or doc allows more than one replica, set it to one and note why.
+6. **Row 101**: no work (accepted as built).
+7. N-2 (admin names for `createdByUserId` on corrections) when convenient.
+
+#### core-ui (`packages/nitume_core`)
+
+1. **Row 102**: `RefundTrigger` (`lib/src/models/enums.dart:436-443`): add `expiredAfterPayment('expired_after_payment')` and `failedAfterPayment('failed_after_payment')`; `CustomerRefund` parsing tests for both.
+2. **Row 100**: nothing (the customer view keeps its shape; `CustomerRefund` already has `status`, `refundAmount`, `paidAt`). Do not add correction fields.
+3. Rows 95, 96, 98, 101: nothing.
+
+#### flutter-customer (`apps/customer_app`)
+
+1. **Row 102, v-task-detail**: `RefundGroup` (`lib/src/widgets/task_widgets.dart:138-160`): the `pending_review` line follows the trigger (`docs/specs/customer/_shared.md` §11): `expired_after_payment` → `We couldn't find a runner for this task in time. We're reviewing a refund and will let you know the outcome.`; `failed_after_payment` → `This task couldn't be completed. We're reviewing a refund and will let you know the outcome.`; others unchanged. No copy may call it automatic. Needs core-ui item 1.
+2. Tests: paid EXPIRED task with a pending review (receipt as paid, expired line); paid FAILED task (failed line); EXPIRED task with no review (no refund group); a refund that comes back `approved` after having been `refunded` (reversal, row 100) renders `Refund approved` without error.
+3. Rows 95, 100 (beyond test 2), 101: no change.
+
+#### web-parity (`apps/admin`)
+
+1. **Row 102, labels**: `features/admin/refund-labels.ts:4-9`: add `expired_after_payment: 'Task expired'`, `failed_after_payment: 'Task failed'`; extend the `RefundTrigger` type in `core/api-types.ts`. Test both labels in the panel and the drawer.
+2. **Row 102, copy**: `p-refunds` empty states for `Needs review`, `Payout due`, `All statuses` (`docs/specs/admin/p-refunds.md` Copy).
+3. **Row 100, panel** (after api-contract item 2): Status chip `Payout reversed` (amber) and row button `Record payout` when `effectivePayout.state === 'reversed'`; one helper in `refund-labels.ts`, used by panel and drawer.
+4. **Row 100, drawer** (after api-contract item 2): the "Corrections" section of `docs/specs/admin/drawer-refund.md`: Current payout card, `Original payout` label, correction cards (one reusable component), inline form with the A-09 kind toggle (`corrected`/`reversed`) or the `resent` form, validation table, A-08 dialogs, A-11 notices, error mapping, Activity items, `expectedLatestCorrectionId` on submit. Tests: each kind, the conflict reload keeping the reason, the reused-receipt field error, no edit/delete control on cards, the original card unchanged after a correction.
+5. **Row 96**: `features/admin/panels/live-map.panel.ts:148-151` formats the sync time with `toLocaleTimeString('en-KE', …)` and no `timeZone`, so it shows the browser's zone. Use the A-13 EAT helper (12-hour, `Africa/Nairobi`). Check that no other absolute time bypasses `shared-format.ts` (`_shared.md` §3.1); add a test that pins a non-EAT zone.
+
+### Questions for the owner (new)
+
+- **SQ-12 (payments, row 95)**: what makes the runner's receipt "accepted"? Proposed default: the task reaches CONFIRMED (customer confirmed and the dispute window closed with no dispute, or a runner-favourable dispute's new window closed); the reimbursement is paid in the next batched payout with the runner fee. Alternative: on customer confirmation (COMPLETED), or after an admin checks the receipt.
+- **SQ-13 (payments, row 95)**: no receipt uploaded, or a receipt for a different amount: default, the item line is not payable until ops review it, and the reimbursement never exceeds the item amount the customer paid to Nitume (net of decreases).
+- **SQ-14 (payments, row 95)**: the runner bought the item but the task then ends CANCELLED (price-change reject, customer-favourable dispute) or FAILED, and the customer may get the item amount refunded (row 81). Is the runner still reimbursed for the purchase, and by whom? No default; nothing is built for it.
+- **SQ-15 (schema, row 95)**: there is no runner payout ledger table in the API. Approve a schema (e.g. `runner_payout_lines`: errand, runner, kind `runner_fee | item_reimbursement`, amount, payable-at, paid-out reference/time) so the reimbursement can be recorded?
+- **SQ-16 (payments, row 95)**: since the runner pays out of pocket first, is a `send_to_runner` purchase limited by `runner_profiles.max_purchase_advance`, and may a runner decline a task whose item amount is above their limit?
+- **AQ-9 (payments, row 100)**: customer notification on a correction or reversal. Default: only a new payout after a reversal notifies (`Refund sent`).
+- **AQ-10 (payments, row 100)**: a correction amount above the review's ceiling (an over-payment): default refused, handled outside the app.
+
+
+## Re-audit round 5 (2026-10-12): `fix/angular-admin-owner-answers-5`
+
+Audited `fix/angular-admin-owner-answers-5` @ `053fbc6` (9 commits on `main` @ `2c7251a`: `1d3da2b`, `c333cd8`, `16ad907`, `6f7f39d`, `6eef84e`, `053fbc6`, `c42aff3`, `311c989`, `5f4d4ba`) against the round-5 specs on `docs/owner-answers-5` and the round-4 cleanup / m-8. From a `git archive` of `apps/admin`: `ng test` **176 tests pass** (21 files), `ng build` clean, Prettier clean on the 27 changed files, no hex outside `_tokens.scss`, no `font-family` outside the token variables, no forbidden words, no `TODO(owner-answers-4)` left. The builder's commits touch no docs. The API round-5 fields (`effectivePayout`, `corrections[]`, `correctionCeiling`) are typed optional with `TODO(owner-answers-5)` while `feat/api-owner-answers-5` is unmerged: accepted. Field names, error codes and the corrections endpoint (201 with the updated detail) were checked against that branch with `git show`.
+
+| View | Verdict | Findings |
+|---|---|---|
+| p-refunds | **PASS** | none |
+| drawer-refund (Corrections, row 102 labels) | **PASS** | m-10, m-11 (minor) |
+| drawer-task-requote (m-8, `Valid until` UTC) | **PASS** | m-8 closed |
+| `_shared.md` §3.1 EAT (app-wide) | **PASS** | none |
+| drawer-dispute-outcome (affected by the A-06 hint change) | **PASS** | m-12 (minor) |
+
+### Decisions on the points raised by the builder
+
+1. **`status=QUOTED,ACCEPTED` on the m-8 calls: accepted, and required.** `main`'s `ErrandStatusFilterDto` accepts `status=A,B`. The API clears `quoteRequestedAt` only when a new quote is issued (`errands.service.ts:1135-1138`), so a task cancelled or expired after the request keeps the timestamp; without the filter the count would include those tasks and the badge would over-count. The filter makes the server match the client rule `quoteRequested()` (`admin-data.service.ts:57-59`). Written into `drawer-task-requote.md` Data.
+2. **Correction discard copy `Discard this correction?` / `What you entered will be lost.` (buttons `Back` / `Discard`): accepted.** The decision wording (`The amount and note…`) does not fit a receipt + amount + reason form. Written into `drawer-refund.md` Entry / exit and Corrections → Form. The `resent` form having no `Cancel` (it is the standing action while reversed, like the `approved` payout form) is also accepted and written in.
+3. **Focus not moving into the new-payout form on a reversed review: spec gap, minor (m-10).** The builder followed the spec's wording ("the close button otherwise"), so this does not fail the view. The reversed state is the `approved` state's equivalent (it sits under `Payout due` with `Record payout`), so the spec is amended: focus goes to the new payout's `M-Pesa receipt` input on open, reload and right after `Record reversal`; and closing the correction form returns focus to `Record a correction`.
+4. **`app-form-field` hints rendering numbers in Fira Code app-wide: accepted** (`_shared.md` A-06 updated). It is what the refund hints need (`Between KSh 0 and KSh 1,200…`, `Current: SLK4H7XQ2P`, `Up to KSh …`). I checked every hint in the app: `East Africa Time`, `Only if the merchant gave you one.`, `Not shown to the customer.`, `The code M-Pesa gave for the reversal.` and `Kept in the audit history…` have no digits. The one false positive is m-12.
+5. **`Valid until` sent as UTC `…Z`: accepted.** `_shared.md` §3.1 says the client converts to a UTC ISO string; `eatLocalInputToIso` (`shared-format.ts:150`) now returns `Date#toISOString()` (12:00 EAT → `09:00:00.000Z`), the API's ISO validation accepts it, and the tests pin a non-EAT process zone. §3.1 now names the format.
+
+### p-refunds: PASS
+- Row 102: `Task expired` / `Task failed` in the one shared map (`refund-labels.ts:5-12`); `Needs review`, `Payout due` and `All statuses` empty states match Copy (tested).
+- Row 100: `refundChipStatus` / `refundRowAction` (`refund-labels.ts:79-92`) give `Payout reversed` (A-02 `payout_reversed`, pending tone, `status-chip.component.ts:83-92`) and `Record payout` for a reversed payout; a sent payout with corrections still reads `Refunded`; a drawer save patches `effectivePayout` in place (`refunds.panel.ts:186-198`). Tested.
+
+### drawer-refund: PASS (minor)
+- Corrections (row 100) built as specced: `Current payout` card (chip, `Amount sent` `KSh 0` and receipt `—` after a reversal, `Last changed`), `Original payout` card unchanged (tested), oldest-first `app-refund-correction-card` (one component, no edit/delete/undo, `→` in Fira Sans, reason wraps; tested per kind), inline form with the A-09 toggle (reason kept, other fields cleared; tested), `resent` form prefilled with `refundAmount`, validation table (`refund-correction.ts`, unit-tested), the three dialogs, the three notices, every error code including the conflict reload that keeps the reason (tested), Activity items, `expectedLatestCorrectionId` on every save.
+- Row 102 labels and row 96 times: from the shared helpers.
+
+10. m-10 (minor, accessibility) `drawers/refund-drawer.ts:996-1002` (`focusForm`), `:1083` (`cancelCorrection`), `:1121` (discard). Spec (amended): on a reversed payout focus goes to the new payout's `M-Pesa receipt` input on open, reload and after `Record reversal`; closing the correction form returns focus to `Record a correction`. Code: focus goes to the close button on a reversed review; after `Cancel`/`Discard` the focused button disappears and focus drops to the document. Fix: include `correctionReferenceInput` in `focusForm()` when `reversed()`; focus the `Record a correction` button after `resetCorrection()` from Cancel/Discard; add tests.
+11. m-11 (minor, typography) `refund-drawer.ts` correction dialog body (`app-num-text` on `correctionDialogBody()`) and the `Correct M-Pesa receipt` hint. Spec: every receipt and reversal code in Fira Code. Code: the receipt reaches Fira Code only through the `app-num-text` regex, which needs six or more characters with both a digit and a letter; the API accepts 4–64 character codes, so `AB12` or an all-letter code renders in Fira Sans. Real 10-character M-Pesa codes match, so this is an edge case. Fix: render the receipt as its own `.num` part, as the `mark_paid` dialog already does.
+
+### drawer-task-requote: PASS
+- m-8 closed (`5f4d4ba`): `refreshQuoteRequests()` (`admin-data.service.ts:316`) on load and refresh; `queueTasks` merges and dedupes; `pendingCount` adds the count endpoint's requested part to REQUESTED/QUOTED rows that are not requested (no double count); on an error each part keeps its last value; an answered request leaves the badge at once. Tested, with the query params asserted.
+- Row 96: `Valid until` UTC (decision 5); the dialog's expired-quote time carries `EAT` (`formatDateTimeEat`).
+
+### `_shared.md` §3.1 EAT (app-wide): PASS
+- `live-map.panel.ts` sync time now `formatTime` (EAT); `Today` KPI, daily bars and Monday-start weeks on the EAT calendar (`admin-data.service.ts` `lastNDates` / `lastNWeeks`, `eatDayKey`, `eatWeekday`); `formatDateTime` adds the year outside the current EAT year. No `toLocale*Time`, `toDateString` or local `getHours/getDate` calls remain in app code. Tests switch the process zone to `America/Los_Angeles` (`testing/admin-test-utils.ts` `timeZoneSwitch`).
+
+### drawer-dispute-outcome: PASS (minor)
+12. m-12 (minor, typography) `drawers/dispute-drawer.ts:200`. Spec: Fira Code for numeric data only (the counter `0/2000`). Code: since `6f7f39d` the hint `At least 20 characters. The customer and runner can see this note.` renders `20` in Fira Code; it is a rule, not data. Fix: a plain-text opt-out on `app-form-field` (e.g. a `plainHint` input) used by this field.
+
+### Carried minors
+m-1, m-2, m-3, m-4, m-5 (first re-audit) are closed at `053fbc6`: tests for m-1 and m-2 exist, `detailErrorTone` carries the 404 info tone, the dispute notice sits under the Outcome card, `.row-assign` is declared once. m-6 … m-9 were closed earlier.
+
+### Notes for the orchestrator and reviewer
+- The worktree `/Users/san/Projects/nitume-admin-answers5` has **uncommitted** copies of the round-5 docs (`docs/specs/**`, `docs/audits/**`, `SCREEN_MAP.md`, `Nitume_System_Design.md`, customer specs). They are not in any commit on the branch; they must not be committed there (the `docs/owner-answers-5` branch owns them). Discard them before the branch is handed to the reviewer.
+- The `TODO(owner-answers-5)` markers (`core/api-types.ts:324`, `:412`; `refund-labels.ts:56`; `refund-drawer.ts:817`, `:830`) go once `feat/api-owner-answers-5` is on `main`; until then `correctionCeiling` falls back to `amountPaid` (not net of other reviews). The API enforces the real ceiling and the drawer maps the 400.
+- The API also defines `payout_amount_not_allowed` (an amount sent with `reversed`). The client never sends one, so the generic 400 path is enough.
+
+### Builder list (web-parity, next touch; none blocks the merge)
+1. m-10 focus on the reversed payout form and after closing the correction form.
+2. m-11 receipts as explicit Fira Code parts in the correction dialog and hint.
+3. m-12 plain-text hint opt-out for the dispute note.
+4. Remove `TODO(owner-answers-5)` and make the N-15 fields required once `feat/api-owner-answers-5` is on `main`.

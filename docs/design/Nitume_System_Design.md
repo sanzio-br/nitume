@@ -211,9 +211,12 @@ erDiagram
 - **`payments`** is a ledger of payment events per errand, never a stored balance: no customer wallet, no escrow, no "money held" figure (per the business plan). `merchant_amount` records the item/merchant amount, and `payment_flow` says how it was settled. The three flows stay separate records: service fee, runner fee, merchant/item amount.
   - `merchant_direct`: the customer pays the merchant's Till/Paybill from their own M-Pesa. Nitume never receives it; `merchant_amount` is for accounting visibility only. A price increase on this route is also paid by the customer, manually, to the same Till/Paybill (row 67).
   - `customer_to_runner` (customer-facing route `send_to_runner`): **platform-mediated** (rows 42, 66). The customer pays the item amount **to Nitume** in the same M-Pesa STK as the fees (one combined charge, row 76), and Nitume then pays the runner through the **payout ledger**. There is never a direct customer-to-runner transfer. The item amount stays its own line and its own ledger entry, never part of the service or runner fee.
+    - **Timing (row 95, owner 2026-10-12)**: "Runner send_to_runner item amounts are reimbursed after the receipt is uploaded/accepted, not advanced before purchase." The runner buys the item first; Nitume **reimburses** the item amount through the payout ledger. Nothing is paid to the runner for the item before the purchase. See §6 "Runner reimbursement" for what "accepted" means.
   - `runner_advance`: a documented Runner advance capped by `runner_profiles.max_purchase_advance`; runner-side only, never a customer choice.
   - `platform_only`: no item amount.
   - Owner rows quoted: row 66, "Update §2.2 and §6 to reflect the agreed platform-mediated send-to-runner flow: the customer pays Nitume, and Nitume subsequently facilitates payment to the runner." Row 76, "one combined STK (service + runner + item) as the API is built; receipt shows the item amount on its own line." Row 67, "The customer pays the additional amount manually to the same merchant Till."
+- **`refund_reviews`** (rows 37, 62, 71, 94) are records, not task states: several per errand (one cancellation-type review, one per approved `send_to_runner` price decrease). Triggers: `price_change_rejected`, `dispute_customer_favourable`, `cancelled_after_payment`, `price_change_decrease`, and (row 102, owner 2026-10-12) `expired_after_payment`, `failed_after_payment`. A review's payout columns (`payoutReference`, `paidAt`, `paidByUserId`) are **immutable** once it is `refunded` (row 82).
+- **`refund_payout_corrections`** (row 100, owner 2026-10-12: "Build the auditable correction/reversal schema now. Original payout/receipt records remain immutable; corrections/reversals are represented separately."): append-only, one row per correction, linked to its refund review. Proposed columns: `id`, `refundReviewId` FK, `kind` (`corrected | reversed | resent`), `previousReference`, `previousAmount` (snapshot of the effective payout before this record), `newReference` (nullable; the corrected receipt, the reversal receipt, or the re-sent receipt), `newAmount` (nullable; the amount actually sent, when it changes), `reason` (required), `createdByUserId`, `createdAt`. Never updated or deleted. The **effective payout** of a review is the original payout with its corrections applied in order; customers, reconciliation and the cumulative refund cap (row 87) use the effective payout.
 - Use **PostGIS** (`CREATE EXTENSION postgis`) for all geo columns and queries — `ST_DWithin`, `ST_Distance` power Runner search radius and matching.
 
 ### 2.3 Indexing Strategy
@@ -271,6 +274,8 @@ Each module exposes a small public interface (its service) and keeps its reposit
 | Disputes | `POST /disputes`, `GET /disputes/:id`, `POST /disputes/:id/resolve` (admin) |
 | Runners | `POST /runners/verify`, `PATCH /runners/availability`, `GET /runners/:id/profile` |
 | Admin | `GET /admin/dashboard`, `GET /admin/errands/live-map`, `GET /admin/reports/*` |
+
+> Row 101 (owner, 2026-10-12): the round-4 breaking API changes are accepted as specified (customers and runners get `resolvedBy: null` on disputes; `payoutReference` removed from customer refund views; price changes on categories other than Buy For Me / Get It For Me answer 400). Clients were updated in the same round. There is no API version bump for these.
 
 Design conventions: **cursor-based pagination** on list endpoints (not offset — offset pagination degrades badly at scale), **idempotency keys** on payment-initiating endpoints, **optimistic concurrency** (a `version` column) on `errands` to prevent double-assignment race conditions.
 
@@ -337,9 +342,9 @@ Transition table (actors: C = customer, R = runner, A = admin, S = system):
 | PAYMENT_CONFIRMED | RUNNER_ASSIGNED | A, S | |
 | RUNNER_ASSIGNED | RUNNER_EN_ROUTE | R | |
 | RUNNER_ASSIGNED | CANCELLED | A | |
-| RUNNER_ASSIGNED | EXPIRED | S | No runner accepts in time |
+| RUNNER_ASSIGNED | EXPIRED | S | No runner accepts in time. The task was paid, so this opens an admin refund review (row 102; trigger `expired_after_payment`) |
 | RUNNER_EN_ROUTE | ARRIVED | R, S | System = geofence (§4.3) |
-| RUNNER_EN_ROUTE | FAILED | R, S | |
+| RUNNER_EN_ROUTE | FAILED | R, S | The task was paid, so this opens an admin refund review (row 102; trigger `failed_after_payment`) |
 | ARRIVED | IN_PROGRESS | R | |
 | IN_PROGRESS | AWAITING_CUSTOMER | R | Evidence uploaded |
 | IN_PROGRESS | DISPUTED | C | |
@@ -354,7 +359,7 @@ Transition table (actors: C = customer, R = runner, A = admin, S = system):
 
 - **Terminal states**: SETTLED, CANCELLED, FAILED, EXPIRED. COMPLETED is the last state the customer acts on; CONFIRMED and SETTLED are system-only payout states and the customer app shows them as "Completed".
 - **Removed**: DISPUTED → CONFIRMED (row 10). A dispute always resolves to COMPLETED or CANCELLED.
-- **Price changes** are requested by the runner only while the errand is IN_PROGRESS (row 49). Approving one changes no state; rejecting one is the guarded IN_PROGRESS → CANCELLED above. A price decrease, and any cancellation after payment, goes to an admin refund review (rows 37, 48); refund reviews are records, not states.
+- **Price changes** are requested by the runner only while the errand is IN_PROGRESS (row 49). Approving one changes no state; rejecting one is the guarded IN_PROGRESS → CANCELLED above. A price decrease (on `send_to_runner`, row 86), and any paid task that ends CANCELLED, EXPIRED or FAILED (rows 37, 102), goes to an admin refund review; refund reviews are records, not states. Row 102 (owner, 2026-10-12): "Paid tasks ending CANCELLED, EXPIRED, or FAILED should create a refund review. This is a review trigger, not an automatic refund."
 
 Implemented as a small explicit transition table in code (not a generic state-machine library at MVP size) — each transition validates the actor (customer/runner/admin/system) and any guard, writes an `errand_status_history` row, and emits a domain event (`errand.status_changed`) that the Notifications and Realtime modules subscribe to.
 
@@ -383,6 +388,7 @@ This is the part that most needs a deliberate design, since it's the highest-fre
 - **Polling** (customer app asking "where's my Runner?" every few seconds) wastes battery and bandwidth and doesn't scale linearly.
 - **Socket.IO** gives us rooms (one room per `errand_id`), automatic reconnection/fallback, and a mature NestJS adapter (`@nestjs/websockets` + `@nestjs/platform-socket.io`).
 - **Redis adapter for Socket.IO** (`socket.io-redis-adapter`) is what makes this scale horizontally: when the API runs on multiple instances, a location ping received on instance A needs to reach a customer socket connected to instance B. Redis Pub/Sub is the backbone that makes multi-instance Socket.IO work correctly.
+- **Current decision (row 98, owner 2026-10-12)**: "Do not approve yet. Keep the API single-instance until horizontal scaling is required." The adapter is **not** installed; the API runs as **one instance**, and deployments must not scale it out (no second replica, no autoscaling) until the owner approves the adapter. Rooms and events (including `admins`, row 99) work unchanged on one instance.
 
 ### 4.2 Location Flow
 
@@ -464,6 +470,8 @@ A `notification_log` table records every send attempt (channel, status, provider
 Implements the three-flow model from the business plan (service fee / runner fee / merchant payment) as explicit, separate ledger records. One STK charge may carry more than one flow (fees, plus the item amount on `send_to_runner`), but each flow is recorded and shown on its own line and is never merged into a single "total" that is split by hand later.
 
 > Updated 2026-10-09 to the owner's answers. Row 66 (approved): "Update §2.2 and §6 to reflect the agreed platform-mediated send-to-runner flow: the customer pays Nitume, and Nitume subsequently facilitates payment to the runner." Row 76 (owner, 2026-10-08): "one combined STK (service + runner + item) as the API is built; receipt shows the item amount on its own line". Row 67 (approved): "For merchant_direct price increases, Nitume cannot initiate an STK push to the merchant's Till. The customer pays the additional amount manually to the same merchant Till." Row 91 (approved): "The displayed total must match the actual amount submitted to the payment provider."
+>
+> Updated 2026-10-12 to the owner's answers (rows 95, 100, 102): the `send_to_runner` item amount is reimbursed to the runner after the receipt is uploaded and accepted, never advanced; payout corrections/reversals are separate append-only records; paid tasks ending CANCELLED, EXPIRED or FAILED open a refund review (not an automatic refund).
 
 ```mermaid
 sequenceDiagram
@@ -488,8 +496,9 @@ sequenceDiagram
         API-->>C: Show merchant Till/Paybill for merchant_amount
         C->>M: Customer pays merchant_amount from own M-Pesa (Nitume never receives it)
     else send_to_runner
-        API->>API: Payout ledger entry: merchant_amount owed to the runner for this errand
-        API-->>R: Nitume pays the runner through the payout ledger (never customer -> runner)
+        Note over API,R: Runner buys the item with their own money, uploads the receipt (row 95)
+        API->>API: When the receipt is accepted (task CONFIRMED): payout ledger line, item reimbursement owed to the runner
+        API-->>R: Nitume reimburses the runner in the batched payout (never customer -> runner, never before purchase)
     else runner_advance
         API->>API: Check runner.max_purchase_advance
         API-->>R: Authorize advance up to limit
@@ -501,12 +510,20 @@ sequenceDiagram
   1. **Service fee** and 2. **Runner fee**: always charged to the customer by STK to Nitume. The customer sees them as one line, `Total (service + runner fee)`, until pricing rates exist (row 34).
   3. **Merchant/item amount**: depends on the route.
      - `merchant_direct`: the customer pays the merchant's Till/Paybill directly. Nitume never receives it, so it is never part of a Nitume refund. A price **increase** is paid manually by the customer to the same Till/Paybill (row 67). A price decrease opens no automatic refund review (row 86).
-     - `send_to_runner` (ledger flow `customer_to_runner`): platform-mediated (rows 42, 66). The customer pays the item amount to Nitume in the **same STK as the fees** (row 76). The payment screen shows the full M-Pesa charge with the line "Includes KSh … for your runner's purchase." (row 91), and that total equals the amount sent to the provider. Nitume then pays the runner the item amount through the payout ledger. A price **increase** is a separate STK to Nitume for the difference; an approved **decrease** opens an admin refund review for the difference (rows 48, 71, 86).
+     - `send_to_runner` (ledger flow `customer_to_runner`): platform-mediated (rows 42, 66). The customer pays the item amount to Nitume in the **same STK as the fees** (row 76). The payment screen shows the full M-Pesa charge with the line "Includes KSh … for your runner's purchase." (row 91), and that total equals the amount sent to the provider. Nitume then **reimburses** the runner the item amount through the payout ledger after the purchase receipt is uploaded and accepted, never in advance (row 95; see "Runner reimbursement" below). A price **increase** is a separate STK to Nitume for the difference; an approved **decrease** opens an admin refund review for the difference (rows 48, 71, 86).
      - `runner_advance`: runner-side only, capped by `max_purchase_advance`.
 - **M-Pesa integration**: STK Push (Lipa Na M-Pesa Online) for customer-initiated payments, behind a `PaymentProvider` abstraction (PayHero first, row 73); payouts to runners and manual refunds are recorded on the ledger. Provider callbacks are idempotent (providers can retry callbacks), and production refuses to start with the console/mock provider (row 89).
-- **Payouts to Runners** are batched (e.g. daily or on-demand above a threshold), not instant per-task, to control transaction fees. A runner's payouts include their runner fee and, on `send_to_runner` tasks, the item amount Nitume pays them for the purchase, each as its own ledger line. The Runner app's "available balance" is a **view of the payout ledger** (amounts due minus amounts paid out), never a stored wallet.
-- **Refunds** (rows 37, 54, 77, 81, 87): refund reviews are records, not task states. Any authorized admin decides the amount and records the manual M-Pesa payout; no second approver for now (row 77). The ceiling of a review is what the customer paid **to Nitume** (including an item amount paid to Nitume, even if the runner already bought the item, row 81), **net of refunds already approved or sent on the same task** (row 87), so cumulative refunds never exceed what was paid. A payout receipt is never edited after `refunded`; a correction is a new auditable correction/reversal record (row 82).
-- **Reconciliation worker** runs periodically to compare `payments` records against the provider's transaction reports and flags mismatches for finance review. It also checks that every item amount received on `send_to_runner` tasks is matched by a runner payout ledger entry (or a refund), so money that passes through Nitume is always accounted for.
+- **Runner reimbursement on `send_to_runner`** (row 95, owner 2026-10-12: "reimbursed after the receipt is uploaded/accepted, not advanced before purchase"). Proposed meaning of "accepted", following the existing evidence/confirm flow (§3.3), pending owner confirmation (SQ-12):
+  1. The runner buys the item with their own money and uploads the receipt as evidence (`evidence.type = receipt`) before moving the task to AWAITING_CUSTOMER.
+  2. The receipt is **accepted** when the task's result is accepted: the customer confirms completion (AWAITING_CUSTOMER → COMPLETED) **and** the dispute window then closes without a dispute (COMPLETED → CONFIRMED, system). A dispute resolved runner-favourable (DISPUTED → COMPLETED) is accepted when its new window closes. The customer confirming is not enough on its own, because the customer can still dispute inside the window.
+  3. At CONFIRMED the payout ledger gets a separate line, `item reimbursement`, for the item amount the customer paid to Nitume on the task (original amount plus completed increase STKs, minus approved or sent decrease refunds). It is paid in the same batched payout as the runner fee (CONFIRMED → SETTLED). It is never merged into the runner fee and never exceeds what the customer paid to Nitume for the item.
+  4. No receipt on file at CONFIRMED: the item line is not payable and is flagged for ops; the runner fee is unaffected (SQ-13).
+  5. A paid task that ends CANCELLED, EXPIRED or FAILED creates no reimbursement line automatically; whether a runner who already bought the item is reimbursed then is an owner question (SQ-14).
+  6. Not built yet: the API has no runner payout ledger table, so recording the line needs an owner-approved schema (SQ-15). Whether an out-of-pocket purchase is limited by `max_purchase_advance` is SQ-16.
+  Because nothing is advanced, between the customer's STK and the reimbursement the item amount is recorded on the ledger only as an amount **owed onward** to the runner (no wallet, no escrow, no stored balance).
+- **Payouts to Runners** are batched (e.g. daily or on-demand above a threshold), not instant per-task, to control transaction fees. A runner's payouts include their runner fee and, on `send_to_runner` tasks, the item reimbursement for the purchase (row 95), each as its own ledger line. The Runner app's "available balance" is a **view of the payout ledger** (amounts due minus amounts paid out), never a stored wallet.
+- **Refunds** (rows 37, 54, 77, 81, 87, 102): refund reviews are records, not task states. A review opens for every **paid** task that ends CANCELLED, EXPIRED or FAILED (row 102: "a review trigger, not an automatic refund"), and for an approved price decrease on `send_to_runner` (row 86). Nothing is refunded until an admin decides. Any authorized admin decides the amount and records the manual M-Pesa payout; no second approver for now (row 77). The ceiling of a review is what the customer paid **to Nitume** (including an item amount paid to Nitume, even if the runner already bought the item, row 81), **net of refunds already approved or sent on the same task** (row 87), so cumulative refunds never exceed what was paid. A payout receipt is never edited after `refunded`; a correction is a new auditable correction/reversal record (row 82). Row 100 (owner, 2026-10-12): built now, as `refund_payout_corrections` (§2.2): an admin records a corrected receipt and/or amount, a reversal (with the reversal receipt), or a re-sent payout after a reversal, each with a required reason, the admin and the time. The original receipt stays on the review untouched. The customer sees only the refund status and amount of the **effective** payout (a reversed payout that is not yet re-sent shows as approved, not refunded); never the reason, the receipts or the admin.
+- **Reconciliation worker** runs periodically to compare `payments` records against the provider's transaction reports and flags mismatches for finance review. It also checks that every item amount received on `send_to_runner` tasks is matched by a runner item-reimbursement ledger entry (or a refund) once the task is CONFIRMED, and lists item amounts still owed onward (tasks not yet CONFIRMED, or without an accepted receipt), so money that passes through Nitume is always accounted for. Refund payouts are reconciled on their effective value (original plus corrections, row 100).
 - **No internal wallet** at MVP, per the business plan: `payments` and `payment_transactions` are a ledger of *events*, not a stored-balance system. Nitume does not hold customer funds for later use; amounts received for a runner's purchase are owed onward to that runner through the payout ledger.
 
 ---

@@ -103,6 +103,10 @@ All answered. Specs no longer say "pending row N" for these.
 | 87 | A cancellation refund's ceiling is net of refunds already approved or sent on the task; cumulative refunds never exceed what was paid | §11 |
 | 88 | An admin can re-quote only after the current quote expired; a valid quote is never silently replaced | §8.3 |
 | 91 | Copy approved: the payment screen shows the full M-Pesa charge with `Includes KSh … for your runner's purchase.`; the shown total equals the amount sent to the provider | §8.1, v-payment |
+| 95 | `send_to_runner`: Nitume **reimburses** the runner the item amount through the payout ledger after the receipt is uploaded and accepted, never in advance (system design §6 "Runner reimbursement"). No customer copy changes: the customer still pays Nitume, never the runner | §8.2, x-merchant-payment |
+| 100 | Payout corrections/reversals are separate audit records; the original receipt is immutable. The customer sees only the refund status and amount of the latest effective payout, never corrections, reasons or admin notes | §11, v-task-detail |
+| 101 | Round-4 breaking API changes accepted (dispute `resolvedBy: null` for customers; no `payoutReference` in the customer refund view; price changes outside Buy For Me / Get It For Me answer 400). The app was updated in round 4 | (no change) |
+| 102 | Paid tasks ending CANCELLED, EXPIRED or FAILED open a refund **review** (not an automatic refund) | §11, v-task-detail |
 | Needs 40 | Empty-title-safe `NitumeTopBar` approved | C-09, v-home |
 | Needs 41 | x-merchant-payment snackbar `Nothing to pay right now.` approved | x-merchant-payment |
 
@@ -341,7 +345,7 @@ Wire values (`merchantRoute` on `POST /payments/:errandId/initiate`, core `Merch
 | Route | Customer label (checkout) | How the item amount is paid | Customer screen |
 |---|---|---|---|
 | `merchant_direct` | `Pay merchant directly (recommended)` | The customer pays the merchant's Till/Paybill from their own M-Pesa, after the fees are paid. Nitume does not collect it, and never STK-pushes to a merchant (row 67) | `x-merchant-payment` variant A |
-| `send_to_runner` | `Send purchase amount to runner` | **Platform-mediated (row 42)**: the customer pays the item amount **to Nitume in the same M-Pesa STK as the fees** (one combined charge, (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit)). Nitume then pays the runner through the payout ledger (row 66, system design §6). An approved price-change increase on this route is a separate STK for the difference (`x-merchant-payment` variant B). No runner phone number is ever shown for paying, and the app never offers a direct transfer to the runner | `x-merchant-payment` variant B |
+| `send_to_runner` | `Send purchase amount to runner` | **Platform-mediated (row 42)**: the customer pays the item amount **to Nitume in the same M-Pesa STK as the fees** (one combined charge, (row 76, owner 2026-10-08; spec updated in the 2026-10-09 re-audit)). Nitume then reimburses the runner through the payout ledger once the purchase receipt is accepted, never in advance (rows 66, 95, system design §6); the customer app says nothing about the runner's reimbursement. An approved price-change increase on this route is a separate STK for the difference (`x-merchant-payment` variant B). No runner phone number is ever shown for paying, and the app never offers a direct transfer to the runner | `x-merchant-payment` variant B |
 
 **Merchant details (row 43)**: the merchant or an admin supplies the Till/Paybill details; the customer never types them. Two customer states:
 - **Details pending** (none on the errand): at checkout `merchant_direct` is disabled with subtitle `Available once the merchant's details are added.`; `x-merchant-payment` variant A shows the notice `The merchant's details aren't available yet. We'll notify you when they are.`
@@ -384,21 +388,21 @@ No shared question is open. Screen-level questions stay in each spec.
 - **Push (row 31)**: after every successful sign-in (and after `x-name-capture` when it runs) register the FCM token with `POST /users/me/devices`; re-register when the token refreshes; on log out call `DELETE /users/me/devices/:id` (best effort, before clearing tokens). Notification taps deep-link per the `v-notifications` table. Push permission is asked once after sign-in; refusing it changes nothing else.
 - **Evidence links (row 25)**: short-lived signed URLs; on an expired link, re-fetch the evidence list once, then show the item's load-failure state.
 
-## 11. Refund status (rows 37, 48, 54, 69, 81, 82, 86, 87; schema approved, rows 62/94)
+## 11. Refund status (rows 37, 48, 54, 69, 81, 82, 86, 87, 100, 102; schema approved, rows 62/94)
 
 The customer can see the status of any refund review on their task (row 54). Shown on `v-task-detail` (Payment section) only; nowhere else lists refunds. Payout is recorded manually by an admin for MVP; M-Pesa B2C/reversal comes later and does not change this UI.
 
-Opened by: price-change reject (IN_PROGRESS → CANCELLED), a customer-favourable dispute (DISPUTED → CANCELLED), a payment that completes after cancellation, and an approved price **decrease on a `send_to_runner` task only** (rows 48, 86).
+Opened by: price-change reject (IN_PROGRESS → CANCELLED), a customer-favourable dispute (DISPUTED → CANCELLED), any other cancellation after payment (including a payment that completes after cancellation), a **paid task that expires** (RUNNER_ASSIGNED → EXPIRED, no runner accepted in time) or **fails** (RUNNER_EN_ROUTE → FAILED) (row 102), and an approved price **decrease on a `send_to_runner` task only** (rows 48, 86). Row 102: these open a **review**, not an automatic refund, so no copy may promise money back before an admin decides.
 
 The refund amount is decided by an admin. Its ceiling (admin-side, not shown to the customer) is what the customer paid to Nitume, including an item amount paid to Nitume (row 81), net of refunds already approved or sent on the same task (row 87). So a task can show a decrease refund and later a cancellation refund, and the second is never larger than what is left.
 
 | API refund status | Chip (C-05) | Tone | Line under it (13 slate-600, proposed) | Amount row |
 |---|---|---|---|---|
-| `pending_review` | `Refund under review` | pending | `We're reviewing a refund for this task. We'll let you know the outcome.` | none |
+| `pending_review` | `Refund under review` | pending | By trigger (row 102): `expired_after_payment` → `We couldn't find a runner for this task in time. We're reviewing a refund and will let you know the outcome.`; `failed_after_payment` → `This task couldn't be completed. We're reviewing a refund and will let you know the outcome.`; any other or unknown trigger → `We're reviewing a refund for this task. We'll let you know the outcome.` | none |
 | `approved` | `Refund approved` | info | `We'll send you this refund and update this page when it's sent.` | `Refund amount` + amount (Fira Code) |
 | `refunded` | `Refunded` | success | `Sent <date, time>` (date/time Fira Code) | `Refund amount` + amount |
 | `no_refund` | `No refund` | info | `After review, no refund is due for this task.` | none |
 
-Never shown: the admin's refund decision note (row 69, decided: internal only), the payout reference, and any wording such as "balance", "wallet", "held" or "release" (OA-6). A sent refund is final on this screen: receipts are never edited after `refunded` (row 82); if ops ever correct one through a correction/reversal record, the customer still sees only the status and amount.
+Never shown: the admin's refund decision note (row 69, decided: internal only), the payout reference, and any wording such as "balance", "wallet", "held" or "release" (OA-6). A sent refund is final on this screen: receipts are never edited after `refunded` (row 82). Ops may add a correction or reversal record (row 100); the customer never sees those records, their reasons or the admin. The API's customer view already reflects the **latest effective payout**: a corrected amount shows as the new `Refund amount`; a reversed payout not yet re-sent comes back as `approved` (`Refund approved` and its line); a new payout comes back as `refunded` with the new sent time. The app just renders `status` / `refundAmount` / `paidAt` as above; it has no correction-specific UI. Notification on a correction: owner question AQ-9 (default: only a new payout notifies, as `Refund sent`).
 
 Not to be confused with the **dispute resolution note**, which the customer does see (row 79) on `x-report-problem` read mode (`Outcome`).

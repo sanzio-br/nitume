@@ -108,6 +108,9 @@ Task id in titles/dialogs, `Decided` date/time, timeline times, the note counter
 None.
 
 ## Current vs design
+Round 5 note (2026-10-12, `fix/angular-admin-owner-answers-5` @ `053fbc6`, app-wide A-06 change `6f7f39d`): stays **PASS**, one minor.
+1. m-12 (minor, typography): `app-form-field` hints now pass through `app-num-text`, so `dispute-drawer.ts:200` renders the `20` of `At least 20 characters. The customer and runner can see this note.` in Fira Code. It is a rule, not numeric data (Numeric fields above lists only the counter). Fix on the next touch: a plain-text hint opt-out on `app-form-field` (`_shared.md` A-06) used by this field. Carried minor m-4 (notice under the Outcome card) is closed on `main`.
+
 Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de`: **PASS**. `dispute-drawer.ts` reads `verdict`/`resolvedAt` as the Outcome fallback (`disputeOutcome`) and keys the 409 on `errand_not_disputed`; both tested. Row 79: the customer already sees the resolution note on `x-report-problem` (Outcome); the verdict itself needs no customer copy (see that spec).
 
 Re-audit 2026-10-09 (`docs/audits/admin-reaudit-2026-10-09.md`): PASS on `main`. The 2026-10-09 owner answers (rows 78, 79) confirm the built label and hint; no change. Minor m-4 (notice order) still applies on the next touch.

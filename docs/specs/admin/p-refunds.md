@@ -3,10 +3,10 @@
 - Mockup: **not drawn. EXTENDS MOCKUP**: a new sidebar item and panel. Built from the mockup's `#p-queue` panel (topbar + `.table-card`) and sidebar nav pattern. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md` (A-n components, §3 money, §6 refund vocabulary, §7 API gaps, §8 questions)
 - Implementation: `apps/admin/src/app/features/admin/panels/refunds.panel.ts`; nav item in `features/admin/admin-dashboard.component.ts`
-- Status: matches-design (re-audit round 4, round 2, 2026-10-09: PASS; see Current vs design)
+- Status: matches-design (re-audit round 5, 2026-10-12, `fix/angular-admin-owner-answers-5` @ `053fbc6`: PASS; see Current vs design)
 
 ## Purpose
-One place where ops sees every refund review (opened when a task is cancelled after the customer paid, rows 37, 54, or for an approved price decrease on a `send_to_runner` task, rows 48, 86), works the ones that need a decision, and records the manual M-Pesa payout of approved refunds. Refund reviews are records, not task states (§3.3 note). Any authorized admin works them; there is no second approver (row 77).
+One place where ops sees every refund review (opened when a **paid** task ends CANCELLED, EXPIRED or FAILED, rows 37, 54, 102, or for an approved price decrease on a `send_to_runner` task, rows 48, 86; row 102: "a review trigger, not an automatic refund"), works the ones that need a decision, and records the manual M-Pesa payout of approved refunds. Refund reviews are records, not task states (§3.3 note). Any authorized admin works them; there is no second approver (row 77).
 
 ## Entry / exit
 - Entry: sidebar nav item `Refunds` (A-15). **EXTENDS MOCKUP**: in a **new nav group `Payments`** (row 77), placed between the mockup's `Network` and `Insights` groups, with `Refunds` as its only item for now. Group label uses the existing `.ops-nav-label` (10.5 uppercase, `--nitume-sidebar-muted`), copy `Payments`; spacing as the other groups (`.ops-nav-group`, margin-bottom 22). Badge `.badge-count` = number of `Needs review` rows (see Data); hidden at 0; `99+` when the count page has a next cursor.
@@ -14,7 +14,7 @@ One place where ops sees every refund review (opened when a task is cancelled af
 - Exit: row click or row button → `drawer-refund` (A-01) for that review. Changing panel closes any open drawer (existing shell behaviour).
 
 ## Task states
-A cancellation review's task is `CANCELLED` (price-change reject IN_PROGRESS → CANCELLED, customer-favourable DISPUTED → CANCELLED, or any cancel after payment, including a payment that completes after cancellation). A `Price decrease` review's task is usually still active (IN_PROGRESS or later). The panel shows the task's chip from the API and never assumes it. No state transition is fired from this panel.
+A cancellation-type review's task is `CANCELLED` (price-change reject IN_PROGRESS → CANCELLED, customer-favourable DISPUTED → CANCELLED, or any cancel after payment, including a payment that completes after cancellation), `EXPIRED` (RUNNER_ASSIGNED → EXPIRED, reason `Task expired`, row 102) or `FAILED` (RUNNER_EN_ROUTE → FAILED, reason `Task failed`, row 102). A `Price decrease` review's task is usually still active (IN_PROGRESS or later). The panel shows the task's chip from the API and never assumes it. No state transition is fired from this panel.
 
 ## Layout (top to bottom)
 1. Topbar (A-03 `app-panel-topbar`), margin-bottom 26:
@@ -30,9 +30,9 @@ A cancellation review's task is `CANCELLED` (price-change reject IN_PROGRESS →
    | Reason | trigger label (`_shared.md` §6) | Fira Sans 13 |
    | Refundable | The review's refund ceiling. While `pending_review`: `refundCeiling` (API, `feat/api-owner-answers-4`: `min(amountPaid, totalPaidToNitume − alreadyRefunded)`, net of earlier approved/refunded reviews on the task, row 87). Once decided (`refundCeiling` is null): `amountPaid`, the review's own basis (the decrease, or what was paid to Nitume). Until the API field is on `main`, fall back to `amountPaid` (`TODO(owner-answers-4)`). Use the same helper as the drawer (`reviewCeiling`), not a copy. Header renamed from `Paid to Nitume` (amendment SA-1) because it is not always what was paid | Fira Code (`td.num`) |
    | Refund | `refundAmount`, `—` while null | Fira Code |
-   | Status | A-02 chip, `kind="refund"` | chip |
+   | Status | A-02 chip, `kind="refund"`; `Payout reversed` (amber) when `effectivePayout.state` is `reversed` (row 100, `_shared.md` §6) | chip |
    | Opened | `formatDateTime(createdAt)` (A-13) | Fira Code 12 slate-600 |
-   | (action) | `.row-assign`: `Review` for `pending_review`, `Record payout` for `approved`, `View` otherwise | button |
+   | (action) | `.row-assign`: `Review` for `pending_review`, `Record payout` for `approved` and for a `refunded` review whose effective payout is reversed (row 100), `View` otherwise | button |
 
    - Whole row is `tr.clickable` (opens the drawer); the button stops propagation (same as the queue).
    - Order: newest first (API order: `createdAt DESC, id DESC`). Do not re-sort client-side.
@@ -57,16 +57,16 @@ Widths: the panel uses the main column (`.ops-main` padding 26 34 50). Below 110
 - Nav item: `Refunds`
 - Title: `Refunds`
 - Sub-line (Fira Code, counts from the loaded rows): `Needs review` filter → `{n} to review` (`No refunds to review` at 0); `Payout due` → `{n} payouts to record`; `Refunded` → `{n} refunded`; `No refund` → `{n} closed with no refund`; `All statuses` → `{n} refund reviews`. When `nextCursor` is non-null append `+` to `{n}` (`25+ to review`).
-- Filter options (in this order): `Needs review` (`pending_review`), `Payout due` (`approved`), `Refunded` (`refunded`), `No refund` (`no_refund`), `All statuses` (no `status` param).
+- Filter options (in this order): `Needs review` (`pending_review`), `Payout due` (`approved`; the API also returns reversed payouts here, N-15), `Refunded` (`refunded`), `No refund` (`no_refund`), `All statuses` (no `status` param).
 - Nav group label: `Payments`.
 - Column headers: `Task`, `Reason`, `Refundable`, `Refund`, `Status`, `Opened`, (blank).
 - Row buttons: `Review`, `Record payout`, `View`.
 - Empty states (A-10, title then text):
-  - Needs review: `No refunds to review` / `Tasks cancelled after the customer paid, and price decreases on tasks paid to Nitume, land here for a refund decision.`
-  - Payout due: `No payouts to record` / `Approved refunds wait here until you record the M-Pesa payout.`
+  - Needs review: `No refunds to review` / `Paid tasks that were cancelled, expired or failed, and price decreases on tasks paid to Nitume, land here for a refund decision.` (row 102)
+  - Payout due: `No payouts to record` / `Approved refunds, and payouts that were reversed, wait here until you record the M-Pesa payout.` (row 100)
   - Refunded: `No refunds sent yet` / `Refunds you mark as paid appear here.`
   - No refund: `No reviews closed without a refund` / `Reviews you close at KSh 0 appear here.`
-  - All statuses: `No refund reviews yet` / `A review opens when a task is cancelled after the customer paid.`
+  - All statuses: `No refund reviews yet` / `A review opens when a paid task is cancelled, expires or fails.` (row 102)
 - Loading (first load or filter change): `.ops-loading` `Loading refund reviews…`. `Load more` button reads `Loading…` while fetching.
 - Error (first load): A-11 danger `Couldn't load refund reviews.` + `.btn .btn-outline` `Try again`. Error on Load more: A-11 danger under the table `Couldn't load more. Try again.`; the button stays.
 - 403: `_shared.md` §2 copy.
@@ -75,7 +75,7 @@ Widths: the panel uses the main column (`.ops-main` padding 26 34 50). Below 110
 `#NT-XXXXX` task ids, `Refundable` amounts, `Refund` amounts, `Opened` date/time, the sub-line counts, the nav badge count.
 
 ## Data
-- List: `GET /refunds?status=<status>&cursor=<cursor>&limit=25` (admin; on `main`). Response `{ items: RefundListItem[], nextCursor: string | null }`. Fields used: `id`, `errandId`, `trigger`, `amountPaid` (decimal string; the review's own basis, **not** net of other refunds), `refundCeiling` (decimal string while `pending_review`, null once decided; `feat/api-owner-answers-4`, N-9), `refundAmount` (decimal string or null), `status`, `createdAt`, `errand` (N-1). `alreadyRefunded`, `remainingRefundable` and `totalPaidToNitume` also arrive per item; the panel does not show them. `limit` 1–100 (default 25); `status` must be a `RefundStatus` value or omitted (400 otherwise).
+- List: `GET /refunds?status=<status>&cursor=<cursor>&limit=25` (admin; on `main`). Response `{ items: RefundListItem[], nextCursor: string | null }`. Fields used: `id`, `errandId`, `trigger`, `amountPaid` (decimal string; the review's own basis, **not** net of other refunds), `refundCeiling` (decimal string while `pending_review`, null once decided; `feat/api-owner-answers-4`, N-9), `refundAmount` (decimal string or null), `status`, `createdAt`, `errand` (N-1), `effectivePayout` (N-15, row 100: `{ state, amount, reference, at }` or null; only `state` is used here). `alreadyRefunded`, `remainingRefundable` and `totalPaidToNitume` also arrive per item; the panel does not show them. `limit` 1–100 (default 25); `status` must be a `RefundStatus` value or omitted (400 otherwise).
 - Task title: **needs: api-contract (N-1)** embed `errand { id, title, description, category, status }` in each item. Until then, look the errand up in `AdminDataService.errands()` (the last-100 window); when absent, show the category-less fallback `Task` + `#NT-XXXXX` and fetch nothing per row (no N+1 calls).
 - Badge: on dashboard load and on every refresh, `GET /refunds?status=pending_review&limit=100` and count `items` (`99+` if `nextCursor`). **needs: api-contract (N-7)** a count endpoint to replace this.
 - Refresh: the `↻ Refresh` button and returning from `drawer-refund` after a save reload the current filter from the first page and the badge. A save in the drawer also updates the row in place (status, refund amount) without waiting for the reload.
@@ -94,11 +94,23 @@ Widths: the panel uses the main column (`.ops-main` padding 26 34 50). Below 110
 - Placement (row 77): new `Payments` nav group.
 - Schema (rows 62, 71, 94): approved.
 - Decrease reviews only on `send_to_runner` (row 86); ceiling net of earlier refunds (row 87); `KSh` (row 82).
+- Row 102 (2026-10-12): paid EXPIRED and FAILED tasks open reviews; reasons `Task expired`, `Task failed` (`_shared.md` §6; needs N-16).
+- Row 100 (2026-10-12): reversed payouts show `Payout reversed` and sit under `Payout due` (needs N-15).
+- Row 96 (2026-10-12): `Opened` in 12-hour EAT (`_shared.md` §3.1; already built with `formatDateTime`).
 
 ## Open questions for the owner
 None.
 
 ## Current vs design
+Re-audit round 5 (2026-10-12) against `fix/angular-admin-owner-answers-5` @ `053fbc6`: **PASS**.
+1. Row 102: `Task expired` / `Task failed` from the shared `refund-labels.ts` (tested); the three changed empty states match Copy word for word (tested).
+2. Row 100: chip `Payout reversed` (pending/amber, A-02 `payout_reversed` label, not an API status) and row button `Record payout` from the shared helpers `refundChipStatus` / `refundRowAction` (`refund-labels.ts`, also used by the drawer); a sent effective payout with corrections still reads `Refunded` (tested). A save in the drawer patches `effectivePayout` in place. `effectivePayout` is optional with `TODO(owner-answers-5)` until the API merges (accepted).
+3. Round-4 cleanup (`16ad907`): the round-4 fields are required now that `feat/api-owner-answers-4` is on `main`; no `TODO(owner-answers-4)` left.
+
+Spec update 2026-10-12 (owner rows 100, 102) against `main` @ `4963a1c`: status set to **partial**.
+1. Row 102: `refund-labels.ts:4-9` has no `expired_after_payment` / `failed_after_payment` labels; add `Task expired` / `Task failed` (one map, shared with the drawer). Empty-state texts for `Needs review`, `Payout due` and `All statuses` changed (Copy).
+2. Row 100: the Status chip and row button must follow `effectivePayout.state` (`Payout reversed`, `Record payout`). Needs N-15.
+
 Re-audit round 4, round 2 (2026-10-09) against `fix/angular-admin-owner-answers` @ `c1630ec`: **PASS**. `0592e9f`: the `Refundable` column shows `reviewCeiling(r)` from the shared `features/admin/refund-labels.ts` (`refundCeiling` while `pending_review`, else `amountPaid`; the drawer imports the same helper); test with `amountPaid` 1,500 / `refundCeiling` 1,200 → `KSh 1,200` and a decided row → `amountPaid`. Blocker 1 below is closed.
 
 Re-audit 2026-10-09 round 4 against `fix/angular-admin-owner-answers` @ `f1323de` (`docs/audits/admin-gap-report.md`, addendum "Re-audit round 4"): **FAIL**.
