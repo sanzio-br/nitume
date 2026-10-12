@@ -10,15 +10,15 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * fails as soon as a review uses one of the values. The extra, unused enum
  * values are harmless to the previous code.
  */
-export class AddRefundTriggerTaskExpiredFailed1790101100000 implements MigrationInterface {
-  name = 'AddRefundTriggerTaskExpiredFailed1790101100000';
+export class AddRefundTriggerExpiredFailedAfterPayment1790101100000 implements MigrationInterface {
+  name = 'AddRefundTriggerExpiredFailedAfterPayment1790101100000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TYPE "public"."refund_trigger_enum" ADD VALUE IF NOT EXISTS 'task_expired'`,
+      `ALTER TYPE "public"."refund_trigger_enum" ADD VALUE IF NOT EXISTS 'expired_after_payment'`,
     );
     await queryRunner.query(
-      `ALTER TYPE "public"."refund_trigger_enum" ADD VALUE IF NOT EXISTS 'task_failed'`,
+      `ALTER TYPE "public"."refund_trigger_enum" ADD VALUE IF NOT EXISTS 'failed_after_payment'`,
     );
   }
 

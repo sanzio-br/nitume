@@ -930,10 +930,10 @@ export const triggerFor = (
   to: ErrandStatus = ErrandStatus.CANCELLED,
 ): RefundTrigger => {
   if (to === ErrandStatus.EXPIRED) {
-    return RefundTrigger.TASK_EXPIRED;
+    return RefundTrigger.EXPIRED_AFTER_PAYMENT;
   }
   if (to === ErrandStatus.FAILED) {
-    return RefundTrigger.TASK_FAILED;
+    return RefundTrigger.FAILED_AFTER_PAYMENT;
   }
   if (guard === TransitionGuard.PRICE_CHANGE_REJECTION) {
     return RefundTrigger.PRICE_CHANGE_REJECTED;

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ErrandStatus, PaymentStatus, PaymentTransactionStatus } from '../common/enums';
 import { PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
 import { PaymentsService } from './payments.service';
+import { RefundTrigger } from './refund-review.entity';
 import { PayHeroMpesaProvider } from './providers/payhero.provider';
 
 /** Provider callbacks are verified by a status query before money moves (row 73). */
@@ -74,6 +75,7 @@ const build = (query: { state: 'success' | 'failed' | 'pending' } = { state: 'su
     http,
   );
   const queue = { add: vi.fn(() => Promise.resolve({})) };
+  const refunds = { openWithin: vi.fn(() => Promise.resolve(null)), openIfPaid: vi.fn() };
   const service = new PaymentsService(
     payments as never,
     transactions as never,
@@ -83,12 +85,12 @@ const build = (query: { state: 'success' | 'failed' | 'pending' } = { state: 'su
     provider,
     { get: vi.fn((_k: string, d: unknown) => d) } as never,
     {} as never,
-    { openWithin: vi.fn(), openIfPaid: vi.fn() } as never,
+    refunds as never,
     {} as never,
     { setIfAbsent: vi.fn(() => Promise.resolve(true)) } as never,
     queue as never,
   );
-  return { service, payment, legs, queue, http, errands, qb };
+  return { service, payment, legs, queue, http, errands, qb, refunds };
 };
 
 const successCallback = {
@@ -152,5 +154,19 @@ describe('PaymentsService.handleCallback with PayHero (row 73)', () => {
     const { service, payment } = build({ state: 'pending' });
     await expect(service.verifyPayment('p-1')).resolves.toBe('pending');
     expect(payment.status).toBe(PaymentStatus.PENDING);
+  });
+});
+
+describe('Late STK completion on a terminated task (row 102)', () => {
+  it.each([
+    [ErrandStatus.EXPIRED, RefundTrigger.EXPIRED_AFTER_PAYMENT],
+    [ErrandStatus.FAILED, RefundTrigger.FAILED_AFTER_PAYMENT],
+    [ErrandStatus.CANCELLED, RefundTrigger.CANCELLED_AFTER_PAYMENT],
+  ])('opens/refreshes the %s review in the same transaction, no transition', async (status, trigger) => {
+    const { service, errands, refunds } = build({ state: 'success' });
+    errands.getById.mockResolvedValue({ id: 'e-1', status });
+    await expect(service.verifyPayment('p-1')).resolves.toBe('success');
+    expect(refunds.openWithin).toHaveBeenCalledWith(expect.anything(), 'e-1', trigger);
+    expect(errands.transition).not.toHaveBeenCalled();
   });
 });

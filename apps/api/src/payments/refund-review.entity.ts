@@ -21,9 +21,9 @@ export enum RefundTrigger {
    */
   PRICE_CHANGE_DECREASE = 'price_change_decrease',
   /** A paid task expired, RUNNER_ASSIGNED -> EXPIRED (row 102). */
-  TASK_EXPIRED = 'task_expired',
+  EXPIRED_AFTER_PAYMENT = 'expired_after_payment',
   /** A paid task failed, RUNNER_EN_ROUTE -> FAILED (row 102). */
-  TASK_FAILED = 'task_failed',
+  FAILED_AFTER_PAYMENT = 'failed_after_payment',
 }
 
 /**

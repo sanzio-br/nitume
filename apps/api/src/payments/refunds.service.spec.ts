@@ -118,8 +118,8 @@ describe('RefundsService', () => {
 
   it('opens the review when a paid task ends EXPIRED or FAILED (row 102)', async () => {
     const cases: [object, RefundTrigger][] = [
-      [{ from: ErrandStatus.RUNNER_ASSIGNED, to: ErrandStatus.EXPIRED, actor: 'system' }, RefundTrigger.TASK_EXPIRED],
-      [{ from: ErrandStatus.RUNNER_EN_ROUTE, to: ErrandStatus.FAILED, actor: 'runner' }, RefundTrigger.TASK_FAILED],
+      [{ from: ErrandStatus.RUNNER_ASSIGNED, to: ErrandStatus.EXPIRED, actor: 'system' }, RefundTrigger.EXPIRED_AFTER_PAYMENT],
+      [{ from: ErrandStatus.RUNNER_EN_ROUTE, to: ErrandStatus.FAILED, actor: 'runner' }, RefundTrigger.FAILED_AFTER_PAYMENT],
     ];
     for (const [change, trigger] of cases) {
       const { runHook, table, query } = build({ paid: '800.00' });
@@ -140,10 +140,10 @@ describe('RefundsService', () => {
 
   it('maps EXPIRED and FAILED to their own triggers', () => {
     expect(triggerFor(ErrandStatus.RUNNER_ASSIGNED, undefined, ErrandStatus.EXPIRED)).toBe(
-      RefundTrigger.TASK_EXPIRED,
+      RefundTrigger.EXPIRED_AFTER_PAYMENT,
     );
     expect(triggerFor(ErrandStatus.RUNNER_EN_ROUTE, undefined, ErrandStatus.FAILED)).toBe(
-      RefundTrigger.TASK_FAILED,
+      RefundTrigger.FAILED_AFTER_PAYMENT,
     );
     expect(triggerFor(ErrandStatus.RUNNER_ASSIGNED, undefined, ErrandStatus.CANCELLED)).toBe(
       RefundTrigger.CANCELLED_AFTER_PAYMENT,
@@ -155,7 +155,7 @@ describe('RefundsService', () => {
       const { service, table } = build({ paid: '300.00', status });
       await service.onStatusChanged({ errandId: 'e-1', status, from: ErrandStatus.RUNNER_ASSIGNED });
       expect(table.get('e-1')?.trigger).toBe(
-        status === ErrandStatus.EXPIRED ? RefundTrigger.TASK_EXPIRED : RefundTrigger.TASK_FAILED,
+        status === ErrandStatus.EXPIRED ? RefundTrigger.EXPIRED_AFTER_PAYMENT : RefundTrigger.FAILED_AFTER_PAYMENT,
       );
     }
   });
