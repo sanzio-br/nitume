@@ -130,6 +130,17 @@ describe('NotificationsService queue fan-out (row 26)', () => {
     expect(notifications.save).not.toHaveBeenCalled();
   });
 
+  it('queues a refund feed job unless the change is admin-only (AQ-9, row 100)', async () => {
+    const { service, queue } = build();
+    const base = { errandId: 'e-1', refundId: 'r-1', status: 'refunded', refundAmount: '400.00' };
+    await service.onRefundUpdated({ ...base, notifyCustomer: false });
+    expect(queue.add).not.toHaveBeenCalled();
+    await service.onRefundUpdated({ ...base, notifyCustomer: true });
+    await service.onRefundUpdated(base);
+    expect(queue.add).toHaveBeenCalledTimes(2);
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, expect.objectContaining({ kind: 'refund', status: 'refunded' }));
+  });
+
   it('enqueues nothing for an unpublished status', async () => {
     const { service, queue } = build();
     await service.onStatusChanged({ errandId: 'e-1', status: ErrandStatus.PAYMENT_CONFIRMED, actor: 'system' });

@@ -26,7 +26,7 @@ const build = (
   };
   const transactions = { createQueryBuilder: vi.fn(() => qb) };
   const errands = {
-    onCancelled: vi.fn(),
+    onTerminated: vi.fn(),
     getById: vi.fn(() =>
       access === 'ok' ? Promise.resolve({ id: 'e-1' }) : Promise.reject(new ForbiddenException()),
     ),

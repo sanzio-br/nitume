@@ -20,6 +20,10 @@ export enum RefundTrigger {
    * review per decrease, for the difference.
    */
   PRICE_CHANGE_DECREASE = 'price_change_decrease',
+  /** A paid task expired, RUNNER_ASSIGNED -> EXPIRED (row 102). */
+  EXPIRED_AFTER_PAYMENT = 'expired_after_payment',
+  /** A paid task failed, RUNNER_EN_ROUTE -> FAILED (row 102). */
+  FAILED_AFTER_PAYMENT = 'failed_after_payment',
 }
 
 /**
@@ -34,9 +38,10 @@ export enum RefundStatus {
 }
 
 /**
- * Admin refund review (owner decisions, BOARD rows 37, 48, 71). A task has
- * at most one cancellation review (`priceChangeRequestId` null: cancelled
- * after payment, price-change rejection, customer-favourable dispute) and
+ * Admin refund review (owner decisions, BOARD rows 37, 48, 71, 102). A task
+ * has at most one cancellation review (`priceChangeRequestId` null: cancelled
+ * after payment, price-change rejection, customer-favourable dispute, or the
+ * paid task ending EXPIRED/FAILED) and
  * one review per approved price decrease (`priceChangeRequestId` set,
  * `amountPaid` = the decrease, the refund ceiling). An admin sets the
  * amount, 0 up to `amountPaid`. Money goes back manually for now: there is

@@ -257,3 +257,50 @@ describe('ErrandsService cancellation hooks', () => {
     expect(emit).not.toHaveBeenCalled();
   });
 });
+
+describe('ErrandsService termination hooks (row 102)', () => {
+  it('runs on CANCELLED, EXPIRED and FAILED with the target status', async () => {
+    const expired = build(ErrandStatus.RUNNER_ASSIGNED);
+    const hook = vi.fn(() => Promise.resolve());
+    const cancelOnly = vi.fn(() => Promise.resolve());
+    expired.service.onTerminated(hook);
+    expired.service.onCancelled(cancelOnly);
+    await expired.service.transition('e-1', ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM });
+    expect(hook).toHaveBeenCalledWith(expired.manager, {
+      errandId: 'e-1',
+      from: ErrandStatus.RUNNER_ASSIGNED,
+      to: ErrandStatus.EXPIRED,
+      actor: StatusHistoryActor.SYSTEM,
+      guard: undefined,
+    });
+    // onCancelled stays CANCELLED-only.
+    expect(cancelOnly).not.toHaveBeenCalled();
+
+    const failed = build(ErrandStatus.RUNNER_EN_ROUTE);
+    const fHook = vi.fn(() => Promise.resolve());
+    failed.service.onTerminated(fHook);
+    await failed.service.transition('e-1', ErrandStatus.FAILED, { type: StatusHistoryActor.SYSTEM });
+    expect(fHook).toHaveBeenCalledWith(
+      failed.manager,
+      expect.objectContaining({ from: ErrandStatus.RUNNER_EN_ROUTE, to: ErrandStatus.FAILED }),
+    );
+  });
+
+  it('does not run for non-terminal transitions', async () => {
+    const { service } = build(ErrandStatus.RUNNER_ASSIGNED);
+    const hook = vi.fn(() => Promise.resolve());
+    service.onTerminated(hook);
+    await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, { type: StatusHistoryActor.SYSTEM }).catch(() => undefined);
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('rolls the EXPIRED transition back (no event) when a hook throws', async () => {
+    const { service, emit } = build(ErrandStatus.RUNNER_ASSIGNED);
+    service.onTerminated(() => Promise.reject(new Error('refund review failed')));
+    await expect(
+      service.transition('e-1', ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM }),
+    ).rejects.toThrow('refund review failed');
+    await new Promise((r) => setImmediate(r));
+    expect(emit).not.toHaveBeenCalled();
+  });
+});

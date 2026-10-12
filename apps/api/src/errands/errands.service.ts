@@ -211,6 +211,16 @@ interface StatusChangedEvent {
   actor: StatusHistoryActor;
 }
 
+/**
+ * Terminal statuses a paid task can end in without being delivered
+ * (row 102): each opens a refund review through `onTerminated`.
+ */
+export const REFUNDABLE_TERMINAL_STATUSES: readonly ErrandStatus[] = [
+  ErrandStatus.CANCELLED,
+  ErrandStatus.EXPIRED,
+  ErrandStatus.FAILED,
+];
+
 /** A CANCELLED transition about to commit (see `onCancelled`). */
 export interface CancellationInTx {
   errandId: string;
@@ -219,11 +229,22 @@ export interface CancellationInTx {
   guard?: TransitionGuard;
 }
 
+/** A CANCELLED, EXPIRED or FAILED transition about to commit (see `onTerminated`). */
+export interface TerminationInTx extends CancellationInTx {
+  to: ErrandStatus;
+}
+
 /**
  * Runs inside the transaction that moves an errand to CANCELLED. Throwing
  * rolls the cancellation back, so work done here is never lost after commit.
  */
 export type CancellationHook = (manager: EntityManager, change: CancellationInTx) => Promise<void>;
+
+/**
+ * Runs inside the transaction that moves an errand to CANCELLED, EXPIRED or
+ * FAILED. Throwing rolls the transition back.
+ */
+export type TerminationHook = (manager: EntityManager, change: TerminationInTx) => Promise<void>;
 
 /**
  * Runs inside the re-quote transaction, after the errand row is locked;
@@ -295,7 +316,7 @@ export type DisputeResolutionHook = (
 @Injectable()
 export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
-  private readonly cancellationHooks: CancellationHook[] = [];
+  private readonly terminationHooks: TerminationHook[] = [];
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
   private readonly requoteGuards: RequoteGuard[] = [];
 
@@ -869,7 +890,21 @@ export class ErrandsService {
    * payments.
    */
   onCancelled(hook: CancellationHook): void {
-    this.cancellationHooks.push(hook);
+    this.terminationHooks.push(async (manager, { to, ...change }) => {
+      if (to === ErrandStatus.CANCELLED) {
+        await hook(manager, change);
+      }
+    });
+  }
+
+  /**
+   * Registers work that must commit atomically with every transition to a
+   * terminal status a paid task can end in undelivered: CANCELLED, EXPIRED
+   * (RUNNER_ASSIGNED -> EXPIRED) or FAILED (RUNNER_EN_ROUTE -> FAILED).
+   * Used by the payments module to open refund reviews (rows 37, 102).
+   */
+  onTerminated(hook: TerminationHook): void {
+    this.terminationHooks.push(hook);
   }
 
   /**
@@ -993,9 +1028,9 @@ export class ErrandsService {
       });
     }
 
-    if (to === ErrandStatus.CANCELLED) {
-      for (const hook of this.cancellationHooks) {
-        await hook(manager, { errandId, from: fromStatus, actor: actor.type, guard });
+    if (REFUNDABLE_TERMINAL_STATUSES.includes(to)) {
+      for (const hook of this.terminationHooks) {
+        await hook(manager, { errandId, from: fromStatus, to, actor: actor.type, guard });
       }
     }
 

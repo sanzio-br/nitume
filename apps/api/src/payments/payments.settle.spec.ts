@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ErrandStatus, PaymentTransactionStatus } from '../common/enums';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ErrandStatus, PaymentFlow, PaymentTransactionStatus } from '../common/enums';
+import { ErrandStateMachine } from '../errands/errand-state-machine';
 import { PaymentsService } from './payments.service';
 
 const build = (opts: { statusById: Record<string, ErrandStatus>; legStatus?: PaymentTransactionStatus }) => {
@@ -54,5 +57,34 @@ describe('PaymentsService.settleConfirmed (row 50)', () => {
     });
     await expect(service.settleConfirmed()).resolves.toEqual([]);
     expect(errands.transition).not.toHaveBeenCalled();
+  });
+});
+
+describe('Row 95: nothing becomes payable to the runner before CONFIRMED', () => {
+  const sendToRunner = { id: 'p-1', paymentFlow: PaymentFlow.CUSTOMER_TO_RUNNER, merchantAmount: '1000.00' };
+
+  it('only CONFIRMED -> SETTLED makes runner earnings payable (state machine)', () => {
+    const into = Object.values(ErrandStatus).filter((from) =>
+      ErrandStateMachine.canTransition(from, ErrandStatus.SETTLED),
+    );
+    expect(into).toEqual([ErrandStatus.CONFIRMED]);
+  });
+
+  it.each(
+    Object.values(ErrandStatus).filter(
+      (s) => s !== ErrandStatus.CONFIRMED && s !== ErrandStatus.SETTLED,
+    ),
+  )('refuses to settle a paid send_to_runner errand in %s', async (status) => {
+    const { service, errands, payments } = build({ statusById: { 'e-1': status } });
+    payments.findOne.mockResolvedValue(sendToRunner as never);
+    await expect(service.settleErrand('e-1')).rejects.toMatchObject({
+      code: status === ErrandStatus.DISPUTED ? 'errand_disputed' : 'errand_not_settleable',
+    });
+    expect(errands.transition).not.toHaveBeenCalled();
+  });
+
+  it('no runner-advance leg exists: the item amount is never advanced', () => {
+    const source = readFileSync(join(__dirname, 'payments.service.ts'), 'utf-8');
+    expect(source).not.toMatch(/PaymentTypeCode\.RUNNER_ADVANCE|PaymentFlow\.RUNNER_ADVANCE/);
   });
 });

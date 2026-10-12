@@ -61,13 +61,17 @@ const build = (
   const manager = {
     query,
     getRepository: (entity: { name: string }) =>
-      entity.name === 'RefundReview' ? reviews : transactions,
+      entity.name === 'RefundReview'
+        ? reviews
+        : entity.name === 'RefundPayoutCorrection'
+          ? { find: vi.fn(() => Promise.resolve([])) }
+          : transactions,
   };
   reviews.manager.transaction = vi.fn((fn) => fn(manager));
   let hook: ((m: unknown, c: object) => Promise<void>) | undefined;
   const errands = {
     getById: vi.fn(() => Promise.resolve({ id: 'e-1', status: opts.status ?? ErrandStatus.CANCELLED })),
-    onCancelled: vi.fn((h: typeof hook) => {
+    onTerminated: vi.fn((h: typeof hook) => {
       hook = h;
     }),
   };
@@ -113,6 +117,50 @@ describe('RefundsService', () => {
       expect(table.get('e-1')).toMatchObject({ trigger, amountPaid: '500.00' });
       // Uses the caller's manager, not a transaction of its own.
       expect(manager.query).toBe(query);
+    }
+  });
+
+  it('opens the review when a paid task ends EXPIRED or FAILED (row 102)', async () => {
+    const cases: [object, RefundTrigger][] = [
+      [{ from: ErrandStatus.RUNNER_ASSIGNED, to: ErrandStatus.EXPIRED, actor: 'system' }, RefundTrigger.EXPIRED_AFTER_PAYMENT],
+      [{ from: ErrandStatus.RUNNER_EN_ROUTE, to: ErrandStatus.FAILED, actor: 'runner' }, RefundTrigger.FAILED_AFTER_PAYMENT],
+    ];
+    for (const [change, trigger] of cases) {
+      const { runHook, table, query } = build({ paid: '800.00' });
+      await runHook({ errandId: 'e-1', ...change });
+      expect(query).toHaveBeenCalledWith(expect.stringMatching(/ON CONFLICT \("errandId"\)/), expect.any(Array));
+      // A review, not a refund: pending until an admin decides.
+      expect(table.get('e-1')).toMatchObject({
+        trigger,
+        amountPaid: '800.00',
+        status: RefundStatus.PENDING_REVIEW,
+        refundAmount: null,
+      });
+    }
+    const unpaid = build({ paid: '0' });
+    await unpaid.runHook({ errandId: 'e-1', from: ErrandStatus.RUNNER_ASSIGNED, to: ErrandStatus.EXPIRED, actor: 'system' });
+    expect(unpaid.table.size).toBe(0);
+  });
+
+  it('maps EXPIRED and FAILED to their own triggers', () => {
+    expect(triggerFor(ErrandStatus.RUNNER_ASSIGNED, undefined, ErrandStatus.EXPIRED)).toBe(
+      RefundTrigger.EXPIRED_AFTER_PAYMENT,
+    );
+    expect(triggerFor(ErrandStatus.RUNNER_EN_ROUTE, undefined, ErrandStatus.FAILED)).toBe(
+      RefundTrigger.FAILED_AFTER_PAYMENT,
+    );
+    expect(triggerFor(ErrandStatus.RUNNER_ASSIGNED, undefined, ErrandStatus.CANCELLED)).toBe(
+      RefundTrigger.CANCELLED_AFTER_PAYMENT,
+    );
+  });
+
+  it('backstop and openIfPaid cover EXPIRED and FAILED errands', async () => {
+    for (const status of [ErrandStatus.EXPIRED, ErrandStatus.FAILED]) {
+      const { service, table } = build({ paid: '300.00', status });
+      await service.onStatusChanged({ errandId: 'e-1', status, from: ErrandStatus.RUNNER_ASSIGNED });
+      expect(table.get('e-1')?.trigger).toBe(
+        status === ErrandStatus.EXPIRED ? RefundTrigger.EXPIRED_AFTER_PAYMENT : RefundTrigger.FAILED_AFTER_PAYMENT,
+      );
     }
   });
 
