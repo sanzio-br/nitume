@@ -318,6 +318,52 @@ export interface RefundReview {
   remainingRefundable: string;
   /** Every completed STK amount paid to Nitume for the task. */
   totalPaidToNitume: string;
+  /**
+   * The payout as it stands after corrections (row 100, N-15); null unless
+   * `refunded`. The review's own `payoutReference` / `paidAt` stay the
+   * original, immutable payout. TODO(owner-answers-5): optional until
+   * feat/api-owner-answers-5 is on main.
+   */
+  effectivePayout?: EffectivePayout | null;
+}
+
+/** Effective payout of a refunded review (row 100): `reference` null and `amount` 0 while reversed. */
+export interface EffectivePayout {
+  state: 'sent' | 'reversed';
+  amount: string;
+  reference: string | null;
+  /** Latest sent payout (original or re-sent), or the reversal while reversed. */
+  at: string | null;
+}
+
+/** Kinds of payout correction record (row 100, drawer-refund "Corrections"). */
+export type RefundCorrectionKind = 'corrected' | 'reversed' | 'resent';
+
+/** One append-only payout correction record, as the admin sees it (oldest first). */
+export interface RefundPayoutCorrection {
+  id: string;
+  kind: RefundCorrectionKind | string;
+  /** Effective receipt before this record (null after a reversal). */
+  previousReference: string | null;
+  /** Effective amount sent before this record. */
+  previousAmount: string;
+  newReference: string | null;
+  newAmount: string | null;
+  reason: string;
+  createdByUserId: string;
+  /** Admin name (N-2). */
+  createdBy?: AdminRef | null;
+  createdAt: string;
+}
+
+/** `POST /refunds/:id/corrections` body (N-15). Amounts are JSON numbers. */
+export interface CreateRefundCorrectionDto {
+  kind: RefundCorrectionKind;
+  newReference?: string;
+  newAmount?: number;
+  reason: string;
+  /** Latest correction id this drawer saw, or null when there was none (required key). */
+  expectedLatestCorrectionId: string | null;
 }
 
 /** An admin who decided / paid a refund (N-2). */
@@ -363,6 +409,11 @@ export interface RefundDetail extends RefundListItem {
   } | null;
   paid: PaidBreakdown;
   otherReviews: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
+  // Row 100 (N-15). TODO(owner-answers-5): optional until feat/api-owner-answers-5 is on main.
+  /** Payout corrections, oldest first; empty unless refunded. */
+  corrections?: RefundPayoutCorrection[];
+  /** Highest `newAmount` a correction or new payout may carry; null unless refunded. */
+  correctionCeiling?: string | null;
 }
 
 export interface ListRefundsResult {

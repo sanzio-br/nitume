@@ -4,6 +4,7 @@ import { environment } from '../../../environments/environment';
 import {
   AssignErrandDto,
   AssignErrandResult,
+  CreateRefundCorrectionDto,
   Dispute,
   Errand,
   ErrandRefundView,
@@ -175,6 +176,15 @@ export class ApiService {
   /** POST /refunds/:id/mark-paid — records the manual M-Pesa payout. */
   markRefundPaid(id: string, body: { payoutReference: string }) {
     return this.http.post<RefundReview>(`${this.base}/refunds/${id}/mark-paid`, body);
+  }
+
+  /**
+   * POST /refunds/:id/corrections — appends a payout correction, reversal or
+   * new payout (row 100); 201 with the updated detail. The original payout
+   * is never changed.
+   */
+  addRefundCorrection(id: string, body: CreateRefundCorrectionDto) {
+    return this.http.post<RefundDetail>(`${this.base}/refunds/${id}/corrections`, body);
   }
 
   /** GET /runners/verifications — admin verification inbox. */

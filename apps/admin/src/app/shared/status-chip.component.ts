@@ -80,6 +80,8 @@ const REFUND_LABELS: Record<string, string> = {
   approved: 'Payout due',
   refunded: 'Refunded',
   no_refund: 'No refund',
+  // Not an API status: a refunded review whose payout was reversed (row 100).
+  payout_reversed: 'Payout reversed',
 };
 
 const REFUND_VARIANTS: Record<string, ChipVariant> = {
@@ -87,6 +89,7 @@ const REFUND_VARIANTS: Record<string, ChipVariant> = {
   approved: 'pending',
   refunded: 'success',
   no_refund: 'neutral',
+  payout_reversed: 'pending',
 };
 
 /**
