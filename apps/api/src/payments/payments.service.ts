@@ -26,7 +26,7 @@ import { AuthContext } from '../common/decorators/auth.decorators';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { ErrandStateMachine } from '../errands/errand-state-machine';
 import { BUDGET_CATEGORIES } from '../errands/errand-rules';
-import { ErrandsService } from '../errands/errands.service';
+import { ErrandsService, REFUNDABLE_TERMINAL_STATUSES } from '../errands/errands.service';
 import { Payment } from './payment.entity';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
@@ -44,8 +44,7 @@ import { ApiError, conflict } from '../common/api-error';
 import { CustomerAccountsService } from '../customers/customer-accounts.service';
 import { UsersService } from '../users/users.service';
 import { RedisService } from '../infra/redis/redis.service';
-import { RefundTrigger } from './refund-review.entity';
-import { RefundsService } from './refunds.service';
+import { RefundsService, triggerFor } from './refunds.service';
 import {
   MerchantDetails,
   MerchantPaymentView,
@@ -856,12 +855,12 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
     const success = result.state === 'success';
     const status = success ? PaymentTransactionStatus.COMPLETED : PaymentTransactionStatus.FAILED;
     const errandId = errandIdOf(payment);
-    // A payment that completes after the task was cancelled opens its refund
-    // review in the same transaction that records the completed legs, so a
-    // failure cannot leave paid legs without a review (a retried result is
-    // dropped as already final).
-    const cancelled =
-      success && (await this.errands.getById(errandId)).status === ErrandStatus.CANCELLED;
+    // A payment that completes after the task was cancelled (or expired or
+    // failed, row 102) opens its refund review in the same transaction that
+    // records the completed legs, so a failure cannot leave paid legs without
+    // a review (a retried result is dropped as already final).
+    const endedAs = success ? (await this.errands.getById(errandId)).status : null;
+    const cancelled = endedAs !== null && REFUNDABLE_TERMINAL_STATUSES.includes(endedAs);
     const outcome = {
       resultCode: success ? 0 : Math.max(result.resultCode ?? 1, 1),
       resultDesc: result.resultDesc ?? undefined,
@@ -884,7 +883,7 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
         .getRepository(Payment)
         .update(payment.id, { status: success ? PaymentStatus.COMPLETED : PaymentStatus.FAILED });
       if (cancelled) {
-        await this.refunds.openWithin(manager, errandId, RefundTrigger.CANCELLED_AFTER_PAYMENT);
+        await this.refunds.openWithin(manager, errandId, triggerFor(null, undefined, endedAs ?? undefined));
       }
     });
 
@@ -1002,9 +1001,9 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
 
   private async confirmErrandAfterPayment(errandId: string): Promise<void> {
     const errand = await this.errands.getById(errandId);
-    if (errand.status === ErrandStatus.CANCELLED) {
-      // Cancelled meanwhile: the cancellation backstop refreshes the review.
-      await this.refunds.openIfPaid(errandId, RefundTrigger.CANCELLED_AFTER_PAYMENT);
+    if (REFUNDABLE_TERMINAL_STATUSES.includes(errand.status)) {
+      // Ended meanwhile: the termination backstop refreshes the review.
+      await this.refunds.openIfPaid(errandId, triggerFor(null, undefined, errand.status));
       return;
     }
     if (!ErrandStateMachine.canTransition(errand.status, ErrandStatus.PAYMENT_CONFIRMED)) {

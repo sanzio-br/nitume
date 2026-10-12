@@ -56,7 +56,7 @@ const build = () => {
     createQueryBuilder: vi.fn(() => qb({ fees: '500.00', item: '1000.00', differences: '150.00' })),
   };
   const errands = {
-    onCancelled: vi.fn(),
+    onTerminated: vi.fn(),
     findByIds: vi.fn(() =>
       Promise.resolve([
         {

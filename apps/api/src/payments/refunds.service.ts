@@ -15,7 +15,7 @@ import {
 import { CustomerAccountsService } from '../customers/customer-accounts.service';
 import { CustomersService } from '../customers/customers.service';
 import { TransitionGuard } from '../errands/errand-state-machine';
-import { ErrandsService } from '../errands/errands.service';
+import { ErrandsService, REFUNDABLE_TERMINAL_STATUSES } from '../errands/errands.service';
 import { UsersService } from '../users/users.service';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
@@ -193,29 +193,34 @@ export class RefundsService implements OnModuleInit {
   }
 
   /**
-   * Every CANCELLED transition opens the refund review (when the customer
-   * had paid) inside the same transaction, so the review commits with the
-   * cancellation or not at all.
+   * Every CANCELLED, EXPIRED or FAILED transition opens the refund review
+   * (when the customer had paid) inside the same transaction, so the review
+   * commits with the transition or not at all (rows 37, 102). A review, never
+   * an automatic refund: an admin still decides the amount.
    */
   onModuleInit(): void {
-    this.errands.onCancelled(async (manager, change) => {
-      await this.openWithin(manager, change.errandId, triggerFor(change.from, change.guard));
+    this.errands.onTerminated(async (manager, change) => {
+      await this.openWithin(
+        manager,
+        change.errandId,
+        triggerFor(change.from, change.guard, change.to),
+      );
     });
   }
 
   /**
-   * Backstop after commit. The review is already opened in the cancelling
+   * Backstop after commit. The review is already opened in the terminating
    * transaction; this only catches STK payments that completed while the
-   * cancellation was in flight. Idempotent: one review per errand, and the
+   * transition was in flight. Idempotent: one review per errand, and the
    * amount is refreshed only while the review is still pending.
    */
   @OnEvent('errand.status_changed', { async: true })
   async onStatusChanged(event: StatusChanged): Promise<void> {
-    if (event.status !== ErrandStatus.CANCELLED) {
+    if (!REFUNDABLE_TERMINAL_STATUSES.includes(event.status)) {
       return;
     }
     try {
-      await this.openIfPaid(event.errandId, triggerFor(event.from ?? null));
+      await this.openIfPaid(event.errandId, triggerFor(event.from ?? null, undefined, event.status));
     } catch (err) {
       this.logger.error(
         `Could not refresh refund review for ${event.errandId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -225,12 +230,12 @@ export class RefundsService implements OnModuleInit {
 
   /**
    * Opens (or refreshes the paid amount of) the refund review when the
-   * errand is CANCELLED and the customer has completed STK payments.
-   * Idempotent: one review per errand.
+   * errand is CANCELLED, EXPIRED or FAILED and the customer has completed
+   * STK payments. Idempotent: one review per errand.
    */
   async openIfPaid(errandId: string, trigger: RefundTrigger): Promise<RefundReview | null> {
     const errand = await this.errands.getById(errandId);
-    if (errand.status !== ErrandStatus.CANCELLED) {
+    if (!REFUNDABLE_TERMINAL_STATUSES.includes(errand.status)) {
       return null;
     }
     return this.reviews.manager.transaction((manager) =>
@@ -240,7 +245,7 @@ export class RefundsService implements OnModuleInit {
 
   /**
    * Same as `openIfPaid` for a caller that already runs a transaction on a
-   * CANCELLED errand. Upserts on the errand's one cancellation review (the
+   * CANCELLED, EXPIRED or FAILED errand. Upserts on the errand's one cancellation review (the
    * partial unique index on errandId where priceChangeRequestId is null), so
    * concurrent opens never create a second one and never abort the caller's
    * transaction.
@@ -682,10 +687,21 @@ export const shortNameOf = (displayName: string | null): string | null => {
   return parts.length === 1 ? parts[0] : `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
 };
 
+/**
+ * Why the task's cancellation review opens. `to` is the terminal status
+ * (CANCELLED by default): EXPIRED and FAILED have their own triggers (row 102).
+ */
 export const triggerFor = (
   from: ErrandStatus | null,
   guard?: TransitionGuard,
+  to: ErrandStatus = ErrandStatus.CANCELLED,
 ): RefundTrigger => {
+  if (to === ErrandStatus.EXPIRED) {
+    return RefundTrigger.TASK_EXPIRED;
+  }
+  if (to === ErrandStatus.FAILED) {
+    return RefundTrigger.TASK_FAILED;
+  }
   if (guard === TransitionGuard.PRICE_CHANGE_REJECTION) {
     return RefundTrigger.PRICE_CHANGE_REJECTED;
   }
