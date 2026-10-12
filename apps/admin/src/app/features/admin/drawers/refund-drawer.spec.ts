@@ -226,6 +226,28 @@ describe('RefundDrawerComponent', () => {
     );
   });
 
+  it('names paid EXPIRED and FAILED reviews Task expired / Task failed (row 102)', async () => {
+    const rowsOf = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll('.drawer-row'), (r) =>
+        (r.textContent ?? '').replace(/\s+/g, ''),
+      );
+    const expired = await render(
+      review({
+        trigger: 'expired_after_payment',
+        errand: { ...review().errand!, status: 'EXPIRED' },
+      }),
+    );
+    expect(rowsOf(expired.nativeElement)).toContain('ReasonTaskexpired');
+    expect(rowsOf(expired.nativeElement)).toContain('TaskstatusExpired');
+    const failed = await render(
+      review({
+        trigger: 'failed_after_payment',
+        errand: { ...review().errand!, status: 'FAILED' },
+      }),
+    );
+    expect(rowsOf(failed.nativeElement)).toContain('ReasonTaskfailed');
+  });
+
   it('has no Refundable row when the ceiling equals the total paid', async () => {
     const fixture = await render(review());
     expect(fixture.nativeElement.textContent).not.toContain('Refundable in this review');

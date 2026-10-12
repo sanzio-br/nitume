@@ -287,7 +287,10 @@ export type RefundTrigger =
   | 'price_change_rejected'
   | 'dispute_customer_favourable'
   | 'cancelled_after_payment'
-  | 'price_change_decrease';
+  | 'price_change_decrease'
+  // Row 102 (N-16): a paid task that ended EXPIRED or FAILED.
+  | 'expired_after_payment'
+  | 'failed_after_payment';
 
 /** Bare `refund_reviews` row (decision / mark-paid responses). Amounts: decimal strings. */
 export interface RefundReview {

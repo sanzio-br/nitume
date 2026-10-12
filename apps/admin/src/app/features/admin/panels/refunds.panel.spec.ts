@@ -106,6 +106,53 @@ describe('RefundsPanelComponent (G-1)', () => {
     expect(cells).toEqual(['KSh 1,200', 'KSh 800']);
   });
 
+  it('labels paid EXPIRED / FAILED reviews Task expired / Task failed (row 102)', async () => {
+    const fixture = await render();
+    http.expectOne(list('pending_review')).flush({
+      items: [
+        item('1', { trigger: 'expired_after_payment' }),
+        item('2', { trigger: 'failed_after_payment' }),
+      ],
+      nextCursor: null,
+    });
+    await flushAsync();
+    fixture.detectChanges();
+    const reasons = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('tbody td.col-reason'),
+      (td) => td.textContent?.trim(),
+    );
+    expect(reasons).toEqual(['Task expired', 'Task failed']);
+  });
+
+  it('empty states name expired and failed tasks and reversed payouts (rows 100, 102)', async () => {
+    const fixture = await render();
+    http.expectOne(list('pending_review')).flush({ items: [], nextCursor: null });
+    await flushAsync();
+    fixture.detectChanges();
+    const text = () => (fixture.nativeElement.textContent as string).replace(/\s+/g, ' ');
+    expect(text()).toContain(
+      'Paid tasks that were cancelled, expired or failed, and price decreases on tasks paid to Nitume, land here for a refund decision.',
+    );
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    for (const [value, copy] of [
+      [
+        'approved',
+        'Approved refunds, and payouts that were reversed, wait here until you record the M-Pesa payout.',
+      ],
+      ['all', 'A review opens when a paid task is cancelled, expires or fails.'],
+    ]) {
+      select.value = value;
+      select.dispatchEvent(new Event('change'));
+      http.expectOne(`${API}/refunds/count?status=pending_review`).flush({ count: 0 });
+      http
+        .expectOne(list(value === 'all' ? undefined : value))
+        .flush({ items: [], nextCursor: null });
+      await flushAsync();
+      fixture.detectChanges();
+      expect(text()).toContain(copy);
+    }
+  });
+
   it('shows the filter-specific empty state', async () => {
     const fixture = await render();
     http.expectOne(list('pending_review')).flush({ items: [], nextCursor: null });

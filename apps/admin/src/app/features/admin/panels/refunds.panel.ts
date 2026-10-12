@@ -25,11 +25,11 @@ export const REFUND_FILTERS: { value: RefundFilter; label: string }[] = [
 const EMPTY: Record<RefundFilter, { title: string; text: string }> = {
   pending_review: {
     title: 'No refunds to review',
-    text: 'Tasks cancelled after the customer paid, and price decreases on tasks paid to Nitume, land here for a refund decision.',
+    text: 'Paid tasks that were cancelled, expired or failed, and price decreases on tasks paid to Nitume, land here for a refund decision.',
   },
   approved: {
     title: 'No payouts to record',
-    text: 'Approved refunds wait here until you record the M-Pesa payout.',
+    text: 'Approved refunds, and payouts that were reversed, wait here until you record the M-Pesa payout.',
   },
   refunded: { title: 'No refunds sent yet', text: 'Refunds you mark as paid appear here.' },
   no_refund: {
@@ -38,7 +38,7 @@ const EMPTY: Record<RefundFilter, { title: string; text: string }> = {
   },
   all: {
     title: 'No refund reviews yet',
-    text: 'A review opens when a task is cancelled after the customer paid.',
+    text: 'A review opens when a paid task is cancelled, expires or fails.',
   },
 };
 

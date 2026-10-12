@@ -1,11 +1,13 @@
 import type { RefundReview } from '../../core/api-types';
 
-/** Refund trigger → `Reason` label (`_shared.md` §6, row 71). */
+/** Refund trigger → `Reason` label (`_shared.md` §6, rows 71, 102). */
 const TRIGGER_LABELS: Record<string, string> = {
   price_change_rejected: 'Price change rejected',
   dispute_customer_favourable: 'Dispute: sided with customer',
   cancelled_after_payment: 'Cancelled after payment',
   price_change_decrease: 'Price decrease',
+  expired_after_payment: 'Task expired',
+  failed_after_payment: 'Task failed',
 };
 
 export function refundTriggerLabel(trigger: string | null | undefined): string {
