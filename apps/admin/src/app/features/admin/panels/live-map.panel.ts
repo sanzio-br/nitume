@@ -2,6 +2,12 @@ import { Component, inject, output, signal } from '@angular/core';
 import { AdminDataService } from '../admin-data.service';
 import { KpiCardComponent } from '../../../shared/kpi-card.component';
 import { PanelTopbarComponent } from './panel-topbar.component';
+import { formatTime } from '../shared-format';
+
+/** Topbar sub-line: last sync in 12-hour East Africa Time, never the browser's zone (row 96). */
+export function liveMapSubLine(syncedAt: number): string {
+  return `Nairobi · synced ${formatTime(syncedAt)}`;
+}
 
 /**
  * Live-ops panel (design mockup `#p-map`): KPI row, city map surface with
@@ -146,11 +152,7 @@ export class LiveMapPanelComponent {
   protected readonly search = signal('');
 
   protected sub(): string {
-    const at = new Date(this.s.refreshedAt()).toLocaleTimeString('en-KE', {
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-    return `Nairobi · synced ${at}`;
+    return liveMapSubLine(this.s.refreshedAt());
   }
 
   protected onSearch(value: string): void {

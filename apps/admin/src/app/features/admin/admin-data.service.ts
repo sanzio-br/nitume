@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { apiError, FORBIDDEN_COPY } from '../../core/api-error';
+import { eatDayKey, eatWeekday } from './shared-format';
 import type {
   AssignErrandDto,
   AssignErrandResult,
@@ -157,8 +158,9 @@ export class AdminDataService {
     const activeTasks = tasks.filter(
       (t) => !TERMINAL.includes(t.status) && t.status !== 'EXPIRED',
     ).length;
-    const today = new Date().toDateString();
-    const todayErrands = tasks.filter((t) => new Date(t.createdAt).toDateString() === today).length;
+    // "Today" is the East Africa Time day, never the browser's (row 96).
+    const today = eatDayKey(Date.now());
+    const todayErrands = tasks.filter((t) => eatDayKey(t.createdAt) === today).length;
     const completed = tasks.filter((t) => TERMINAL.slice(0, 3).includes(t.status)).length;
     const pending = tasks.filter((t) => t.status === 'REQUESTED' || t.status === 'QUOTED').length;
     const awaitingQuote = tasks.filter((t) => t.status === 'REQUESTED').length;
@@ -224,7 +226,7 @@ export class AdminDataService {
     const days = lastNDates(7);
     return days.map((d) => ({
       label: d.label,
-      count: this.tasks().filter((t) => new Date(t.createdAt).toDateString() === d.key).length,
+      count: this.tasks().filter((t) => eatDayKey(t.createdAt) === d.key).length,
     }));
   });
 
@@ -532,27 +534,31 @@ function hashCoord(id: string, salt: number, bound: number): number {
   return h % bound;
 }
 
-function lastNDates(n: number): { key: string; label: string }[] {
+const DAY_MS = 24 * 3600 * 1000;
+
+/** The last `n` East Africa Time days, oldest first (row 96). */
+export function lastNDates(n: number, now = Date.now()): { key: string; label: string }[] {
   const out: { key: string; label: string }[] = [];
   const DAY_NAMES = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   for (let i = n - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    out.push({ key: d.toDateString(), label: DAY_NAMES[d.getDay() === 0 ? 6 : d.getDay() - 1] });
+    const at = now - i * DAY_MS;
+    const day = eatWeekday(at);
+    out.push({ key: eatDayKey(at), label: DAY_NAMES[day === 0 ? 6 : day - 1] });
   }
   return out;
 }
 
-function lastNWeeks(n: number): { label: string; start: Date; end: Date }[] {
+/** The last `n` weeks, Monday 00:00 East Africa Time to the next Monday (row 96). */
+export function lastNWeeks(
+  n: number,
+  now = Date.now(),
+): { label: string; start: Date; end: Date }[] {
   const out: { label: string; start: Date; end: Date }[] = [];
-  const now = new Date();
+  const midnight = Date.parse(`${eatDayKey(now)}T00:00:00+03:00`);
+  const monday = midnight - ((eatWeekday(now) + 6) % 7) * DAY_MS;
   for (let i = n - 1; i >= 0; i--) {
-    const start = new Date(now);
-    start.setDate(now.getDate() - (now.getDay() || 7) + 1 - i * 7); // Monday of week
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 7);
-    out.push({ label: `W${i + 1}`, start, end });
+    const start = new Date(monday - i * 7 * DAY_MS);
+    out.push({ label: `W${i + 1}`, start, end: new Date(start.getTime() + 7 * DAY_MS) });
   }
   return out;
 }
