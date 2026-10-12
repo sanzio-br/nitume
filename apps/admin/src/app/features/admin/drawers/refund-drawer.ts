@@ -616,7 +616,12 @@ const CORRECTION_KINDS = [
         } @else {
           <section class="drawer-section">
             <div class="drawer-actions">
-              <button type="button" class="btn btn-outline" (click)="openCorrection()">
+              <button
+                #recordCorrection
+                type="button"
+                class="btn btn-outline"
+                (click)="openCorrection()"
+              >
                 Record a correction
               </button>
             </div>
@@ -757,6 +762,8 @@ export class RefundDrawerComponent implements OnInit {
   readonly correctionReason = signal('');
   private readonly correctionTouched = signal<ReadonlySet<CorrectionField>>(new Set());
   private readonly correctionServer = signal<Partial<Record<CorrectionField | 'form', string>>>({});
+  private readonly recordCorrectionButton =
+    viewChild<ElementRef<HTMLButtonElement>>('recordCorrection');
   private readonly correctionReferenceInput = viewChild<ElementRef<HTMLInputElement>>(
     'correctionReferenceInput',
   );
@@ -994,7 +1001,9 @@ export class RefundDrawerComponent implements OnInit {
 
   /** Amount input (pending_review), receipt input (approved), else the drawer's close button. */
   private focusForm(): void {
-    const input = (this.amountInput() ?? this.receiptInput())?.nativeElement;
+    // A reversed payout is owed again: its new payout form is the next step (m-10).
+    const reversedInput = this.reversed() ? this.correctionReferenceInput() : undefined;
+    const input = (this.amountInput() ?? this.receiptInput() ?? reversedInput)?.nativeElement;
     const close = this.host.nativeElement
       .closest('.drawer')
       ?.querySelector<HTMLElement>('.drawer-close');
@@ -1085,7 +1094,15 @@ export class RefundDrawerComponent implements OnInit {
       this.dialog.set('correction_discard');
       return;
     }
+    this.closeCorrection();
+  }
+
+  /** Closes the correction form; focus returns to `Record a correction` (m-10). */
+  private closeCorrection(): void {
     this.resetCorrection();
+    afterNextRender(() => this.recordCorrectionButton()?.nativeElement.focus(), {
+      injector: this.injector,
+    });
   }
 
   protected submitCorrection(): void {
@@ -1120,7 +1137,7 @@ export class RefundDrawerComponent implements OnInit {
     const d = this.dialog();
     if (d === 'correction_discard' && !this.pendingLeave) {
       this.dialog.set(null);
-      this.resetCorrection();
+      this.closeCorrection();
       return;
     }
     if (d === 'discard' || d === 'correction_discard') {

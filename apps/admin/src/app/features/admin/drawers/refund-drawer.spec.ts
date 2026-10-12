@@ -894,6 +894,55 @@ describe('RefundDrawerComponent corrections (row 100)', () => {
     ).toBe('Nothing to correct: the receipt and amount match the record.');
   });
 
+  it('focuses the new payout receipt on a reversed payout, on open and after Record reversal (m-10)', async () => {
+    const reversal = record({ kind: 'reversed', newReference: 'RVS9K2L1MX' });
+    const opened = await render(
+      refunded({ effectivePayout: reversedPayout, corrections: [reversal] }),
+    );
+    await opened.whenStable();
+    expect(document.activeElement).toBe(field(opened, 'M-Pesa receipt'));
+    opened.destroy();
+
+    const fixture = await render(refunded());
+    button(fixture, 'Record a correction')[0].click();
+    fixture.detectChanges();
+    button(fixture, 'Payout reversed')[0].click();
+    fixture.detectChanges();
+    type(fixture, 'Reversal M-Pesa code', 'RVS9K2L1MX');
+    type(fixture, 'Reason', 'Wrong number, money came back');
+    button(fixture, 'Record reversal')[0].click();
+    fixture.detectChanges();
+    await confirm(fixture, 'Record reversal');
+    http
+      .expectOne(`${API}/refunds/${RID}/corrections`)
+      .flush(refunded({ effectivePayout: reversedPayout, corrections: [reversal] }));
+    await flushAsync();
+    http.match(() => true).forEach((r) => r.flush({ count: 0 }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(field(fixture, 'M-Pesa receipt'));
+  });
+
+  it('returns focus to Record a correction after Cancel and after Discard (m-10)', async () => {
+    const fixture = await render(refunded());
+    const record = () => button(fixture, 'Record a correction')[0];
+    record().click();
+    fixture.detectChanges();
+    button(fixture, 'Cancel')[0].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(record());
+
+    record().click();
+    fixture.detectChanges();
+    type(fixture, 'Reason', 'Started typing');
+    button(fixture, 'Cancel')[0].click();
+    fixture.detectChanges();
+    await confirm(fixture, 'Discard');
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(record());
+  });
+
   it('Cancel asks before discarding typed input', async () => {
     const fixture = await render(refunded());
     button(fixture, 'Record a correction')[0].click();
