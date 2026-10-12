@@ -105,9 +105,10 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | web-parity | design-auditor | Spec copy for 409 refund_payout_locked (builder proposed text) and 400 quote_expiry_in_past; confirm EXPIRED tasks get the refund link (always paid per §3.3) | open |
 | flutter-customer | core-ui | onTextChanged on PlaceAutocompleteField (app currently reads the field text from the widget tree for the typed-without-pick check) | done: core da5e58a, app c420265 |
 | flutter-customer | design-auditor | Customer copy for the dispute verdict, if it should be shown (built: resolution note + resolved time only) | open |
-| orchestrator | design-auditor | Rows 95, 96, 100, 102 into specs + System Design §2.2/§6 (reimburse after accepted receipt; 12h EAT; payout corrections; refund reviews on EXPIRED/FAILED) | in progress: docs/owner-answers-5 (../nitume-docs-answers5) |
+| orchestrator | design-auditor | Rows 95, 96, 100, 102 into specs + System Design §2.2/§6 (reimburse after accepted receipt; 12h EAT; payout corrections; refund reviews on EXPIRED/FAILED) | done: docs/owner-answers-5 (b0ab6a9, 871c49e, 25b3c6c, 2fc93bc, bc6c66b); p-refunds, drawer-refund, v-task-detail → partial |
 | orchestrator | api-contract | Row 102 refund reviews on paid EXPIRED/FAILED; row 100 payout correction/reversal records; row 95 reimbursement only after accepted evidence | in progress: feat/api-owner-answers-5 (../nitume-api-answers5) |
 | orchestrator | web-parity / core-ui → flutter-customer | Admin: 12h EAT (96), correction UI (100), new trigger labels (102), make round-4 fields required, m-8 quote-requested filter. Customer: new refund triggers (102) | queued (after specs + API) |
+| design-auditor | web-parity | (row 96) live-map.panel.ts:148-151 formats time without the Africa/Nairobi zone | open |
 
 ## Questions for the project owner
 
@@ -216,6 +217,13 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 101 | api-contract (round 4) | Breaking API changes in round 4: customers/runners get resolvedBy: null on disputes; payoutReference removed from customer refund views; price changes on categories other than Buy For Me / Get It For Me now 400. FYI (clients updated in this round) | answered (owner, 2026-10-12): Accept the round-4 breaking changes as specified. Clients have been updated. |
 | 102 | design-auditor (admin re-audit round 4) | AQ-8 (payments/schema): a paid task can end EXPIRED (RUNNER_ASSIGNED→EXPIRED) or FAILED (RUNNER_EN_ROUTE→FAILED), but the API opens a refund review only on CANCELLED. Should EXPIRED and FAILED also open a refund review (new trigger enum values)? | answered (owner, 2026-10-12): Approve. Paid tasks ending CANCELLED, EXPIRED, or FAILED should create a refund review. This is a review trigger, not an automatic refund. |
 | 103 | design-auditor (customer re-audit round 4) | x-report-problem Q2 (optional): show a one-line verdict above the dispute resolution note ("Decided in your favour." / "Decided in the runner's favour.")? Default no (row 79 covers the note only) | withdrawn by design-auditor (786e21e): same decision as e8f4196, so no verdict line and no owner decision needed |
+| 104 | design-auditor (round 5 specs) | SQ-12: What does "accepted" mean for runner reimbursement? Default: the task reaches CONFIRMED (receipt uploaded, customer confirmed, dispute window closed with no dispute) | open |
+| 105 | design-auditor (round 5 specs) | SQ-13: Missing or mismatched receipt: default is not payable until ops review, capped at the item amount paid to Nitume. OK? | open |
+| 106 | design-auditor (round 5 specs) | SQ-14: The runner already bought the item but the task ends CANCELLED or FAILED: is the runner reimbursed? No default | open |
+| 107 | design-auditor (round 5 specs) | SQ-15: Schema: approve a runner payout ledger table (needed to record runner fee + item reimbursement lines)? | open |
+| 108 | design-auditor (round 5 specs) | SQ-16: Are runner out-of-pocket purchases limited by max_purchase_advance, and may a runner decline a task over their limit? | open |
+| 109 | design-auditor (round 5 specs) | AQ-9: Does the customer get a notification on a payout correction or reversal? Default: only a re-sent payout notifies | open |
+| 110 | design-auditor (round 5 specs) | AQ-10: Can a correction record an amount above the refund ceiling? Default: refused | open |
 
 ## Session log
 
@@ -279,3 +287,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-11 | Round 4 merged into main: docs/owner-answers-3 (a464171), docs/customer-reaudit-3 (eddfac8), feat/api-owner-answers-4 (41a0578), fix/angular-admin-owner-answers (1df4daf), feat/customer-owner-answers squashed (4c92d80); no conflicts. migration:run on local `nitume`: 3 applied, 23 total. main: API tsc clean, 344 unit, lint 1 old warning; core 223; app 110; admin build + 139 | a464171 … 4c92d80 |
 | 2026-10-12 | Owner answered rows 95 (reimburse after receipt), 96 (12h EAT in admin), 98 (no Redis adapter yet, single instance), 100 (build correction/reversal records now), 101 (breaking changes accepted), 102 (EXPIRED/FAILED paid tasks open refund reviews) | — |
 | 2026-10-12 | Round 5 started from main: design-auditor and api-contract in parallel; admin and customer queued | — |
+| 2026-10-12 | design-auditor round 5: rows 95–102 folded into System Design + specs; questions 104–110 | b0ab6a9 … bc6c66b |
