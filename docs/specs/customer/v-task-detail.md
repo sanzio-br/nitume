@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 482–506 (`#v-task-detail`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
 - Implementation: `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` on branch `feat/customer-integrations`
-- Status: partial (spec update 2026-10-12, row 102: refund copy for EXPIRED/FAILED; was matches-design)
+- Status: matches-design (re-audit round 5, 2026-10-12, `feat/customer-owner-answers-5` @ `5cbd081`: PASS)
 
 ## Purpose
 Record of one task in any state: status, reference and time, runner, evidence, payment, **refund status** (row 54), the next action, and a way to report a problem.
@@ -100,6 +100,8 @@ States (proposed):
 - Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
 
 ## Current vs design
+Re-audit round 5, 2026-10-12, `feat/customer-owner-answers-5` (core `ad44dc6`, app `5cbd081`; API `feat/api-owner-answers-5` @ `6ce9ad2`): **PASS**, no findings. Items 1–4 of the row-102 update below are closed: core `RefundTrigger` has `expiredAfterPayment` / `failedAfterPayment`; `RefundGroup` picks the trigger-specific pending line (exact `_shared.md` §11 copy, wildcard fallback to the common line); tests cover paid EXPIRED, paid FAILED, an other-trigger fallback, an unpaid EXPIRED (no refund group) and a reversed payout (`Refund approved`, amount, no `Sent` line). Details in `docs/audits/customer-gap-report.md` → "Re-audit 2026-10-12: customer round 5".
+
 Spec update 2026-10-12 (row 102) against `main` @ `4963a1c`: status set to **partial**.
 1. Core `RefundTrigger` (`packages/nitume_core/lib/src/models/enums.dart:436-443`) has no `expired_after_payment` / `failed_after_payment`; `tryFromWire` returns `null` for them, so the app cannot pick the trigger-specific line. Needs core-ui.
 2. The refund group shows the generic pending line for every trigger. Add the two trigger-specific lines (via the shared refund-group widget, not inline in the screen) and tests for EXPIRED and FAILED tasks with a pending review, plus an EXPIRED task with no review (no refund group).
