@@ -290,3 +290,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-12 | Round 5 started from main: design-auditor and api-contract in parallel; admin and customer queued | — |
 | 2026-10-12 | design-auditor round 5: rows 95–102 folded into System Design + specs; questions 104–110 | b0ab6a9 … bc6c66b |
 | 2026-10-12 | api-contract round 5: paid EXPIRED/FAILED tasks open refund reviews (row 102); append-only payout corrections with effective payout (row 100); tests prove runner amounts are never payable before CONFIRMED (row 95). Admin and customer builds started | d5b56db … 6ce9ad2 |
+| 2026-10-12 | Customer round 5 on feat/customer-owner-answers-5: core refund triggers (ad44dc6, app kept compiling) and trigger-specific pending refund lines on task detail (5cbd081); 115 app + 225 core tests | ad44dc6, 5cbd081 |
