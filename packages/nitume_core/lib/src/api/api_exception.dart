@@ -143,6 +143,11 @@ class NitumeApiException implements Exception {
 /// Machine-readable `code` values the apps switch on
 /// (`NitumeApiException.code`). OTP codes live on `OtpErrorKind`.
 abstract final class ApiErrorCodes {
+  /// `POST /auth/otp/verify` with `role: runner` for a phone that belongs to
+  /// another role (RA-9, row 127). Not sent by the API yet; the runner app's
+  /// client-side role check covers it until then.
+  static const roleMismatch = 'role_mismatch';
+
   /// `Idempotency-Key` header malformed (8–128 chars, `[A-Za-z0-9_-]`).
   static const idempotencyKeyInvalid = 'idempotency_key_invalid';
 
