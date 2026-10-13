@@ -81,18 +81,35 @@ const build = (row: RefundReview = review(), others: RefundReview[] = [], usedRe
     ),
   );
   const transactions = { createQueryBuilder: vi.fn(qb) };
+  const overrides: object[] = [];
+  const overrideRepo = {
+    find: vi.fn(() => Promise.resolve(overrides)),
+    create: vi.fn((o: object) => o),
+    save: vi.fn((o: object) => {
+      overrides.push(o);
+      return Promise.resolve(o);
+    }),
+  };
+  /** Runner item reimbursement committed on the task (row 136). */
+  let reimbursed = '0';
   const manager = {
-    query,
+    query: vi.fn((sql: string, params: string[]) =>
+      sql.includes('runner_payout_lines') && sql.includes('SUM')
+        ? Promise.resolve([{ total: reimbursed }])
+        : query(sql, params),
+    ),
     getRepository: (entity: { name: string }) =>
       entity.name === 'RefundPayoutCorrection'
         ? corrections
         : entity.name === 'RefundReview'
           ? reviewRepo
-          : transactions,
+          : entity.name === 'TaskExposureOverride'
+            ? overrideRepo
+            : transactions,
   };
   const reviews = {
     ...reviewRepo,
-    manager: { transaction: vi.fn((fn: (m: unknown) => Promise<unknown>) => fn(manager)) },
+    manager: { ...manager, transaction: vi.fn((fn: (m: unknown) => Promise<unknown>) => fn(manager)) },
   };
   const errands = {
     onTerminated: vi.fn(),
@@ -129,7 +146,10 @@ const build = (row: RefundReview = review(), others: RefundReview[] = [], usedRe
       { ...input, expectedLatestCorrectionId: table[table.length - 1]?.id ?? null },
       admin,
     );
-  return { service, table, row, original, reviewRepo, emit, add, query };
+  const setReimbursed = (v: string) => {
+    reimbursed = v;
+  };
+  return { service, table, row, original, reviewRepo, emit, add, query, overrides, setReimbursed };
 };
 
 const codeOf = (p: Promise<unknown>) =>
@@ -288,7 +308,9 @@ describe('RefundsService.addCorrection (row 100, N-15)', () => {
     const { add, query } = build();
     await add({ kind: K.CORRECTED, newReference: 'qcd456', reason });
     const sqls = query.mock.calls.map(([sql, params]) => [String(sql), params] as const);
-    const lockAt = sqls.findIndex(([sql]) => sql.includes('pg_advisory_xact_lock'));
+    const lockAt = sqls.findIndex(
+      ([sql, params]) => sql.includes('pg_advisory_xact_lock') && String((params as string[])[0]).startsWith('payout_ref:'),
+    );
     const checkAt = sqls.findIndex(([sql]) => sql.includes('refund_payout_corrections'));
     expect(lockAt).toBeGreaterThanOrEqual(0);
     expect(sqls[lockAt][1]).toEqual(['payout_ref:QCD456']);
@@ -401,5 +423,70 @@ describe('Owner answers rows 109-111 (2026-10-13), verified against round 5', ()
     expect((err as ApiError).getResponse()).toMatchObject({ refundCeiling: '500.00', alreadyRefunded: '1000.00' });
     const ok = await service.decide('r-2', 500, undefined, 'admin-1');
     expect(ok).toMatchObject({ status: RefundStatus.APPROVED, refundAmount: '500.00' });
+  });
+});
+
+describe('Row 136: combined cap with the runner item reimbursement', () => {
+  const pending = () =>
+    review({
+      id: 'r-2',
+      trigger: RefundTrigger.PRICE_CHANGE_DECREASE,
+      priceChangeRequestId: 'pc-1',
+      amountPaid: '1500.00',
+      refundAmount: null,
+      status: RefundStatus.PENDING_REVIEW,
+      payoutReference: null,
+      paidAt: null,
+    });
+
+  it('a refund decision counts the runner reimbursement; above it needs an audited override', async () => {
+    // Paid 1500; r-1 refunded 1000; runner reimbursed 300 -> 200 left.
+    const { service, setReimbursed, overrides, query } = build(review(), [pending()]);
+    setReimbursed('300.00');
+    const err = await service.decide('r-2', 200.01, undefined, 'admin-1').catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'task_exposure_cap_exceeded' });
+    expect((err as ApiError).getStatus()).toBe(409);
+    expect((err as ApiError).getResponse()).toMatchObject({
+      totalPaidToNitume: '1500.00',
+      committedRefunds: '1000.00',
+      committedReimbursements: '300.00',
+      remaining: '200.00',
+      requested: '200.01',
+    });
+    expect(
+      await codeOf(service.decide('r-2', 300, undefined, 'admin-1', 'too short')),
+    ).toBe('exposure_override_note_invalid');
+    expect(overrides).toHaveLength(0);
+    const ok = await service.decide('r-2', 300, undefined, 'admin-1', ' Runner bought it; customer still owed ');
+    expect(ok).toMatchObject({ status: RefundStatus.APPROVED, refundAmount: '300.00' });
+    expect(overrides).toEqual([
+      expect.objectContaining({
+        errandId: 'e-1',
+        source: 'refund_decision',
+        refundReviewId: 'r-2',
+        amount: '300.00',
+        normalCap: '200.00',
+        committedReimbursements: '300.00',
+        note: 'Runner bought it; customer still owed',
+        createdByUserId: 'admin-1',
+      }),
+    ]);
+    // The task-level lock is taken first.
+    expect(query.mock.calls.some(([, p]) => (p as string[])[0] === 'task_exposure:e-1')).toBe(true);
+    // Within the cap, no override is recorded.
+    const within = build(review(), [pending()]);
+    within.setReimbursed('300.00');
+    await within.service.decide('r-2', 200, undefined, 'admin-1');
+    expect(within.overrides).toHaveLength(0);
+  });
+
+  it('a correction raising the amount is checked the same way', async () => {
+    const { add, setReimbursed, overrides } = build(review({ refundAmount: '1000.00' }));
+    await add({ kind: K.CORRECTED, newAmount: 900, reason });
+    // Paid 1500, runner reimbursed 600 -> at most 900 for this refund.
+    setReimbursed('600.00');
+    expect(await codeOf(add({ kind: K.CORRECTED, newAmount: 950, reason }))).toBe('task_exposure_cap_exceeded');
+    await add({ kind: K.CORRECTED, newAmount: 950, reason, exposureOverrideNote: 'Ops approved by phone' });
+    expect(overrides).toEqual([expect.objectContaining({ source: 'refund_correction', amount: '950.00', normalCap: '900.00' })]);
   });
 });
