@@ -34,7 +34,7 @@ export interface ReferenceUse {
   runnerProfileId: string | null;
   lineId: string | null;
   obligationId: string | null;
-  lineType: string | null;
+  kind: string | null;
 }
 
 /**
@@ -48,13 +48,13 @@ export const referenceUses = async (
 ): Promise<ReferenceUse[]> =>
   manager.query(
     `SELECT 'refund' AS "source", NULL::uuid AS "runnerProfileId", NULL::uuid AS "lineId",
-            NULL::uuid AS "obligationId", NULL::text AS "lineType"
+            NULL::uuid AS "obligationId", NULL::text AS "kind"
        FROM "refund_reviews" WHERE UPPER("payoutReference") = $1
      UNION ALL
      SELECT 'refund', NULL::uuid, NULL::uuid, NULL::uuid, NULL::text
        FROM "refund_payout_corrections" WHERE UPPER("newReference") = $1
      UNION ALL
-     SELECT 'runner', l."runnerProfileId", l.id, COALESCE(l."relatedLineId", l.id), l."lineType"::text
+     SELECT 'runner', l."runnerProfileId", l.id, COALESCE(l."relatedLineId", l.id), l."kind"::text
        FROM "runner_payout_lines" l WHERE UPPER(l."payoutReference") = $1
      LIMIT 100`,
     [normalizeReference(reference)],
@@ -85,7 +85,7 @@ export const runnerReferenceConflict = (
     (u) =>
       u.source === 'refund' ||
       u.runnerProfileId !== target.runnerProfileId ||
-      u.lineType === 'reversal' ||
+      u.kind === 'reversal' ||
       (u.obligationId !== null && target.obligationIds.includes(u.obligationId)),
   );
 };

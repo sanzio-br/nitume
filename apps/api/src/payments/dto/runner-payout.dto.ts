@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -18,10 +18,10 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { RunnerPayoutLineStatus, RunnerPayoutLineType } from '../runner-payout-line.entity';
-import { MAX_BATCH_LINES } from '../runner-payouts.service';
+import { MAX_BATCH_LINES, PAYOUT_FEED_KINDS, PayoutFeedKind } from '../runner-payouts.service';
 
 const EFFECTIVE_STATUSES = [
-  RunnerPayoutLineStatus.PENDING_REVIEW,
+  RunnerPayoutLineStatus.ON_HOLD,
   RunnerPayoutLineStatus.PAYABLE,
   RunnerPayoutLineStatus.PAID,
   RunnerPayoutLineStatus.REJECTED,
@@ -32,12 +32,42 @@ const OBLIGATION_TYPES = [RunnerPayoutLineType.RUNNER_FEE, RunnerPayoutLineType.
 const ADJUSTMENT_KINDS = [
   RunnerPayoutLineType.CORRECTION,
   RunnerPayoutLineType.REVERSAL,
-  RunnerPayoutLineType.RESEND,
+  RunnerPayoutLineType.RESENT_PAYOUT,
 ] as const;
 
 const MPESA_CODE = /^\s*[A-Za-z0-9-]{4,64}\s*$/;
 
-/** GET /runners/me/payouts. `status` is the effective status (a reversed payout is `payable`). */
+/**
+ * GET /runners/me/payout-lines. `kind`: one or more of runner_fee,
+ * item_reimbursement, payout, correction, reversal, resent_payout
+ * (comma-separated or repeated). `errandId`: one task's lines (RA-16).
+ */
+export class ListPayoutLinesQueryDto {
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    (Array.isArray(value) ? value : [value]).flatMap((v) => String(v).split(',')).filter(Boolean),
+  )
+  @IsArray()
+  @IsIn(PAYOUT_FEED_KINDS, { each: true })
+  kind?: PayoutFeedKind[];
+
+  @IsOptional()
+  @IsUUID()
+  errandId?: string;
+
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+/** Admin list filters (shared fields). `status` is the effective status (a reversed payout is `payable`). */
 export class ListMyPayoutsQueryDto {
   @IsOptional()
   @IsIn(EFFECTIVE_STATUSES)
@@ -45,7 +75,7 @@ export class ListMyPayoutsQueryDto {
 
   @IsOptional()
   @IsIn(OBLIGATION_TYPES)
-  lineType?: (typeof OBLIGATION_TYPES)[number];
+  kind?: (typeof OBLIGATION_TYPES)[number];
 
   @IsOptional()
   @IsString()
@@ -173,7 +203,7 @@ export class CreateRunnerPayoutCorrectionDto {
 
   @ValidateIf(
     (o: CreateRunnerPayoutCorrectionDto) =>
-      o.kind === RunnerPayoutLineType.RESEND || (o.newAmount !== undefined && o.newAmount !== null),
+      o.kind === RunnerPayoutLineType.RESENT_PAYOUT || (o.newAmount !== undefined && o.newAmount !== null),
   )
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()

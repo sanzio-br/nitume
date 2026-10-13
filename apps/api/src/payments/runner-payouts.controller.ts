@@ -36,7 +36,7 @@ export class RunnerPayoutsController {
     return this.payouts.list(query);
   }
 
-  /** `{ count }`, optionally in one effective status (e.g. `pending_review` badge). */
+  /** `{ count }`, optionally in one effective status (e.g. `on_hold` badge). */
   @Get('count')
   count(@Query() query: CountRunnerPayoutsQueryDto): Promise<{ count: number }> {
     return this.payouts.count(query.status);

@@ -13,6 +13,7 @@ import {
 } from './runner-payout-line.entity';
 import {
   RunnerPayoutsService,
+  payoutFeedOf,
   earningsRangeOf,
   earningsSummaryOf,
   effectiveRunnerPayoutOf,
@@ -26,7 +27,7 @@ const line = (over: Partial<RunnerPayoutLine> = {}): RunnerPayoutLine =>
     id: 'l-1',
     runnerProfileId: 'rp-1',
     errandId: 'e-1',
-    lineType: T.RUNNER_FEE,
+    kind: T.RUNNER_FEE,
     status: S.PAYABLE,
     requestedAmount: '300.00',
     amount: '300.00',
@@ -48,8 +49,8 @@ const line = (over: Partial<RunnerPayoutLine> = {}): RunnerPayoutLine =>
     ...over,
   });
 
-const adj = (lineType: T, over: Partial<RunnerPayoutLine> = {}) =>
-  line({ lineType, status: S.RECORDED, relatedLineId: 'l-1', amount: null, requestedAmount: null, ...over });
+const adj = (kind: T, over: Partial<RunnerPayoutLine> = {}) =>
+  line({ kind, status: S.RECORDED, relatedLineId: 'l-1', amount: null, requestedAmount: null, ...over });
 
 const codeOf = (p: Promise<unknown>) =>
   p.then(
@@ -97,9 +98,9 @@ const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[];
   const uses = new Map<string, ReferenceUse[]>();
   const query = vi.fn((sql: string, params: unknown[]) => {
     if (sql.includes('INSERT INTO "runner_payout_lines"')) {
-      const [runnerProfileId, errandId, lineType, status, requestedAmount, amount, capAmount, reviewReason, receiptEvidenceId, note, createdByUserId] =
+      const [runnerProfileId, errandId, kind, status, requestedAmount, amount, capAmount, reviewReason, receiptEvidenceId, note, createdByUserId] =
         params as string[];
-      if (table.some((r) => r.errandId === errandId && r.lineType === lineType)) {
+      if (table.some((r) => r.errandId === errandId && r.kind === kind)) {
         return Promise.resolve([]);
       }
       const id = nextId();
@@ -108,7 +109,7 @@ const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[];
           id,
           runnerProfileId,
           errandId,
-          lineType: lineType as T,
+          kind: kind as T,
           status: status as S,
           requestedAmount,
           amount,
@@ -131,7 +132,7 @@ const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[];
           runnerProfileId: r.runnerProfileId,
           lineId: r.id,
           obligationId: r.relatedLineId ?? r.id,
-          lineType: r.lineType,
+          kind: r.kind,
         }));
       return Promise.resolve([...(uses.get(ref) ?? []), ...fromLines]);
     }
@@ -141,6 +142,7 @@ const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[];
   const lines = { ...repo, manager: { transaction: vi.fn((fn: (m: unknown) => unknown) => fn(manager)) } };
   const errands = {
     onConfirmed: vi.fn(),
+    listFor: vi.fn(() => Promise.resolve({ items: [{ id: 'e-7' }, { id: 'e-8' }], nextCursor: null })),
     activeAssignmentFor: vi.fn(() => Promise.resolve({ runnerProfileId: 'rp-1' })),
     getById: vi.fn(() => Promise.resolve({ id: 'e-1', status: ErrandStatus.CANCELLED })),
     findByIds: vi.fn(() =>
@@ -198,20 +200,21 @@ describe('effective payout and position of a runner line', () => {
       adj(T.CORRECTION, { amount: '250.00', createdAt: t1 }),
       adj(T.REVERSAL, { payoutReference: 'REV1', createdAt: t2 }),
     ];
-    expect(linePositionOf(paid, steps.slice(0, 1))).toMatchObject({ status: S.PAID, paid: 250, payable: 0 });
-    expect(linePositionOf(paid, steps)).toMatchObject({ status: S.PAYABLE, paid: 0, payable: 300 });
-    const resent = [...steps, adj(T.RESEND, { payoutReference: 'QEF2', amount: '300.00', createdAt: t2 })];
+    // Corrected to a lower amount actually sent: the difference stays owed.
+    expect(linePositionOf(paid, steps.slice(0, 1))).toMatchObject({ status: S.PAID, paid: 250, available: 50 });
+    expect(linePositionOf(paid, steps)).toMatchObject({ status: S.PAYABLE, paid: 0, available: 300 });
+    const resent = [...steps, adj(T.RESENT_PAYOUT, { payoutReference: 'QEF2', amount: '300.00', createdAt: t2 })];
     expect(linePositionOf(paid, resent)).toMatchObject({
       status: S.PAID,
       paid: 300,
       payout: { state: 'sent', reference: 'QEF2' },
     });
-    expect(linePositionOf(line({ status: S.PENDING_REVIEW, amount: null, requestedAmount: '500.00' }))).toMatchObject({
-      status: S.PENDING_REVIEW,
-      pendingReview: 500,
-      payable: 0,
+    expect(linePositionOf(line({ status: S.ON_HOLD, amount: null, requestedAmount: '500.00' }))).toMatchObject({
+      status: S.ON_HOLD,
+      onHold: 500,
+      available: 0,
     });
-    expect(linePositionOf(line({ status: S.REJECTED, amount: null }))).toMatchObject({ pendingReview: 0, payable: 0, paid: 0 });
+    expect(linePositionOf(line({ status: S.REJECTED, amount: null }))).toMatchObject({ onHold: 0, available: 0, paid: 0 });
   });
 });
 
@@ -220,24 +223,37 @@ describe('earnings summary (derived, never stored)', () => {
     const rows = [
       // Fee confirmed 2026-10-09 21:30 UTC = 2026-10-10 00:30 EAT; paid 10-10.
       { line: line({ createdAt: new Date('2026-10-09T21:30:00Z'), status: S.PAID, payoutReference: 'Q1', paidAt: PAID_AT }), adjustments: [] },
-      { line: line({ id: 'l-2', lineType: T.ITEM_REIMBURSEMENT, amount: '1000.00', requestedAmount: '1000.00', createdAt: new Date('2026-10-11T09:00:00Z') }), adjustments: [] },
-      { line: line({ id: 'l-3', lineType: T.ITEM_REIMBURSEMENT, status: S.PENDING_REVIEW, amount: null, requestedAmount: '400.00' }), adjustments: [] },
+      { line: line({ id: 'l-2', kind: T.ITEM_REIMBURSEMENT, amount: '1000.00', requestedAmount: '1000.00', createdAt: new Date('2026-10-11T09:00:00Z') }), adjustments: [] },
+      { line: line({ id: 'l-3', kind: T.ITEM_REIMBURSEMENT, status: S.ON_HOLD, amount: null, requestedAmount: '400.00' }), adjustments: [] },
       { line: line({ id: 'l-4', status: S.REJECTED, amount: null }), adjustments: [] },
     ];
-    const out = earningsSummaryOf(rows, earningsRangeOf({ from: '2026-10-09', to: '2026-10-11' }));
-    expect(out.balance).toEqual({ pendingReview: '400.00', payable: '1000.00', paid: '300.00' });
-    expect(out.byType.runnerFee).toEqual({ pendingReview: '0.00', payable: '0.00', paid: '300.00' });
-    expect(out.byType.itemReimbursement).toEqual({ pendingReview: '400.00', payable: '1000.00', paid: '0.00' });
+    const now = new Date('2026-10-11T12:00:00Z');
+    const out = earningsSummaryOf(rows, earningsRangeOf({ from: '2026-10-09', to: '2026-10-11' }), 2450, now);
+    expect(out).toMatchObject({
+      currency: 'KES',
+      availableAmount: '1000.00',
+      pendingAmount: '2450.00',
+      onHoldAmount: '400.00',
+      paidAmount: '300.00',
+    });
+    expect(out.byKind.runnerFee).toEqual({ availableAmount: '0.00', onHoldAmount: '0.00', paidAmount: '300.00' });
+    expect(out.byKind.itemReimbursement).toEqual({ availableAmount: '1000.00', onHoldAmount: '400.00', paidAmount: '0.00' });
     expect(out.period.buckets).toEqual([
-      { start: '2026-10-09', runnerFee: '0.00', itemReimbursement: '0.00', paidOut: '0.00' },
-      { start: '2026-10-10', runnerFee: '300.00', itemReimbursement: '0.00', paidOut: '300.00' },
-      { start: '2026-10-11', runnerFee: '0.00', itemReimbursement: '1000.00', paidOut: '0.00' },
+      { start: '2026-10-09', runnerFeeAmount: '0.00', itemReimbursementAmount: '0.00', paidOutAmount: '0.00' },
+      { start: '2026-10-10', runnerFeeAmount: '300.00', itemReimbursementAmount: '0.00', paidOutAmount: '300.00' },
+      { start: '2026-10-11', runnerFeeAmount: '0.00', itemReimbursementAmount: '1000.00', paidOutAmount: '0.00' },
     ]);
-    expect(out.period.totals).toEqual({ runnerFee: '300.00', itemReimbursement: '1000.00', paidOut: '300.00' });
+    expect(out.period.totals).toEqual({ runnerFeeAmount: '300.00', itemReimbursementAmount: '1000.00', paidOutAmount: '300.00' });
+    // Chart: Mon 2026-10-05 .. Sun 2026-10-11, runner fees only.
+    expect(out.week.map((d) => d.day)).toEqual([
+      '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11',
+    ]);
+    expect(out.week[5]).toEqual({ day: '2026-10-10', runnerFeeAmount: '300.00' });
+    expect(out.weekTotal).toBe('300.00');
 
     const weekly = earningsSummaryOf(rows, earningsRangeOf({ from: '2026-10-01', to: '2026-10-13', groupBy: 'week' }));
     expect(weekly.period.buckets.map((b) => b.start)).toEqual(['2026-09-28', '2026-10-05', '2026-10-12']);
-    expect(weekly.period.buckets[1]).toMatchObject({ runnerFee: '300.00', itemReimbursement: '1000.00' });
+    expect(weekly.period.buckets[1]).toMatchObject({ runnerFeeAmount: '300.00', itemReimbursementAmount: '1000.00' });
   });
 
   it('defaults to the last 7 EAT days by day and refuses bad ranges', () => {
@@ -259,7 +275,7 @@ describe('runner payout receipts (batched payouts, no reuse across payouts)', ()
     runnerProfileId: 'rp-1',
     lineId: 'x',
     obligationId: 'x',
-    lineType: 'runner_fee',
+    kind: 'runner_fee',
     ...over,
   });
   const target = { runnerProfileId: 'rp-1', obligationIds: ['l-1'], isReversal: false };
@@ -268,7 +284,7 @@ describe('runner payout receipts (batched payouts, no reuse across payouts)', ()
     expect(runnerReferenceConflict([use({})], target)).toBe(false);
     expect(runnerReferenceConflict([use({ runnerProfileId: 'rp-2' })], target)).toBe(true);
     expect(runnerReferenceConflict([use({ source: 'refund', runnerProfileId: null })], target)).toBe(true);
-    expect(runnerReferenceConflict([use({ lineType: 'reversal' })], target)).toBe(true);
+    expect(runnerReferenceConflict([use({ kind: 'reversal' })], target)).toBe(true);
     expect(runnerReferenceConflict([use({ obligationId: 'l-1' })], target)).toBe(true);
     expect(runnerReferenceConflict([use({})], { ...target, isReversal: true })).toBe(true);
   });
@@ -285,9 +301,9 @@ describe('RunnerPayoutsService.recordConfirmed (rows 95, 104, 105, 108)', () => 
     const { service, table, manager } = build({ feePaid: 300, itemPaid: 1000 });
     await service.recordConfirmed(manager as never, 'e-1');
     expect(table).toEqual([
-      expect.objectContaining({ lineType: T.RUNNER_FEE, status: S.PAYABLE, amount: '300.00', runnerProfileId: 'rp-1' }),
+      expect.objectContaining({ kind: T.RUNNER_FEE, status: S.PAYABLE, amount: '300.00', runnerProfileId: 'rp-1' }),
       expect.objectContaining({
-        lineType: T.ITEM_REIMBURSEMENT,
+        kind: T.ITEM_REIMBURSEMENT,
         status: S.PAYABLE,
         amount: '1000.00',
         capAmount: '1000.00',
@@ -303,9 +319,9 @@ describe('RunnerPayoutsService.recordConfirmed (rows 95, 104, 105, 108)', () => 
   it('sends the item line to ops review without a receipt (row 105); the fee is unaffected', async () => {
     const { service, table, manager } = build({ itemPaid: 1000, receipts: [] });
     await service.recordConfirmed(manager as never, 'e-1');
-    expect(table[0]).toMatchObject({ lineType: T.RUNNER_FEE, status: S.PAYABLE });
+    expect(table[0]).toMatchObject({ kind: T.RUNNER_FEE, status: S.PAYABLE });
     expect(table[1]).toMatchObject({
-      status: S.PENDING_REVIEW,
+      status: S.ON_HOLD,
       amount: null,
       requestedAmount: '1000.00',
       reviewReason: R.RECEIPT_MISSING,
@@ -315,13 +331,13 @@ describe('RunnerPayoutsService.recordConfirmed (rows 95, 104, 105, 108)', () => 
   it('sends a purchase above max_purchase_advance to ops review (row 108)', async () => {
     const { service, table, manager } = build({ itemPaid: 3500, maxPurchaseAdvance: '3000.00' });
     await service.recordConfirmed(manager as never, 'e-1');
-    expect(table[1]).toMatchObject({ status: S.PENDING_REVIEW, reviewReason: R.OVER_PURCHASE_LIMIT });
+    expect(table[1]).toMatchObject({ status: S.ON_HOLD, reviewReason: R.OVER_PURCHASE_LIMIT });
   });
 
   it('creates no item line when nothing was paid to Nitume for the item (merchant_direct)', async () => {
     const { service, table, manager } = build({ itemPaid: 0 });
     await service.recordConfirmed(manager as never, 'e-1');
-    expect(table.map((r) => r.lineType)).toEqual([T.RUNNER_FEE]);
+    expect(table.map((r) => r.kind)).toEqual([T.RUNNER_FEE]);
   });
 
   it('row 95 still holds: lines are only created through the CONFIRMED hook', () => {
@@ -329,7 +345,7 @@ describe('RunnerPayoutsService.recordConfirmed (rows 95, 104, 105, 108)', () => 
     const insertCalls = source.match(/this\.insertObligation\(/g) ?? [];
     // recordConfirmed (fee + item) and claim (CANCELLED/FAILED, always in review).
     expect(insertCalls).toHaveLength(3);
-    expect(source).toMatch(/status: S\.PENDING_REVIEW,\s+requestedAmount: input\.amount/);
+    expect(source).toMatch(/status: S\.ON_HOLD,\s+requestedAmount: input\.amount/);
   });
 });
 
@@ -343,8 +359,8 @@ describe('RunnerPayoutsService.claim (row 106)', () => {
       const view = await service.claim('u-run', { ...claim, note: ' bought it ' });
       expect(table).toEqual([
         expect.objectContaining({
-          lineType: T.ITEM_REIMBURSEMENT,
-          status: S.PENDING_REVIEW,
+          kind: T.ITEM_REIMBURSEMENT,
+          status: S.ON_HOLD,
           requestedAmount: '800.00',
           capAmount: '1000.00',
           reviewReason: R.OUT_OF_POCKET_CLAIM,
@@ -353,7 +369,13 @@ describe('RunnerPayoutsService.claim (row 106)', () => {
           note: 'bought it',
         }),
       ]);
-      expect(view).toMatchObject({ status: S.PENDING_REVIEW, amount: null, requestedAmount: '800.00' });
+      expect(view).toMatchObject({
+        kind: T.ITEM_REIMBURSEMENT,
+        status: S.ON_HOLD,
+        amount: '800.00',
+        reviewReason: R.OUT_OF_POCKET_CLAIM,
+        payableAt: null,
+      });
       expect(JSON.stringify(view)).not.toContain('bought it');
     }
   });
@@ -375,6 +397,15 @@ describe('RunnerPayoutsService.claim (row 106)', () => {
       'receipt_required',
     );
     expect(await codeOf(build({ itemPaid: 0 }).service.claim('u-run', claim))).toBe('no_item_amount_paid');
+
+    const limit = build({ itemPaid: 1000, maxPurchaseAdvance: '500.00' });
+    const capped = await limit.service.claim('u-run', { ...claim, amount: 500.01 }).catch((e: unknown) => e);
+    expect((capped as ApiError).getResponse()).toMatchObject({
+      code: 'reimbursement_exceeds_cap',
+      cap: '500.00',
+      itemPaidToNitume: '1000.00',
+      maxPurchaseAdvance: '500.00',
+    });
 
     const over = build({ itemPaid: 1000 });
     const err = await over.service.claim('u-run', { ...claim, amount: 1000.01 }).catch((e: unknown) => e);
@@ -434,7 +465,7 @@ describe('RunnerPayoutsService ops review (rows 105, 106)', () => {
     expect(await codeOf(service.review('l-1', { decision: 'approve', amount: 1 }, 'a'))).toBe('runner_payout_not_in_review');
     expect(await codeOf(service.hold('l-1', 'Wrong shop', 'a'))).toBe('runner_payout_not_holdable');
     await service.hold('l-2', 'Receipt total is KSh 600', 'a');
-    expect(table[1]).toMatchObject({ status: S.PENDING_REVIEW, amount: null, reviewReason: R.RECEIPT_MISMATCH });
+    expect(table[1]).toMatchObject({ status: S.ON_HOLD, amount: null, reviewReason: R.RECEIPT_MISMATCH });
     expect(await codeOf(service.markPaid(['l-2'], 'QAB1', 'a'))).toBe('runner_payout_not_payable');
   });
 });
@@ -464,7 +495,7 @@ describe('RunnerPayoutsService payouts and corrections (row 107)', () => {
 
   it('refuses a receipt used on a refund or another runner, and mixed runners', async () => {
     const { service, uses, table } = await confirmed();
-    uses.set('QREF1', [{ source: 'refund', runnerProfileId: null, lineId: null, obligationId: null, lineType: null }]);
+    uses.set('QREF1', [{ source: 'refund', runnerProfileId: null, lineId: null, obligationId: null, kind: null }]);
     expect(await codeOf(service.markPaid(['l-1'], 'QREF1', 'a'))).toBe('payout_reference_reused');
     table[1].runnerProfileId = 'rp-2';
     expect(await codeOf(service.markPaid(['l-1', 'l-2'], 'QAB9', 'a'))).toBe('runner_payout_mixed_runners');
@@ -494,7 +525,7 @@ describe('RunnerPayoutsService payouts and corrections (row 107)', () => {
       );
     expect(await codeOf(add({ kind: T.CORRECTION, newReference: 'qab1' }))).toBe('correction_no_change');
     expect(await codeOf(add({ kind: T.CORRECTION, newAmount: 300.01 }))).toBe('runner_payout_exceeds_amount');
-    expect(await codeOf(add({ kind: T.RESEND, newReference: 'QX1', newAmount: 300 }))).toBe('payout_correction_kind_invalid');
+    expect(await codeOf(add({ kind: T.RESENT_PAYOUT, newReference: 'QX1', newAmount: 300 }))).toBe('payout_correction_kind_invalid');
     expect(await codeOf(add({ kind: T.REVERSAL }))).toBe('payout_reference_required');
     expect(await codeOf(add({ kind: T.REVERSAL, newReference: 'REV1', newAmount: 1 }))).toBe('payout_amount_not_allowed');
     expect(await codeOf(add({ kind: T.CORRECTION, newReference: 'QCD2', reason: 'abc' }))).toBe('correction_reason_invalid');
@@ -503,15 +534,15 @@ describe('RunnerPayoutsService payouts and corrections (row 107)', () => {
     expect(corrected.effectivePayout).toMatchObject({ state: 'sent', reference: 'QCD2', amount: '300.00' });
     const reversed = await add({ kind: T.REVERSAL, newReference: 'REV1' });
     expect(reversed).toMatchObject({ effectiveStatus: S.PAYABLE, effectivePayout: { state: 'reversed', amount: '0.00' } });
-    expect(await codeOf(add({ kind: T.RESEND, newReference: 'REV1', newAmount: 300 }))).toBe('payout_reference_reused');
-    expect(await codeOf(add({ kind: T.RESEND, newReference: 'QAB1', newAmount: 300 }))).toBe('payout_reference_reused');
-    expect(await codeOf(add({ kind: T.RESEND, newReference: 'QEF3' }))).toBe('payout_amount_required');
-    const resent = await add({ kind: T.RESEND, newReference: 'QEF3', newAmount: 300 });
+    expect(await codeOf(add({ kind: T.RESENT_PAYOUT, newReference: 'REV1', newAmount: 300 }))).toBe('payout_reference_reused');
+    expect(await codeOf(add({ kind: T.RESENT_PAYOUT, newReference: 'QAB1', newAmount: 300 }))).toBe('payout_reference_reused');
+    expect(await codeOf(add({ kind: T.RESENT_PAYOUT, newReference: 'QEF3' }))).toBe('payout_amount_required');
+    const resent = await add({ kind: T.RESENT_PAYOUT, newReference: 'QEF3', newAmount: 300 });
     expect(resent).toMatchObject({ effectiveStatus: S.PAID, effectivePayout: { state: 'sent', reference: 'QEF3' } });
     expect(resent.corrections.map((c) => [c.kind, c.previousReference, c.previousAmount, c.newReference])).toEqual([
       [T.CORRECTION, 'QAB1', '300.00', 'QCD2'],
       [T.REVERSAL, 'QCD2', '300.00', 'REV1'],
-      [T.RESEND, null, '0.00', 'QEF3'],
+      [T.RESENT_PAYOUT, null, '0.00', 'QEF3'],
     ]);
     expect(resent.correctionCeiling).toBe('300.00');
     // The paid line itself never changed.
@@ -530,5 +561,87 @@ describe('RunnerPayoutsService payouts and corrections (row 107)', () => {
         service.addCorrection('l-1', { kind: T.REVERSAL, newReference: 'REV1', reason, expectedLatestCorrectionId: null }, 'a'),
       ),
     ).toBe('runner_payout_not_paid');
+  });
+});
+
+describe('runner payout feed (RA-14, RA-16)', () => {
+  const errands = new Map([
+    ['e-1', { reference: 'NT-1', title: 'Grocery run' }],
+    ['e-2', { reference: 'NT-2', title: null }],
+  ]);
+  const sum = (items: { amount: string; status: string }[]) =>
+    items.filter((i) => i.status !== S.ON_HOLD && i.status !== S.REJECTED).reduce((t, i) => t + Number(i.amount), 0);
+
+  it('derives one payout entry per M-Pesa payout; signed amounts add up to the available amount', () => {
+    const at = new Date('2026-10-12T07:03:00Z');
+    const fee = line({ status: S.PAID, payoutReference: 'SLK1', paidAt: at });
+    const item = line({ id: 'l-2', errandId: 'e-2', kind: T.ITEM_REIMBURSEMENT, amount: '720.00', requestedAmount: '720.00', status: S.PAID, payoutReference: 'SLK1', paidAt: at, decidedAt: new Date('2026-10-11T00:00:00Z') });
+    const held = line({ id: 'l-3', kind: T.ITEM_REIMBURSEMENT, errandId: 'e-1', status: S.ON_HOLD, amount: null, requestedAmount: '400.00', reviewReason: R.RECEIPT_MISSING });
+    const feed = payoutFeedOf(
+      [
+        { line: fee, adjustments: [] },
+        { line: item, adjustments: [] },
+        { line: held, adjustments: [] },
+      ],
+      errands,
+    );
+    const payout = feed.find((i) => i.kind === 'payout')!;
+    expect(payout).toMatchObject({
+      id: 'payout:l-1',
+      status: S.PAID,
+      amount: '-1020.00',
+      errandId: null,
+      reference: 'SLK1',
+      lineIds: ['l-1', 'l-2'],
+      paidAt: at,
+    });
+    expect(feed[0]).toBe(payout);
+    expect(feed.find((i) => i.id === 'l-2')).toMatchObject({ errandTitle: null, errandReference: 'NT-2', payableAt: item.decidedAt });
+    expect(feed.find((i) => i.id === 'l-3')).toMatchObject({ status: S.ON_HOLD, amount: '400.00', reviewReason: R.RECEIPT_MISSING, payableAt: null });
+    expect(sum(feed)).toBe(0);
+  });
+
+  it('reversal, re-sent payout and correction entries link to their line', () => {
+    const fee = line({ status: S.PAID, payoutReference: 'SLK1', paidAt: PAID_AT });
+    const steps = [
+      adj(T.REVERSAL, { id: 'a-1', previousAmount: '300.00', payoutReference: 'REV1', createdAt: new Date('2026-10-11T01:00:00Z') }),
+      adj(T.RESENT_PAYOUT, { id: 'a-2', previousAmount: '0.00', amount: '250.00', payoutReference: 'SLK2', createdAt: new Date('2026-10-11T02:00:00Z') }),
+    ];
+    const feed = payoutFeedOf([{ line: fee, adjustments: steps }], errands);
+    expect(feed.map((i) => [i.kind, i.amount, i.relatedLineId])).toEqual([
+      [T.RESENT_PAYOUT, '-250.00', 'l-1'],
+      [T.REVERSAL, '300.00', 'l-1'],
+      ['payout', '-300.00', null],
+      [T.RUNNER_FEE, '300.00', null],
+    ]);
+    // Re-sent 250 of 300: 50 still available, as the position says.
+    expect(sum(feed)).toBe(50);
+    expect(linePositionOf(fee, steps).available).toBe(50);
+  });
+
+  it('serves the feed with kind and errand filters and a cursor', async () => {
+    const b = build({ feePaid: 300, itemPaid: 1000 });
+    await b.service.recordConfirmed(b.manager as never, 'e-1');
+    await b.service.markPaid(['l-1', 'l-2'], 'SLK9', 'admin-1');
+    const all = await b.service.payoutLinesFor('u-run', { limit: 2 });
+    expect(all.items.map((i) => i.kind)).toEqual(['payout', T.ITEM_REIMBURSEMENT]);
+    const next = await b.service.payoutLinesFor('u-run', { limit: 2, cursor: all.nextCursor! });
+    expect(next.items.map((i) => i.kind)).toEqual([T.RUNNER_FEE]);
+    expect(next.nextCursor).toBeNull();
+    const payouts = await b.service.payoutLinesFor('u-run', { kinds: ['payout'] });
+    expect(payouts.items).toHaveLength(1);
+    expect(JSON.stringify(all)).not.toMatch(/admin-1|decisionNote|Task confirmed/);
+  });
+});
+
+describe('RunnerPayoutsService.earningsFor', () => {
+  it("adds the runner's tasks awaiting confirmation as pendingAmount (no ledger line yet)", async () => {
+    const b = build({ feePaid: 300, itemPaid: 200 });
+    const out = await b.service.earningsFor('u-run', {});
+    expect(b.errands.listFor).toHaveBeenCalledWith(
+      { role: 'runner', userId: 'u-run' },
+      { status: [ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.COMPLETED, ErrandStatus.DISPUTED], limit: 100 },
+    );
+    expect(out).toMatchObject({ pendingAmount: '1000.00', availableAmount: '0.00', week: expect.any(Array) });
   });
 });

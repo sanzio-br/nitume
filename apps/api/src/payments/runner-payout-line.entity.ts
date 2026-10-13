@@ -33,7 +33,7 @@ export enum RunnerPayoutLineType {
   ITEM_REIMBURSEMENT = 'item_reimbursement',
   CORRECTION = 'correction',
   REVERSAL = 'reversal',
-  RESEND = 'resend',
+  RESENT_PAYOUT = 'resent_payout',
 }
 
 export const OBLIGATION_LINE_TYPES: readonly RunnerPayoutLineType[] = [
@@ -44,18 +44,18 @@ export const OBLIGATION_LINE_TYPES: readonly RunnerPayoutLineType[] = [
 export const ADJUSTMENT_LINE_TYPES: readonly RunnerPayoutLineType[] = [
   RunnerPayoutLineType.CORRECTION,
   RunnerPayoutLineType.REVERSAL,
-  RunnerPayoutLineType.RESEND,
+  RunnerPayoutLineType.RESENT_PAYOUT,
 ];
 
 /**
- * Stored status of a line. Obligations: `pending_review` (ops review, rows
+ * Stored status of a line. Obligations: `on_hold` (ops review, rows
  * 105, 106) -> `payable` | `rejected`; `payable` -> `paid` (manual M-Pesa
  * payout recorded); an unpaid item line may go back `payable` ->
- * `pending_review` when ops flag a receipt mismatch. `paid` and `rejected`
+ * `on_hold` when ops flag a receipt mismatch. `paid` and `rejected`
  * are final. Adjustments are always `recorded`.
  */
 export enum RunnerPayoutLineStatus {
-  PENDING_REVIEW = 'pending_review',
+  ON_HOLD = 'on_hold',
   PAYABLE = 'payable',
   PAID = 'paid',
   REJECTED = 'rejected',
@@ -87,9 +87,9 @@ export enum RunnerPayoutReviewReason {
  * which can never be updated.
  */
 @Entity('runner_payout_lines')
-@Index('IDX_runner_payout_lines_obligation', ['errandId', 'lineType'], {
+@Index('IDX_runner_payout_lines_obligation', ['errandId', 'kind'], {
   unique: true,
-  where: `"lineType" IN ('runner_fee', 'item_reimbursement')`,
+  where: `"kind" IN ('runner_fee', 'item_reimbursement')`,
 })
 @Index('IDX_runner_payout_lines_runner', ['runnerProfileId', 'createdAt'])
 @Index('IDX_runner_payout_lines_status', ['status', 'createdAt'])
@@ -113,7 +113,7 @@ export class RunnerPayoutLine {
   errand?: Errand;
 
   @Column({ type: 'enum', enum: RunnerPayoutLineType, enumName: 'runner_payout_line_type_enum' })
-  lineType: RunnerPayoutLineType;
+  kind: RunnerPayoutLineType;
 
   @Column({ type: 'enum', enum: RunnerPayoutLineStatus, enumName: 'runner_payout_line_status_enum' })
   status: RunnerPayoutLineStatus;
@@ -126,7 +126,7 @@ export class RunnerPayoutLine {
   requestedAmount: string | null;
 
   /**
-   * Obligations: the payable amount (null while `pending_review` or after
+   * Obligations: the payable amount (null while `on_hold` or after
    * `rejected`). Adjustments: the new amount sent (`correction` when it
    * changes, `resend`), else null.
    */

@@ -13,8 +13,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * - adjustments (`correction`, `reversal`, `resend`) are never updated;
  * - an obligation's identity (runner, errand, type, requested amount, cap,
  *   receipt, note, creator, created time) never changes; its lifecycle only
- *   moves pending_review -> payable | rejected, payable -> paid, or (item
- *   line, unpaid) payable -> pending_review; `paid` and `rejected` are final,
+ *   moves on_hold -> payable | rejected, payable -> paid, or (item
+ *   line, unpaid) payable -> on_hold; `paid` and `rejected` are final,
  *   and the payout receipt can only be set by the payable -> paid step.
  * Reversible.
  */
@@ -23,10 +23,10 @@ export class AddRunnerPayoutLines1790101400000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TYPE "public"."runner_payout_line_type_enum" AS ENUM('runner_fee', 'item_reimbursement', 'correction', 'reversal', 'resend')`,
+      `CREATE TYPE "public"."runner_payout_line_type_enum" AS ENUM('runner_fee', 'item_reimbursement', 'correction', 'reversal', 'resent_payout')`,
     );
     await queryRunner.query(
-      `CREATE TYPE "public"."runner_payout_line_status_enum" AS ENUM('pending_review', 'payable', 'paid', 'rejected', 'recorded')`,
+      `CREATE TYPE "public"."runner_payout_line_status_enum" AS ENUM('on_hold', 'payable', 'paid', 'rejected', 'recorded')`,
     );
     await queryRunner.query(
       `CREATE TYPE "public"."runner_payout_review_reason_enum" AS ENUM('receipt_missing', 'receipt_mismatch', 'out_of_pocket_claim', 'over_purchase_limit')`,
@@ -36,7 +36,7 @@ export class AddRunnerPayoutLines1790101400000 implements MigrationInterface {
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "runnerProfileId" uuid NOT NULL,
         "errandId" uuid NOT NULL,
-        "lineType" "public"."runner_payout_line_type_enum" NOT NULL,
+        "kind" "public"."runner_payout_line_type_enum" NOT NULL,
         "status" "public"."runner_payout_line_status_enum" NOT NULL,
         "requestedAmount" numeric(12,2),
         "amount" numeric(12,2),
@@ -58,10 +58,10 @@ export class AddRunnerPayoutLines1790101400000 implements MigrationInterface {
         "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         CONSTRAINT "PK_runner_payout_lines" PRIMARY KEY ("id"),
         CONSTRAINT "CHK_runner_payout_lines_shape" CHECK (
-          ("lineType" IN ('runner_fee', 'item_reimbursement')
+          ("kind" IN ('runner_fee', 'item_reimbursement')
              AND "relatedLineId" IS NULL AND "status" <> 'recorded' AND "requestedAmount" IS NOT NULL)
           OR
-          ("lineType" IN ('correction', 'reversal', 'resend')
+          ("kind" IN ('correction', 'reversal', 'resent_payout')
              AND "relatedLineId" IS NOT NULL AND "status" = 'recorded' AND "note" IS NOT NULL)
         ),
         CONSTRAINT "CHK_runner_payout_lines_amounts" CHECK (
@@ -71,7 +71,7 @@ export class AddRunnerPayoutLines1790101400000 implements MigrationInterface {
       )`,
     );
     await queryRunner.query(
-      `CREATE UNIQUE INDEX "IDX_runner_payout_lines_obligation" ON "runner_payout_lines" ("errandId", "lineType") WHERE "lineType" IN ('runner_fee', 'item_reimbursement')`,
+      `CREATE UNIQUE INDEX "IDX_runner_payout_lines_obligation" ON "runner_payout_lines" ("errandId", "kind") WHERE "kind" IN ('runner_fee', 'item_reimbursement')`,
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_runner_payout_lines_runner" ON "runner_payout_lines" ("runnerProfileId", "createdAt")`,
@@ -100,7 +100,7 @@ export class AddRunnerPayoutLines1790101400000 implements MigrationInterface {
          IF TG_OP IN ('DELETE', 'TRUNCATE') THEN
            RAISE EXCEPTION 'runner_payout_lines is append-only (no %)', TG_OP;
          END IF;
-         IF OLD."lineType" IN ('correction', 'reversal', 'resend') THEN
+         IF OLD."kind" IN ('correction', 'reversal', 'resent_payout') THEN
            RAISE EXCEPTION 'runner_payout_lines: adjustments are never updated';
          END IF;
          IF OLD."status" IN ('paid', 'rejected') THEN
@@ -109,7 +109,7 @@ export class AddRunnerPayoutLines1790101400000 implements MigrationInterface {
          IF NEW."id" IS DISTINCT FROM OLD."id"
            OR NEW."runnerProfileId" IS DISTINCT FROM OLD."runnerProfileId"
            OR NEW."errandId" IS DISTINCT FROM OLD."errandId"
-           OR NEW."lineType" IS DISTINCT FROM OLD."lineType"
+           OR NEW."kind" IS DISTINCT FROM OLD."kind"
            OR NEW."requestedAmount" IS DISTINCT FROM OLD."requestedAmount"
            OR NEW."capAmount" IS DISTINCT FROM OLD."capAmount"
            OR NEW."receiptEvidenceId" IS DISTINCT FROM OLD."receiptEvidenceId"
@@ -121,11 +121,11 @@ export class AddRunnerPayoutLines1790101400000 implements MigrationInterface {
            OR NEW."createdAt" IS DISTINCT FROM OLD."createdAt" THEN
            RAISE EXCEPTION 'runner_payout_lines: financial identity of a line is immutable';
          END IF;
-         IF OLD."status" = 'pending_review' AND NEW."status" = 'payable' THEN
+         IF OLD."status" = 'on_hold' AND NEW."status" = 'payable' THEN
            IF NEW."amount" IS NULL OR NEW."decidedAt" IS NULL THEN
              RAISE EXCEPTION 'runner_payout_lines: an approved line needs an amount and a decision';
            END IF;
-         ELSIF OLD."status" = 'pending_review' AND NEW."status" = 'rejected' THEN
+         ELSIF OLD."status" = 'on_hold' AND NEW."status" = 'rejected' THEN
            IF NEW."amount" IS NOT NULL OR NEW."decidedAt" IS NULL THEN
              RAISE EXCEPTION 'runner_payout_lines: a rejected line has no amount and needs a decision';
            END IF;
@@ -134,8 +134,8 @@ export class AddRunnerPayoutLines1790101400000 implements MigrationInterface {
              OR NEW."paidAt" IS NULL THEN
              RAISE EXCEPTION 'runner_payout_lines: a payout keeps the amount and needs a receipt';
            END IF;
-         ELSIF OLD."status" = 'payable' AND NEW."status" = 'pending_review' THEN
-           IF OLD."lineType" <> 'item_reimbursement' OR NEW."amount" IS NOT NULL
+         ELSIF OLD."status" = 'payable' AND NEW."status" = 'on_hold' THEN
+           IF OLD."kind" <> 'item_reimbursement' OR NEW."amount" IS NOT NULL
              OR NEW."reviewReason" IS NULL THEN
              RAISE EXCEPTION 'runner_payout_lines: only an unpaid item line goes back to review';
            END IF;

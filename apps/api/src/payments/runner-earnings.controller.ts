@@ -3,8 +3,8 @@ import { AuthContext, Roles } from '../common/decorators/auth.decorators';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { UserRole } from '../common/enums';
-import { CreateReimbursementClaimDto, EarningsQueryDto, ListMyPayoutsQueryDto } from './dto/runner-payout.dto';
-import { EarningsSummary, RunnerPayoutLineView, RunnerPayoutsService } from './runner-payouts.service';
+import { CreateReimbursementClaimDto, EarningsQueryDto, ListPayoutLinesQueryDto } from './dto/runner-payout.dto';
+import { EarningsSummary, PayoutFeedItem, RunnerPayoutsService } from './runner-payouts.service';
 
 /**
  * Runner-facing payout ledger reads and item reimbursement claims (rows
@@ -23,13 +23,23 @@ export class RunnerEarningsController {
     return this.ledger.earningsFor(user.userId, query);
   }
 
-  /** The runner's ledger lines, newest first (cursor pagination). */
-  @Get('payouts')
-  listPayouts(
+  /**
+   * The runner's payout feed (RA-14, RA-16): runner_fee and
+   * item_reimbursement lines, derived `payout` entries (one per M-Pesa
+   * payout), and correction / reversal / resent_payout entries; signed
+   * amounts, newest first, cursor pagination.
+   */
+  @Get('payout-lines')
+  payoutLines(
     @CurrentUser() user: AuthContext,
-    @Query() query: ListMyPayoutsQueryDto,
-  ): Promise<{ items: RunnerPayoutLineView[]; nextCursor: string | null }> {
-    return this.ledger.payoutsFor(user.userId, query);
+    @Query() query: ListPayoutLinesQueryDto,
+  ): Promise<{ items: PayoutFeedItem[]; nextCursor: string | null }> {
+    return this.ledger.payoutLinesFor(user.userId, {
+      kinds: query.kind,
+      errandId: query.errandId,
+      cursor: query.cursor,
+      limit: query.limit,
+    });
   }
 
   /**
@@ -37,13 +47,13 @@ export class RunnerEarningsController {
    * CANCELLED or FAILED. Always goes to ops review. Errors: 409
    * reimbursement_claim_not_allowed, no_item_amount_paid,
    * reimbursement_already_recorded; 400 receipt_required,
-   * reimbursement_exceeds_cap (`cap`); 403 not the task's runner.
+   * reimbursement_exceeds_cap (`cap`, `itemPaidToNitume`, `maxPurchaseAdvance`); 403 not the task's runner.
    */
   @Post('reimbursement-claims')
   claim(
     @CurrentUser() user: AuthContext,
     @Body() dto: CreateReimbursementClaimDto,
-  ): Promise<RunnerPayoutLineView> {
+  ): Promise<PayoutFeedItem> {
     return this.ledger.claim(user.userId, dto);
   }
 }

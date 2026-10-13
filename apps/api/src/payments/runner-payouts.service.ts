@@ -15,6 +15,7 @@ import {
   EvidenceType,
   PaymentTransactionStatus,
   PaymentTypeCode,
+  UserRole,
 } from '../common/enums';
 import { ErrandsService } from '../errands/errands.service';
 import { EvidenceService } from '../evidence/evidence.service';
@@ -50,7 +51,7 @@ export type ObligationType = RunnerPayoutLineType.RUNNER_FEE | RunnerPayoutLineT
 export type AdjustmentKind =
   | RunnerPayoutLineType.CORRECTION
   | RunnerPayoutLineType.REVERSAL
-  | RunnerPayoutLineType.RESEND;
+  | RunnerPayoutLineType.RESENT_PAYOUT;
 
 /**
  * Status of an obligation as clients see it: the stored status, except that
@@ -58,7 +59,7 @@ export type AdjustmentKind =
  * again (owed), like refunds (row 100).
  */
 export type EffectiveLineStatus =
-  | RunnerPayoutLineStatus.PENDING_REVIEW
+  | RunnerPayoutLineStatus.ON_HOLD
   | RunnerPayoutLineStatus.PAYABLE
   | RunnerPayoutLineStatus.PAID
   | RunnerPayoutLineStatus.REJECTED;
@@ -71,7 +72,7 @@ export interface EffectiveRunnerPayout {
   at: Date | null;
 }
 
-type AdjustmentStep = Pick<RunnerPayoutLine, 'lineType' | 'payoutReference' | 'amount' | 'createdAt'>;
+type AdjustmentStep = Pick<RunnerPayoutLine, 'kind' | 'payoutReference' | 'amount' | 'createdAt'>;
 
 const money = (v: string | number | null | undefined): string => Number(v ?? 0).toFixed(2);
 
@@ -90,7 +91,7 @@ export const effectiveRunnerPayoutOf = (
     at: line.paidAt,
   };
   for (const a of adjustments) {
-    switch (a.lineType) {
+    switch (a.kind) {
       case T.CORRECTION:
         out.reference = a.payoutReference ?? out.reference;
         out.amount = a.amount !== null ? money(a.amount) : out.amount;
@@ -101,7 +102,7 @@ export const effectiveRunnerPayoutOf = (
         out.reference = null;
         out.at = a.createdAt;
         break;
-      case T.RESEND:
+      case T.RESENT_PAYOUT:
         out.state = 'sent';
         out.amount = money(a.amount ?? line.amount);
         out.reference = a.payoutReference;
@@ -128,10 +129,14 @@ export const effectiveStatusOf = (
 /** Where one obligation stands in the runner's derived balance. */
 export interface LinePosition {
   status: EffectiveLineStatus;
-  /** Awaiting ops review (requested amount, not guaranteed). */
-  pendingReview: number;
-  /** Owed and not paid out (payable, or paid then reversed). */
-  payable: number;
+  /** On hold for ops review (requested amount, not guaranteed). */
+  onHold: number;
+  /**
+   * Owed and not paid out: a payable line; a paid line whose payout was
+   * reversed (owed again); or the part of a paid line not actually sent
+   * after a correction to a lower amount.
+   */
+  available: number;
   /** Effective amount sent. */
   paid: number;
   payout: EffectiveRunnerPayout | null;
@@ -144,43 +149,61 @@ export const linePositionOf = (
 ): LinePosition => {
   const payout = effectiveRunnerPayoutOf(line, adjustments);
   const status = effectiveStatusOf(line, payout);
+  const amount = Number(line.amount ?? 0);
+  const sent = payout?.state === 'sent' ? Number(payout.amount) : 0;
   return {
     status,
     payout,
-    pendingReview: status === S.PENDING_REVIEW ? Number(line.requestedAmount ?? 0) : 0,
-    payable: status === S.PAYABLE ? Number(line.amount ?? 0) : 0,
-    paid: payout?.state === 'sent' ? Number(payout.amount) : 0,
+    onHold: status === S.ON_HOLD ? Number(line.requestedAmount ?? 0) : 0,
+    available: status === S.PAYABLE ? amount : payout?.state === 'sent' ? Math.max(0, amount - sent) : 0,
+    paid: sent,
   };
 };
 
 export type EarningsGroupBy = 'day' | 'week' | 'month';
 
-export interface BalanceTotals {
-  pendingReview: string;
-  payable: string;
-  paid: string;
+/** Balance figures of one kind of line, KES strings. */
+export interface KindTotals {
+  availableAmount: string;
+  onHoldAmount: string;
+  paidAmount: string;
 }
 
 export interface EarningsBucket {
   /** First day of the bucket, YYYY-MM-DD in East Africa Time. */
   start: string;
-  /** Runner fees earned (lines approved/payable/paid, created in the bucket). */
-  runnerFee: string;
+  /** Runner fees earned (approved lines, by the day the line was created). */
+  runnerFeeAmount: string;
   /** Item reimbursements (not income: money the runner spent on the purchase). */
-  itemReimbursement: string;
+  itemReimbursementAmount: string;
   /** Effective payouts sent in the bucket. */
-  paidOut: string;
+  paidOutAmount: string;
 }
 
 /**
- * Runner earnings, derived from the ledger lines (no stored balance, row 107).
- * `balance.payable` is the Runner app's "available balance" (system design
- * §6: amounts due minus amounts paid out).
+ * Runner earnings (RA-14), derived from the ledger lines; nothing is stored
+ * (row 107, no wallet). `availableAmount` is the Runner app's "available
+ * balance": what Nitume owes for confirmed tasks minus payouts sent
+ * (system design §6).
  */
 export interface EarningsSummary {
   currency: 'KES';
-  balance: BalanceTotals;
-  byType: { runnerFee: BalanceTotals; itemReimbursement: BalanceTotals };
+  /** Payable lines + reversed payouts not yet re-sent - nothing else. */
+  availableAmount: string;
+  /**
+   * Runner fee + item amount of the runner's tasks waiting for confirmation
+   * (AWAITING_CUSTOMER, COMPLETED, DISPUTED): not on the ledger yet.
+   */
+  pendingAmount: string;
+  /** Item reimbursements on hold for ops review (requested amounts). */
+  onHoldAmount: string;
+  /** Effective total paid out. */
+  paidAmount: string;
+  byKind: { runnerFee: KindTotals; itemReimbursement: KindTotals };
+  /** Current EAT week, Monday to Sunday: runner-fee earnings per day (chart). */
+  week: { day: string; runnerFeeAmount: string }[];
+  weekTotal: string;
+  /** Breakdown for the requested range (`from`, `to`, `groupBy`). */
   period: {
     from: string;
     to: string;
@@ -200,14 +223,16 @@ export const MAX_EARNINGS_RANGE_DAYS = 366;
 /** YYYY-MM-DD of an instant in East Africa Time. */
 export const eatDate = (at: Date): string => new Date(at.getTime() + EAT_OFFSET_MS).toISOString().slice(0, 10);
 
+const addDays = (day: string, n: number): string =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+
 const bucketStart = (day: string, groupBy: EarningsGroupBy): string => {
   if (groupBy === 'month') {
     return `${day.slice(0, 7)}-01`;
   }
   if (groupBy === 'week') {
-    const d = new Date(`${day}T00:00:00Z`);
-    const monday = (d.getUTCDay() + 6) % 7;
-    return new Date(d.getTime() - monday * DAY_MS).toISOString().slice(0, 10);
+    const monday = (new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7;
+    return addDays(day, -monday);
   }
   return day;
 };
@@ -222,10 +247,10 @@ export const earningsRangeOf = (
   now: Date = new Date(),
 ): { from: string; to: string; groupBy: EarningsGroupBy } => {
   const to = query.to ?? eatDate(now);
-  const from = query.from ?? new Date(Date.parse(`${to}T00:00:00Z`) - 6 * DAY_MS).toISOString().slice(0, 10);
+  const from = query.from ?? (DATE.test(to) ? addDays(to, -6) : to);
   const valid = (d: string) => DATE.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`));
   const span = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS;
-  if (!valid(from) || !valid(to) || span < 0 || span >= MAX_EARNINGS_RANGE_DAYS) {
+  if (!valid(from) || !valid(to) || !(span >= 0) || span >= MAX_EARNINGS_RANGE_DAYS) {
     throw new ApiError(
       HttpStatus.BAD_REQUEST,
       'earnings_range_invalid',
@@ -236,84 +261,234 @@ export const earningsRangeOf = (
   return { from, to, groupBy: query.groupBy ?? 'day' };
 };
 
-const zeroTotals = () => ({ pendingReview: 0, payable: 0, paid: 0 });
-const fmtTotals = (t: { pendingReview: number; payable: number; paid: number }): BalanceTotals => ({
-  pendingReview: money(t.pendingReview),
-  payable: money(t.payable),
-  paid: money(t.paid),
+const zeroTotals = () => ({ available: 0, onHold: 0, paid: 0 });
+const fmtTotals = (t: { available: number; onHold: number; paid: number }): KindTotals => ({
+  availableAmount: money(t.available),
+  onHoldAmount: money(t.onHold),
+  paidAmount: money(t.paid),
 });
 
 /** Pure: earnings summary from a runner's obligations and their adjustments. */
 export const earningsSummaryOf = (
   rows: { line: RunnerPayoutLine; adjustments: AdjustmentStep[] }[],
   range: { from: string; to: string; groupBy: EarningsGroupBy },
+  pendingAmount = 0,
+  now: Date = new Date(),
 ): EarningsSummary => {
   const all = zeroTotals();
   const fee = zeroTotals();
   const item = zeroTotals();
   const starts: string[] = [];
-  for (let t = Date.parse(`${range.from}T00:00:00Z`); t <= Date.parse(`${range.to}T00:00:00Z`); t += DAY_MS) {
-    const start = bucketStart(new Date(t).toISOString().slice(0, 10), range.groupBy);
+  for (let day = range.from; day <= range.to; day = addDays(day, 1)) {
+    const start = bucketStart(day, range.groupBy);
     if (starts[starts.length - 1] !== start) {
       starts.push(start);
     }
   }
-  const buckets = new Map(starts.map((s) => [s, { runnerFee: 0, itemReimbursement: 0, paidOut: 0 }]));
-  const inRange = (at: Date | null): string | null => {
+  const buckets = new Map(starts.map((s) => [s, { fee: 0, item: 0, paidOut: 0 }]));
+  const weekStart = bucketStart(eatDate(now), 'week');
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const week = new Map(weekDays.map((d) => [d, 0]));
+  const bucketOf = (at: Date | null) => {
     if (!at) {
-      return null;
+      return undefined;
     }
     const day = eatDate(at);
-    return day >= range.from && day <= range.to ? bucketStart(day, range.groupBy) : null;
+    return day >= range.from && day <= range.to ? buckets.get(bucketStart(day, range.groupBy)) : undefined;
   };
   for (const { line, adjustments } of rows) {
     const pos = linePositionOf(line, adjustments);
-    const byType = line.lineType === T.RUNNER_FEE ? fee : item;
-    for (const totals of [all, byType]) {
-      totals.pendingReview += pos.pendingReview;
-      totals.payable += pos.payable;
+    for (const totals of [all, line.kind === T.RUNNER_FEE ? fee : item]) {
+      totals.available += pos.available;
+      totals.onHold += pos.onHold;
       totals.paid += pos.paid;
     }
     if (pos.status === S.PAYABLE || pos.status === S.PAID) {
-      const earned = pos.payout?.state === 'sent' ? Number(pos.payout.amount) : Number(line.amount ?? 0);
-      const bucket = buckets.get(inRange(line.createdAt) ?? '');
+      const earned = Number(line.amount ?? 0);
+      const bucket = bucketOf(line.createdAt);
       if (bucket) {
-        if (line.lineType === T.RUNNER_FEE) {
-          bucket.runnerFee += earned;
+        if (line.kind === T.RUNNER_FEE) {
+          bucket.fee += earned;
         } else {
-          bucket.itemReimbursement += earned;
+          bucket.item += earned;
         }
       }
-    }
-    if (pos.payout?.state === 'sent') {
-      const bucket = buckets.get(inRange(pos.payout.at) ?? '');
-      if (bucket) {
-        bucket.paidOut += Number(pos.payout.amount);
+      const day = eatDate(line.createdAt);
+      if (line.kind === T.RUNNER_FEE && week.has(day)) {
+        week.set(day, (week.get(day) ?? 0) + earned);
       }
     }
+    const paidBucket = pos.payout?.state === 'sent' ? bucketOf(pos.payout.at) : undefined;
+    if (paidBucket) {
+      paidBucket.paidOut += pos.paid;
+    }
   }
-  const out = starts.map((start) => {
-    const b = buckets.get(start)!;
-    return {
-      start,
-      runnerFee: money(b.runnerFee),
-      itemReimbursement: money(b.itemReimbursement),
-      paidOut: money(b.paidOut),
-    };
-  });
-  const sum = (k: 'runnerFee' | 'itemReimbursement' | 'paidOut') =>
-    money([...buckets.values()].reduce((s, b) => s + b[k], 0));
+  const total = (k: 'fee' | 'item' | 'paidOut') => money([...buckets.values()].reduce((s, b) => s + b[k], 0));
   return {
     currency: 'KES',
-    balance: fmtTotals(all),
-    byType: { runnerFee: fmtTotals(fee), itemReimbursement: fmtTotals(item) },
+    availableAmount: money(all.available),
+    pendingAmount: money(pendingAmount),
+    onHoldAmount: money(all.onHold),
+    paidAmount: money(all.paid),
+    byKind: { runnerFee: fmtTotals(fee), itemReimbursement: fmtTotals(item) },
+    week: weekDays.map((day) => ({ day, runnerFeeAmount: money(week.get(day)) })),
+    weekTotal: money([...week.values()].reduce((s, v) => s + v, 0)),
     period: {
       ...range,
       timeZone: 'Africa/Nairobi',
-      totals: { runnerFee: sum('runnerFee'), itemReimbursement: sum('itemReimbursement'), paidOut: sum('paidOut') },
-      buckets: out,
+      totals: {
+        runnerFeeAmount: total('fee'),
+        itemReimbursementAmount: total('item'),
+        paidOutAmount: total('paidOut'),
+      },
+      buckets: starts.map((start) => {
+        const b = buckets.get(start)!;
+        return {
+          start,
+          runnerFeeAmount: money(b.fee),
+          itemReimbursementAmount: money(b.item),
+          paidOutAmount: money(b.paidOut),
+        };
+      }),
     },
   };
+};
+
+/** Kinds on the runner's payout feed (RA-14). `payout` is derived, not stored. */
+export type PayoutFeedKind =
+  | RunnerPayoutLineType.RUNNER_FEE
+  | RunnerPayoutLineType.ITEM_REIMBURSEMENT
+  | RunnerPayoutLineType.CORRECTION
+  | RunnerPayoutLineType.REVERSAL
+  | RunnerPayoutLineType.RESENT_PAYOUT
+  | 'payout';
+
+export const PAYOUT_FEED_KINDS: readonly PayoutFeedKind[] = [
+  T.RUNNER_FEE,
+  T.ITEM_REIMBURSEMENT,
+  'payout',
+  T.CORRECTION,
+  T.REVERSAL,
+  T.RESENT_PAYOUT,
+];
+
+/**
+ * One entry of GET /runners/me/payout-lines (RA-14). Signed amounts: positive
+ * = owed to the runner, negative = paid out. The sum of the entries of lines
+ * not on hold or rejected is `availableAmount`. No admin notes, admin ids,
+ * review reasons' free text or customer data.
+ */
+export interface PayoutFeedItem {
+  /** Line id; `payout:<first line id>` for a derived payout entry (opaque). */
+  id: string;
+  kind: PayoutFeedKind;
+  /**
+   * Job lines: on_hold | payable | paid | rejected (a reversed payout makes
+   * the line payable again). payout and resent_payout: paid. correction and
+   * reversal: recorded.
+   */
+  status: EffectiveLineStatus | RunnerPayoutLineStatus.RECORDED;
+  /** Signed KES, e.g. "1750.00" or "-6000.00". */
+  amount: string;
+  /** Null on a payout covering several tasks. */
+  errandId: string | null;
+  errandTitle: string | null;
+  errandReference: string | null;
+  /** M-Pesa receipt (payout, resent_payout, correction, reversal code); null on job lines. */
+  reference: string | null;
+  /** Adjustments: the job line they change. Null otherwise. */
+  relatedLineId: string | null;
+  /** payout entries: the job lines the M-Pesa payout covered. Empty otherwise. */
+  lineIds: string[];
+  /** Job lines on hold: why (`receipt_missing`, `receipt_mismatch`, `out_of_pocket_claim`, `over_purchase_limit`). */
+  reviewReason: RunnerPayoutReviewReason | null;
+  createdAt: Date;
+  /** Job lines: when the line became payable; null while on hold or rejected. */
+  payableAt: Date | null;
+  /** payout / resent_payout: when it was sent. Job lines: their original payout time. */
+  paidAt: Date | null;
+}
+
+type FeedErrand = { reference: string; title: string | null };
+
+/** Pure: the runner's payout feed, newest first, from obligations and their adjustments. */
+export const payoutFeedOf = (
+  rows: { line: RunnerPayoutLine; adjustments: RunnerPayoutLine[] }[],
+  errands: Map<string, FeedErrand>,
+): PayoutFeedItem[] => {
+  const base = (errandId: string | null) => ({
+    errandId,
+    errandTitle: errandId ? (errands.get(errandId)?.title ?? null) : null,
+    errandReference: errandId ? (errands.get(errandId)?.reference ?? null) : null,
+  });
+  const items: PayoutFeedItem[] = [];
+  const payouts = new Map<string, RunnerPayoutLine[]>();
+  for (const { line, adjustments } of rows) {
+    const pos = linePositionOf(line, adjustments);
+    const approved = line.amount !== null;
+    items.push({
+      id: line.id,
+      kind: line.kind as PayoutFeedKind,
+      status: pos.status,
+      amount: money(approved ? line.amount : line.requestedAmount),
+      ...base(line.errandId),
+      reference: null,
+      relatedLineId: null,
+      lineIds: [],
+      reviewReason: pos.status === S.ON_HOLD ? line.reviewReason : null,
+      createdAt: line.createdAt,
+      payableAt: approved && pos.status !== S.REJECTED ? (line.decidedAt ?? line.createdAt) : null,
+      paidAt: line.paidAt,
+    });
+    if (line.status === S.PAID && line.paidAt) {
+      const key = `${line.payoutReference ?? ''}|${line.paidAt.toISOString()}`;
+      payouts.set(key, [...(payouts.get(key) ?? []), line]);
+    }
+    for (const a of adjustments) {
+      const previous = Number(a.previousAmount ?? 0);
+      const signed =
+        a.kind === T.REVERSAL
+          ? previous
+          : a.kind === T.RESENT_PAYOUT
+            ? -Number(a.amount ?? 0)
+            : a.amount === null
+              ? 0
+              : previous - Number(a.amount);
+      items.push({
+        id: a.id,
+        kind: a.kind as PayoutFeedKind,
+        status: a.kind === T.RESENT_PAYOUT ? S.PAID : S.RECORDED,
+        amount: money(signed),
+        ...base(line.errandId),
+        reference: a.payoutReference,
+        relatedLineId: line.id,
+        lineIds: [],
+        reviewReason: null,
+        createdAt: a.createdAt,
+        payableAt: null,
+        paidAt: a.kind === T.RESENT_PAYOUT ? a.createdAt : null,
+      });
+    }
+  }
+  for (const group of payouts.values()) {
+    const ids = group.map((l) => l.id).sort();
+    const errandIds = [...new Set(group.map((l) => l.errandId))];
+    items.push({
+      id: `payout:${ids[0]}`,
+      kind: 'payout',
+      status: S.PAID,
+      amount: money(-group.reduce((s, l) => s + Number(l.amount ?? 0), 0)),
+      ...base(errandIds.length === 1 ? errandIds[0] : null),
+      reference: group[0].payoutReference,
+      relatedLineId: null,
+      lineIds: ids,
+      reviewReason: null,
+      createdAt: group[0].paidAt as Date,
+      payableAt: null,
+      paidAt: group[0].paidAt,
+    });
+  }
+  return items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
 };
 
 /** Errand summary on ledger views. */
@@ -323,30 +498,6 @@ export interface LedgerErrandSummary {
   title: string | null;
   category: ErrandCategory;
   status: ErrandStatus;
-}
-
-/**
- * One obligation as the runner sees it (GET /runners/me/payouts). No admin
- * notes, admin ids or M-Pesa receipts.
- */
-export interface RunnerPayoutLineView {
-  id: string;
-  errandId: string;
-  errand: LedgerErrandSummary | null;
-  lineType: ObligationType;
-  status: EffectiveLineStatus;
-  /**
-   * Payable/approved amount; once paid, the effective amount sent. Null while
-   * in review or after a rejection.
-   */
-  amount: string | null;
-  /** What the system computed or the runner claimed. */
-  requestedAmount: string;
-  reviewReason: RunnerPayoutReviewReason | null;
-  createdAt: Date;
-  decidedAt: Date | null;
-  /** Time of the effective payout; null unless paid (and not reversed). */
-  paidAt: Date | null;
 }
 
 export interface AdminRef {
@@ -401,7 +552,7 @@ export type AdminRunnerPayoutDetail = AdminRunnerPayoutItem & {
 
 export interface ListRunnerPayoutsOptions {
   status?: EffectiveLineStatus;
-  lineType?: ObligationType;
+  kind?: ObligationType;
   runnerProfileId?: string;
   errandId?: string;
   cursor?: string;
@@ -435,9 +586,16 @@ export const NOTE_MAX_LENGTH = 500;
 export const MAX_BATCH_LINES = 50;
 
 /** Statuses in which a paid task's runner may claim item spend (row 106). */
+/** Tasks whose earnings are waiting for confirmation (`pendingAmount`). */
+export const AWAITING_CONFIRMATION: readonly ErrandStatus[] = [
+  ErrandStatus.AWAITING_CUSTOMER,
+  ErrandStatus.COMPLETED,
+  ErrandStatus.DISPUTED,
+];
+
 export const CLAIMABLE_STATUSES: readonly ErrandStatus[] = [ErrandStatus.CANCELLED, ErrandStatus.FAILED];
 
-const LATEST_ADJUSTMENT = `(SELECT a."lineType" FROM "runner_payout_lines" a
+const LATEST_ADJUSTMENT = `(SELECT a."kind" FROM "runner_payout_lines" a
    WHERE a."relatedLineId" = l.id ORDER BY a."createdAt" DESC, a.id DESC LIMIT 1)`;
 
 /**
@@ -501,7 +659,7 @@ export class RunnerPayoutsService implements OnModuleInit {
       const id = await this.insertObligation(manager, {
         runnerProfileId: runner.id,
         errandId,
-        lineType: T.RUNNER_FEE,
+        kind: T.RUNNER_FEE,
         status: S.PAYABLE,
         requestedAmount: fee,
         amount: fee,
@@ -525,8 +683,8 @@ export class RunnerPayoutsService implements OnModuleInit {
       const id = await this.insertObligation(manager, {
         runnerProfileId: runner.id,
         errandId,
-        lineType: T.ITEM_REIMBURSEMENT,
-        status: reason ? S.PENDING_REVIEW : S.PAYABLE,
+        kind: T.ITEM_REIMBURSEMENT,
+        status: reason ? S.ON_HOLD : S.PAYABLE,
         requestedAmount: item,
         amount: reason ? null : item,
         capAmount: item,
@@ -545,10 +703,11 @@ export class RunnerPayoutsService implements OnModuleInit {
   /**
    * Row 106: the runner bought the item but the paid task ended CANCELLED or
    * FAILED. The runner claims verified out-of-pocket item spend with a
-   * receipt they uploaded; the claim always goes to ops review, capped at the
-   * item amount paid to Nitume. Never a runner_fee line.
+   * receipt they uploaded; the claim always goes to ops review (`on_hold`),
+   * capped at the item amount paid to Nitume and the runner's
+   * max_purchase_advance. Never a runner_fee line.
    */
-  async claim(runnerUserId: string, input: ReimbursementClaimInput): Promise<RunnerPayoutLineView> {
+  async claim(runnerUserId: string, input: ReimbursementClaimInput): Promise<PayoutFeedItem> {
     const runner = await this.runners.profileByUserId(runnerUserId);
     const errand = await this.errands.getById(input.errandId);
     if (!CLAIMABLE_STATUSES.includes(errand.status)) {
@@ -578,8 +737,11 @@ export class RunnerPayoutsService implements OnModuleInit {
     }
     const note = input.note?.trim() || null;
     const id = await this.lines.manager.transaction(async (manager) => {
-      const cap = await this.itemPaidToNitume(errand.id, manager);
-      if (cap <= 0) {
+      const itemPaid = await this.itemPaidToNitume(errand.id, manager);
+      // Row 105 cap (item amount paid to Nitume) and row 108 limit
+      // (the runner's max_purchase_advance) both apply.
+      const cap = Math.min(itemPaid, Number(runner.maxPurchaseAdvance));
+      if (itemPaid <= 0) {
         throw new ApiError(
           HttpStatus.CONFLICT,
           'no_item_amount_paid',
@@ -590,15 +752,15 @@ export class RunnerPayoutsService implements OnModuleInit {
         throw new ApiError(
           HttpStatus.BAD_REQUEST,
           'reimbursement_exceeds_cap',
-          `The claim can't be more than KSh ${money(cap)}, the item amount paid to Nitume`,
-          { cap: money(cap), itemPaidToNitume: money(cap) },
+          `The claim can't be more than KSh ${money(cap)} (the item amount paid to Nitume, within your purchase limit)`,
+          { cap: money(cap), itemPaidToNitume: money(itemPaid), maxPurchaseAdvance: money(runner.maxPurchaseAdvance) },
         );
       }
       const inserted = await this.insertObligation(manager, {
         runnerProfileId: runner.id,
         errandId: errand.id,
-        lineType: T.ITEM_REIMBURSEMENT,
-        status: S.PENDING_REVIEW,
+        kind: T.ITEM_REIMBURSEMENT,
+        status: S.ON_HOLD,
         requestedAmount: input.amount,
         amount: null,
         capAmount: cap,
@@ -610,7 +772,7 @@ export class RunnerPayoutsService implements OnModuleInit {
       if (!inserted) {
         const existing = await manager
           .getRepository(RunnerPayoutLine)
-          .findOne({ where: { errandId: errand.id, lineType: T.ITEM_REIMBURSEMENT } });
+          .findOne({ where: { errandId: errand.id, kind: T.ITEM_REIMBURSEMENT } });
         throw new ApiError(
           HttpStatus.CONFLICT,
           'reimbursement_already_recorded',
@@ -620,46 +782,108 @@ export class RunnerPayoutsService implements OnModuleInit {
       }
       return inserted;
     });
-    const [view] = await this.runnerViews(await this.lines.find({ where: { id: In([id]) } }));
-    return view;
+    const [line] = await this.lines.find({ where: { id: In([id]) } });
+    const [item] = payoutFeedOf([{ line, adjustments: [] }], await this.errandSummaries([line.errandId]));
+    return item;
   }
 
   // ---- runner reads --------------------------------------------------------
 
-  /** GET /runners/me/earnings: derived from the runner's lines. */
+  /** GET /runners/me/earnings: derived from the runner's lines (RA-14). */
   async earningsFor(
     runnerUserId: string,
     query: { from?: string; to?: string; groupBy?: EarningsGroupBy },
   ): Promise<EarningsSummary> {
     const runner = await this.runners.profileByUserId(runnerUserId);
-    return this.summaryFor(runner.id, query);
+    return this.summaryFor(runner.id, query, runnerUserId);
   }
 
-  /** Earnings summary of one runner (runner app, or admin by runner id). */
+  /**
+   * Earnings summary of one runner (runner app, or admin by runner id).
+   * `pendingAmount` adds the runner fee and item amount of the runner's tasks
+   * still waiting for confirmation (no ledger line yet).
+   */
   async summaryFor(
     runnerProfileId: string,
     query: { from?: string; to?: string; groupBy?: EarningsGroupBy },
+    runnerUserId?: string,
   ): Promise<EarningsSummary> {
     const range = earningsRangeOf(query);
     const obligations = await this.lines.find({
-      where: { runnerProfileId, lineType: In([...OBLIGATION_LINE_TYPES]) },
+      where: { runnerProfileId, kind: In([...OBLIGATION_LINE_TYPES]) },
       order: { createdAt: 'ASC' },
     });
-    const adjustments = await this.adjustmentsOf(obligations.map((l) => l.id));
+    const userId = runnerUserId ?? (await this.runners.profileById(runnerProfileId)).userId;
+    const [adjustments, pending] = await Promise.all([
+      this.adjustmentsOf(obligations.map((l) => l.id)),
+      this.pendingConfirmation(userId),
+    ]);
     return earningsSummaryOf(
       obligations.map((line) => ({ line, adjustments: adjustments.get(line.id) ?? [] })),
       range,
+      pending,
     );
   }
 
-  /** GET /runners/me/payouts: the runner's obligations, newest first (cursor). */
-  async payoutsFor(
+  /**
+   * GET /runners/me/payout-lines (RA-14, RA-16): the runner's feed, newest
+   * first, cursor-paginated. `kinds` filters (e.g. ['payout',
+   * 'resent_payout']); `errandId` restricts to one task's lines, their
+   * adjustments and the payouts that covered them.
+   */
+  async payoutLinesFor(
     runnerUserId: string,
-    opts: Omit<ListRunnerPayoutsOptions, 'runnerProfileId' | 'errandId'>,
-  ): Promise<{ items: RunnerPayoutLineView[]; nextCursor: string | null }> {
+    opts: { kinds?: PayoutFeedKind[]; errandId?: string; cursor?: string; limit?: number },
+  ): Promise<{ items: PayoutFeedItem[]; nextCursor: string | null }> {
     const runner = await this.runners.profileByUserId(runnerUserId);
-    const page = await this.page({ ...opts, runnerProfileId: runner.id });
-    return { items: await this.runnerViews(page.rows), nextCursor: page.nextCursor };
+    const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
+    const obligations = await this.lines.find({
+      where: {
+        runnerProfileId: runner.id,
+        kind: In([...OBLIGATION_LINE_TYPES]),
+        ...(opts.errandId ? { errandId: opts.errandId } : {}),
+      },
+    });
+    const [adjustments, errands] = await Promise.all([
+      this.adjustmentsOf(obligations.map((l) => l.id)),
+      this.errandSummaries(obligations.map((l) => l.errandId)),
+    ]);
+    let feed = payoutFeedOf(
+      obligations.map((line) => ({ line, adjustments: adjustments.get(line.id) ?? [] })),
+      errands,
+    );
+    if (opts.kinds && opts.kinds.length > 0) {
+      const kinds = new Set<string>(opts.kinds);
+      feed = feed.filter((i) => kinds.has(i.kind));
+    }
+    const decoded = decodeCursor(opts.cursor);
+    if (decoded) {
+      const at = Date.parse(decoded[0]);
+      feed = feed.filter(
+        (i) => i.createdAt.getTime() < at || (i.createdAt.getTime() === at && i.id < decoded[1]),
+      );
+    }
+    const page = feed.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      items: page,
+      nextCursor:
+        feed.length > limit && last
+          ? Buffer.from(`${last.createdAt.toISOString()}::${last.id}`, 'utf-8').toString('base64')
+          : null,
+    };
+  }
+
+  /** Runner fee + item amount of the runner's tasks awaiting confirmation. */
+  private async pendingConfirmation(runnerUserId: string): Promise<number> {
+    const { items } = await this.errands.listFor(
+      { role: UserRole.RUNNER, userId: runnerUserId },
+      { status: [...AWAITING_CONFIRMATION], limit: 100 },
+    );
+    const amounts = await Promise.all(
+      items.map(async (e) => (await this.runnerFeePaid(e.id)) + (await this.itemPaidToNitume(e.id))),
+    );
+    return amounts.reduce((s, v) => s + v, 0);
   }
 
   // ---- admin ---------------------------------------------------------------
@@ -674,7 +898,7 @@ export class RunnerPayoutsService implements OnModuleInit {
   async count(status?: EffectiveLineStatus): Promise<{ count: number }> {
     const qb = this.lines
       .createQueryBuilder('l')
-      .where('l."lineType" IN (:...obligations)', { obligations: OBLIGATION_LINE_TYPES });
+      .where('l."kind" IN (:...obligations)', { obligations: OBLIGATION_LINE_TYPES });
     if (status) {
       qb.andWhere(...statusFilter(status));
     }
@@ -694,7 +918,7 @@ export class RunnerPayoutsService implements OnModuleInit {
       this.users.displayNames(own.map((a) => a.createdByUserId).filter((v): v is string => !!v)),
     ]);
     const itemPaid =
-      line.lineType === T.ITEM_REIMBURSEMENT ? await this.itemPaidToNitume(line.errandId) : null;
+      line.kind === T.ITEM_REIMBURSEMENT ? await this.itemPaidToNitume(line.errandId) : null;
     const displayName = user?.displayName ?? null;
     return Object.assign(item, {
       runner: profile
@@ -709,7 +933,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         : null,
       itemPaidToNitume: itemPaid === null ? null : money(itemPaid),
       approvalCeiling:
-        itemPaid !== null && line.status === S.PENDING_REVIEW
+        itemPaid !== null && line.status === S.ON_HOLD
           ? money(Math.max(0, Math.min(Number(line.requestedAmount), itemPaid)))
           : null,
       corrections: own.map((a) => toCorrectionView(a, names)),
@@ -718,7 +942,7 @@ export class RunnerPayoutsService implements OnModuleInit {
   }
 
   /**
-   * Ops review of an item reimbursement in `pending_review` (rows 105, 106,
+   * Ops review of an item reimbursement in `on_hold` (rows 105, 106,
    * 108). Approve with an amount, capped at min(requested amount, item amount
    * actually paid to Nitume): above it, 400 `reimbursement_exceeds_cap`.
    * Reject with a note (5-500 characters).
@@ -728,12 +952,12 @@ export class RunnerPayoutsService implements OnModuleInit {
     await this.lines.manager.transaction(async (manager) => {
       const repo = manager.getRepository(RunnerPayoutLine);
       const line = await this.lockObligation(manager, id);
-      if (line.lineType !== T.ITEM_REIMBURSEMENT || line.status !== S.PENDING_REVIEW) {
+      if (line.kind !== T.ITEM_REIMBURSEMENT || line.status !== S.ON_HOLD) {
         throw new ApiError(
           HttpStatus.CONFLICT,
           'runner_payout_not_in_review',
           `Only an item reimbursement in review can be decided (status ${line.status})`,
-          { status: line.status, lineType: line.lineType },
+          { status: line.status, kind: line.kind },
         );
       }
       if (input.decision === 'reject') {
@@ -775,7 +999,7 @@ export class RunnerPayoutsService implements OnModuleInit {
 
   /**
    * Ops flag a receipt that does not match the purchase (row 105): an unpaid
-   * payable item reimbursement goes back to `pending_review`
+   * payable item reimbursement goes back to `on_hold`
    * (`receipt_mismatch`) and stops being payable until decided again.
    */
   async hold(id: string, noteInput: string, adminUserId: string): Promise<AdminRunnerPayoutDetail> {
@@ -783,16 +1007,16 @@ export class RunnerPayoutsService implements OnModuleInit {
     assertNote(note, 'decision_note_required', 'Say what does not match');
     await this.lines.manager.transaction(async (manager) => {
       const line = await this.lockObligation(manager, id);
-      if (line.lineType !== T.ITEM_REIMBURSEMENT || line.status !== S.PAYABLE) {
+      if (line.kind !== T.ITEM_REIMBURSEMENT || line.status !== S.PAYABLE) {
         throw new ApiError(
           HttpStatus.CONFLICT,
           'runner_payout_not_holdable',
           `Only an unpaid, payable item reimbursement can go back to review (status ${line.status})`,
-          { status: line.status, lineType: line.lineType },
+          { status: line.status, kind: line.kind },
         );
       }
       await manager.getRepository(RunnerPayoutLine).update(line.id, {
-        status: S.PENDING_REVIEW,
+        status: S.ON_HOLD,
         amount: null,
         reviewReason: RunnerPayoutReviewReason.RECEIPT_MISMATCH,
         decisionNote: note,
@@ -822,7 +1046,7 @@ export class RunnerPayoutsService implements OnModuleInit {
     await this.lines.manager.transaction(async (manager) => {
       const repo = manager.getRepository(RunnerPayoutLine);
       const rows = await repo.find({
-        where: { id: In(ids), lineType: In([...OBLIGATION_LINE_TYPES]) },
+        where: { id: In(ids), kind: In([...OBLIGATION_LINE_TYPES]) },
         order: { id: 'ASC' },
         lock: { mode: 'pessimistic_write' },
       });
@@ -918,7 +1142,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         );
       }
       const current = effectiveRunnerPayoutOf(line, prior)!;
-      const allowed = input.kind === T.RESEND ? current.state === 'reversed' : current.state === 'sent';
+      const allowed = input.kind === T.RESENT_PAYOUT ? current.state === 'reversed' : current.state === 'sent';
       if (!allowed) {
         throw new ApiError(
           HttpStatus.CONFLICT,
@@ -953,7 +1177,7 @@ export class RunnerPayoutsService implements OnModuleInit {
           'A reversal reverses the whole payout; send no amount (a partial reversal is a correction with the lower amount)',
         );
       }
-      if (input.kind === T.RESEND && amount === null) {
+      if (input.kind === T.RESENT_PAYOUT && amount === null) {
         throw new ApiError(HttpStatus.BAD_REQUEST, 'payout_amount_required', 'Enter the amount sent');
       }
       if (amount !== null && (amount <= 0 || amount > Number(line.amount))) {
@@ -975,7 +1199,7 @@ export class RunnerPayoutsService implements OnModuleInit {
       await repo.insert({
         runnerProfileId: line.runnerProfileId,
         errandId: line.errandId,
-        lineType: input.kind,
+        kind: input.kind,
         status: S.RECORDED,
         relatedLineId: line.id,
         previousReference: current.reference,
@@ -1033,7 +1257,7 @@ export class RunnerPayoutsService implements OnModuleInit {
     v: {
       runnerProfileId: string;
       errandId: string;
-      lineType: ObligationType;
+      kind: ObligationType;
       status: RunnerPayoutLineStatus;
       requestedAmount: number;
       amount: number | null;
@@ -1046,16 +1270,16 @@ export class RunnerPayoutsService implements OnModuleInit {
   ): Promise<string | null> {
     const rows: { id: string }[] = await manager.query(
       `INSERT INTO "runner_payout_lines"
-         ("runnerProfileId", "errandId", "lineType", "status", "requestedAmount", "amount",
+         ("runnerProfileId", "errandId", "kind", "status", "requestedAmount", "amount",
           "capAmount", "reviewReason", "receiptEvidenceId", "note", "createdByUserId")
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       ON CONFLICT ("errandId", "lineType") WHERE "lineType" IN ('runner_fee', 'item_reimbursement')
+       ON CONFLICT ("errandId", "kind") WHERE "kind" IN ('runner_fee', 'item_reimbursement')
        DO NOTHING
        RETURNING "id"`,
       [
         v.runnerProfileId,
         v.errandId,
-        v.lineType,
+        v.kind,
         v.status,
         money(v.requestedAmount),
         v.amount === null ? null : money(v.amount),
@@ -1071,7 +1295,7 @@ export class RunnerPayoutsService implements OnModuleInit {
 
   private async obligation(id: string): Promise<RunnerPayoutLine> {
     const line = await this.lines.findOne({ where: { id } });
-    if (!line || !OBLIGATION_LINE_TYPES.includes(line.lineType)) {
+    if (!line || !OBLIGATION_LINE_TYPES.includes(line.kind)) {
       throw new NotFoundException('Runner payout line not found');
     }
     return line;
@@ -1081,7 +1305,7 @@ export class RunnerPayoutsService implements OnModuleInit {
     const line = await manager
       .getRepository(RunnerPayoutLine)
       .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
-    if (!line || !OBLIGATION_LINE_TYPES.includes(line.lineType)) {
+    if (!line || !OBLIGATION_LINE_TYPES.includes(line.kind)) {
       throw new NotFoundException('Runner payout line not found');
     }
     return line;
@@ -1130,15 +1354,15 @@ export class RunnerPayoutsService implements OnModuleInit {
     const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
     const qb = this.lines
       .createQueryBuilder('l')
-      .where('l."lineType" IN (:...obligations)', { obligations: OBLIGATION_LINE_TYPES })
+      .where('l."kind" IN (:...obligations)', { obligations: OBLIGATION_LINE_TYPES })
       .orderBy('l."createdAt"', 'DESC')
       .addOrderBy('l.id', 'DESC')
       .limit(limit + 1);
     if (opts.status) {
       qb.andWhere(...statusFilter(opts.status));
     }
-    if (opts.lineType) {
-      qb.andWhere('l."lineType" = :lineType', { lineType: opts.lineType });
+    if (opts.kind) {
+      qb.andWhere('l."kind" = :kind', { kind: opts.kind });
     }
     if (opts.runnerProfileId) {
       qb.andWhere('l."runnerProfileId" = :runnerProfileId', { runnerProfileId: opts.runnerProfileId });
@@ -1167,34 +1391,6 @@ export class RunnerPayoutsService implements OnModuleInit {
         { id: e.id, reference: e.reference, title: e.title, category: e.category, status: e.status },
       ]),
     );
-  }
-
-  private async runnerViews(rows: RunnerPayoutLine[]): Promise<RunnerPayoutLineView[]> {
-    const [errands, adjustments] = await Promise.all([
-      this.errandSummaries(rows.map((r) => r.errandId)),
-      this.adjustmentsOf(rows.map((r) => r.id)),
-    ]);
-    return rows.map((line) => {
-      const pos = linePositionOf(line, adjustments.get(line.id));
-      return {
-        id: line.id,
-        errandId: line.errandId,
-        errand: errands.get(line.errandId) ?? null,
-        lineType: line.lineType as ObligationType,
-        status: pos.status,
-        amount:
-          pos.payout?.state === 'sent'
-            ? pos.payout.amount
-            : line.amount === null
-              ? null
-              : money(line.amount),
-        requestedAmount: money(line.requestedAmount),
-        reviewReason: line.reviewReason,
-        createdAt: line.createdAt,
-        decidedAt: line.decidedAt,
-        paidAt: pos.payout?.state === 'sent' ? pos.payout.at : null,
-      };
-    });
   }
 
   private async enrich(rows: RunnerPayoutLine[]): Promise<AdminRunnerPayoutItem[]> {
@@ -1254,7 +1450,7 @@ const statusFilter = (status: EffectiveLineStatus): [string, Record<string, unkn
 
 const toCorrectionView = (a: RunnerPayoutLine, names: Map<string, string>): RunnerPayoutCorrectionView => ({
   id: a.id,
-  kind: a.lineType as AdjustmentKind,
+  kind: a.kind as AdjustmentKind,
   previousReference: a.previousReference,
   previousAmount: a.previousAmount,
   newReference: a.payoutReference,
