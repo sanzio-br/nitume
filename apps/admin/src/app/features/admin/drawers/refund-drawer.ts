@@ -14,12 +14,11 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
 import { apiError, ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
-import type { RefundCorrectionKind, RefundDetail, RefundReview } from '../../../core/api-types';
+import type { RefundDetail, RefundReview } from '../../../core/api-types';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice.component';
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
-import { SegmentedToggleComponent } from '../../../shared/segmented-toggle.component';
 import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
 import {
@@ -29,25 +28,32 @@ import {
   refundTriggerLabel,
   reviewCeiling,
 } from '../refund-labels';
-import { RefundCorrectionCardComponent } from './refund-correction-card';
+import { PayoutCorrectionCardComponent } from '../payouts/payout-correction-card';
+import { CurrentPayoutCardComponent } from '../payouts/current-payout-card';
 import {
-  CORRECTION_AMOUNT_FORMAT,
-  CORRECTION_CODE_ERROR,
-  CORRECTION_NO_CHANGE,
-  CORRECTION_REASON_ERROR,
-  CORRECTION_REASON_MAX,
-  CORRECTION_REFERENCE_REUSED,
-  CORRECTION_SAVED,
   CORRECTION_SUBMIT,
   CorrectionForm,
+  REFUND_CORRECTION_COPY,
   correctionBody,
   correctionCeilingError,
   correctionDialogParts,
   correctionDialogTitle,
-  hasCorrectionErrors,
-  validateCorrection,
-} from './refund-correction';
-import { formatDateTime, formatKshExact, isBlank, parseKsh } from '../shared-format';
+  correctionKindLabel,
+} from '../payouts/payout-correction';
+import {
+  CorrectionFormState,
+  PayoutCorrectionFormComponent,
+} from '../payouts/payout-correction-form';
+import {
+  formatDateTime,
+  formatKshExact,
+  formatPhone,
+  isBlank,
+  parseKsh,
+  plainAmount,
+} from '../shared-format';
+
+export { formatPhone } from '../shared-format';
 
 export const AMOUNT_REQUIRED = 'Enter a refund amount, or KSh 0 for no refund.';
 export const AMOUNT_FORMAT = 'Enter an amount in KSh, up to 2 decimal places.';
@@ -86,22 +92,8 @@ export function decisionLabel(input: string, amountPaid: string | number): strin
   return value > 0 ? `Approve refund · ${formatKshExact(value)}` : 'Close with no refund';
 }
 
-/** `+254712345678` → `+254 712 345 678`; anything else unchanged. */
-export function formatPhone(phone: string): string {
-  const m = /^\+?254(\d{3})(\d{3})(\d{3})$/.exec(phone.replace(/\s/g, ''));
-  return m ? `+254 ${m[1]} ${m[2]} ${m[3]}` : phone;
-}
-
 type Dialog =
   'approve' | 'no_refund' | 'mark_paid' | 'discard' | 'correction' | 'correction_discard' | null;
-
-type CorrectionField = 'reference' | 'amount' | 'reason';
-
-/** `What happened?` (A-09) while the effective payout is sent (row 100). */
-const CORRECTION_KINDS = [
-  { value: 'corrected', label: 'Wrong receipt or amount' },
-  { value: 'reversed', label: 'Payout reversed' },
-];
 
 /**
  * Refund review drawer (rows 37, 54): decide the amount (KSh 0 up to what
@@ -117,8 +109,9 @@ const CORRECTION_KINDS = [
     ConfirmDialogComponent,
     FormFieldComponent,
     FieldControlDirective,
-    SegmentedToggleComponent,
-    RefundCorrectionCardComponent,
+    PayoutCorrectionCardComponent,
+    PayoutCorrectionFormComponent,
+    CurrentPayoutCardComponent,
   ],
   template: `
     @if (loading()) {
@@ -367,24 +360,12 @@ const CORRECTION_KINDS = [
       } @else if (r.status === 'refunded') {
         @if (corrections().length > 0) {
           <!-- 5.1 Current payout: the original with its corrections applied (row 100). -->
-          <section class="drawer-section">
-            <div class="drawer-label">Current payout</div>
-            <div class="drawer-card">
-              <div class="drawer-row">
-                <span>Status</span><app-status-chip [status]="chipStatus(r)" kind="refund" />
-              </div>
-              <div class="drawer-row">
-                <span>Amount sent</span><b>{{ formatKshExact(effective()?.amount ?? 0) }}</b>
-              </div>
-              <div class="drawer-row">
-                <span>M-Pesa receipt</span><b>{{ effective()?.reference ?? '—' }}</b>
-              </div>
-              <div class="drawer-row">
-                <span>Last changed</span
-                ><b>{{ formatDateTime(corrections().at(-1)!.createdAt) }}</b>
-              </div>
-            </div>
-          </section>
+          <app-current-payout-card
+            [payout]="effective()"
+            [chipStatus]="chipStatus(r)"
+            chipKind="refund"
+            [lastChanged]="corrections().at(-1)!.createdAt"
+          />
         }
         <section class="drawer-section original-payout">
           <!-- The original payout never changes (rows 82, 100). -->
@@ -412,218 +393,20 @@ const CORRECTION_KINDS = [
             <div class="drawer-label">Corrections</div>
             <div class="drawer-stack">
               @for (c of corrections(); track c.id) {
-                <app-refund-correction-card [correction]="c" [meId]="meId()" />
+                <app-payout-correction-card [correction]="c" [meId]="meId()" />
               }
             </div>
           </section>
         }
 
         <!-- 5.3 The action: Record a correction, or the new payout form while reversed. -->
-        @if (correctionOpen()) {
-          <section class="drawer-section correction-form">
-            <div class="drawer-label">
-              {{ reversed() ? 'Record the new payout' : 'Record a correction' }}
-            </div>
-            <div class="drawer-card drawer-stack">
-              @if (!reversed()) {
-                <div class="field">
-                  <span class="field-label" id="correction-kind-label">What happened?</span>
-                  <app-segmented-toggle
-                    ariaLabel="What happened?"
-                    [options]="correctionKinds"
-                    [value]="correctionKind()"
-                    [disabled]="saving()"
-                    (valueChange)="setCorrectionKind($event)"
-                  />
-                </div>
-              }
-              @switch (formKind()) {
-                @case ('corrected') {
-                  <app-form-field
-                    label="Correct M-Pesa receipt"
-                    [hintParts]="receiptHintParts()"
-                    [error]="correctionShown('reference')"
-                  >
-                    <input
-                      #correctionReferenceInput
-                      appFieldControl
-                      [numeric]="true"
-                      class="is-upper"
-                      type="text"
-                      autocomplete="off"
-                      spellcheck="false"
-                      maxlength="64"
-                      placeholder="e.g. SLK4H7XQ2P"
-                      [value]="correctionReference()"
-                      [disabled]="saving()"
-                      (input)="setCorrection('reference', val($event))"
-                      (blur)="touchCorrection('reference')"
-                    />
-                  </app-form-field>
-                  <app-form-field
-                    label="Correct amount sent"
-                    prefix="KSh"
-                    [hint]="
-                      'Leave empty if the amount was right. Current: ' +
-                      formatKshExact(effective()?.amount ?? 0) +
-                      '. Up to ' +
-                      formatKshExact(correctionCeiling()) +
-                      '.'
-                    "
-                    [error]="correctionShown('amount')"
-                  >
-                    <input
-                      appFieldControl
-                      [numeric]="true"
-                      type="text"
-                      inputmode="decimal"
-                      autocomplete="off"
-                      [value]="correctionAmount()"
-                      [disabled]="saving()"
-                      (input)="setCorrection('amount', val($event))"
-                      (blur)="touchCorrection('amount')"
-                    />
-                  </app-form-field>
-                  @if (correctionFormError(); as fe) {
-                    <div class="form-error" role="alert">{{ fe }}</div>
-                  }
-                }
-                @case ('reversed') {
-                  <p class="drawer-instruction">
-                    <app-num-text
-                      [text]="
-                        'Use this when the M-Pesa payment of ' +
-                        formatKshExact(effective()?.amount ?? 0) +
-                        ' was reversed and the money came back. The refund will show as not sent until you record a new payout.'
-                      "
-                    />
-                  </p>
-                  <app-form-field
-                    label="Reversal M-Pesa code"
-                    hint="The code M-Pesa gave for the reversal."
-                    [error]="correctionShown('reference')"
-                  >
-                    <input
-                      #correctionReferenceInput
-                      appFieldControl
-                      [numeric]="true"
-                      class="is-upper"
-                      type="text"
-                      autocomplete="off"
-                      spellcheck="false"
-                      maxlength="64"
-                      placeholder="e.g. SLK4H7XQ2P"
-                      [value]="correctionReference()"
-                      [disabled]="saving()"
-                      (input)="setCorrection('reference', val($event))"
-                      (blur)="touchCorrection('reference')"
-                    />
-                  </app-form-field>
-                }
-                @case ('resent') {
-                  <p class="drawer-instruction">
-                    <app-num-text
-                      [text]="
-                        'Send ' +
-                        formatKshExact(r.refundAmount) +
-                        ' to the customer by M-Pesa again, then enter the new receipt here.'
-                      "
-                    />
-                  </p>
-                  @if (!phone()) {
-                    <div class="drawer-caption">
-                      Find the customer's number from the task before you send.
-                    </div>
-                  }
-                  <app-form-field label="M-Pesa receipt" [error]="correctionShown('reference')">
-                    <input
-                      #correctionReferenceInput
-                      appFieldControl
-                      [numeric]="true"
-                      class="is-upper"
-                      type="text"
-                      autocomplete="off"
-                      spellcheck="false"
-                      maxlength="64"
-                      placeholder="e.g. SLK4H7XQ2P"
-                      [value]="correctionReference()"
-                      [disabled]="saving()"
-                      (input)="setCorrection('reference', val($event))"
-                      (blur)="touchCorrection('reference')"
-                    />
-                  </app-form-field>
-                  <app-form-field
-                    label="Amount sent"
-                    prefix="KSh"
-                    [hint]="'Up to ' + formatKshExact(correctionCeiling()) + '.'"
-                    [error]="correctionShown('amount')"
-                  >
-                    <input
-                      appFieldControl
-                      [numeric]="true"
-                      type="text"
-                      inputmode="decimal"
-                      autocomplete="off"
-                      [value]="correctionAmount()"
-                      [disabled]="saving()"
-                      (input)="setCorrection('amount', val($event))"
-                      (blur)="touchCorrection('amount')"
-                    />
-                  </app-form-field>
-                }
-              }
-              <app-form-field
-                label="Reason"
-                hint="Kept in the audit history. Not shown to the customer."
-                [counter]="correctionReason().length + '/' + reasonMax"
-                [error]="correctionShown('reason')"
-              >
-                <textarea
-                  appFieldControl
-                  rows="3"
-                  [attr.maxlength]="reasonMax"
-                  [value]="correctionReason()"
-                  [disabled]="saving()"
-                  (input)="setCorrection('reason', val($event))"
-                  (blur)="touchCorrection('reason')"
-                ></textarea>
-              </app-form-field>
-              <div class="drawer-actions">
-                @if (!reversed()) {
-                  <button
-                    type="button"
-                    class="btn btn-outline"
-                    [disabled]="saving()"
-                    (click)="cancelCorrection()"
-                  >
-                    Cancel
-                  </button>
-                }
-                <button
-                  type="button"
-                  class="btn btn-primary"
-                  [disabled]="correctionInvalid() || saving()"
-                  (click)="submitCorrection()"
-                >
-                  {{ correctionSubmit[formKind()] }}
-                </button>
-              </div>
-            </div>
-          </section>
-        } @else {
-          <section class="drawer-section">
-            <div class="drawer-actions">
-              <button
-                #recordCorrection
-                type="button"
-                class="btn btn-outline"
-                (click)="openCorrection()"
-              >
-                Record a correction
-              </button>
-            </div>
-          </section>
-        }
+        <app-payout-correction-form
+          [state]="correction"
+          [saving]="saving()"
+          [hasPhone]="!!phone()"
+          (submitted)="dialog.set('correction')"
+          (discardRequested)="dialog.set('correction_discard')"
+        />
       }
 
       <!-- 5. Activity -->
@@ -658,26 +441,14 @@ const CORRECTION_KINDS = [
             }
             @for (c of corrections(); track c.id) {
               <div class="dt-item">
-                @switch (c.kind) {
-                  @case ('corrected') {
-                    <b
-                      >Payout corrected ·
-                      <span class="num">{{
-                        c.newReference ?? formatKshExact(c.newAmount)
-                      }}</span></b
-                    >
-                  }
-                  @case ('reversed') {
-                    <b
-                      >Payout reversed · <span class="num">{{ c.newReference }}</span></b
-                    >
-                  }
-                  @default {
-                    <b
-                      >New payout sent · <span class="num">{{ c.newReference }}</span></b
-                    >
-                  }
-                }
+                <b
+                  >{{ correctionKindLabel(c.kind) }} ·
+                  <span class="num">{{
+                    c.kind === 'corrected'
+                      ? (c.newReference ?? formatKshExact(c.newAmount))
+                      : c.newReference
+                  }}</span></b
+                >
                 <span class="dt-time">{{ formatDateTime(c.createdAt) }}</span>
               </div>
             }
@@ -751,19 +522,7 @@ export class RefundDrawerComponent implements OnInit {
   private readonly receiptServerError = signal<string | null>(null);
   private pendingLeave: (() => void) | null = null;
 
-  // Payout corrections (row 100).
-  readonly correctionOpen = signal(false);
-  readonly correctionKind = signal<'corrected' | 'reversed'>('corrected');
-  readonly correctionReference = signal('');
-  readonly correctionAmount = signal('');
-  readonly correctionReason = signal('');
-  private readonly correctionTouched = signal<ReadonlySet<CorrectionField>>(new Set());
-  private readonly correctionServer = signal<Partial<Record<CorrectionField | 'form', string>>>({});
-  private readonly recordCorrectionButton =
-    viewChild<ElementRef<HTMLButtonElement>>('recordCorrection');
-  private readonly correctionReferenceInput = viewChild<ElementRef<HTMLInputElement>>(
-    'correctionReferenceInput',
-  );
+  private readonly correctionFormRef = viewChild(PayoutCorrectionFormComponent);
 
   private readonly amountInput = viewChild<ElementRef<HTMLInputElement>>('amountInput');
   private readonly receiptInput = viewChild<ElementRef<HTMLInputElement>>('receiptInput');
@@ -809,15 +568,11 @@ export class RefundDrawerComponent implements OnInit {
     if (!r) return false;
     if (r.status === 'pending_review') return !isBlank(this.amount()) || !isBlank(this.note());
     if (r.status === 'approved') return !isBlank(this.receipt());
-    if (r.status === 'refunded') return this.correctionDirty();
+    if (r.status === 'refunded') return this.correction.dirty();
     return false;
   });
 
   // --- Payout corrections (row 100) ---
-  protected readonly correctionKinds = CORRECTION_KINDS;
-  protected readonly correctionSubmit = CORRECTION_SUBMIT;
-  protected readonly reasonMax = CORRECTION_REASON_MAX;
-
   /** Correction records, oldest first. TODO(owner-answers-5): optional until N-15 is on main. */
   readonly corrections = computed(() => this.review()?.corrections ?? []);
   /** The payout as it stands after the corrections. */
@@ -827,59 +582,22 @@ export class RefundDrawerComponent implements OnInit {
   });
   /** The latest correction is a reversal: the refund is owed again. */
   readonly reversed = computed(() => this.effective()?.state === 'reversed');
-  /** `resent` while reversed (no toggle), else the toggle's kind. */
-  readonly formKind = computed<RefundCorrectionKind>(() =>
-    this.reversed() ? 'resent' : this.correctionKind(),
-  );
   /** Cap for a corrected or re-sent amount (row 87). TODO(owner-answers-5): API field. */
   readonly correctionCeiling = computed(() => {
     const r = this.review();
     return r ? (r.correctionCeiling ?? r.amountPaid) : '0';
   });
-
-  private readonly correctionForm = computed<CorrectionForm>(() => ({
-    kind: this.formKind(),
-    reference: this.correctionReference(),
-    amount: this.correctionAmount(),
-    reason: this.correctionReason(),
-  }));
-  readonly correctionErrors = computed(() => {
-    const e = this.effective();
-    return validateCorrection(this.correctionForm(), {
-      reference: e?.reference ?? null,
-      amount: e?.amount ?? '0',
-      ceiling: this.correctionCeiling(),
-    });
-  });
-  readonly correctionInvalid = computed(() => hasCorrectionErrors(this.correctionErrors()));
-  /** Form-level error: the server's, or "receipt, amount or both" once both were left. */
-  protected readonly correctionFormError = computed(() => {
-    const server = this.correctionServer()['form'];
-    if (server) return server;
-    const t = this.correctionTouched();
-    return t.has('reference') && t.has('amount') ? this.correctionErrors().form : null;
-  });
-  /** Prefill of the new payout amount (resent): the decided refund. */
-  private readonly correctionAmountPrefill = computed(() =>
-    this.reversed() ? this.plain(this.review()?.refundAmount ?? '') : '',
+  /** The shared correction form (`app-payout-correction-form`). */
+  readonly correction = new CorrectionFormState(
+    {
+      effective: () => this.effective(),
+      ceiling: () => this.correctionCeiling(),
+      decidedAmount: () => this.review()?.refundAmount ?? null,
+    },
+    REFUND_CORRECTION_COPY,
   );
-  private readonly correctionDirty = computed(
-    () =>
-      this.correctionOpen() &&
-      (!isBlank(this.correctionReference()) ||
-        !isBlank(this.correctionReason()) ||
-        this.correctionAmount().trim() !== this.correctionAmountPrefill()),
-  );
-  /** `Current: {receipt}` with the receipt as its own Fira Code part (m-11). */
-  protected readonly receiptHintParts = computed(() => {
-    const reference = this.effective()?.reference;
-    return [
-      { text: 'Leave empty if the receipt was right. Current: ', num: false },
-      reference ? { text: reference, num: true } : { text: '—', num: false },
-    ];
-  });
   protected readonly correctionDialogParts = computed(() =>
-    correctionDialogParts(this.correctionForm()),
+    correctionDialogParts(this.correction.form()),
   );
   protected readonly meId = computed(() => this.s.me()?.id ?? null);
 
@@ -924,7 +642,7 @@ export class RefundDrawerComponent implements OnInit {
       case 'discard':
         return 'Discard this decision?';
       case 'correction':
-        return correctionDialogTitle(this.correctionForm());
+        return correctionDialogTitle(this.correction.form());
       case 'correction_discard':
         return 'Discard this correction?';
       default:
@@ -944,7 +662,7 @@ export class RefundDrawerComponent implements OnInit {
       case 'correction_discard':
         return 'Discard';
       case 'correction':
-        return CORRECTION_SUBMIT[this.formKind()];
+        return CORRECTION_SUBMIT[this.correction.formKind()];
       default:
         return '';
     }
@@ -990,29 +708,22 @@ export class RefundDrawerComponent implements OnInit {
     this.receipt.set('');
     this.receiptTouched.set(false);
     this.receiptServerError.set(null);
-    this.resetCorrection();
-  }
-
-  /** Closed form, no input; open (with the amount prefilled) while the payout is reversed. */
-  private resetCorrection(): void {
-    this.correctionKind.set('corrected');
-    this.correctionReference.set('');
-    this.correctionReason.set('');
-    this.correctionTouched.set(new Set());
-    this.correctionServer.set({});
-    this.correctionAmount.set(this.correctionAmountPrefill());
-    this.correctionOpen.set(this.reversed());
+    this.correction.reset();
   }
 
   /** Amount input (pending_review), receipt input (approved), else the drawer's close button. */
   private focusForm(): void {
+    const input = (this.amountInput() ?? this.receiptInput())?.nativeElement;
+    if (input) {
+      input.focus();
+      return;
+    }
     // A reversed payout is owed again: its new payout form is the next step (m-10).
-    const reversedInput = this.reversed() ? this.correctionReferenceInput() : undefined;
-    const input = (this.amountInput() ?? this.receiptInput() ?? reversedInput)?.nativeElement;
-    const close = this.host.nativeElement
+    if (this.reversed() && this.correctionFormRef()?.focusReference()) return;
+    this.host.nativeElement
       .closest('.drawer')
-      ?.querySelector<HTMLElement>('.drawer-close');
-    (input ?? close)?.focus();
+      ?.querySelector<HTMLElement>('.drawer-close')
+      ?.focus();
   }
 
   protected val(event: Event): string {
@@ -1039,8 +750,7 @@ export class RefundDrawerComponent implements OnInit {
   }
 
   protected plain(value: string): string {
-    const n = Number(value);
-    return Number.isInteger(n) ? String(n) : n.toFixed(2);
+    return plainAmount(value);
   }
 
   protected adminName(
@@ -1049,71 +759,6 @@ export class RefundDrawerComponent implements OnInit {
   ): string {
     // An admin with no name on file shows as a masked id.
     return adminLabel(ref, userId, this.meId());
-  }
-
-  protected openCorrection(): void {
-    this.resetCorrection();
-    this.correctionOpen.set(true);
-    afterNextRender(() => this.correctionReferenceInput()?.nativeElement.focus(), {
-      injector: this.injector,
-    });
-  }
-
-  /** Switching kind keeps the reason and clears the other fields. */
-  protected setCorrectionKind(kind: string): void {
-    this.correctionKind.set(kind === 'reversed' ? 'reversed' : 'corrected');
-    this.correctionReference.set('');
-    this.correctionAmount.set('');
-    this.correctionTouched.update((t) => new Set([...t].filter((f) => f === 'reason')));
-    this.correctionServer.set({});
-  }
-
-  protected setCorrection(field: CorrectionField, value: string): void {
-    const set = {
-      reference: this.correctionReference,
-      amount: this.correctionAmount,
-      reason: this.correctionReason,
-    }[field];
-    set.set(field === 'reference' ? value.toUpperCase() : value);
-    this.correctionServer.update((e) => {
-      const next = { ...e };
-      delete next[field];
-      if (field !== 'reason') delete next.form;
-      return next;
-    });
-  }
-
-  protected touchCorrection(field: CorrectionField): void {
-    this.correctionTouched.update((t) => new Set([...t, field]));
-  }
-
-  /** Server error first, else the client rule once the field was left (validate on blur). */
-  protected correctionShown(field: CorrectionField): string | null {
-    const server = this.correctionServer()[field];
-    if (server) return server;
-    return this.correctionTouched().has(field) ? this.correctionErrors()[field] : null;
-  }
-
-  protected cancelCorrection(): void {
-    if (this.correctionDirty()) {
-      this.dialog.set('correction_discard');
-      return;
-    }
-    this.closeCorrection();
-  }
-
-  /** Closes the correction form; focus returns to `Record a correction` (m-10). */
-  private closeCorrection(): void {
-    this.resetCorrection();
-    afterNextRender(() => this.recordCorrectionButton()?.nativeElement.focus(), {
-      injector: this.injector,
-    });
-  }
-
-  protected submitCorrection(): void {
-    this.correctionTouched.set(new Set<CorrectionField>(['reference', 'amount', 'reason']));
-    if (this.correctionInvalid() || this.saving()) return;
-    this.dialog.set('correction');
   }
 
   protected openTask(): void {
@@ -1142,7 +787,7 @@ export class RefundDrawerComponent implements OnInit {
     const d = this.dialog();
     if (d === 'correction_discard' && !this.pendingLeave) {
       this.dialog.set(null);
-      this.closeCorrection();
+      this.correctionFormRef()?.close();
       return;
     }
     if (d === 'discard' || d === 'correction_discard') {
@@ -1160,7 +805,7 @@ export class RefundDrawerComponent implements OnInit {
 
   private async saveCorrection(): Promise<void> {
     const r = this.review()!;
-    const form = this.correctionForm();
+    const form = this.correction.form();
     const latest = this.corrections().at(-1)?.id ?? null;
     this.saving.set(true);
     try {
@@ -1169,7 +814,7 @@ export class RefundDrawerComponent implements OnInit {
       );
       this.review.set(detail);
       this.resetForms();
-      this.notice.set({ tone: 'success', text: CORRECTION_SAVED[form.kind] });
+      this.notice.set({ tone: 'success', text: REFUND_CORRECTION_COPY.saved[form.kind] });
       this.s.refundUpdated(detail);
       afterNextRender(() => this.focusForm(), { injector: this.injector });
     } catch (e) {
@@ -1182,19 +827,11 @@ export class RefundDrawerComponent implements OnInit {
 
   /** Puts the typed values back after a reload (the reload resets the form). */
   private restoreCorrection(form: CorrectionForm, fields: 'all' | 'reason'): void {
-    if (this.review()?.status !== 'refunded') return;
-    this.correctionOpen.set(true);
-    this.correctionReason.set(form.reason);
-    if (fields === 'reason') return;
-    if (form.kind !== 'resent') this.correctionKind.set(form.kind);
-    this.correctionReference.set(form.reference);
-    this.correctionAmount.set(form.amount);
+    if (this.review()?.status === 'refunded') this.correction.restore(form, fields);
   }
 
   /** drawer-refund "Corrections" → Error codes (A-14). */
   private async handleCorrectionError(err: ApiErrorInfo, form: CorrectionForm): Promise<void> {
-    const field = (f: CorrectionField | 'form', text: string) =>
-      this.correctionServer.update((e) => ({ ...e, [f]: text }));
     switch (err.code) {
       case 'refund_not_refunded':
         return this.reloadWith({
@@ -1210,8 +847,6 @@ export class RefundDrawerComponent implements OnInit {
         return this.restoreCorrection(form, 'reason');
       case 'payout_correction_kind_invalid':
         return this.reloadWith({ tone: 'info', text: 'This payout changed. Showing the latest.' });
-      case 'payout_reference_reused':
-        return field('reference', CORRECTION_REFERENCE_REUSED);
       case 'refund_exceeds_amount_paid': {
         const ceiling =
           (err.extra['correctionCeiling'] as string | undefined) ??
@@ -1219,35 +854,10 @@ export class RefundDrawerComponent implements OnInit {
           this.correctionCeiling();
         await this.load();
         this.restoreCorrection(form, 'all');
-        return field('amount', correctionCeilingError(ceiling));
+        return this.correction.setServerError('amount', correctionCeilingError(ceiling));
       }
-      case 'correction_no_change':
-        return field('form', CORRECTION_NO_CHANGE);
-      case 'payout_reference_required':
-        return field('reference', CORRECTION_CODE_ERROR);
-      case 'payout_amount_required':
-        return field('amount', CORRECTION_AMOUNT_FORMAT);
-      case 'correction_reason_invalid':
-        return field('reason', CORRECTION_REASON_ERROR);
     }
-    if (err.status === 400 && err.messages.length > 0) {
-      // class-validator messages name the property.
-      const text = err.messages.join(' ');
-      let mapped = false;
-      if (/newReference/.test(text)) {
-        field('reference', CORRECTION_CODE_ERROR);
-        mapped = true;
-      }
-      if (/newAmount/.test(text)) {
-        field('amount', CORRECTION_AMOUNT_FORMAT);
-        mapped = true;
-      }
-      if (/reason/.test(text)) {
-        field('reason', CORRECTION_REASON_ERROR);
-        mapped = true;
-      }
-      if (mapped) return;
-    }
+    if (this.correction.applyFieldError(err)) return;
     if (err.status === 404) {
       this.loadError.set({ tone: 'info', text: 'This refund review no longer exists.' });
     } else if (err.status === 403) {
@@ -1374,5 +984,6 @@ export class RefundDrawerComponent implements OnInit {
   protected readonly formatKshExact = formatKshExact;
   protected readonly formatDateTime = formatDateTime;
   protected readonly formatPhone = formatPhone;
+  protected readonly correctionKindLabel = (kind: string) => correctionKindLabel(kind);
   protected readonly decisionLabel = decisionLabel;
 }

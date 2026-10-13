@@ -1,16 +1,22 @@
 import { Component, computed, input } from '@angular/core';
-import type { RefundPayoutCorrection } from '../../../core/api-types';
-import { adminLabel, correctionKindLabel } from '../refund-labels';
+import { adminLabel } from '../refund-labels';
 import { formatDateTime, formatKshExact } from '../shared-format';
+import {
+  CorrectionCopy,
+  PayoutCorrectionRecord,
+  REFUND_CORRECTION_COPY,
+  correctionKindLabel,
+} from './payout-correction';
 
 /**
- * One payout correction record (row 100, drawer-refund "Correction card"):
- * read-only, oldest-first history. Kind label + time, then only the rows that
- * apply to the kind, the reason and who recorded it. No edit, delete or undo
- * control: a mistake is fixed with another correction.
+ * One payout correction record (drawer-refund "Correction card", row 100;
+ * reused as is by drawer-runner-payout, row 107): read-only, oldest-first
+ * history. Kind label + time, then only the rows that apply to the kind, the
+ * reason and who recorded it. No edit, delete or undo control: a mistake is
+ * fixed with another correction. `copy` gives the surface's kind labels.
  */
 @Component({
-  selector: 'app-refund-correction-card',
+  selector: 'app-payout-correction-card',
   imports: [],
   template: `
     @let c = correction();
@@ -64,12 +70,15 @@ import { formatDateTime, formatKshExact } from '../shared-format';
   `,
   styles: [],
 })
-export class RefundCorrectionCardComponent {
-  readonly correction = input.required<RefundPayoutCorrection>();
+export class PayoutCorrectionCardComponent {
+  readonly correction = input.required<PayoutCorrectionRecord>();
+  readonly copy = input<CorrectionCopy>(REFUND_CORRECTION_COPY);
   /** The signed-in admin's id, so their own records read `You`. */
   readonly meId = input<string | null>(null);
 
-  protected readonly kindLabel = computed(() => correctionKindLabel(this.correction().kind));
+  protected readonly kindLabel = computed(() =>
+    correctionKindLabel(this.correction().kind, this.copy()),
+  );
   protected readonly recordedBy = computed(() => {
     const c = this.correction();
     return adminLabel(c.createdBy, c.createdByUserId, this.meId());

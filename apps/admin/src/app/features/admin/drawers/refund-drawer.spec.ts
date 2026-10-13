@@ -640,7 +640,7 @@ describe('RefundDrawerComponent corrections (row 100)', () => {
     expect(text(fixture)).toContain('Payout corrected · SLK4H7XQ2Q');
     // No edit, delete or undo control on the history.
     const corrections = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('app-refund-correction-card'),
+      (fixture.nativeElement as HTMLElement).querySelectorAll('app-payout-correction-card'),
     );
     expect(corrections).toHaveLength(1);
     expect(corrections[0].querySelector('button, input, textarea')).toBeNull();
