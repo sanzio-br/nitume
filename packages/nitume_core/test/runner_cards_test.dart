@@ -125,4 +125,88 @@ void main() {
       expect(buttons.first.onPressed, isNull);
     });
   });
+
+  group('NavigationChip (R-06)', () {
+    testWidgets('destination Sans 13/700, detail Fira Code, Navigate', (
+      tester,
+    ) async {
+      var navs = 0;
+      await pumpThemed(
+        tester,
+        NavigationChip(
+          destination: 'Links Road, Nyali',
+          detail: '1.2 km · 6 min',
+          onNavigate: () => navs++,
+        ),
+      );
+      final d = _style(tester, 'Links Road, Nyali')!;
+      expect(d.fontFamily, NitumeTypography.uiFamily);
+      expect(d.fontSize, 13);
+      expect(d.fontWeight, FontWeight.w700);
+      expect(
+        _style(tester, '1.2 km · 6 min')!.fontFamily,
+        NitumeTypography.numericFamily,
+      );
+      await tester.tap(find.text('Navigate'));
+      expect(navs, 1);
+      final box = tester.widget<Container>(
+        find
+            .ancestor(of: find.byType(Row), matching: find.byType(Container))
+            .first,
+      );
+      final deco = box.decoration! as BoxDecoration;
+      expect(deco.boxShadow, isNull);
+      expect(deco.color, NitumeColors.white);
+    });
+  });
+
+  group('ChecklistStepCard (R-07)', () {
+    testWidgets('done step: green check, no action', (tester) async {
+      await pumpThemed(
+        tester,
+        const ChecklistStepCard(
+          title: 'Arrived at location',
+          subtitle: '10:28 AM · GPS confirmed',
+          done: true,
+        ),
+      );
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+      expect(find.byType(NitumeButton), findsNothing);
+      expect(
+        _style(tester, '10:28 AM · GPS confirmed')!.fontFamily,
+        NitumeTypography.numericFamily,
+      );
+      expect(_style(tester, 'Arrived at location')!.fontSize, 13);
+      expect(
+        find.bySemanticsLabel(
+          'Arrived at location, 10:28 AM · GPS confirmed, completed',
+        ),
+        findsOneWidget,
+      );
+      // Compact check: the card is not inflated to the 48dp checkbox.
+      expect(tester.getSize(find.byType(NitumeCheckbox)), const Size(22, 22));
+    });
+
+    testWidgets('open step with action: card and button both act', (
+      tester,
+    ) async {
+      var taps = 0;
+      await pumpThemed(
+        tester,
+        ChecklistStepCard(
+          title: 'Photos',
+          subtitle: 'Required',
+          done: false,
+          actionLabel: 'Upload',
+          onAction: () => taps++,
+        ),
+      );
+      expect(find.byIcon(Icons.check_rounded), findsNothing);
+      final button = tester.widget<NitumeButton>(find.byType(NitumeButton));
+      expect(button.variant, NitumeButtonVariant.secondary);
+      await tester.tap(find.text('Upload'));
+      await tester.tap(find.text('Photos'));
+      expect(taps, 2);
+    });
+  });
 }
