@@ -13,6 +13,7 @@ import {
 } from './runner-payout-line.entity';
 import {
   RunnerPayoutsService,
+  approvalCeilingOf,
   payoutFeedOf,
   earningsRangeOf,
   earningsSummaryOf,
@@ -443,6 +444,18 @@ describe('RunnerPayoutsService ops review (rows 105, 106)', () => {
     const out = await service.review('l-1', { decision: 'approve', amount: 750 }, 'admin-1');
     expect(table[0]).toMatchObject({ status: S.PAYABLE, amount: '750.00', decidedByUserId: 'admin-1' });
     expect(out).toMatchObject({ effectiveStatus: S.PAYABLE, decidedBy: { id: 'admin-1', displayName: 'Finance' } });
+  });
+
+  it('also respects the cap stored on the line when it was created', async () => {
+    expect(approvalCeilingOf({ requestedAmount: '800.00', capAmount: '600.00' }, 1000)).toBe(600);
+    expect(approvalCeilingOf({ requestedAmount: '800.00', capAmount: null }, 1000)).toBe(800);
+    expect(approvalCeilingOf({ requestedAmount: '800.00', capAmount: '900.00' }, -5)).toBe(0);
+    const b = await inReview(1000, 800);
+    b.table[0].capAmount = '700.00';
+    const err = await b.service.review('l-1', { decision: 'approve', amount: 700.01 }, 'a').catch((e: unknown) => e);
+    expect((err as ApiError).getResponse()).toMatchObject({ code: 'reimbursement_exceeds_cap', cap: '700.00', capAmount: '700.00' });
+    await b.service.review('l-1', { decision: 'approve', amount: 700 }, 'a');
+    expect(b.table[0].amount).toBe('700.00');
   });
 
   it('caps at the item amount actually paid when it fell below the claim', async () => {

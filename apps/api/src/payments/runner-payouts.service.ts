@@ -491,6 +491,23 @@ export const payoutFeedOf = (
   return items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
 };
 
+/**
+ * Pure: highest amount an ops approval may carry on an item line: the
+ * requested amount, the item amount paid to Nitume now, and the cap stored on
+ * the line when it was created (`capAmount`), whichever is lowest, never
+ * below 0.
+ */
+export const approvalCeilingOf = (
+  line: Pick<RunnerPayoutLine, 'requestedAmount' | 'capAmount'>,
+  itemPaid: number,
+): number => {
+  const caps = [Number(line.requestedAmount), itemPaid];
+  if (line.capAmount !== null && line.capAmount !== undefined) {
+    caps.push(Number(line.capAmount));
+  }
+  return Math.max(0, Math.min(...caps));
+};
+
 /** Errand summary on ledger views. */
 export interface LedgerErrandSummary {
   id: string;
@@ -934,7 +951,7 @@ export class RunnerPayoutsService implements OnModuleInit {
       itemPaidToNitume: itemPaid === null ? null : money(itemPaid),
       approvalCeiling:
         itemPaid !== null && line.status === S.ON_HOLD
-          ? money(Math.max(0, Math.min(Number(line.requestedAmount), itemPaid)))
+          ? money(approvalCeilingOf(line, itemPaid))
           : null,
       corrections: own.map((a) => toCorrectionView(a, names)),
       correctionCeiling: line.status === S.PAID ? money(line.amount) : null,
@@ -971,7 +988,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         return;
       }
       const itemPaid = await this.itemPaidToNitume(line.errandId, manager);
-      const ceiling = Math.max(0, Math.min(Number(line.requestedAmount), itemPaid));
+      const ceiling = approvalCeilingOf(line, itemPaid);
       const amount = input.amount ?? 0;
       if (amount <= 0 || amount > ceiling) {
         throw new ApiError(
@@ -983,6 +1000,7 @@ export class RunnerPayoutsService implements OnModuleInit {
             approvalCeiling: money(ceiling),
             requestedAmount: money(line.requestedAmount),
             itemPaidToNitume: money(itemPaid),
+            capAmount: line.capAmount === null ? null : money(line.capAmount),
           },
         );
       }
