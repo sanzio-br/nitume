@@ -7,7 +7,7 @@
 - Status: missing
 
 ## Purpose
-One place where ops sees every runner payout line (row 107: `runner_fee` and `item_reimbursement` obligations), works the item reimbursements waiting for review (rows 105, 106, 108, 135), and records manual M-Pesa payouts to runners in batches (one runner and one M-Pesa receipt per payout). Lines are records, not task states. The runner's balance is always derived from the lines (no wallet, no escrow: §3).
+One place where ops sees every runner payout line (row 107: `runner_fee` and `item_reimbursement` obligations), works the item reimbursements waiting for review (rows 105, 106, 108, 135), and records manual M-Pesa payouts to runners in batches (one runner and one M-Pesa receipt per payout). Lines are records, not task states. What Nitume owes a runner is always derived from the lines (§3).
 
 ## Entry / exit
 - Entry: sidebar `Payments` group, new item `Runner payouts` under `Refunds`, then `Payout requests` (`p-payout-requests.md`). Badge `.badge-count` = `GET /runner-payouts/count?status=on_hold` (`99+` above 99); hidden at 0.

@@ -19,9 +19,9 @@ Ops see the payout requests runners make from the Runner app (row 117: up to the
 3. `Load more`.
 
 ## Request drawer (`Payout request`)
-1. Summary: chip; `{runner} asked for KSh {amount}`; rows `Pay to` → phone; `Requested` → time; `Runner's available balance` → `availableAmount` now (from `GET /runner-payouts/summary?runnerProfileId=`).
-2. **Lines to pay** (status `requested`): the runner's payable lines (`GET /runner-payouts?status=payable&runnerProfileId=`, stored `payable` only), oldest first, checkboxes (A-16), preselected oldest first while the running total stays ≤ the requested amount. Footer `Selected KSh {x} of KSh {requested}` (Fira Code). Lines are paid whole (the ledger pays lines, not part-amounts; AQ-11).
-3. `.drawer-actions`: primary `Record payout · KSh {x}` → the `p-runner-payouts` dialog (receipt) → `POST /runner-payout-requests/:id/pay` `{ lineIds, payoutReference }` (N-17: marks the lines paid exactly like `mark-paid`, links them to the request, closes it `paid` with the actual total). Outline `Reject request` → inline A-06 `Reason the runner will see` (required, 5–300; shown to the runner in the `Payout request not approved` notification) → A-08 `Reject this request?` / `The runner can make a new request.` → `POST /runner-payout-requests/:id/reject` `{ note }`.
+1. Summary: chip; `{runner} asked for KSh {amount}`; rows `Pay to` → phone; `Requested` → time; `Runner's available amount` → `availableAmount` now (from `GET /runner-payouts/summary?runnerProfileId=`).
+2. **Lines to pay** (status `requested`): the runner's payable lines (`GET /runner-payouts?status=payable&runnerProfileId=`, stored `payable` only), oldest first, checkboxes (A-16), preselected oldest first while the running total stays ≤ the requested amount (pending row 146). Footer `Selected KSh {x} of KSh {requested}` (Fira Code). Lines are paid whole (the ledger pays lines, not part-amounts); paying a total below the request is pending row 146.
+3. `.drawer-actions`: primary `Record payout · KSh {x}` → the `p-runner-payouts` dialog (receipt) → `POST /runner-payout-requests/:id/pay` `{ lineIds, payoutReference }` (N-17: marks the lines paid exactly like `mark-paid`, links them to the request, closes it `paid` with the actual total; pending row 146). Outline `Reject request` → inline A-06 `Reason the runner will see` (required, 5–300; shown to the runner in the `Payout request not approved` notification) → A-08 `Reject this request?` / `The runner can make a new request.` → `POST /runner-payout-requests/:id/reject` `{ note }`.
 4. Read-only (paid / rejected): `Paid` → total + receipt + time + admin, `Lines` list (links to `drawer-runner-payout`); or `Not approved` → note + admin + time.
 5. Activity: `Requested`, `Paid · {receipt}` / `Not approved`, with actor and time (the audit trail, row 117).
 
@@ -35,13 +35,13 @@ Amounts, totals, phone, times, counts, receipt.
 
 ## Data (all missing, N-17)
 - `GET /runner-payout-requests?status=&runnerProfileId=&cursor=&limit=` → `{ items: [{ id, runner { id, shortName, phone }, amount, status: 'requested' | 'paid' | 'rejected', destinationPhone, createdAt, decidedAt, decidedBy, paidAt, payoutReference, paidAmount, lineIds, note }], nextCursor }`; `GET …/count?status=`; `GET …/:id`; `POST …/:id/pay`; `POST …/:id/reject`; settings read/write for the minimum.
-- Built and reused: `GET /runner-payouts/summary?runnerProfileId=` (available balance), `GET /runner-payouts?status=payable&runnerProfileId=`.
+- Built and reused: `GET /runner-payouts/summary?runnerProfileId=` (the runner's available amount), `GET /runner-payouts?status=payable&runnerProfileId=`.
 
 ## Owner decisions applied
 Rows 117, 118, 112.
 
 ## Open questions for the owner
-- **AQ-11 (payments)**: ledger lines are paid whole. When a runner requests part of their balance (row 117 allows any amount up to the available amount), may ops pay a total **below** the request (whole lines up to it) and close the request as paid with that total? Default: yes; the request shows `Paid KSh {x} of KSh {requested}` and the rest stays available. Alternative: the Runner app only offers amounts that match whole lines.
+- **AQ-11 (payments, BOARD row 146, pending)**: ledger lines are paid whole. When a runner requests part of their available amount (row 117 allows any amount up to the available amount), may ops pay a total **below** the request (whole lines up to it) and close the request as paid with that total? Default: yes; the request shows `Paid KSh {x} of KSh {requested}` and the rest stays available. Alternative: the Runner app only offers amounts that match whole lines.
 
 ## Current vs design
 Not built; API missing.
