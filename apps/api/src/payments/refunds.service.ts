@@ -19,6 +19,7 @@ import { ErrandsService, REFUNDABLE_TERMINAL_STATUSES } from '../errands/errands
 import { UsersService } from '../users/users.service';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
+import { lockPayoutReference, normalizeReference, refundReferenceUsed } from './payout-references';
 import { Payment } from './payment.entity';
 import { RefundPayoutCorrection, RefundPayoutCorrectionKind } from './refund-payout-correction.entity';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
@@ -738,35 +739,45 @@ export class RefundsService implements OnModuleInit {
   /**
    * Admin records the manual M-Pesa payout of an approved refund. Once
    * `refunded`, the receipt is locked (409 `refund_payout_locked`, row 82).
+   * The review row and the receipt are locked for the transaction, so two
+   * concurrent calls cannot both record a payout, and a receipt already used
+   * on another payout is refused (409 `payout_reference_reused`).
    */
   async markPaid(
     id: string,
     payoutReference: string,
     adminUserId: string,
   ): Promise<AdminRefundReview> {
-    const row = await this.get(id);
-    // Row 82: the payout receipt is final once recorded. Changes go through
-    // POST /refunds/:id/corrections as separate audit records (row 100).
-    if (row.status === RefundStatus.REFUNDED) {
-      throw new ApiError(
-        HttpStatus.CONFLICT,
-        'refund_payout_locked',
-        'The payout receipt of a refunded review cannot be changed; record a correction instead',
-        { payoutReference: row.payoutReference, paidAt: row.paidAt?.toISOString() ?? null },
-      );
-    }
-    if (row.status !== RefundStatus.APPROVED) {
-      throw new ApiError(
-        HttpStatus.CONFLICT,
-        'refund_not_approved',
-        `Only approved refunds can be marked paid (status ${row.status})`,
-      );
-    }
-    row.status = RefundStatus.REFUNDED;
-    row.payoutReference = payoutReference;
-    row.paidByUserId = adminUserId;
-    row.paidAt = new Date();
-    const saved = await this.reviews.save(row);
+    const saved = await this.reviews.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(RefundReview);
+      const row = await repo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!row) {
+        throw new NotFoundException('Refund review not found');
+      }
+      // Row 82: the payout receipt is final once recorded. Changes go through
+      // POST /refunds/:id/corrections as separate audit records (row 100).
+      if (row.status === RefundStatus.REFUNDED) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'refund_payout_locked',
+          'The payout receipt of a refunded review cannot be changed; record a correction instead',
+          { payoutReference: row.payoutReference, paidAt: row.paidAt?.toISOString() ?? null },
+        );
+      }
+      if (row.status !== RefundStatus.APPROVED) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'refund_not_approved',
+          `Only approved refunds can be marked paid (status ${row.status})`,
+        );
+      }
+      await this.assertReferenceFree(manager, payoutReference);
+      row.status = RefundStatus.REFUNDED;
+      row.payoutReference = payoutReference;
+      row.paidByUserId = adminUserId;
+      row.paidAt = new Date();
+      return repo.save(row);
+    });
     this.announce(saved);
     const positions = await this.positions([saved]);
     return Object.assign(saved, positions.get(saved.id), {
@@ -801,9 +812,18 @@ export class RefundsService implements OnModuleInit {
     }
     const newReference = input.newReference?.trim().toUpperCase() || null;
     const newAmount = input.newAmount ?? null;
+    const target = await this.get(id);
     const saved = await this.reviews.manager.transaction(async (manager) => {
       const repo = manager.getRepository(RefundReview);
-      const row = await repo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      // Every review of the task is row-locked, in the same order as
+      // `decide`, so a correction and a decision on a sibling review
+      // serialise and cannot both use the same headroom under the cap.
+      const siblings = await repo.find({
+        where: { errandId: target.errandId },
+        order: { createdAt: 'ASC' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const row = siblings.find((r) => r.id === id);
       if (!row) {
         throw new NotFoundException('Refund review not found');
       }
@@ -815,7 +835,6 @@ export class RefundsService implements OnModuleInit {
           { status: row.status },
         );
       }
-      const siblings = await repo.find({ where: { errandId: row.errandId } });
       const corrections = await this.correctionsOf(siblings.map((r) => r.id), manager);
       const prior = corrections.get(row.id) ?? [];
       const latestId = prior[prior.length - 1]?.id ?? null;
@@ -889,13 +908,8 @@ export class RefundsService implements OnModuleInit {
           );
         }
       }
-      if (reference && (await this.referenceUsed(manager, reference))) {
-        throw new ApiError(
-          HttpStatus.CONFLICT,
-          'payout_reference_reused',
-          'This M-Pesa code is already recorded on a payout.',
-          { reference },
-        );
+      if (reference) {
+        await this.assertReferenceFree(manager, reference);
       }
       const correctionRepo = manager.getRepository(RefundPayoutCorrection);
       await correctionRepo.save(
@@ -922,16 +936,21 @@ export class RefundsService implements OnModuleInit {
     return detail;
   }
 
-  /** True when the receipt is already on any refund payout or correction. */
-  private async referenceUsed(manager: EntityManager, reference: string): Promise<boolean> {
-    const rows: unknown[] = await manager.query(
-      `SELECT 1 FROM "refund_reviews" WHERE UPPER("payoutReference") = $1
-       UNION ALL
-       SELECT 1 FROM "refund_payout_corrections" WHERE UPPER("newReference") = $1
-       LIMIT 1`,
-      [reference],
-    );
-    return rows.length > 0;
+  /**
+   * Locks the receipt for the transaction (advisory lock, no unique index)
+   * and refuses it when it is already on a payout or correction: 409
+   * `payout_reference_reused`.
+   */
+  private async assertReferenceFree(manager: EntityManager, reference: string): Promise<void> {
+    await lockPayoutReference(manager, reference);
+    if (await refundReferenceUsed(manager, reference)) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'payout_reference_reused',
+        'This M-Pesa code is already recorded on a payout.',
+        { reference: normalizeReference(reference) },
+      );
+    }
   }
 
   /** Corrections per review id, oldest first (batched). */

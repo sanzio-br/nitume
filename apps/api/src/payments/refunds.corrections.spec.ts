@@ -129,7 +129,7 @@ const build = (row: RefundReview = review(), others: RefundReview[] = [], usedRe
       { ...input, expectedLatestCorrectionId: table[table.length - 1]?.id ?? null },
       admin,
     );
-  return { service, table, row, original, reviewRepo, emit, add };
+  return { service, table, row, original, reviewRepo, emit, add, query };
 };
 
 const codeOf = (p: Promise<unknown>) =>
@@ -201,8 +201,13 @@ describe('RefundsService.addCorrection (row 100, N-15)', () => {
       expect.objectContaining({ id: 'c-1', kind: K.CORRECTED, createdBy: { id: 'admin-3', displayName: 'Finance' } }),
     ]);
     expect(out.correctionCeiling).toBe('1500.00');
-    expect(reviewRepo.findOne).toHaveBeenCalledWith(
-      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    // Every review of the task is locked (cap race with a sibling decision).
+    expect(reviewRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { errandId: 'e-1' },
+        order: { createdAt: 'ASC' },
+        lock: { mode: 'pessimistic_write' },
+      }),
     );
     await tick();
     // Admin refresh only; no customer notification (AQ-9 default).
@@ -277,6 +282,17 @@ describe('RefundsService.addCorrection (row 100, N-15)', () => {
       'payout_reference_reused',
     );
     expect(reversedTwice.table).toHaveLength(1);
+  });
+
+  it('takes the advisory lock on the receipt before checking reuse (no unique index)', async () => {
+    const { add, query } = build();
+    await add({ kind: K.CORRECTED, newReference: 'qcd456', reason });
+    const sqls = query.mock.calls.map(([sql, params]) => [String(sql), params] as const);
+    const lockAt = sqls.findIndex(([sql]) => sql.includes('pg_advisory_xact_lock'));
+    const checkAt = sqls.findIndex(([sql]) => sql.includes('refund_payout_corrections'));
+    expect(lockAt).toBeGreaterThanOrEqual(0);
+    expect(sqls[lockAt][1]).toEqual(['payout_ref:QCD456']);
+    expect(checkAt).toBeGreaterThan(lockAt);
   });
 
   it('409 payout_correction_conflict on a stale expectedLatestCorrectionId', async () => {

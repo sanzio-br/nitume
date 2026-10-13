@@ -330,4 +330,24 @@ describe('RefundsService', () => {
     expect((err as ApiError).getStatus()).toBe(409);
     expect(done.reviews.save).not.toHaveBeenCalled();
   });
+
+  it('mark-paid locks the review and the receipt, and refuses a reused receipt', async () => {
+    const ok = build({ row: review({ status: RefundStatus.APPROVED, refundAmount: '200.00' }) });
+    await ok.service.markPaid('r-1', 'qjk12ab34c', 'admin-1');
+    expect(ok.reviews.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'r-1' }, lock: { mode: 'pessimistic_write' } }),
+    );
+    const sqls = ok.query.mock.calls.map(([sql, params]) => [String(sql), params] as const);
+    expect(sqls[0]).toEqual([expect.stringContaining('pg_advisory_xact_lock'), ['payout_ref:QJK12AB34C']]);
+    expect(sqls[1][0]).toContain('refund_payout_corrections');
+
+    const reused = build({ row: review({ status: RefundStatus.APPROVED, refundAmount: '200.00' }) });
+    reused.query.mockImplementation(
+      (sql: string) => Promise.resolve(sql.includes('UNION ALL') ? [{ '?column?': 1 }] : []) as never,
+    );
+    const err = await reused.service.markPaid('r-1', 'QUSED1', 'admin-1').catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'payout_reference_reused' });
+    expect((err as ApiError).getStatus()).toBe(409);
+    expect(reused.reviews.save).not.toHaveBeenCalled();
+  });
 });
