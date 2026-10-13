@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
+import 'package:runner_app/src/app.dart';
+import 'package:runner_app/src/navigation/routes.dart';
 import 'package:runner_app/src/services/app_services.dart';
 import 'package:runner_app/src/services/session.dart';
 
@@ -118,6 +120,17 @@ class TestBackend {
   final push = FakePushRegistrar();
   late final AppServices services;
 
+  /// Starts the app. With [signedIn] the session restores straight into the
+  /// shell.
+  Future<void> pumpApp(WidgetTester tester, {bool signedIn = true}) async {
+    if (signedIn) {
+      auth.stored = const AuthTokens(accessToken: 'a', refreshToken: 'r');
+    }
+    await setUpSurface(tester);
+    await tester.pumpWidget(NitumeRunnerApp(services: services));
+    await tester.pumpAndSettle();
+  }
+
   /// Pumps [screen] as the only route, inside the app's scope and theme.
   Future<void> pumpScreen(WidgetTester tester, Widget screen) async {
     await setUpSurface(tester);
@@ -127,6 +140,7 @@ class TestBackend {
         child: MaterialApp(
           theme: NitumeTheme.light(),
           home: screen,
+          onGenerateRoute: onGenerateRoute,
           navigatorObservers: [services.routeObserver],
         ),
       ),
