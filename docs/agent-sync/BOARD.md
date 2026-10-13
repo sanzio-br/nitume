@@ -110,10 +110,11 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | orchestrator | web-parity / core-ui → flutter-customer | Admin: 12h EAT (96), correction UI (100), new trigger labels (102), make round-4 fields required, m-8 quote-requested filter. Customer: new refund triggers (102) | merged into main 2026-10-12 |
 | design-auditor | web-parity | (row 96) live-map.panel.ts:148-151 formats time without the Africa/Nairobi zone | done: 311c989 |
 | reviewer | api-contract | (minor follow-ups) lock sibling reviews in addCorrection (cap race); advisory lock on payout reference (reuse race, no unique index); BEFORE TRUNCATE trigger on refund_payout_corrections | open |
-| reviewer | web-parity | Make the TODO(owner-answers-5) fields required now that the round-5 API is on main | open |
+| reviewer | web-parity | Make the TODO(owner-answers-5) fields required now that the round-5 API is on main | built: 817d5fc (round 6) |
 | orchestrator | design-auditor | Round 6: rows 104–111 into System Design §2.2/§6 + admin specs; runner app Mode A specs for all 16 views (docs/specs/runner/), SCREEN_MAP runner rows, runner gap report | in progress (docs/owner-answers-6-runner-specs) |
 | orchestrator | api-contract | Round 6: runner payout ledger (107) with runner fee / item reimbursement / correction / reversal / re-sent lines; reimbursement rules 104–106; max_purchase_advance + decline (108); verify 109–111; reviewer follow-ups (sibling lock, payout-reference lock, TRUNCATE trigger) | in progress (feat/api-owner-answers-6) |
-| orchestrator | web-parity | Make TODO(owner-answers-5) fields required | in progress (fix/angular-admin-owner-answers-6) |
+| orchestrator | web-parity | Make TODO(owner-answers-5) fields required | built: 817d5fc on fix/angular-admin-owner-answers-6 (182 tests); awaiting re-audit of gap-report item 4 |
+| web-parity | design-auditor | Admin specs for the runner payout ledger and reimbursement ops review (rows 105–107) once the ledger API lands; no mockup view exists | blocked on row 112 |
 
 ## Questions for the project owner
 
@@ -230,6 +231,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 109 | design-auditor (round 5 specs) | AQ-9: Does the customer get a notification on a payout correction or reversal? Default: only a re-sent payout notifies | answered (owner, 2026-10-13): Approve the default. Customer notification is required for a re-sent payout. Internal payout corrections/reversals do not notify the customer by default. |
 | 110 | design-auditor (round 5 specs) | AQ-10: Can a correction record an amount above the refund ceiling? Default: refused | answered (owner, 2026-10-13): Approve the default. A correction must not record an amount above the applicable refund ceiling. |
 | 111 | api-contract (round 5) | Cumulative refund cap after a reversal: a reversed, not-yet-re-sent payout counts as committed at the decided refund amount (owed again). Confirm or change | answered (owner, 2026-10-13): Confirm the proposed behavior. A reversed, not-yet-re-sent payout remains committed at the decided refund amount until the obligation is resolved/re-sent, and therefore continues to count against the cumulative refund cap. |
+| 112 | web-parity (round 6) | Admin screens for the runner payout ledger (row 107) and the reimbursement ops review (rows 105, 106) are not in the admin mockup. Are they in scope? Recommended: yes, specced by design-auditor from the ledger API, then built by web-parity | open |
 
 ## Session log
 
@@ -303,3 +305,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-12 | reviewer: all 5 round-5 branches READY, merge commits (no squash). PROGRESS round-5 entry added. Merging into main | — |
 | 2026-10-12 | Round 5 merged into main: docs/owner-answers-5 (b7a606c), docs/customer-reaudit-5 (1b686e7), feat/api-owner-answers-5 (8e26376), fix/angular-admin-owner-answers-5 (6c186b1), feat/customer-owner-answers-5 (6194396); no conflicts. migration:run on local `nitume`: 2 applied, none pending. main: API tsc clean, 380 unit, lint 1 old warning; core 225; app 115; admin build + 182 | b7a606c … 6194396 |
 | 2026-10-13 | Owner answered rows 104–111 (runner reimbursement = CONFIRMED; receipt issues → ops review, capped; reimburse verified item spend on CANCELLED/FAILED, no runner fee; runner payout ledger approved; max_purchase_advance limit + decline; corrections: only re-sent payout notifies, ceiling enforced; reversal stays committed). Answers normalised. Round 6 started: answers + runner app specs | — |
+| 2026-10-13 | web-parity: round-5 refund payout fields now required, fallbacks removed; ng build clean, 182 tests. New owner question row 112 (admin runner-ledger screens) | 817d5fc |
