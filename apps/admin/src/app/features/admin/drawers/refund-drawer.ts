@@ -22,13 +22,7 @@ import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-
 import { SegmentedToggleComponent } from '../../../shared/segmented-toggle.component';
 import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
-import {
-  adminLabel,
-  effectivePayout,
-  refundChipStatus,
-  refundTriggerLabel,
-  reviewCeiling,
-} from '../refund-labels';
+import { adminLabel, refundChipStatus, refundTriggerLabel, reviewCeiling } from '../refund-labels';
 import { RefundCorrectionCardComponent } from './refund-correction-card';
 import {
   CORRECTION_AMOUNT_FORMAT,
@@ -818,24 +812,18 @@ export class RefundDrawerComponent implements OnInit {
   protected readonly correctionSubmit = CORRECTION_SUBMIT;
   protected readonly reasonMax = CORRECTION_REASON_MAX;
 
-  /** Correction records, oldest first. TODO(owner-answers-5): optional until N-15 is on main. */
+  /** Correction records, oldest first. */
   readonly corrections = computed(() => this.review()?.corrections ?? []);
   /** The payout as it stands after the corrections. */
-  readonly effective = computed(() => {
-    const r = this.review();
-    return r ? effectivePayout(r) : null;
-  });
+  readonly effective = computed(() => this.review()?.effectivePayout ?? null);
   /** The latest correction is a reversal: the refund is owed again. */
   readonly reversed = computed(() => this.effective()?.state === 'reversed');
   /** `resent` while reversed (no toggle), else the toggle's kind. */
   readonly formKind = computed<RefundCorrectionKind>(() =>
     this.reversed() ? 'resent' : this.correctionKind(),
   );
-  /** Cap for a corrected or re-sent amount (row 87). TODO(owner-answers-5): API field. */
-  readonly correctionCeiling = computed(() => {
-    const r = this.review();
-    return r ? (r.correctionCeiling ?? r.amountPaid) : '0';
-  });
+  /** Cap for a corrected or re-sent amount (row 87); null unless refunded. */
+  readonly correctionCeiling = computed(() => this.review()?.correctionCeiling ?? '0');
 
   private readonly correctionForm = computed<CorrectionForm>(() => ({
     kind: this.formKind(),
@@ -1214,9 +1202,7 @@ export class RefundDrawerComponent implements OnInit {
         return field('reference', CORRECTION_REFERENCE_REUSED);
       case 'refund_exceeds_amount_paid': {
         const ceiling =
-          (err.extra['correctionCeiling'] as string | undefined) ??
-          (err.extra['amountPaid'] as string | undefined) ??
-          this.correctionCeiling();
+          (err.extra['correctionCeiling'] as string | undefined) ?? this.correctionCeiling();
         await this.load();
         this.restoreCorrection(form, 'all');
         return field('amount', correctionCeilingError(ceiling));
