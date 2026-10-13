@@ -528,3 +528,11 @@ m-1, m-2, m-3, m-4, m-5 (first re-audit) are closed at `053fbc6`: tests for m-1 
 2. m-11 receipts as explicit Fira Code parts in the correction dialog and hint.
 3. m-12 plain-text hint opt-out for the dispute note.
 4. Remove `TODO(owner-answers-5)` and make the N-15 fields required once `feat/api-owner-answers-5` is on `main`.
+
+## Owner answers round 6 (rows 104–111, applied 2026-10-13 on `docs/owner-answers-6-runner-specs`)
+
+- Rows 104–108 (SQ-12 … SQ-16): runner reimbursement at CONFIRMED; missing/mismatched receipt → ops review, capped at the item amount paid to Nitume; verified item spend reimbursed on CANCELLED/FAILED with no runner fee; runner payout ledger table approved (`runner_payout_lines`, system design §2.2, being built by api-contract on `feat/api-owner-answers-6`); purchases limited by `max_purchase_advance` with the right to decline. System design §2.2/§6 updated. No admin screen is specced for the ledger yet: an ops view of `on_hold` reimbursement lines (rows 105, 106) will need a spec once the API exists (listed as RQ in `docs/audits/runner-gap-report.md`).
+- Row 109 (AQ-9) and row 110 (AQ-10): decided as the defaults already built (API `refunds.service.ts:917` notifies only on `resent`; `correctionCeiling` refuses higher amounts). `drawer-refund.md` and `_shared.md` updated; no builder work.
+- Row 111: a reversed, not-yet-re-sent payout counts at its decided `refundAmount` in the cumulative cap; already built (`committedAmountOf`, `refunds.service.ts:120`). No builder work.
+
+No admin status changes.
