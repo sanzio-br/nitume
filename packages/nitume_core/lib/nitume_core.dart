@@ -70,6 +70,7 @@ export 'src/widgets/otp_code_field.dart';
 export 'src/widgets/otp_resend_line.dart';
 export 'src/widgets/place_autocomplete_field.dart';
 export 'src/widgets/receipt_card.dart';
+export 'src/widgets/runner_status_presentation.dart';
 export 'src/widgets/runner_summary_tile.dart';
 export 'src/widgets/search_entry_row.dart';
 export 'src/widgets/section_label.dart';
