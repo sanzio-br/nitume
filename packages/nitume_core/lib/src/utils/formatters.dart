@@ -227,6 +227,14 @@ String formatKesLedger(Object amount) {
   return parts.isNegative ? '\u2212 $body' : '+ $body';
 }
 
+/// Spoken form of a shilling amount for semantics labels (`_shared.md`
+/// §11): `1,750 shillings`, `minus 6,000 shillings`.
+String kesSemanticsLabel(Object amount) {
+  final parts = _DecimalParts.parse(amount);
+  final body = '${parts.grouped} shillings';
+  return parts.isNegative ? 'minus $body' : body;
+}
+
 int _calendarDaysBetween(DateTime a, DateTime b) {
   final da = DateTime.utc(a.year, a.month, a.day);
   final db = DateTime.utc(b.year, b.month, b.day);
