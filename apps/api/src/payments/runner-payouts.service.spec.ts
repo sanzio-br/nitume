@@ -140,7 +140,7 @@ const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[];
     return Promise.resolve([]);
   });
   const manager = { query, getRepository: () => repo };
-  const lines = { ...repo, manager: { transaction: vi.fn((fn: (m: unknown) => unknown) => fn(manager)) } };
+  const lines = { ...repo, manager: { query, transaction: vi.fn((fn: (m: unknown) => unknown) => fn(manager)) } };
   const errands = {
     onConfirmed: vi.fn(),
     listFor: vi.fn(() => Promise.resolve({ items: [{ id: 'e-7' }, { id: 'e-8' }], nextCursor: null })),
@@ -652,13 +652,15 @@ describe('runner payout feed (RA-14, RA-16)', () => {
 });
 
 describe('RunnerPayoutsService.earningsFor', () => {
-  it("adds the runner's tasks awaiting confirmation as pendingAmount (no ledger line yet)", async () => {
+  it("adds the runner's tasks awaiting confirmation as pendingAmount in one aggregate query", async () => {
     const b = build({ feePaid: 300, itemPaid: 200 });
+    b.query.mockImplementation(((sql: string) =>
+      Promise.resolve(sql.includes('WITH mine AS') ? [{ total: '1000.00' }] : [])) as never);
     const out = await b.service.earningsFor('u-run', {});
-    expect(b.errands.listFor).toHaveBeenCalledWith(
-      { role: 'runner', userId: 'u-run' },
-      { status: [ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.COMPLETED, ErrandStatus.DISPUTED], limit: 100 },
-    );
+    const calls = b.query.mock.calls.filter(([sql]) => String(sql).includes('WITH mine AS'));
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual(['u-run', [ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.COMPLETED, ErrandStatus.DISPUTED]]);
+    expect(b.errands.listFor).not.toHaveBeenCalled();
     expect(out).toMatchObject({ pendingAmount: '1000.00', availableAmount: '0.00', week: expect.any(Array) });
   });
 });

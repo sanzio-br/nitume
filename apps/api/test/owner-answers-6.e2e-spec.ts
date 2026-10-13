@@ -208,6 +208,9 @@ describe('Owner answers 6 (e2e)', () => {
     await setStatus(runner, errandId, 'AWAITING_CUSTOMER');
     await setStatus(customer, errandId, 'COMPLETED');
     expect(await linesOf(errandId)).toEqual([]);
+    // Fee 300 + item 500 wait for confirmation (one aggregate query).
+    const pending = await http().get('/api/v1/runners/me/earnings').set(bearer(runner.token)).expect(200);
+    expect(pending.body.pendingAmount).toBe('800.00');
     await app
       .get(ErrandsService)
       .transition(errandId, ErrandStatus.CONFIRMED, { type: StatusHistoryActor.SYSTEM }, 'Dispute window passed');

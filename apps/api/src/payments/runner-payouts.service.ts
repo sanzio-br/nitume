@@ -15,7 +15,6 @@ import {
   EvidenceType,
   PaymentTransactionStatus,
   PaymentTypeCode,
-  UserRole,
 } from '../common/enums';
 import { ErrandsService } from '../errands/errands.service';
 import { EvidenceService } from '../evidence/evidence.service';
@@ -891,16 +890,54 @@ export class RunnerPayoutsService implements OnModuleInit {
     };
   }
 
-  /** Runner fee + item amount of the runner's tasks awaiting confirmation. */
-  private async pendingConfirmation(runnerUserId: string): Promise<number> {
-    const { items } = await this.errands.listFor(
-      { role: UserRole.RUNNER, userId: runnerUserId },
-      { status: [...AWAITING_CONFIRMATION], limit: 100 },
+  /**
+   * Runner fee + item amount of the runner's tasks awaiting confirmation
+   * (tasks where the runner holds the current assignment), in one aggregate
+   * query with no cap on the number of tasks. The item amount is net of
+   * approved or sent price-decrease refunds at their effective value (a
+   * reversed, not re-sent refund stays committed, row 111), as in
+   * `itemPaidToNitume`.
+   */
+  async pendingConfirmation(runnerUserId: string): Promise<number> {
+    const rows: { total: string | null }[] = await this.lines.manager.query(
+      `WITH mine AS (
+         SELECT e.id FROM "errands" e
+           JOIN "runner_profiles" rp ON rp."userId" = $1
+          WHERE e.status::text = ANY($2)
+            AND (SELECT a."runnerProfileId" FROM "errand_assignments" a
+                  WHERE a."errandId" = e.id AND a.status IN ('assigned', 'accepted')
+                  ORDER BY a."createdAt" DESC LIMIT 1) = rp.id
+       ),
+       legs AS (
+         SELECT COALESCE(SUM(t.amount) FILTER (
+                  WHERE pt.code = 'runner_fee' AND p."priceChangeRequestId" IS NULL), 0)
+              + COALESCE(SUM(t.amount) FILTER (WHERE pt.code = 'merchant_payment'), 0) AS total
+           FROM "payment_transactions" t
+           JOIN "payments" p ON p.id = t."paymentId"
+           JOIN "payment_type" pt ON pt.id = t."paymentTypeId"
+          WHERE p."errandId" IN (SELECT id FROM mine) AND t.status = 'completed'
+       ),
+       decreases AS (
+         SELECT COALESCE(SUM(CASE
+                  WHEN r.status = 'approved' OR latest.kind = 'reversed' THEN r."refundAmount"
+                  ELSE COALESCE(sent."newAmount", r."refundAmount") END), 0) AS total
+           FROM "refund_reviews" r
+           LEFT JOIN LATERAL (
+             SELECT c.kind FROM "refund_payout_corrections" c
+              WHERE c."refundReviewId" = r.id ORDER BY c."createdAt" DESC, c.id DESC LIMIT 1
+           ) latest ON true
+           LEFT JOIN LATERAL (
+             SELECT c."newAmount" FROM "refund_payout_corrections" c
+              WHERE c."refundReviewId" = r.id AND c."newAmount" IS NOT NULL
+              ORDER BY c."createdAt" DESC, c.id DESC LIMIT 1
+           ) sent ON true
+          WHERE r."errandId" IN (SELECT id FROM mine)
+            AND r.trigger = 'price_change_decrease' AND r.status IN ('approved', 'refunded')
+       )
+       SELECT GREATEST((SELECT total FROM legs) - (SELECT total FROM decreases), 0) AS total`,
+      [runnerUserId, [...AWAITING_CONFIRMATION]],
     );
-    const amounts = await Promise.all(
-      items.map(async (e) => (await this.runnerFeePaid(e.id)) + (await this.itemPaidToNitume(e.id))),
-    );
-    return amounts.reduce((s, v) => s + v, 0);
+    return Number(rows[0]?.total ?? 0);
   }
 
   // ---- admin ---------------------------------------------------------------
