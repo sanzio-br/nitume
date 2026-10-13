@@ -537,8 +537,9 @@ export class ErrandsService {
    * other modules (location, realtime) go through this service instead of
    * reading `errand_assignments` themselves.
    */
-  async activeAssignmentFor(errandId: string): Promise<ErrandAssignment | null> {
-    return this.assignments.findOne({
+  async activeAssignmentFor(errandId: string, manager?: EntityManager): Promise<ErrandAssignment | null> {
+    const repo = manager ? manager.getRepository(ErrandAssignment) : this.assignments;
+    return repo.findOne({
       where: { errandId, status: In(ACTIVE_ASSIGNMENT_STATUSES) },
       order: { createdAt: 'DESC' },
     });

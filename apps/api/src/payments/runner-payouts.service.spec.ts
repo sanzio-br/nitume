@@ -186,7 +186,7 @@ const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[];
   );
   vi.spyOn(service, 'runnerFeePaid').mockResolvedValue(opts.feePaid ?? 300);
   vi.spyOn(service, 'itemPaidToNitume').mockResolvedValue(opts.itemPaid ?? 0);
-  return { service, table, errands, evidence, query, uses, manager, repo };
+  return { service, table, errands, evidence, runners, query, uses, manager, repo };
 };
 
 describe('effective payout and position of a runner line', () => {
@@ -298,8 +298,12 @@ describe('RunnerPayoutsService.recordConfirmed (rows 95, 104, 105, 108)', () => 
   });
 
   it('creates a payable runner fee and a payable item reimbursement with a receipt, once', async () => {
-    const { service, table, manager } = build({ feePaid: 300, itemPaid: 1000 });
+    const { service, table, manager, errands, runners, evidence } = build({ feePaid: 300, itemPaid: 1000 });
     await service.recordConfirmed(manager as never, 'e-1');
+    // Every read happens inside the confirming transaction.
+    expect(errands.activeAssignmentFor).toHaveBeenCalledWith('e-1', manager);
+    expect(runners.profileById).toHaveBeenCalledWith('rp-1', manager);
+    expect(evidence.receiptsFor).toHaveBeenCalledWith('e-1', 'u-run', manager);
     expect(table).toEqual([
       expect.objectContaining({ kind: T.RUNNER_FEE, status: S.PAYABLE, amount: '300.00', runnerProfileId: 'rp-1' }),
       expect.objectContaining({

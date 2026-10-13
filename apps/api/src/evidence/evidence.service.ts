@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { EvidenceType, UserRole, GeoPoint } from '../common/enums';
 import { Errand } from '../errands/errand.entity';
 import { ErrandsService } from '../errands/errands.service';
@@ -137,8 +137,9 @@ export class EvidenceService {
    * Receipt evidence (`type = receipt`) of an errand uploaded by one user,
    * newest first (no access check; payout ledger, rows 104-106).
    */
-  receiptsFor(errandId: string, uploadedBy: string): Promise<Evidence[]> {
-    return this.evidence.find({
+  receiptsFor(errandId: string, uploadedBy: string, manager?: EntityManager): Promise<Evidence[]> {
+    const repo = manager ? manager.getRepository(Evidence) : this.evidence;
+    return repo.find({
       where: { errandId, type: EvidenceType.RECEIPT, uploadedBy },
       order: { createdAt: 'DESC' },
     });

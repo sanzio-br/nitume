@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import {
   RunnerAvailability,
   RunnerSkill,
@@ -81,8 +81,10 @@ export class RunnersService {
     return profile;
   }
 
-  async profileById(id: string): Promise<RunnerProfile> {
-    const profile = await this.profiles.findOne({ where: { id } });
+  /** With `manager`, read inside the caller's transaction. */
+  async profileById(id: string, manager?: EntityManager): Promise<RunnerProfile> {
+    const repo = manager ? manager.getRepository(RunnerProfile) : this.profiles;
+    const profile = await repo.findOne({ where: { id } });
     if (!profile) {
       throw new NotFoundException('Runner profile not found');
     }

@@ -644,12 +644,12 @@ export class RunnerPayoutsService implements OnModuleInit {
    *   max_purchase_advance.
    */
   async recordConfirmed(manager: EntityManager, errandId: string): Promise<string[]> {
-    const assignment = await this.errands.activeAssignmentFor(errandId);
+    const assignment = await this.errands.activeAssignmentFor(errandId, manager);
     if (!assignment) {
       this.logger.warn(`Errand ${errandId} confirmed without a current runner; no payout lines`);
       return [];
     }
-    const runner = await this.runners.profileById(assignment.runnerProfileId);
+    const runner = await this.runners.profileById(assignment.runnerProfileId, manager);
     const [fee, item] = await Promise.all([
       this.runnerFeePaid(errandId, manager),
       this.itemPaidToNitume(errandId, manager),
@@ -674,7 +674,7 @@ export class RunnerPayoutsService implements OnModuleInit {
       }
     }
     if (item > 0) {
-      const [receipt] = await this.evidence.receiptsFor(errandId, runner.userId);
+      const [receipt] = await this.evidence.receiptsFor(errandId, runner.userId, manager);
       const reason = !receipt
         ? RunnerPayoutReviewReason.RECEIPT_MISSING
         : item > Number(runner.maxPurchaseAdvance)
