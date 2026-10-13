@@ -246,6 +246,20 @@ export type CancellationHook = (manager: EntityManager, change: CancellationInTx
  */
 export type TerminationHook = (manager: EntityManager, change: TerminationInTx) => Promise<void>;
 
+/** A COMPLETED -> CONFIRMED transition about to commit (see `onConfirmed`). */
+export interface ConfirmationInTx {
+  errandId: string;
+  from: ErrandStatus;
+  actor: StatusHistoryActor;
+}
+
+/**
+ * Runs inside the transaction that moves an errand to CONFIRMED (system,
+ * after the dispute window). Throwing rolls the confirmation back, so work
+ * done here commits with it or not at all.
+ */
+export type ConfirmationHook = (manager: EntityManager, change: ConfirmationInTx) => Promise<void>;
+
 /**
  * Runs inside the re-quote transaction, after the errand row is locked;
  * throwing refuses the re-quote (e.g. a payment is already in flight).
@@ -317,6 +331,7 @@ export type DisputeResolutionHook = (
 export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
   private readonly terminationHooks: TerminationHook[] = [];
+  private readonly confirmationHooks: ConfirmationHook[] = [];
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
   private readonly requoteGuards: RequoteGuard[] = [];
 
@@ -908,6 +923,16 @@ export class ErrandsService {
   }
 
   /**
+   * Registers work that must commit atomically with COMPLETED -> CONFIRMED
+   * (the dispute window closed without a dispute). Used by the payments
+   * module to record the runner's payout ledger lines (rows 104, 107)
+   * without errands depending on payments.
+   */
+  onConfirmed(hook: ConfirmationHook): void {
+    this.confirmationHooks.push(hook);
+  }
+
+  /**
    * Transitions an errand to a target status, validating against the strict
    * state machine and recording a history row (append-only). Uses the entity
    * version column for optimistic concurrency: concurrent transitions from
@@ -1031,6 +1056,12 @@ export class ErrandsService {
     if (REFUNDABLE_TERMINAL_STATUSES.includes(to)) {
       for (const hook of this.terminationHooks) {
         await hook(manager, { errandId, from: fromStatus, to, actor: actor.type, guard });
+      }
+    }
+
+    if (to === ErrandStatus.CONFIRMED) {
+      for (const hook of this.confirmationHooks) {
+        await hook(manager, { errandId, from: fromStatus, actor: actor.type });
       }
     }
 
