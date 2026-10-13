@@ -131,4 +131,75 @@ void main() {
     );
     expect(find.bySemanticsLabel('3 offers near you'), findsOneWidget);
   });
+
+  group('NitumeWordmark suffix (R-17)', () {
+    testWidgets('default is unchanged', (tester) async {
+      await pumpThemed(tester, const NitumeWordmark());
+      expect(find.text('Nitume'), findsOneWidget);
+      expect(find.bySemanticsLabel('Nitume'), findsOneWidget);
+    });
+
+    testWidgets('suffix renders 12/600 slate-600', (tester) async {
+      await pumpThemed(tester, const NitumeWordmark(suffix: 'Runner'));
+      final rich = tester.widget<RichText>(
+        find.descendant(
+          of: find.byType(NitumeWordmark),
+          matching: find.byType(RichText),
+        ),
+      );
+      TextSpan? suffix;
+      rich.text.visitChildren((span) {
+        if (span is TextSpan && span.text == 'Runner') suffix = span;
+        return true;
+      });
+      expect(rich.text.toPlainText(), 'Nitume Runner');
+      expect(suffix, isNotNull);
+      expect(suffix!.style!.fontSize, 12);
+      expect(suffix!.style!.fontWeight, FontWeight.w600);
+      expect(suffix!.style!.color, NitumeColors.slate600);
+      expect(find.bySemanticsLabel('Nitume Runner'), findsOneWidget);
+    });
+  });
+
+  group('MenuRow subtitle and leading icon (C-24 / R-09)', () {
+    testWidgets('plain row keeps 13.5/500 label', (tester) async {
+      await pumpThemed(tester, MenuRow(label: 'Notifications', onTap: () {}));
+      final style = _style(tester, 'Notifications')!;
+      expect(style.fontSize, 13.5);
+      expect(style.fontWeight, FontWeight.w500);
+      expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+    });
+
+    testWidgets('action row: title 13/600, subtitle 11 slate-600, icon', (
+      tester,
+    ) async {
+      var taps = 0;
+      await pumpThemed(
+        tester,
+        MenuRow(
+          label: 'Request price authorization',
+          subtitle: 'Ask the customer to approve a higher amount',
+          leadingIcon: Icons.warning_amber_rounded,
+          onTap: () => taps++,
+        ),
+      );
+      final title = _style(tester, 'Request price authorization')!;
+      expect(title.fontSize, 13);
+      expect(title.fontWeight, FontWeight.w600);
+      final sub = _style(
+        tester,
+        'Ask the customer to approve a higher amount',
+      )!;
+      expect(sub.fontSize, 11);
+      expect(sub.color, NitumeColors.slate600);
+      expect(sub.fontFamily, NitumeTypography.uiFamily);
+      final icon = tester.widget<Icon>(
+        find.byIcon(Icons.warning_amber_rounded),
+      );
+      expect(icon.color, NitumeColors.slate600);
+      expect(icon.size, 20);
+      await tester.tap(find.byType(MenuRow));
+      expect(taps, 1);
+    });
+  });
 }
