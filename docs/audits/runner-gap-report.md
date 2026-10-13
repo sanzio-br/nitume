@@ -173,9 +173,10 @@ Differences from what the specs assumed, now applied:
 8. The decline exists only on the assigned job (no offers), only for `over_purchase_limit`, only at RUNNER_ASSIGNED.
 9. The claim cap is min(item paid to Nitume, `max_purchase_advance`); no time window.
 
-### System Design §2.2 / §6: changes needed (not applied here)
+### System Design §2.2 / §6: changes (applied 2026-10-13)
 
-`docs/design/Nitume_System_Design.md` is outside design-auditor's write scope (`docs/specs/`, `docs/audits/`, `SCREEN_MAP.md`), so this branch does not edit it. (The earlier commit `dcb982f` on this branch did edit §2.2/§6; that was outside the scope too and is flagged for the orchestrator.) Replacement text for whoever owns the file:
+Applied to `docs/design/Nitume_System_Design.md` on this branch at the orchestrator's assignment (owner-answer edits, as rounds 4 and 5, rows 66/70); `dcb982f` kept. Text as applied:
+
 
 - §2.2 `runner_payout_lines`: replace "Proposed columns (api-contract confirms the final shape): … `createdAt`." with: "Built (migration `1790101400000`): `id`, `runnerProfileId` FK, `errandId` FK (not null), `kind` (`runner_fee | item_reimbursement | correction | reversal | resent_payout`), `status` (`on_hold | payable | paid | rejected` for obligations, `recorded` for adjustments), `requestedAmount`, `amount` (unsigned; null while on hold or rejected), `capAmount`, `reviewReason` (`receipt_missing | receipt_mismatch | out_of_pocket_claim | over_purchase_limit`), `receiptEvidenceId`, `relatedLineId` (adjustments → the obligation), `previousReference`, `previousAmount`, `payoutReference`, `paidAt`, `paidByUserId`, `note`, `decisionNote`, `decidedByUserId`, `decidedAt`, `createdByUserId`, `createdAt`, `updatedAt`. One obligation per errand and kind. Append-only (DELETE/TRUNCATE refused); an obligation only moves `on_hold → payable | rejected`, `payable → paid`, or (unpaid item line) `payable → on_hold`; `paid` and `rejected` are final; adjustments are never updated. Payouts are not rows: a manual M-Pesa payout marks 1–50 payable lines of one runner `paid` with one receipt, and the runner feed shows it as one derived `payout` entry with signed amounts."
 - §2.2 `errand_assignments`: add "`declineReason` (nullable enum `over_purchase_limit`, migration `1790101500000`, row 134)."
@@ -244,7 +245,7 @@ Read from `BOARD.md` on `main` @ `a99175d`. Specs updated in `f0ea925` (runner) 
 - **RQ-25 (security/compliance, row 125)**: retention period for ID and selfie images after an account closes. No default.
 - **RQ-26 (schema, row 136)**: the combined exposure cap needs a stored ops override (who, when, amount, reason). Approve an override record (or columns on the refund review and the ledger line)? Default: a small append-only override table keyed by errand.
 
-### System Design: changes needed (not applied here; outside design-auditor's write scope)
+### System Design: changes (applied 2026-10-13; text depending on rows 140–146 marked pending)
 
 In addition to §8:
 - §3.3 notes: "Offers (row 113): the admin's assign puts the task in RUNNER_ASSIGNED with an offer to one runner. The runner's accept is the RUNNER_ASSIGNED → RUNNER_EN_ROUTE transition; a decline keeps RUNNER_ASSIGNED for reassignment (no new state); an offer not accepted in its window (10 min admin, 90 s auto, row 114) moves the task to EXPIRED (RQ-22 pending on re-offers). No FAILED from ARRIVED or IN_PROGRESS (row 132)."
