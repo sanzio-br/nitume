@@ -16,9 +16,11 @@ View ids come from the `data-view` / `id="v-…"` / `data-p` / `page-…` attrib
 | Shared Flutter package | `packages/nitume_core/lib/src/` (theme, tokens, models, API client on `main`; shared widgets C-01..C-34 + data layer on `feat/core-customer-widgets`, not merged) |
 | API | `apps/api/src/` |
 | Admin dashboard (Angular) | `apps/admin/src/app/` (shell `features/admin/admin-dashboard.component.ts`, panels `features/admin/panels/`, drawers `features/admin/drawers/`, shared components `shared/`, global styles `src/styles.scss` + `src/styles/_ops.scss`) |
+| Runner specs | `docs/specs/runner/<view-id>.md`; shared conventions, components (C-xx reused, R-n new), RA-n / RQ-n in `docs/specs/runner/_shared.md` and `docs/audits/runner-gap-report.md` |
+| Runner app | `apps/runner_app/lib/src/` (**not created yet**) |
 | Admin specs | `docs/specs/admin/<view-id>.md`; shared conventions, component inventory (A-n) and open questions (AQ-n) in `docs/specs/admin/_shared.md` |
 
-Status values: `missing` · `partial` · `built` · `matches-design` (only after an audited PASS)
+Status values: `missing` · `partial` · `built` · `matches-design` (only after an audited PASS). Runner rows use `specced — app not built` until `apps/runner_app` exists (then `missing` / `partial` / `built`).
 
 ## Customer app — `docs/design/nitume_customer_app.html` → `apps/customer_app`
 
@@ -77,24 +79,38 @@ Unmapped implementation files: `apps/customer_app/lib/src/screens/tasks_screen.d
 
 ## Runner app — `docs/design/nitume_runner_app.html` → `apps/runner_app`
 
-| View id | Purpose | Implementation file | Status |
-|---------|---------|---------------------|--------|
-| v-auth-phone | Phone entry | | unaudited |
-| v-auth-otp | OTP verify | | unaudited |
-| v-onboard-id | ID upload | | unaudited |
-| v-onboard-selfie | Selfie verification | | unaudited |
-| v-onboard-pending | Verification pending | | unaudited |
-| v-jobs | Nearby jobs / offers | | unaudited |
-| v-job-detail | Job detail | | unaudited |
-| v-active | Active job | | unaudited |
-| v-evidence-capture | Evidence capture | | unaudited |
-| v-price-request | Price-change request | | unaudited |
-| v-job-summary | Job summary | | unaudited |
-| v-earnings | Earnings | | unaudited |
-| v-payout | Payout | | unaudited |
-| v-notifications | Notifications | | unaudited |
-| v-profile | Profile | | unaudited |
-| v-edit-skills | Edit skills | | unaudited |
+**Specced 2026-10-13** (design-auditor, `docs/owner-answers-6-runner-specs`): all 16 mockup views, the shell and 3 undrawn screens. `apps/runner_app` **does not exist**: flutter-runner must scaffold it first (mirror `apps/customer_app`: Flutter app on `packages/nitume_core`, `--dart-define-from-file=.env` + `.env.example`; `docs/specs/runner/_shared.md` §12). Shared conventions, components (C-xx reused, R-01 … R-22 new) and the runner state labels: `docs/specs/runner/_shared.md`. Baseline gap report with API gaps RA-1 … RA-20 and owner questions RQ-1 … RQ-21: `docs/audits/runner-gap-report.md`.
+
+| View id | Purpose | Spec | Implementation file | Status |
+|---------|---------|------|---------------------|--------|
+| v-auth-phone | Phone entry (sign in / apply) | `docs/specs/runner/v-auth-phone.md` | — (app not built) | specced — app not built |
+| v-auth-otp | OTP verify, role check, routing | `docs/specs/runner/v-auth-otp.md` | — (app not built) | specced — app not built |
+| v-onboard-id | ID verification, step 1 of 2 | `docs/specs/runner/v-onboard-id.md` | — (app not built) | specced — app not built |
+| v-onboard-selfie | Selfie check, step 2 of 2 | `docs/specs/runner/v-onboard-selfie.md` | — (app not built) | specced — app not built |
+| v-onboard-pending | Verification status (also Profile → Verification documents) | `docs/specs/runner/v-onboard-pending.md` | — (app not built) | specced — app not built |
+| v-jobs | Nearby jobs / offers + availability | `docs/specs/runner/v-jobs.md` | — (app not built) | specced — app not built |
+| v-job-detail | Job offer detail (purchase limit, row 108) | `docs/specs/runner/v-job-detail.md` | — (app not built) | specced — app not built |
+| v-active | Active job: navigation, runner transitions, checklist | `docs/specs/runner/v-active.md` | — (app not built) | specced — app not built |
+| v-evidence-capture | Evidence capture (photos, receipts) | `docs/specs/runner/v-evidence-capture.md` | — (app not built) | specced — app not built |
+| v-price-request | Price-change request (IN_PROGRESS, Buy/Get It For Me) | `docs/specs/runner/v-price-request.md` | — (app not built) | specced — app not built |
+| v-job-summary | Job complete: runner fee + reimbursement | `docs/specs/runner/v-job-summary.md` | — (app not built) | specced — app not built |
+| v-earnings | Earnings (payout-ledger view) | `docs/specs/runner/v-earnings.md` | — (app not built) | specced — app not built |
+| v-payout | Request payout | `docs/specs/runner/v-payout.md` | — (app not built) | specced — app not built |
+| v-notifications | Notifications | `docs/specs/runner/v-notifications.md` | — (app not built) | specced — app not built |
+| v-profile | Profile | `docs/specs/runner/v-profile.md` | — (app not built) | specced — app not built |
+| v-edit-skills | Edit skills & service areas | `docs/specs/runner/v-edit-skills.md` | — (app not built) | specced — app not built |
+| shell | Bottom tab bar (4 tabs: Jobs, Active, Earnings, Profile) | `docs/specs/runner/_shared.md` §1 (C-13) | — (app not built) | specced — app not built |
+
+Modals: the mockup draws none. Confirmations (decline offer, can't complete, mark complete, send price change, payout, log out, discard) use C-35 and are specced inside the views that open them.
+
+Screens not drawn in the mockup (copy "(proposed)" in each spec):
+
+| Id (auditor-assigned) | Purpose | Referenced from | Spec | Implementation file | Status |
+|---|---|---|---|---|---|
+| x-name-capture | Runner display name after first sign-in (OA-2) | `v-auth-otp` | `docs/specs/runner/x-name-capture.md` | — | specced — app not built |
+| x-payout-history | Full payout ledger (row 107) | `v-earnings` `Payout history` | `docs/specs/runner/x-payout-history.md` | — | specced — app not built |
+| x-location-disclosure | Location disclosure before the OS prompt (§7.2) | `v-jobs` switch, `v-active` `Start trip` | `docs/specs/runner/x-location-disclosure.md` | — | specced — app not built |
+| x-support, x-legal | External Support / Terms links | `v-profile`, `v-auth-phone` | reuse `docs/specs/customer/x-support.md`, `x-legal.md` with runner `AppConfig` URIs | — | specced — app not built |
 
 ## Admin dashboard — `docs/design/nitume_admin_dashboard.html` → `apps/admin`
 
