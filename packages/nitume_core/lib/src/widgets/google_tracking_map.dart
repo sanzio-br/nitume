@@ -25,6 +25,10 @@ import '../theme/nitume_colors.dart';
 ///   controls. The camera fits the points with 40 padding and refits when
 ///   the runner leaves the visible area.
 ///
+/// Runner "self" variant (C-31 change for the runner app, R-16): pass the
+/// device position as [runner] and the next point as [routeTo]; the dashed
+/// line then runs from the device to [routeTo] instead of [start] → [end].
+///
 /// The mockup's runner-dot shadow is off-palette and not drawn (OA-14).
 /// Use [GoogleTrackingMap.builderFor] so builds without a maps key keep the
 /// placeholder.
@@ -34,6 +38,7 @@ class GoogleTrackingMap extends StatefulWidget {
     this.start,
     this.end,
     this.runner,
+    this.routeTo,
     this.moveDuration = const Duration(milliseconds: 1200),
     this.fitPadding = 40,
   });
@@ -41,6 +46,10 @@ class GoogleTrackingMap extends StatefulWidget {
   final GeoPoint? start;
   final GeoPoint? end;
   final GeoPoint? runner;
+
+  /// Self variant: draw the route from [runner] to this point. `null`
+  /// keeps the customer route ([start] or [runner] → [end]).
+  final GeoPoint? routeTo;
 
   /// How long the runner dot glides to a new position.
   final Duration moveDuration;
@@ -56,9 +65,15 @@ class GoogleTrackingMap extends StatefulWidget {
     GeoPoint? start,
     GeoPoint? end,
     GeoPoint? runner,
+    GeoPoint? routeTo,
   }) {
     if (!config.mapsEnabled) return null;
-    return (_) => GoogleTrackingMap(start: start, end: end, runner: runner);
+    return (_) => GoogleTrackingMap(
+      start: start,
+      end: end,
+      runner: runner,
+      routeTo: routeTo,
+    );
   }
 
   @override
@@ -184,7 +199,12 @@ class _GoogleTrackingMapState extends State<GoogleTrackingMap>
           consumeTapEvents: true,
         ),
     };
-    final routeFrom = start ?? runner;
+    final route = routeFor(
+      start: start,
+      end: end,
+      runner: runner,
+      routeTo: widget.routeTo,
+    );
     final initial = [start, end, runner].whereType<GeoPoint>().firstOrNull;
     return ColoredBox(
       color: NitumeColors.blue050,
@@ -201,12 +221,12 @@ class _GoogleTrackingMapState extends State<GoogleTrackingMap>
         },
         markers: markers,
         polylines: {
-          if (routeFrom != null && end != null)
+          if (route != null)
             Polyline(
               polylineId: const PolylineId('route'),
               points: [
-                LatLng(routeFrom.lat, routeFrom.lng),
-                LatLng(end.lat, end.lng),
+                LatLng(route.from.lat, route.from.lng),
+                LatLng(route.to.lat, route.to.lng),
               ],
               color: NitumeColors.blue,
               width: 3,
@@ -225,6 +245,23 @@ class _GoogleTrackingMapState extends State<GoogleTrackingMap>
       ),
     );
   }
+}
+
+/// The dashed route segment: [runner] → [routeTo] in the self variant,
+/// otherwise ([start] or [runner]) → [end]; `null` when a point is missing.
+@visibleForTesting
+({GeoPoint from, GeoPoint to})? routeFor({
+  GeoPoint? start,
+  GeoPoint? end,
+  GeoPoint? runner,
+  GeoPoint? routeTo,
+}) {
+  if (routeTo != null) {
+    return runner == null ? null : (from: runner, to: routeTo);
+  }
+  final from = start ?? runner;
+  if (from == null || end == null) return null;
+  return (from: from, to: end);
 }
 
 /// Linear interpolation between two points (`t` in 0..1).

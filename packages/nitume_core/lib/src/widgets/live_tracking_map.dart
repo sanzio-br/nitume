@@ -48,10 +48,15 @@ class LiveTrackingMap extends StatelessWidget {
     this.etaLabel,
     this.height = 220,
     this.semanticLabel = 'Map showing the runner',
+    this.overlay,
   });
 
   final WidgetBuilder? mapBuilder;
   final String? etaLabel;
+
+  /// Optional bar along the bottom edge, inset 12 (the runner's
+  /// `NavigationChip`, R-06).
+  final Widget? overlay;
   final double height;
   final String semanticLabel;
 
@@ -74,7 +79,8 @@ class LiveTrackingMap extends StatelessWidget {
               Semantics(
                 label: semanticLabel,
                 image: true,
-                child: mapBuilder?.call(context) ??
+                child:
+                    mapBuilder?.call(context) ??
                     const ColoredBox(
                       key: ValueKey('map-placeholder'),
                       color: NitumeColors.blue050,
@@ -82,6 +88,8 @@ class LiveTrackingMap extends StatelessWidget {
               ),
               if (etaLabel != null)
                 Positioned(top: 14, left: 14, child: EtaChip(label: etaLabel!)),
+              if (overlay != null)
+                Positioned(left: 12, right: 12, bottom: 12, child: overlay!),
             ],
           ),
         ),

@@ -57,6 +57,7 @@ export 'src/widgets/google_tracking_map.dart';
 export 'src/widgets/info_row.dart';
 export 'src/widgets/initials_avatar.dart';
 export 'src/widgets/job_offer_card.dart';
+export 'src/widgets/job_route_map.dart';
 export 'src/widgets/ledger_line_row.dart';
 export 'src/widgets/live_tracking_map.dart';
 export 'src/widgets/navigation_chip.dart';
