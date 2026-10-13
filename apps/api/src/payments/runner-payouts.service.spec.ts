@@ -450,6 +450,7 @@ describe('RunnerPayoutsService ops review (rows 105, 106)', () => {
     expect(approvalCeilingOf({ requestedAmount: '800.00', capAmount: '600.00' }, 1000)).toBe(600);
     expect(approvalCeilingOf({ requestedAmount: '800.00', capAmount: null }, 1000)).toBe(800);
     expect(approvalCeilingOf({ requestedAmount: '800.00', capAmount: '900.00' }, -5)).toBe(0);
+    expect(approvalCeilingOf({ requestedAmount: '800.00', capAmount: '900.00' }, 1000, '500.00')).toBe(500);
     const b = await inReview(1000, 800);
     b.table[0].capAmount = '700.00';
     const err = await b.service.review('l-1', { decision: 'approve', amount: 700.01 }, 'a').catch((e: unknown) => e);
@@ -662,5 +663,23 @@ describe('RunnerPayoutsService.earningsFor', () => {
     expect(calls[0][1]).toEqual(['u-run', [ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.COMPLETED, ErrandStatus.DISPUTED]]);
     expect(b.errands.listFor).not.toHaveBeenCalled();
     expect(out).toMatchObject({ pendingAmount: '1000.00', availableAmount: '0.00', week: expect.any(Array) });
+  });
+});
+
+describe('row 135: approval is capped by max_purchase_advance too', () => {
+  it('an over-limit item line found at CONFIRMED can be approved only up to the limit', async () => {
+    const b = build({ itemPaid: 3500, maxPurchaseAdvance: '3000.00' });
+    await b.service.recordConfirmed(b.manager as never, 'e-1');
+    const item = b.table.find((r) => r.kind === T.ITEM_REIMBURSEMENT)!;
+    expect(item).toMatchObject({ status: S.ON_HOLD, reviewReason: R.OVER_PURCHASE_LIMIT, capAmount: '3500.00' });
+    const err = await b.service.review(item.id, { decision: 'approve', amount: 3000.01 }, 'a').catch((e: unknown) => e);
+    expect((err as ApiError).getResponse()).toMatchObject({
+      code: 'reimbursement_exceeds_cap',
+      cap: '3000.00',
+      itemPaidToNitume: '3500.00',
+      maxPurchaseAdvance: '3000.00',
+    });
+    await b.service.review(item.id, { decision: 'approve', amount: 3000 }, 'a');
+    expect(item).toMatchObject({ status: S.PAYABLE, amount: '3000.00' });
   });
 });
