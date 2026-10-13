@@ -256,4 +256,93 @@ void main() {
       matchesGoldenFile('goldens/numeric_spans.png'),
     );
   });
+
+  testWidgets('runner widgets', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        SizedBox(
+          width: 375,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AvailabilityCard(
+                online: true,
+                areas: 'Nyali · Bamburi',
+                onChanged: (_) {},
+              ),
+              const SizedBox(height: 10),
+              JobOfferCard(
+                category: 'Check It For Me',
+                payAmount: 1750,
+                title: 'Check apartment — Nyali',
+                meta: '1.2 km away · Photos required',
+                onAccept: () {},
+                onDecline: () {},
+              ),
+              const SizedBox(height: 10),
+              NavigationChip(
+                destination: 'Links Road, Nyali',
+                detail: '1.2 km · 6 min',
+                onNavigate: () {},
+              ),
+              const SizedBox(height: 10),
+              ChecklistStepCard(
+                title: 'Photos',
+                subtitle: 'Required',
+                done: false,
+                actionLabel: 'Upload',
+                onAction: () {},
+              ),
+              const SizedBox(height: 10),
+              BalanceCard(
+                amount: 8450,
+                subLines: const ['KSh 2,450 pending confirmation'],
+                onInfo: () {},
+                actions: [
+                  (label: 'Request payout', onPressed: () {}),
+                  (label: 'Payout history', onPressed: () {}),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const WeeklyBarChart(
+                amounts: [0, 720, 1750, 500, 0, 0, 0],
+                todayIndex: 2,
+                total: 2970,
+              ),
+              const SizedBox(height: 10),
+              const LedgerLineRow(
+                title: 'Payout to M-Pesa',
+                caption: 'Sent',
+                captionNumeric: 'Mon, 10:03 AM',
+                amount: -6000,
+              ),
+              const SizedBox(height: 10),
+              const StatRow3(
+                first: StatTile(value: '137', label: 'Errands'),
+                second: StatTile(value: '4.9', label: 'Rating'),
+                third: StatTile(value: '98.7%', label: 'Completion'),
+              ),
+              const SizedBox(height: 10),
+              const Wrap(
+                spacing: 8,
+                children: [NitumeTag('Buy For Me'), NitumeTag('Nyali')],
+              ),
+              const SizedBox(height: 10),
+              CaptureDropZone(
+                caption: 'Tap to take a photo',
+                height: 120,
+                onPick: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+      surfaceSize: const Size(420, 1400),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/runner_widgets.png'),
+    );
+  });
 }
