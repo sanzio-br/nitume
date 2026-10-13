@@ -536,3 +536,18 @@ m-1, m-2, m-3, m-4, m-5 (first re-audit) are closed at `053fbc6`: tests for m-1 
 - Row 111: a reversed, not-yet-re-sent payout counts at its decided `refundAmount` in the cumulative cap; already built (`committedAmountOf`, `refunds.service.ts:120`). No builder work.
 
 No admin status changes.
+
+## Re-audit round 6 (2026-10-13): `fix/angular-admin-owner-answers-6`, round-5 item 4
+
+Audited `fix/angular-admin-owner-answers-6` @ `817d5fc` (1 commit on `main` @ `95e9d6c`), read-only, against round-5 builder list item 4 ("Remove `TODO(owner-answers-5)` and make the N-15 fields required once `feat/api-owner-answers-5` is on `main`"). From a `git archive` of `apps/admin`: `ng test` **182 tests pass** (21 files), `ng build` clean, Prettier clean on the 6 changed files, **no `TODO(` markers left** in `apps/admin/src`. The commit touches only `apps/admin` (no docs).
+
+| View | Verdict | Findings |
+|---|---|---|
+| p-refunds | **PASS** | none |
+| drawer-refund | **PASS** | none new (m-10, m-11 still open) |
+
+- `core/api-types.ts:326`, `:413-415`: `RefundReview.effectivePayout: EffectivePayout | null`, `RefundDetail.corrections: RefundPayoutCorrection[]`, `correctionCeiling: string | null` are required. Checked against `main`'s API: `AdminRefundReview` carries `effectivePayout` on list, detail, decision, mark-paid (`refunds.service.ts:220`, `:532`, `:735`, `:773`) and `AdminRefundDetail` carries `corrections` and `correctionCeiling` (`:262-268`, `:497-500`). Types match.
+- The pre-N-15 fallbacks are gone: the derived `effectivePayout()` helper (`refund-labels.ts`), the `amountPaid` ceiling fallback in the drawer and in the `refund_exceeds_amount_paid` handler. The drawer now reads `review().effectivePayout` and `review().correctionCeiling ?? '0'`; `'0'` is only reached when the review is not refunded, where the correction form is not shown. The 400 handler still prefers the API's `correctionCeiling` extra. `refunds.panel.ts:194` patches `effectivePayout` unconditionally after a drawer save (every save response carries it).
+- `refundChipStatus` / `refundRowAction` / `payoutReversed` take the required field; fixtures give the API shapes (`effectivePayout: null` for unrefunded, a `sent` payout for refunded). Row-100 behaviour (`Payout reversed` chip, `Record payout` action) unchanged and still tested.
+
+Round-5 builder list: item 4 **closed**. Items 1–3 (m-10, m-11, m-12) remain open minors; none blocks a merge.
