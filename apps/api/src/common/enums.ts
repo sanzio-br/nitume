@@ -67,6 +67,12 @@ export enum AssignmentStatus {
   ASSIGNED = 'assigned',
 }
 
+/** Why a runner declined an assignment (row 108). */
+export enum AssignmentDeclineReason {
+  /** The task's required purchase is above the runner's max_purchase_advance. */
+  OVER_PURCHASE_LIMIT = 'over_purchase_limit',
+}
+
 export enum VerificationLevel {
   ONE_BASIC = '1_basic',
   TWO_ID_VERIFIED = '2_id_verified',
@@ -242,4 +248,6 @@ export enum NotificationEventType {
   MERCHANT_DETAILS_CHANGED = 'merchant_details.changed',
   /** Admin feed: a customer asked for a new quote after expiry (row 68). */
   QUOTE_REQUESTED = 'quote.requested',
+  /** Admin feed: the runner declined, the purchase is above their limit (row 108). */
+  ASSIGNMENT_DECLINED = 'assignment.declined',
 }

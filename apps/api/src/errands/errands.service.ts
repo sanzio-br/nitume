@@ -16,6 +16,7 @@ import {
   SelectQueryBuilder,
 } from 'typeorm';
 import {
+  AssignmentDeclineReason,
   ErrandStatus,
   GeoPoint,
   StatusHistoryActor,
@@ -309,6 +310,26 @@ export interface MerchantDetailsUpdatedEvent {
   /** Set when `changed`: the errand's new merchantDetailsUpdatedAt. */
   merchantDetailsUpdatedAt: string | null;
 }
+
+/** Domain event emitted after a runner declines an assignment (row 108). */
+export const ASSIGNMENT_DECLINED_EVENT = 'assignment.declined';
+
+export interface AssignmentDeclinedEvent {
+  errandId: string;
+  reference: string;
+  assignmentId: string;
+  runnerProfileId: string;
+  reason: AssignmentDeclineReason;
+}
+
+/**
+ * Runs inside the decline transaction (errand row locked); throwing refuses
+ * the decline. The matching module checks the purchase limit here.
+ */
+export type DeclineGuard = (
+  manager: EntityManager,
+  ctx: { errandId: string; runnerProfileId: string; reason: AssignmentDeclineReason },
+) => Promise<void>;
 
 /** States in which an admin may replace an expired quote (rows 46, 72). */
 const REQUOTABLE = new Set<ErrandStatus>([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]);
@@ -1437,14 +1458,16 @@ export class ErrandsService {
   /**
    * v1 semi-automated matching: the admin's one-click assignment. Creates an
    * accepted assignment for the runner and moves PAYMENT_CONFIRMED ->
-   * RUNNER_ASSIGNED in the same transaction.
+   * RUNNER_ASSIGNED in the same transaction. On a RUNNER_ASSIGNED errand
+   * whose runner declined (no active assignment, row 108) it only creates the
+   * new assignment (`history: null`, no status change).
    */
   async assign(
     errandId: string,
     runnerProfileId: string,
     actor: ActorReference,
     note?: string,
-  ): Promise<{ errand: Errand; history: ErrandStatusHistory; assignment: ErrandAssignment }> {
+  ): Promise<{ errand: Errand; history: ErrandStatusHistory | null; assignment: ErrandAssignment }> {
     return this.inTx(async (manager) => {
       const runner = await manager
         .getRepository(RunnerProfile)
@@ -1452,13 +1475,19 @@ export class ErrandsService {
       if (!runner) {
         throw new NotFoundException('Runner profile not found');
       }
-      const done = await this.performTransition(
-        manager,
-        errandId,
-        ErrandStatus.RUNNER_ASSIGNED,
-        actor,
-        note,
-      );
+      const locked = await manager
+        .getRepository(Errand)
+        .findOne({ where: { id: errandId }, lock: { mode: 'pessimistic_write' } });
+      // Reassignment after a decline (row 108): the errand stays
+      // RUNNER_ASSIGNED (no transition, §3.3) and gets a new assignment.
+      const reassign =
+        locked?.status === ErrandStatus.RUNNER_ASSIGNED &&
+        (await manager.getRepository(ErrandAssignment).count({
+          where: { errandId, status: In(ACTIVE_ASSIGNMENT_STATUSES) },
+        })) === 0;
+      const done: { errand: Errand; history: ErrandStatusHistory | null } = reassign
+        ? { errand: locked, history: null }
+        : await this.performTransition(manager, errandId, ErrandStatus.RUNNER_ASSIGNED, actor, note);
       const assignmentRepo = manager.getRepository(ErrandAssignment);
       const assignment = await assignmentRepo.save(
         assignmentRepo.create({
@@ -1470,6 +1499,70 @@ export class ErrandsService {
       );
       return { errand: done.errand, history: done.history, assignment };
     });
+  }
+
+  /**
+   * The runner on the current assignment declines it (row 108). Only while
+   * the errand is RUNNER_ASSIGNED (before RUNNER_EN_ROUTE): the assignment
+   * becomes `declined` with the reason, the errand keeps its status (§3.3,
+   * no new state) and waits for an admin to reassign it (or the system to
+   * expire it). `guard` runs in the transaction with the errand locked.
+   * Errors: 409 `assignment_not_declinable` (`status`), 403 not the runner.
+   */
+  async declineAssignment(
+    errandId: string,
+    runnerUserId: string,
+    reason: AssignmentDeclineReason,
+    guard?: DeclineGuard,
+  ): Promise<ErrandAssignment> {
+    let event: AssignmentDeclinedEvent | null = null;
+    const saved = await this.inTx(async (manager) => {
+      const errand = await manager
+        .getRepository(Errand)
+        .findOne({ where: { id: errandId }, lock: { mode: 'pessimistic_write' } });
+      if (!errand) {
+        throw new NotFoundException('Errand not found');
+      }
+      const runner = await manager.getRepository(RunnerProfile).findOne({ where: { userId: runnerUserId } });
+      const assignmentRepo = manager.getRepository(ErrandAssignment);
+      const current = await assignmentRepo.findOne({
+        where: { errandId, status: In(ACTIVE_ASSIGNMENT_STATUSES) },
+        order: { createdAt: 'DESC' },
+      });
+      if (!runner || !current || current.runnerProfileId !== runner.id) {
+        throw new ForbiddenException('You are not assigned to this errand');
+      }
+      if (errand.status !== ErrandStatus.RUNNER_ASSIGNED) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'assignment_not_declinable',
+          `An assignment can only be declined before you set off (task is ${errand.status})`,
+          { status: errand.status },
+        );
+      }
+      await guard?.(manager, { errandId, runnerProfileId: runner.id, reason });
+      current.status = AssignmentStatus.DECLINED;
+      current.decidedAt = new Date();
+      current.declineReason = reason;
+      const out = await assignmentRepo.save(current);
+      event = {
+        errandId,
+        reference: errand.reference,
+        assignmentId: out.id,
+        runnerProfileId: runner.id,
+        reason,
+      };
+      return out;
+    });
+    const declined = event;
+    setImmediate(() => {
+      // The runner loses access: the realtime gateway re-checks the room.
+      this.events.emit('errand.access_changed', { errandId });
+      if (declined) {
+        this.events.emit(ASSIGNMENT_DECLINED_EVENT, declined);
+      }
+    });
+    return saved;
   }
 
   private async customerProfileIdFor(
