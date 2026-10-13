@@ -17,10 +17,10 @@ View ids come from the `data-view` / `id="v-…"` / `data-p` / `page-…` attrib
 | API | `apps/api/src/` |
 | Admin dashboard (Angular) | `apps/admin/src/app/` (shell `features/admin/admin-dashboard.component.ts`, panels `features/admin/panels/`, drawers `features/admin/drawers/`, shared components `shared/`, global styles `src/styles.scss` + `src/styles/_ops.scss`) |
 | Runner specs | `docs/specs/runner/<view-id>.md`; shared conventions, components (C-xx reused, R-n new), RA-n / RQ-n in `docs/specs/runner/_shared.md` and `docs/audits/runner-gap-report.md` |
-| Runner app | `apps/runner_app/lib/src/` (**not created yet**) |
+| Runner app | `apps/runner_app/lib/src/` (scaffolded on `feat/runner-scaffold` @ `4294245`, not on `main` yet) |
 | Admin specs | `docs/specs/admin/<view-id>.md`; shared conventions, component inventory (A-n) and open questions (AQ-n) in `docs/specs/admin/_shared.md` |
 
-Status values: `missing` · `partial` · `built` · `matches-design` (only after an audited PASS). Runner rows use `specced — app not built` until `apps/runner_app` exists (then `missing` / `partial` / `built`).
+Status values: `missing` · `partial` · `built` · `matches-design` (only after an audited PASS). Runner rows: `specced — app not built` for views the scaffold does not contain; views on `feat/runner-scaffold` use the normal values.
 
 ## Customer app — `docs/design/nitume_customer_app.html` → `apps/customer_app`
 
@@ -79,12 +79,12 @@ Unmapped implementation files: `apps/customer_app/lib/src/screens/tasks_screen.d
 
 ## Runner app — `docs/design/nitume_runner_app.html` → `apps/runner_app`
 
-**Specced 2026-10-13** (design-auditor, `docs/owner-answers-6-runner-specs`): all 16 mockup views, the shell and 3 undrawn screens. `apps/runner_app` **does not exist**: flutter-runner must scaffold it first (mirror `apps/customer_app`: Flutter app on `packages/nitume_core`, `--dart-define-from-file=.env` + `.env.example`; `docs/specs/runner/_shared.md` §12). Shared conventions, components (C-xx reused, R-01 … R-22 new) and the runner state labels: `docs/specs/runner/_shared.md`. Baseline gap report with API gaps RA-1 … RA-20 and owner questions RQ-1 … RQ-21: `docs/audits/runner-gap-report.md`.
+**Specced 2026-10-13** (design-auditor, `docs/owner-answers-6-runner-specs`): all 16 mockup views, the shell and 3 undrawn screens. `apps/runner_app` is scaffolded on `feat/runner-scaffold` (shell + auth audited PASS 2026-10-13, `docs/audits/runner-gap-report.md` §7); the other views are not built. Shared conventions, components (C-xx reused, R-01 … R-22 new) and the runner state labels: `docs/specs/runner/_shared.md`. Baseline gap report with API gaps RA-1 … RA-20 and owner questions RQ-1 … RQ-21: `docs/audits/runner-gap-report.md`.
 
 | View id | Purpose | Spec | Implementation file | Status |
 |---------|---------|------|---------------------|--------|
-| v-auth-phone | Phone entry (sign in / apply) | `docs/specs/runner/v-auth-phone.md` | — (app not built) | specced — app not built |
-| v-auth-otp | OTP verify, role check, routing | `docs/specs/runner/v-auth-otp.md` | — (app not built) | specced — app not built |
+| v-auth-phone | Phone entry (sign in / apply) | `docs/specs/runner/v-auth-phone.md` | `apps/runner_app/lib/src/screens/auth/phone_screen.dart` (+ `auth_frame.dart`, `widgets/runner_wordmark.dart`; branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS; minors m-2, m-3 wait on core-ui) |
+| v-auth-otp | OTP verify, role check, routing | `docs/specs/runner/v-auth-otp.md` | `apps/runner_app/lib/src/screens/auth/otp_screen.dart` + `services/session.dart` (branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS; D-1 onboarding routing deferred to the onboarding build) |
 | v-onboard-id | ID verification, step 1 of 2 | `docs/specs/runner/v-onboard-id.md` | — (app not built) | specced — app not built |
 | v-onboard-selfie | Selfie check, step 2 of 2 | `docs/specs/runner/v-onboard-selfie.md` | — (app not built) | specced — app not built |
 | v-onboard-pending | Verification status (also Profile → Verification documents) | `docs/specs/runner/v-onboard-pending.md` | — (app not built) | specced — app not built |
@@ -99,7 +99,7 @@ Unmapped implementation files: `apps/customer_app/lib/src/screens/tasks_screen.d
 | v-notifications | Notifications | `docs/specs/runner/v-notifications.md` | — (app not built) | specced — app not built |
 | v-profile | Profile | `docs/specs/runner/v-profile.md` | — (app not built) | specced — app not built |
 | v-edit-skills | Edit skills & service areas | `docs/specs/runner/v-edit-skills.md` | — (app not built) | specced — app not built |
-| shell | Bottom tab bar (4 tabs: Jobs, Active, Earnings, Profile) | `docs/specs/runner/_shared.md` §1 (C-13) | — (app not built) | specced — app not built |
+| shell | Bottom tab bar (4 tabs: Jobs, Active, Earnings, Profile) | `docs/specs/runner/_shared.md` §1 (C-13) | `apps/runner_app/lib/src/screens/shell/runner_shell.dart` + `app.dart`, `services/shell_controller.dart` (branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS; tab bodies are placeholders, audited with each view) |
 
 Modals: the mockup draws none. Confirmations (decline offer, can't complete, mark complete, send price change, payout, log out, discard) use C-35 and are specced inside the views that open them.
 
@@ -107,7 +107,7 @@ Screens not drawn in the mockup (copy "(proposed)" in each spec):
 
 | Id (auditor-assigned) | Purpose | Referenced from | Spec | Implementation file | Status |
 |---|---|---|---|---|---|
-| x-name-capture | Runner display name after first sign-in (OA-2) | `v-auth-otp` | `docs/specs/runner/x-name-capture.md` | — | specced — app not built |
+| x-name-capture | Runner display name after first sign-in (OA-2) | `v-auth-otp` | `docs/specs/runner/x-name-capture.md` | `apps/runner_app/lib/src/screens/auth/name_capture_screen.dart` (branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS) |
 | x-payout-history | Full payout ledger (row 107) | `v-earnings` `Payout history` | `docs/specs/runner/x-payout-history.md` | — | specced — app not built |
 | x-location-disclosure | Location disclosure before the OS prompt (§7.2) | `v-jobs` switch, `v-active` `Start trip` | `docs/specs/runner/x-location-disclosure.md` | — | specced — app not built |
 | x-support, x-legal | External Support / Terms links | `v-profile`, `v-auth-phone` | reuse `docs/specs/customer/x-support.md`, `x-legal.md` with runner `AppConfig` URIs | — | specced — app not built |

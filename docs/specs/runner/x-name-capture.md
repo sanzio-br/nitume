@@ -2,8 +2,8 @@
 
 - Mockup: **not drawn** in the runner mockup. Required by OA-2 (`display_name` for customers **and runners**, collected after first sign-in). Same screen as `docs/specs/customer/x-name-capture.md`; only the copy differs. All copy **(proposed)**.
 - Shared conventions: `_shared.md`
-- Implementation: none
-- Status: missing
+- Implementation: `apps/runner_app/lib/src/screens/auth/name_capture_screen.dart` (branch `feat/runner-scaffold`)
+- Status: matches-design (audit 2026-10-13 PASS, `docs/audits/runner-gap-report.md` §7)
 
 ## Purpose
 Collect the runner's display name once, before onboarding, so customers see a name on their task (the API derives the short name `Brian K.`, row 40) and ops can match it to the ID.

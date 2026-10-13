@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_runner_app.html` lines 294–302 (`#v-auth-phone`, overlay)
 - Shared conventions: `_shared.md` (runner); customer equivalent `docs/specs/customer/v-auth-phone.md` (same behaviour, different copy)
-- Implementation: none (`apps/runner_app` not scaffolded, `_shared.md` §12)
-- Status: missing
+- Implementation: `apps/runner_app/lib/src/screens/auth/phone_screen.dart` (branch `feat/runner-scaffold`)
+- Status: matches-design (audit 2026-10-13 PASS, `docs/audits/runner-gap-report.md` §7)
 
 ## Purpose
 First screen for a signed-out runner. Collects a Kenyan phone number and requests an OTP. Same screen for new applicants and returning runners.

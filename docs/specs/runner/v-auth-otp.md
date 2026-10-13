@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_runner_app.html` lines 304–313 (`#v-auth-otp`, overlay)
 - Shared conventions: `_shared.md`; customer equivalent `docs/specs/customer/v-auth-otp.md` (OTP policy OA-17, error kinds, cooldown)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/runner_app/lib/src/screens/auth/otp_screen.dart`, `services/session.dart` (branch `feat/runner-scaffold`)
+- Status: matches-design (audit 2026-10-13 PASS; D-1 routing step 3 deferred to the onboarding build, `docs/audits/runner-gap-report.md` §7)
 
 ## Purpose
 Verify the 6-digit SMS code, create the runner account on first sign-in (`role: runner`) and route the runner to name capture, onboarding or the shell.
