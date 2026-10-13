@@ -16,6 +16,10 @@ abstract final class RealtimeEvents {
   static const errandJoin = 'errand:join';
   static const errandLeave = 'errand:leave';
 
+  /// Runner position (§4.2, `LocationPing`). The API intake is RA-4 (not
+  /// built yet).
+  static const locationPing = 'location:ping';
+
   // server → client
   /// §4.2.
   static const locationUpdate = 'location:update';

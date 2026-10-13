@@ -11,6 +11,8 @@ export 'src/auth/auth_repository.dart';
 export 'src/auth/otp_policy.dart';
 export 'src/config/app_config.dart';
 export 'src/config/link_opener.dart';
+export 'src/device/location_pinger.dart';
+export 'src/device/position_source.dart';
 export 'src/models/app_notification.dart';
 export 'src/models/app_user.dart';
 export 'src/models/auth_tokens.dart';
