@@ -46,6 +46,8 @@ Design replacements the builders must apply (mockup → design system, `_shared.
 
 ## 4. Endpoint and socket gaps (api-contract): RA-1 … RA-20
 
+> Superseded in part by §9 (owner answers rows 112–139, 2026-10-13): §9 gives the current requirement for RA-1, RA-3 … RA-12, RA-15 and new RA-21 … RA-25.
+
 Status: **exists** (on `main`, usable as is) · **mismatch** (exists, wrong shape or rule) · **missing** · **in progress** (`feat/api-owner-answers-6`).
 
 | Id | Need | Today | Status | Screens |
@@ -76,6 +78,8 @@ Also exists and used as is: `POST /auth/otp/request`, `POST /auth/refresh`, `POS
 Admin follow-up (no spec yet): ops need a place to review `on_hold` reimbursement lines (rows 105, 106), runner payout requests (RQ-5) and payouts, and the M-Pesa identity match (RQ-14). design-auditor can spec these as admin views once RA-14/RA-15 exist.
 
 ## 5. Questions for the owner: RQ-1 … RQ-21
+
+> **All decided 2026-10-13** (BOARD rows 113–133; see §9 for the decisions). The text below is kept as the record of what was asked.
 
 Each falls under AGENT_BUILD_INSTRUCTIONS §3 unless marked minor. Defaults are recommendations only; nothing is decided here.
 
@@ -179,3 +183,73 @@ Differences from what the specs assumed, now applied:
 - §6 item 5: replace "capped at the verified receipt amount and at the item amount paid to Nitume (row 105) and the runner's `max_purchase_advance` (row 108)" with "claimed by the runner (`POST /runners/me/reimbursement-claims`, always `on_hold`), capped at the lower of the item amount paid to Nitume and the runner's `max_purchase_advance` (rows 105, 108, 135); ops approve up to that cap".
 - §6 item 7: add "Built: `GET /errands/:id/purchase-check` and, before RUNNER_EN_ROUTE, `POST /errands/:id/assignment/decline` `{ reason: over_purchase_limit }`; the task stays RUNNER_ASSIGNED and an admin reassigns it (row 137)."
 - §6 "Payouts to Runners": add "Runner reads: `GET /runners/me/earnings` (available, pending, on hold, paid, EAT week) and `GET /runners/me/payout-lines`; all figures derived from the lines."
+
+## 9. Owner answers rows 112–139 (2026-10-13)
+
+Read from `BOARD.md` on `main` @ `a99175d`. Specs updated in `f0ea925` (runner) and the admin ledger specs (row 112) in `docs/specs/admin/`.
+
+### Decisions applied
+
+| RQ | Row | Decision | Specs |
+|---|---|---|---|
+| RQ-1, RQ-1 b | 113 | Offers inside RUNNER_ASSIGNED; accept → RUNNER_EN_ROUTE; decline → stays RUNNER_ASSIGNED, reassigned; offer lapses → EXPIRED; accept above `max_purchase_advance` refused; over-limit decline allowed, not penalised | `_shared.md` §0, §6, §8; v-jobs, v-job-detail, v-active |
+| RQ-2 | 114 | Admin offers 10 min; auto-offers keep the configurable 90 s | v-jobs, v-job-detail |
+| RQ-3 | 115 | Skills = the six category values, migration from `RunnerSkill` | v-edit-skills, v-profile |
+| RQ-4 | 116 | Service areas = ops-configured list | v-edit-skills, v-profile |
+| RQ-5 | 117 | Payout requests up to the available amount, configurable minimum, one open request, ops pay manually, own auditable record | v-payout, v-earnings, x-payout-history |
+| RQ-6 | 118 | Destination fixed to the sign-in phone | v-payout |
+| RQ-7 | 119 | One `Runner fee` line | v-job-summary |
+| RQ-8, RQ-9 | 120, 121 | Generic checklist, no duration; photos only | v-active, v-evidence-capture, v-jobs, v-job-detail |
+| RQ-10 | 122 | 12-hour EAT in the app, canonical timestamps in the API | `_shared.md` §7 |
+| RQ-11 | 123 | 30 s online, 4–8 s on a job, nothing offline | `_shared.md` §10, x-location-disclosure |
+| RQ-12 | 124 | `geolocator`, `image_picker`, `permission_handler`, local queue store | R-20 … R-22 |
+| RQ-13, RQ-14 | 125, 126 | Restricted private storage, signed admin-only URLs, logged access; manual review, verified when all required checks pass | onboarding, `_shared.md` §9 |
+| RQ-15 | 127 | One phone, one role | v-auth-otp (built) |
+| RQ-16 | 128 | No direct contact; Support relays | v-active |
+| RQ-17, RQ-18 | 129, 130 | Receipt upload 24 h after CANCELLED/FAILED; no receipt-total field | v-active, v-evidence-capture, v-job-summary |
+| RQ-19 | 131 | Terms & Privacy on sign-in and Profile | v-auth-phone (built), v-profile |
+| RQ-20 | 132 | No FAILED from ARRIVED/IN_PROGRESS; Support (`Get help with this task`) | v-active |
+| RQ-21 | 133 | Keep `Recent payouts` | v-earnings |
+| — | 134 | `errand_assignments.declineReason` approved | v-jobs |
+| — | 135 | Over-limit purchase at CONFIRMED → ops review; max claimable = min(item paid to Nitume, `max_purchase_advance`) | `_shared.md` §8, v-job-summary, admin specs |
+| — | 136 | Task-level combined exposure cap (customer refund + runner item reimbursement) on CANCELLED/FAILED; above it, ops review and explicit handling | `_shared.md` §8, v-job-summary, admin specs |
+| — | 137 | Replace the decline-only build with the row-113 offer model | v-jobs, v-active §6a removed |
+| — | 138 | KES 3,000 default, per-runner, admin-edited with audit (actor, time, previous, new); runners cannot change it | v-profile (read-only row), admin specs |
+| — | 139 | Runner notification copy defined (`v-notifications.md`); runner socket room scoped server-side | v-notifications, `_shared.md` §10 |
+
+### API requirements after the answers (api-contract)
+
+| Id | Requirement | Status |
+|---|---|---|
+| RA-1 | Offer model (row 137): admin assign creates an `offered` assignment, task → RUNNER_ASSIGNED; `GET /runners/me/offers`; `POST /errands/:id/accept` = RUNNER_ASSIGNED → RUNNER_EN_ROUTE + assignment `accepted` (409 `offer_expired`, `runner_busy`, `purchase_limit_exceeded`); `POST /errands/:id/decline` `{ reason?: 'over_purchase_limit' }` (task stays RUNNER_ASSIGNED, admin reassigns; reason accepted only when over the limit); offers expire after 10 min (admin) / 90 s (auto); expiry → EXPIRED (RQ-22). Offered runners can read the runner projection (RA-2) and `purchase-check`. The current `assignment/decline` route folds into this | missing (decline-only build exists) |
+| RA-3 | Accept refused above the limit; declines with `over_purchase_limit` never feed any runner metric | missing (accept side) |
+| RA-4 | `location:ping` with the row-123 cadence; the server ignores pings from an offline runner | missing |
+| RA-5 | Room `runner:{runnerId}` joined by the server from the JWT on connect (row 139: never a client-supplied id); `job:offered`, `job:offer_withdrawn`, `price_change:decided`, `payout:updated` | missing |
+| RA-6 | Runner notification kinds with the copy in `v-notifications.md` (row 139: at least payout sent, payout reversed, reimbursement approved, rejected, paid) | missing; copy now final |
+| RA-7 | Verification documents to restricted private storage (row 125) | missing |
+| RA-8 | Verification gate: verified only when all required checks are approved (row 126) | missing |
+| RA-10 | Skills migration to category values (row 115); `GET /runners/service-areas` from an ops-configured list, `PUT /runners/me/service-areas` accepts listed areas only (row 116) | missing |
+| RA-12 | 24 h receipt upload and claim window after CANCELLED/FAILED (row 129), then refused with a code (e.g. `reimbursement_window_closed`) | missing (claim built without a window) |
+| RA-15 | Payout-request record and endpoints (row 117): runner create/list/summary, ops list/mark-paid/reject, configurable minimum, one open request, destination = sign-in phone (row 118), every step audited; names in `v-payout.md` and the admin specs | missing |
+| RA-21 | Task-level combined exposure cap (row 136) on CANCELLED/FAILED: customer refund decisions and runner item reimbursements (claims and approvals) checked together; above the cap only through an explicit ops override with a reason; the refund drawer and the ledger review both show the remaining exposure | missing |
+| RA-22 | Admin edit of `max_purchase_advance` per runner (row 138): `PATCH /admin/runners/:id/purchase-limit` `{ maxPurchaseAdvance, reason }` + an audit table (actor, time, previous, new, reason); `GET` history; runners cannot change it | missing (schema: audit table) |
+| RA-23 | Approval cap on an `on_hold` item line = min(item paid to Nitume, `max_purchase_advance`) (row 135; today the approval cap is the item paid only). See RQ-23 | mismatch |
+| RA-24 | Admin maintenance of the service-area list (row 116) | missing (no admin spec yet) |
+
+### New questions for the owner
+
+- **RQ-22 (state machine, rows 113/114)**: when one offer lapses unaccepted, does the task go straight to EXPIRED (literal reading of row 113, specced), or may ops re-offer it and EXPIRED only follows an overall deadline? Default: literal (EXPIRED on the first lapse).
+- **RQ-23 (payments, row 135)**: with the approval cap at min(item paid, `max_purchase_advance`), a runner who bought a KES 5,000 item with a KES 3,000 limit can be reimbursed at most KES 3,000. Is that intended, or may ops approve up to the item paid after an explicit, audited decision (for example by raising the runner's limit first, row 138)? Default: the cap applies; ops raise the limit (audited) when they accept the purchase.
+- **RQ-24 (minor, copy)**: is there a payout time promise to show on `v-payout`? Default: none.
+- **RQ-25 (security/compliance, row 125)**: retention period for ID and selfie images after an account closes. No default.
+- **RQ-26 (schema, row 136)**: the combined exposure cap needs a stored ops override (who, when, amount, reason). Approve an override record (or columns on the refund review and the ledger line)? Default: a small append-only override table keyed by errand.
+
+### System Design: changes needed (not applied here; outside design-auditor's write scope)
+
+In addition to §8:
+- §3.3 notes: "Offers (row 113): the admin's assign puts the task in RUNNER_ASSIGNED with an offer to one runner. The runner's accept is the RUNNER_ASSIGNED → RUNNER_EN_ROUTE transition; a decline keeps RUNNER_ASSIGNED for reassignment (no new state); an offer not accepted in its window (10 min admin, 90 s auto, row 114) moves the task to EXPIRED (RQ-22 pending on re-offers). No FAILED from ARRIVED or IN_PROGRESS (row 132)."
+- §3.4: "Admin offers: 10 minutes (row 114)."
+- §2.2 `runner_profiles`: "`skills` = category values (row 115); `service_areas` from an ops-configured list (row 116); `max_purchase_advance` default 3000, admin-set with an audit table (row 138)." New tables: payout requests (row 117), purchase-limit audit (row 138), combined-cap override (RQ-26).
+- §4.2: "Location: 30 s while online without a job, 4–8 s during a job, nothing offline (row 123). Runner room scoped server-side (row 139)."
+- §6: "Runner payout requests (row 117) … destination = sign-in phone (row 118). Combined exposure cap on CANCELLED/FAILED (row 136). Approval cap min(item paid, limit) (row 135). Receipt window 24 h (row 129)."
+- §10: "ID/selfie storage per row 125; verification per row 126."
