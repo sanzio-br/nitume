@@ -76,6 +76,7 @@ Proposed:
 - Location: while online, RQ-11 decides idle pings (R-20); the distance on cards uses the device position locally (no API).
 - Notifications unread count: `GET /notifications/unread-count` (exists, any role).
 - Task states shown: PAYMENT_CONFIRMED / RUNNER_ASSIGNED (offered).
+- **Built so far (row 137, `feat/api-owner-answers-6` @ `10b6019`)**: no offers, no accept, no general decline. The admin assigns (PAYMENT_CONFIRMED → RUNNER_ASSIGNED) and the job appears on `v-active`. Row 108 is served by `GET /errands/:id/purchase-check` and `POST /errands/:id/assignment/decline` `{ reason: 'over_purchase_limit' }` on the assigned job (spec: `v-active` §6a), only before RUNNER_EN_ROUTE; the task stays RUNNER_ASSIGNED and an admin reassigns it. `purchase-check` is runner-readable only for the current assignment, so an offer card cannot use it: when offers exist (RA-1) they must carry `overPurchaseLimit` (or the runner's `maxPurchaseAdvance` from `GET /runners/me` is compared with the offer's item amount on the client). Until RQ-1 (row 113) is answered the builder ships `v-jobs` with the availability card, the verification card, the empty states and the `You have an active job` card only (no offer cards).
 
 ## Accessibility and mobile
 - Card reads as one item (`Check It For Me, Check apartment — Nyali, 1,750 shillings, 1.2 km away`) with two actions exposed.

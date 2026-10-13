@@ -41,10 +41,10 @@ Exact, from the mockup: `Request payout`, `Available balance`, `Amount`, `Send t
 - Balance; amount input; phone number; minimum and maximum in messages and the dialog.
 
 ## Data
-- `GET /runners/me/earnings` (RA-14) for `availableAmount`.
-- `POST /runners/me/payouts` `{ amount }` with an `Idempotency-Key` header (as payments) → `{ id, amount, status: 'requested', createdAt }`; errors `payout_exceeds_available`, `payout_below_minimum`, `payout_already_open` (RA-15, missing; depends on RQ-5 and a payout-request record, which is a schema decision not covered by row 107).
+- `GET /runners/me/earnings` (RA-14, built on `feat/api-owner-answers-6` @ `10b6019`) for `availableAmount`.
+- `POST /runners/me/payouts` `{ amount }` with an `Idempotency-Key` header (as payments) → `{ id, amount, status: 'requested', createdAt }`; errors `payout_exceeds_available`, `payout_below_minimum`, `payout_already_open` (RA-15, missing; depends on RQ-5 / row 117 and a payout-request record, which is a schema decision not covered by row 107). api-contract removed the draft `GET /runners/me/payouts` on `feat/api-owner-answers-6`; sent payouts appear only as derived `payout` entries in `GET /runners/me/payout-lines` (ops record them with `POST /runner-payouts/mark-paid`).
 - Destination phone: `GET /users/me` `phone` (exists).
-- Payout itself: ops send M-Pesa manually and record the receipt (as refunds, row 54), then a `payout` ledger line; the runner is notified `Payout sent` (RA-6). Corrections/reversals/re-sent payouts appear as their own lines (row 107).
+- Payout itself: ops send M-Pesa manually and record the receipt on 1–50 payable lines of one runner (`POST /runner-payouts/mark-paid`), which shows in the runner feed as one derived `payout` entry (not a stored line); the runner is notified `Payout sent` (RA-6). Corrections/reversals/re-sent payouts appear as their own lines (row 107).
 - Socket: none needed.
 
 ## Accessibility and mobile

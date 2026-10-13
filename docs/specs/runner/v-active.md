@@ -32,6 +32,7 @@ RUNNER_ASSIGNED (accepted), RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUST
    4. `Notes for the customer`: done when `runnerNotes` is set; sub `Write a short summary` / first 40 characters; trailing `Add` / `Edit` (ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER, the API's `RUNNER_NOTES_STATES`). Required for Check It For Me (proposed, RQ-8), optional otherwise.
    Uploaded evidence thumbnails (C-25 `EvidenceGrid`, 3 columns, margin 0 20 12) under the checklist, tap → `EvidenceViewer`.
 6. Price change section (only IN_PROGRESS **and** category Buy For Me or Get It For Me, rows 49, 101): C-08 label `Price too low for the item found?`; R-09 action row: leading alert icon (mockup emoji `⚠️`), title `Request price authorization`, sub `Ask the customer to approve a higher amount`, chevron. While a request is pending: the row is replaced by a C-40 notice `Waiting for the customer to approve KSh 45,000.` (amount Fira Code) and the forward action is disabled (proposed: the runner should not finish until the customer decides). After approval: C-40 `Price change approved. New item amount KSh 45,000.`; after an admin rejection (row 55): `Price change not approved. Continue at the original amount or contact support.` (proposed).
+6a. **Purchase-limit decline at RUNNER_ASSIGNED** (row 108; built API, row 137 open; applies while RQ-1 / row 113 is unanswered and the admin's assign is the only way a runner gets a job). On RUNNER_ASSIGNED only, the app calls `GET /errands/:id/purchase-check` → `{ errandId, runnerProfileId, requiredPurchase, maxPurchaseAdvance, overLimit }` (strings, 2 decimals; `requiredPurchase` = the item amount paid to Nitume on `send_to_runner`, `"0.00"` otherwise). When `overLimit` is true: C-40 notice above the primary action (margin 0 20 10): `This job needs a purchase of KSh 5,000, above your limit of KSh 3,000. You can decline it.` (amounts Fira Code, proposed) and a C-03 `Decline job` under `Start trip`. `Decline job` → C-35 `Decline this job?` / `It's above your purchase limit. Our team will give it to another runner.` / `Decline` · `Back` → `POST /errands/:id/assignment/decline` `{ reason: 'over_purchase_limit' }` (200 `{ …purchaseCheck, assignmentId, status: 'declined', declineReason }`). The task stays RUNNER_ASSIGNED for the customer (no new state); the runner loses access (`errand:access_revoked`), so the Active tab returns to its empty state with snackbar `Job declined.` (proposed). Errors: 409 `purchase_within_limit` → reload the check, hide the action; 409 `assignment_not_declinable` (`status`) → reload the job (it moved on); 403 → reload. No decline for any other reason and none after `Start trip`. Ops are notified in the admin feed (`assignment_declined`).
 7. Primary state action (margin 6 20 6), C-01 full width pill + caption 12 slate-600 centred under it (mockup: green card with white text; design system: primary button):
    | State | Button | Caption | Transition |
    |---|---|---|---|
@@ -93,7 +94,8 @@ Everything else above is proposed.
 - Dispute: `GET /errands/:id/dispute` (exists; runner gets `resolvedBy: null`, row 101) for the resolution note.
 - Socket: `errand:join` for the job; `errand:status_changed`, `evidence:uploaded`, `errand:access_revoked` (exist).
 - Location: `location:ping` while RUNNER_ASSIGNED (accepted) … IN_PROGRESS (RA-4 missing; R-20); geofence ARRIVED (system) depends on it. Until built, the manual `I've arrived` is the only path.
-- Receipt after CANCELLED/FAILED: RQ-17 / RA-12.
+- Purchase limit at RUNNER_ASSIGNED: `GET /errands/:id/purchase-check`, `POST /errands/:id/assignment/decline` (row 108; built on `feat/api-owner-answers-6` @ `10b6019`; schema row 134 pending owner approval).
+- Receipt after CANCELLED/FAILED: the claim is `POST /runners/me/reimbursement-claims` from `v-job-summary` (built). Uploading the receipt after the end relies on `POST /errands/:id/evidence`, which has no state guard (RA-11), and the API sets no time window (RQ-17 / row 129). RA-12 stays open for that window.
 
 ## Accessibility and mobile
 - Checklist rows read `Photos, required, button Upload`; done rows read `completed`.
@@ -102,6 +104,7 @@ Everything else above is proposed.
 - Screen stays awake is **not** forced (battery); pings run from the foreground service.
 
 ## Questions
+- RQ-1 / row 113, row 137: the decline above is the built interim; the offer/accept model may replace it.
 - RQ-8 (product/schema): checklist source. Default: the generic checklist above.
 - RQ-9: video evidence for runners. Default: photos only.
 - RQ-17 (payments): receipt upload after CANCELLED/FAILED for row 106 claims.

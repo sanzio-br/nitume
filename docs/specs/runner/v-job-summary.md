@@ -34,11 +34,11 @@ Body centred, padding-top 10.
    | CONFIRMED | `Payable now. It's in your available balance.` |
    | SETTLED | `Paid to your M-Pesa.` |
    | DISPUTED | `On hold while our team reviews the customer's report.` |
-   | CANCELLED / FAILED | `This task ended before completion, so there's no runner fee.` (+ reimbursement sentence from `_shared.md` §8 when relevant) |
+   | CANCELLED / FAILED | `This task ended before completion, so there's no runner fee.` (+ reimbursement sentence from `_shared.md` §8 when relevant, and the `Claim item spend` action below on `send_to_runner`) |
 7. Fixed bottom C-01 `Back to jobs`.
 
 ## Components
-C-10, C-18 (`ReceiptCard`, `ReceiptRow`, `ReceiptSeparateGroup`), C-05 small, C-01. No new widget (the success mark is a 70px `InitialsAvatar`-sized circle; core-ui may expose it as `SuccessMark` if a second screen needs it).
+C-10, C-18 (`ReceiptCard`, `ReceiptRow`, `ReceiptSeparateGroup`), C-05 small, C-01; claim form: C-17 money field, C-02, R-13/R-15/R-22 for a receipt (NEW, shared with v-evidence-capture), R-19 `PayoutLedgerRepository.claim`. No other new widget (the success mark is a 70px `InitialsAvatar`-sized circle; core-ui may expose it as `SuccessMark` if a second screen needs it).
 
 ## Copy
 Exact, from the mockup: `Job complete`, `Nice work, Brian.`, `Apartment check — Nyali · awaiting customer confirmation`, `You earned`, `Back to jobs`. Mockup rows `Base + report fee` / `Distance bonus` are dropped (RQ-7). Everything else proposed.
@@ -48,7 +48,9 @@ Exact, from the mockup: `Job complete`, `Nice work, Brian.`, `Apartment check �
 
 ## Data
 - Job: runner projection (RA-2) for `title`, `runnerFee`, `itemAmount`, `merchantRoute`.
-- Ledger lines for this errand (state of the runner fee and reimbursement lines: `pending`, `payable`, `on_hold`, `paid`): **missing**, being built on `feat/api-owner-answers-6` (row 107). Proposed: `GET /runners/me/payout-lines?errandId=…` or `payoutLines[]` on the runner job view (RA-14/RA-16).
+- Ledger lines for this errand: `GET /runners/me/payout-lines?errandId=<id>` (RA-16, built on `feat/api-owner-answers-6` @ `10b6019`). Before CONFIRMED the list is empty: the state line comes from the errand status, not from the ledger (there is no `pending` line status). From CONFIRMED: `runner_fee` (`payable` → `paid`) and, on `send_to_runner`, `item_reimbursement` (`payable`, or `on_hold` with `reviewReason` `receipt_missing` / `over_purchase_limit`; later `receipt_mismatch`; `rejected` after ops review). Chips and captions as `v-earnings`. The amount shown on an `on_hold`/`rejected` item line is the requested amount.
+- Line state by status (replaces the CONFIRMED / SETTLED rows of the table above when lines exist): runner fee `payable` → `Payable now. It's in your available balance.`; `paid` → `Paid to your M-Pesa.` + `paidAt` (Fira Code, EAT); item line `on_hold` → C-05 `On hold` + reason caption; `rejected` → C-05 `Not approved` + `Our team didn't approve this reimbursement. Contact support if you think this is wrong.` (proposed).
+- **Claim after CANCELLED / FAILED** (row 106; `send_to_runner` tasks where the runner bought the item): `POST /runners/me/reimbursement-claims` `{ errandId, amount, receiptEvidenceId, note? (≤ 500) }` → the new feed item (`on_hold`, `out_of_pocket_claim`). Shown on the ended variant when no `item_reimbursement` line exists for the errand: C-02 `Claim item spend` (proposed) → pushed form (C-10 `Claim item spend`): C-17 money field `Amount you spent` (max = the cap, hint `Up to KSh {cap}.`), receipt picker (the runner's own `receipt` evidence on the task from `GET /errands/:id/evidence`; if none, R-13 capture via R-22 with type `receipt` first), optional note `Anything we should know?`, C-01 `Send claim`. Success → back with snackbar `Claim sent. Our team will check your receipt.` Errors: 400 `receipt_required` → `Add the receipt for this task first.`; 400 `reimbursement_exceeds_cap` (`cap`, `itemPaidToNitume`, `maxPurchaseAdvance`) → `You can claim up to KSh {cap}.`; 409 `no_item_amount_paid` → `There's no item amount to reimburse on this task.`; 409 `reimbursement_already_recorded` → reload, show the existing line; 409 `reimbursement_claim_not_allowed` → `Claims are only for tasks that ended before completion.`; 403 → generic error (all copy proposed). The cap is the lower of the item amount paid to Nitume and the runner's `max_purchase_advance` (rows 105, 108; row 135 open). The API enforces **no time window** (RQ-17 / row 129 open: 24 h recommended); the app shows the action whenever the endpoint allows it.
 - Socket: `errand:status_changed` refreshes the status line.
 - Never shows the customer's payment or refund.
 
@@ -56,4 +58,7 @@ Exact, from the mockup: `Job complete`, `Nice work, Brian.`, `Apartment check �
 Heading announced on open; amounts read as currency; CTA above the safe area.
 
 ## Questions
+- RQ-17 (row 129): claim window after CANCELLED/FAILED; the built API has none.
+- Row 135: purchase above `max_purchase_advance` found at CONFIRMED goes to ops review; claims capped at the lower of item paid and the limit (built; awaiting owner confirmation).
+- Row 136: no combined cap between the customer refund and the runner reimbursement on a CANCELLED/FAILED task (built; owner to confirm).
 - RQ-7 (payments/pricing): fee breakdown lines. Default: a single `Runner fee` line until pricing rates exist.

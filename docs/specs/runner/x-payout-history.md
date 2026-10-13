@@ -3,7 +3,7 @@
 - Mockup: **not drawn**. The `Payout history` button on `v-earnings` (line 251) has no target. Built from the `v-earnings` ledger rows and design-system list patterns; all copy **(proposed)**.
 - Shared conventions: `_shared.md` (§8, row 107)
 - Implementation: none
-- Status: missing
+- Status: missing (API ready: RA-14)
 
 ## Purpose
 The full payout ledger: every runner fee, item reimbursement, payout, correction, reversal and re-sent payout line, newest first, so the runner can reconcile what they were paid.
@@ -18,9 +18,9 @@ Any (ledger).
 
 ## Layout (top to bottom)
 1. C-10 header `Payout history`.
-2. Filter chips C-16 (padding 0 20 12, gap 8): `All` (default), `Earnings`, `Reimbursements`, `Payouts`.
-3. Month groups: C-08 label per EAT month (`October 2026`, Fira Code for the year; the month word is Sans, proposed: whole label Sans with a Fira Code year span), then R-12 rows (same table as `v-earnings`).
-4. Payout row expanded: R-05 rows `M-Pesa receipt` → `SLK4H7XQ2P` (Fira Code), `Sent` → `Mon, 10:03 AM` (EAT); for a reversed payout `Reversed` → time, and the re-sent line linked under it (`Re-sent · SLK…`).
+2. Filter chips C-16 (padding 0 20 12, gap 8): `All` (default, no `kind`), `Earnings` (`kind=runner_fee`), `Reimbursements` (`kind=item_reimbursement`), `Payouts` (`kind=payout,resent_payout,reversal,correction`).
+3. Month groups: C-08 label per EAT month of `createdAt` (`October 2026`, proposed: whole label Sans with a Fira Code year span), then R-12 rows (same kinds, captions, chips and signs as the `v-earnings` table).
+4. Payout row expanded: R-05 rows `M-Pesa receipt` → `reference` (Fira Code), `Sent` → `paidAt` (`Mon, 10:03 AM`, EAT), `Tasks` → count of `lineIds` (Fira Code) when the payout covered more than one task. Adjustments are linked to the **job line**, not to the payout entry: a `reversal`, `correction` or `resent_payout` has `relatedLineId` = a job line id; it belongs under a payout entry whose `lineIds` contains that id. Under the expanded payout list those adjustments oldest first (`Reversed` → time; `Re-sent` → `reference`; `Corrected` → `reference`).
 5. Infinite scroll (cursor), C-33 `SkeletonCard` while loading more.
 
 States: empty `No payouts yet` / `Your payouts and earnings will show here.`; error `Couldn't load your payout history.` + `Try again`.
@@ -35,11 +35,11 @@ C-10, C-16, C-08, R-12, R-05, C-33. NEW: R-12, R-05 (shared with other screens).
 - Amounts, receipts, times, the year in month labels.
 
 ## Data
-- `GET /runners/me/payout-lines?kind=&cursor=&limit=30` (RA-14, being built on `feat/api-owner-answers-6`); the line shape in `v-earnings`, plus `reference` (M-Pesa receipt) and `relatedLineId` (links a reversal / re-sent payout to its original) on payout lines.
+- `GET /runners/me/payout-lines?kind=&cursor=&limit=30` (RA-14, built on `feat/api-owner-answers-6` @ `10b6019`); item shape and statuses in `v-earnings` Data. `reference` = M-Pesa receipt (payout, resent_payout), corrected receipt (correction) or reversal code (reversal); `relatedLineId` = the job line an adjustment changes; `lineIds` = the job lines a `payout` entry covered. Ids are opaque. Cursor = `nextCursor` (null at the end).
 - No socket events.
 
 ## Accessibility and mobile
 Rows read as one sentence (`Payout to M-Pesa, minus 6,000 shillings, sent Monday 10:03 AM`); filter chips are a radio group.
 
 ## Questions
-- None new (RQ-5 covers payout requests).
+- None new (RQ-5 / row 117 covers payout requests). The old `GET /runners/me/payouts` is not built (removed on `feat/api-owner-answers-6`); the derived `payout` entries in the feed replace it for history.
