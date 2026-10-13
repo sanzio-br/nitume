@@ -19,7 +19,7 @@ import { ErrandsService, REFUNDABLE_TERMINAL_STATUSES } from '../errands/errands
 import { UsersService } from '../users/users.service';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
-import { lockPayoutReference, normalizeReference, refundReferenceUsed } from './payout-references';
+import { lockPayoutReference, normalizeReference, payoutReferenceUsed } from './payout-references';
 import { Payment } from './payment.entity';
 import { RefundPayoutCorrection, RefundPayoutCorrectionKind } from './refund-payout-correction.entity';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
@@ -943,7 +943,7 @@ export class RefundsService implements OnModuleInit {
    */
   private async assertReferenceFree(manager: EntityManager, reference: string): Promise<void> {
     await lockPayoutReference(manager, reference);
-    if (await refundReferenceUsed(manager, reference)) {
+    if (await payoutReferenceUsed(manager, reference)) {
       throw new ApiError(
         HttpStatus.CONFLICT,
         'payout_reference_reused',
@@ -951,6 +951,28 @@ export class RefundsService implements OnModuleInit {
         { reference: normalizeReference(reference) },
       );
     }
+  }
+
+  /**
+   * What the task's approved/refunded reviews commit to refunds (row 87,
+   * effective payouts per row 100), optionally only reviews with one of
+   * `triggers`. Used by the runner payout ledger: the item amount paid to
+   * Nitume is net of approved or sent price-decrease refunds (§6).
+   */
+  async committedRefundTotal(
+    errandId: string,
+    manager?: EntityManager,
+    triggers?: RefundTrigger[],
+  ): Promise<number> {
+    const repo = manager ? manager.getRepository(RefundReview) : this.reviews;
+    const rows = await repo.find({
+      where: { errandId, ...(triggers ? { trigger: In(triggers) } : {}) },
+    });
+    const committed = withCommitted(rows, await this.correctionsOf(rows.map((r) => r.id), manager));
+    return committed.reduce(
+      (sum, r) => (COMMITTED.has(r.status) ? sum + Number(r.refundAmount ?? 0) : sum),
+      0,
+    );
   }
 
   /** Corrections per review id, oldest first (batched). */
