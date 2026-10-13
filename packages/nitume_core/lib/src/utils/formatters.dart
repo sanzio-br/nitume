@@ -115,6 +115,118 @@ String formatRating(Object rating) {
   return value.toStringAsFixed(1);
 }
 
+// ---------------------------------------------------------------------------
+// R-18. Runner times in East Africa Time, distances and durations
+// (`docs/specs/runner/_shared.md` §7, RQ-10). The API stays UTC; these
+// always render Africa/Nairobi wall-clock time (UTC+3, no daylight saving)
+// regardless of the device time zone.
+// ---------------------------------------------------------------------------
+
+/// Offset of East Africa Time (Africa/Nairobi) from UTC. Kenya has no
+/// daylight saving time, so the offset is fixed.
+const Duration kEatOffset = Duration(hours: 3);
+
+/// [time] as an EAT wall-clock value. The result is a UTC [DateTime] whose
+/// fields (year … minute, weekday) read as Nairobi local time; use it only
+/// for display and day bucketing, never send it to the API.
+DateTime toEatWallClock(DateTime time) => time.toUtc().add(kEatOffset);
+
+String _clock12(DateTime wall) {
+  final hour12 = wall.hour % 12 == 0 ? 12 : wall.hour % 12;
+  final minute = wall.minute.toString().padLeft(2, '0');
+  return '$hour12:$minute ${wall.hour < 12 ? 'AM' : 'PM'}';
+}
+
+/// `10:28 AM` in EAT.
+String formatClockEat(DateTime time) => _clock12(toEatWallClock(time));
+
+/// `Today, 10:28 AM`, `Yesterday, 4:12 PM`, `Mon, 10:28 AM` (within the
+/// last week), otherwise `12 Feb, 10:28 AM` (`12 Feb 2025, …` in another
+/// year). Days are EAT calendar days.
+String formatDayTimeEat(DateTime time, {DateTime? now}) {
+  final t = toEatWallClock(time);
+  final ref = toEatWallClock(now ?? DateTime.now());
+  final days = _calendarDaysBetween(t, ref);
+  final clock = _clock12(t);
+  if (days == 0) return 'Today, $clock';
+  if (days == 1) return 'Yesterday, $clock';
+  if (days > 1 && days < 7) return '${_weekdays[t.weekday - 1]}, $clock';
+  final date = '${t.day} ${_months[t.month - 1]}';
+  return t.year == ref.year ? '$date, $clock' : '$date ${t.year}, $clock';
+}
+
+/// Notification-style relative time on EAT days: `2m`, `1h` (same day),
+/// `Yesterday`, `Mon` (within the last week), otherwise `12 Feb`.
+String formatRelativeShortEat(DateTime time, {DateTime? now}) {
+  final t = toEatWallClock(time);
+  final ref = toEatWallClock(now ?? DateTime.now());
+  final days = _calendarDaysBetween(t, ref);
+  if (days <= 0) {
+    final diff = ref.difference(t);
+    if (diff.inMinutes < 60) {
+      final m = diff.inMinutes < 1 ? 1 : diff.inMinutes;
+      return '${m}m';
+    }
+    return '${diff.inHours}h';
+  }
+  if (days == 1) return 'Yesterday';
+  if (days < 7) return _weekdays[t.weekday - 1];
+  final date = '${t.day} ${_months[t.month - 1]}';
+  return t.year == ref.year ? date : '$date ${t.year}';
+}
+
+/// EAT calendar day of [time] as `YYYY-MM-DD` (matches the API's EAT
+/// day buckets, e.g. the weekly earnings `week[].day`).
+String eatDayKey(DateTime time) {
+  final t = toEatWallClock(time);
+  final m = t.month.toString().padLeft(2, '0');
+  final d = t.day.toString().padLeft(2, '0');
+  return '${t.year.toString().padLeft(4, '0')}-$m-$d';
+}
+
+/// EAT weekday of [time]: [DateTime.monday] (1) … [DateTime.sunday] (7).
+int eatWeekday(DateTime time) => toEatWallClock(time).weekday;
+
+/// Start of the EAT week holding [time] (Monday 00:00 EAT), as a UTC
+/// instant (Sunday 21:00 UTC).
+DateTime eatWeekStart(DateTime time) {
+  final t = toEatWallClock(time);
+  final monday = DateTime.utc(t.year, t.month, t.day - (t.weekday - 1));
+  return monday.subtract(kEatOffset);
+}
+
+/// Distance in kilometres for display: `1.2 km`, or metres under 1 km
+/// rounded to 10 m (`850 m`). Negative input is treated as 0.
+String formatDistanceKm(num km) {
+  final meters = km <= 0 ? 0 : km * 1000;
+  if (meters < 995) {
+    final rounded = ((meters / 10).round() * 10).toInt();
+    return '$rounded m';
+  }
+  return '${(meters / 1000).toStringAsFixed(1)} km';
+}
+
+/// Duration in whole minutes, rounded up (minimum 1): `6 min`, `45 min`,
+/// `1 h 10 min`, `2 h`.
+String formatDurationMin(Duration duration) {
+  final seconds = duration.inSeconds;
+  final minutes = seconds <= 0 ? 1 : (seconds / 60).ceil();
+  if (minutes < 60) return '$minutes min';
+  final h = minutes ~/ 60;
+  final m = minutes % 60;
+  return m == 0 ? '$h h' : '$h h $m min';
+}
+
+/// Signed ledger amount as drawn on the runner payout rows: `+ KSh 1,750`,
+/// `− KSh 6,000` (U+2212 minus), `KSh 0`. [amount] is a [num] or a signed
+/// API decimal string.
+String formatKesLedger(Object amount) {
+  final parts = _DecimalParts.parse(amount);
+  final body = 'KSh ${parts.grouped}';
+  if (parts.isZero) return body;
+  return parts.isNegative ? '\u2212 $body' : '+ $body';
+}
+
 int _calendarDaysBetween(DateTime a, DateTime b) {
   final da = DateTime.utc(a.year, a.month, a.day);
   final db = DateTime.utc(b.year, b.month, b.day);
