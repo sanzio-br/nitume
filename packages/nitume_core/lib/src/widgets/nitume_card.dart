@@ -16,6 +16,7 @@ class NitumeCard extends StatelessWidget {
     this.onTap,
     this.border = NitumeCardBorder.solid,
     this.semanticLabel,
+    this.dashedBorderWidth = 1,
   });
 
   final Widget child;
@@ -28,17 +29,17 @@ class NitumeCard extends StatelessWidget {
   /// Optional label when the card is tappable.
   final String? semanticLabel;
 
+  /// Stroke width of the [NitumeCardBorder.dashed] border: 1 for receipts,
+  /// 2 for the capture drop zone (`.upload-box`, R-13).
+  final double dashedBorderWidth;
+
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(NitumeDesignChoices.cardRadius);
     Widget content = Padding(padding: padding, child: child);
 
     if (onTap != null) {
-      content = InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: content,
-      );
+      content = InkWell(onTap: onTap, borderRadius: radius, child: content);
     }
 
     final decorated = border == NitumeCardBorder.solid
@@ -53,6 +54,7 @@ class NitumeCard extends StatelessWidget {
         : CustomPaint(
             foregroundPainter: _DashedBorderPainter(
               radius: NitumeDesignChoices.cardRadius,
+              strokeWidth: dashedBorderWidth,
             ),
             child: content,
           );
@@ -70,9 +72,10 @@ class NitumeCard extends StatelessWidget {
 }
 
 class _DashedBorderPainter extends CustomPainter {
-  _DashedBorderPainter({required this.radius});
+  _DashedBorderPainter({required this.radius, this.strokeWidth = 1});
 
   final double radius;
+  final double strokeWidth;
   static const _dash = 4.0;
   static const _gap = 3.0;
 
@@ -81,24 +84,22 @@ class _DashedBorderPainter extends CustomPainter {
     final paint = Paint()
       ..color = NitumeColors.slateLine
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
+      ..strokeWidth = strokeWidth;
     final rrect = RRect.fromRectAndRadius(
-      (Offset.zero & size).deflate(0.5),
+      (Offset.zero & size).deflate(strokeWidth / 2),
       Radius.circular(radius),
     );
     final path = Path()..addRRect(rrect);
     for (final metric in path.computeMetrics()) {
       var distance = 0.0;
       while (distance < metric.length) {
-        canvas.drawPath(
-          metric.extractPath(distance, distance + _dash),
-          paint,
-        );
+        canvas.drawPath(metric.extractPath(distance, distance + _dash), paint);
         distance += _dash + _gap;
       }
     }
   }
 
   @override
-  bool shouldRepaint(_DashedBorderPainter old) => old.radius != radius;
+  bool shouldRepaint(_DashedBorderPainter old) =>
+      old.radius != radius || old.strokeWidth != strokeWidth;
 }

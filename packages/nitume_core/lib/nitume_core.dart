@@ -50,6 +50,7 @@ export 'src/widgets/balance_card.dart';
 export 'src/widgets/brand.dart';
 export 'src/widgets/checklist_step_card.dart';
 export 'src/widgets/copyable_value_row.dart';
+export 'src/widgets/capture_widgets.dart';
 export 'src/widgets/category_tile.dart';
 export 'src/widgets/evidence_grid.dart';
 export 'src/widgets/google_tracking_map.dart';
