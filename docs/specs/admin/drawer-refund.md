@@ -3,7 +3,7 @@
 - Mockup: **not drawn. EXTENDS MOCKUP**: a fourth drawer next to `#drawer-task`, `#drawer-runner`, `#drawer-dispute`, built from the same drawer anatomy (`.drawer-head`, `.drawer-section`, `.drawer-label`, `.drawer-card`, `.drawer-row`, `.drawer-timeline`, `.drawer-actions`) and the design-system form field. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/refund-drawer.ts` (hosted by the shell's `app-ops-drawer`, `DrawerKind` `'refund'`) and `refund-link.section.ts` (task drawer link)
-- Status: matches-design (re-audit round 5, 2026-10-12, `fix/angular-admin-owner-answers-5` @ `053fbc6`: PASS, minors m-10, m-11; see Current vs design)
+- Status: partial (row 136 combined-cap amendment 2026-10-13, needs N-18; otherwise round 5 PASS and round-6 item 4 PASS, `fix/angular-admin-owner-answers-6` @ `817d5fc`)
 
 ## Purpose
 Show one refund review and let any authorized admin (row 77: no second approver, no amount threshold) (1) decide the refund amount, KSh 0 up to the review's ceiling, and (2) for an approved refund, record the manual M-Pesa payout with its receipt (rows 37, 54). The ceiling is what the customer paid **to Nitume** (including an item amount paid to Nitume even if the runner already bought the item, row 81) **minus refunds already approved or sent on the same task** (row 87); for a `Price decrease` review it is the decrease (`send_to_runner` tasks only, row 86). A review opens for every **paid** task that ends CANCELLED, EXPIRED or FAILED (row 102: "a review trigger, not an automatic refund") and for an approved price decrease. (3) After a payout is recorded, record an auditable **correction or reversal** of it without touching the original receipt (row 100). The refund is a record attached to the task, not a task state.
@@ -60,6 +60,10 @@ Show one refund review and let any authorized admin (row 77: no second approver,
    2. `.drawer-label` `Corrections`: one `.drawer-card` per record, oldest first (it reads as a history).
    3. The action: `Record a correction` (`.btn .btn-outline`, full width) while the effective payout is sent; the `Record the new payout` form (primary) while it is reversed.
 6. **Activity** (`.drawer-label` `Activity`, `.drawer-card` with `.drawer-timeline`, mockup timeline pattern): `Review opened` (createdAt); `Refund of KSh X approved` / `Closed with no refund` (decidedAt); `Refund sent · {receipt}` (paidAt); then one item per correction (row 100): `Payout corrected · {new receipt or KSh new amount}`, `Payout reversed · {reversal receipt}`, `New payout sent · {receipt}` (createdAt). Times `.dt-time` Fira Code 11.
+
+## Combined exposure cap (row 136, amendment 2026-10-13; needs N-18)
+
+On a CANCELLED or FAILED task the customer refund and the runner's item reimbursement share one cap. When the API returns `exposure`, the `What the customer paid` card adds `Runner reimbursement committed` → amount (only when > 0) and `Left within the task cap` → `exposure.remaining` (600). A decision, payout or correction above `remaining` shows A-11 info `This is above the task's combined cap by KSh {x}.` and a required A-06 `Reason for going over the cap` (20–500); the request carries the override. Copy (proposed). Until N-18 the card is unchanged.
 
 ## Corrections (row 100)
 

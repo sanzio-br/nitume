@@ -233,7 +233,7 @@ Read from `BOARD.md` on `main` @ `a99175d`. Specs updated in `f0ea925` (runner) 
 | RA-15 | Payout-request record and endpoints (row 117): runner create/list/summary, ops list/mark-paid/reject, configurable minimum, one open request, destination = sign-in phone (row 118), every step audited; names in `v-payout.md` and the admin specs | missing |
 | RA-21 | Task-level combined exposure cap (row 136) on CANCELLED/FAILED: customer refund decisions and runner item reimbursements (claims and approvals) checked together; above the cap only through an explicit ops override with a reason; the refund drawer and the ledger review both show the remaining exposure | missing |
 | RA-22 | Admin edit of `max_purchase_advance` per runner (row 138): `PATCH /admin/runners/:id/purchase-limit` `{ maxPurchaseAdvance, reason }` + an audit table (actor, time, previous, new, reason); `GET` history; runners cannot change it | missing (schema: audit table) |
-| RA-23 | Approval cap on an `on_hold` item line = min(item paid to Nitume, `max_purchase_advance`) (row 135; today the approval cap is the item paid only). See RQ-23 | mismatch |
+| RA-23 | Approval cap on an `on_hold` item line = min(item paid to Nitume, `max_purchase_advance`) (row 135) | satisfied: `approvalCeilingOf` (`runner-payouts.service.ts`) already takes min(requested, item paid, `capAmount`, `max_purchase_advance`) and `review` refuses above it (`reimbursement_exceeds_cap`). See RQ-23 for the over-limit consequence |
 | RA-24 | Admin maintenance of the service-area list (row 116) | missing (no admin spec yet) |
 
 ### New questions for the owner
