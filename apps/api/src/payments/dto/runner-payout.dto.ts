@@ -160,6 +160,15 @@ export class ReviewRunnerPayoutDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+  /**
+   * Row 136: override the task's combined cap (customer refunds + runner item
+   * reimbursement <= paid to Nitume), with the reason (10-500). Audited; only
+   * needed after 409 task_exposure_cap_exceeded.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  exposureOverrideNote?: string;
 }
 
 /** POST /runner-payouts/:id/hold (receipt mismatch). */

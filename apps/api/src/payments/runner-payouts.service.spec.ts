@@ -70,7 +70,9 @@ const matches = (row: Record<string, unknown>, where: Record<string, unknown> = 
  * one obligation per errand and type (ON CONFLICT DO NOTHING), and the
  * trigger's final states.
  */
-const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[]; maxPurchaseAdvance?: string } = {}) => {
+const build = (
+  opts: { feePaid?: number; itemPaid?: number; receipts?: object[]; maxPurchaseAdvance?: string; totalPaid?: number } = {},
+) => {
   const table: RunnerPayoutLine[] = [];
   let seq = 0;
   const nextId = () => `l-${(seq += 1)}`;
@@ -137,10 +139,35 @@ const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[];
         }));
       return Promise.resolve([...(uses.get(ref) ?? []), ...fromLines]);
     }
+    if (sql.includes('SUM("amount")')) {
+      const [errandId, exclude] = params as (string | null)[];
+      const total = table
+        .filter(
+          (r) =>
+            r.errandId === errandId &&
+            r.kind === T.ITEM_REIMBURSEMENT &&
+            (r.status === S.PAYABLE || r.status === S.PAID) &&
+            r.id !== exclude,
+        )
+        .reduce((t, r) => t + Number(r.amount), 0);
+      return Promise.resolve([{ total: total.toFixed(2) }]);
+    }
     return Promise.resolve([]);
   });
-  const manager = { query, getRepository: () => repo };
-  const lines = { ...repo, manager: { query, transaction: vi.fn((fn: (m: unknown) => unknown) => fn(manager)) } };
+  const overrides: object[] = [];
+  const overrideRepo = {
+    find: vi.fn(() => Promise.resolve(overrides)),
+    create: vi.fn((o: object) => o),
+    save: vi.fn((o: object) => {
+      overrides.push(o);
+      return Promise.resolve(o);
+    }),
+  };
+  const manager = {
+    query,
+    getRepository: (entity: { name: string }) => (entity.name === 'TaskExposureOverride' ? overrideRepo : repo),
+  };
+  const lines = { ...repo, manager: { query, getRepository: manager.getRepository, transaction: vi.fn((fn: (m: unknown) => unknown) => fn(manager)) } };
   const errands = {
     onConfirmed: vi.fn(),
     listFor: vi.fn(() => Promise.resolve({ items: [{ id: 'e-7' }, { id: 'e-8' }], nextCursor: null })),
@@ -176,18 +203,23 @@ const build = (opts: { feePaid?: number; itemPaid?: number; receipts?: object[];
     displayNames: vi.fn(() => Promise.resolve(new Map([['admin-1', 'Finance']]))),
     findById: vi.fn(() => Promise.resolve({ id: 'u-run', displayName: 'Kevin Otieno', phone: '+254700000001' })),
   };
+  /** Paid to Nitume (fees + item) and committed customer refunds on the task (row 136). */
+  const refunds = {
+    committedRefundTotal: vi.fn(() => Promise.resolve(0)),
+    totalPaidToNitume: vi.fn(() => Promise.resolve(opts.totalPaid ?? 10_000)),
+  };
   const service = new RunnerPayoutsService(
     lines as never,
     {} as never,
     errands as never,
     runners as never,
     evidence as never,
-    { committedRefundTotal: vi.fn(() => Promise.resolve(0)) } as never,
+    refunds as never,
     users as never,
   );
   vi.spyOn(service, 'runnerFeePaid').mockResolvedValue(opts.feePaid ?? 300);
   vi.spyOn(service, 'itemPaidToNitume').mockResolvedValue(opts.itemPaid ?? 0);
-  return { service, table, errands, evidence, runners, query, uses, manager, repo };
+  return { service, table, errands, evidence, runners, query, uses, manager, repo, refunds, overrides };
 };
 
 describe('effective payout and position of a runner line', () => {
@@ -681,5 +713,56 @@ describe('row 135: approval is capped by max_purchase_advance too', () => {
     });
     await b.service.review(item.id, { decision: 'approve', amount: 3000 }, 'a');
     expect(item).toMatchObject({ status: S.PAYABLE, amount: '3000.00' });
+  });
+});
+
+describe('row 136: combined cap with customer refunds', () => {
+  it('approval above paid-to-Nitume minus refunds needs an audited override', async () => {
+    const b = build({ itemPaid: 500, totalPaid: 1000 });
+    b.errands.getById.mockResolvedValue({ id: 'e-1', status: ErrandStatus.CANCELLED });
+    await b.service.claim('u-run', { errandId: 'e-1', amount: 500, receiptEvidenceId: 'ev-1' });
+    // The customer already got 700 of the 1000 back: 300 left for the runner.
+    b.refunds.committedRefundTotal.mockResolvedValue(700);
+    const err = await b.service.review('l-1', { decision: 'approve', amount: 400 }, 'admin-1').catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'task_exposure_cap_exceeded' });
+    expect((err as ApiError).getResponse()).toMatchObject({
+      totalPaidToNitume: '1000.00',
+      committedRefunds: '700.00',
+      committedReimbursements: '0.00',
+      remaining: '300.00',
+      requested: '400.00',
+    });
+    expect(b.table[0].status).toBe(S.ON_HOLD);
+    const out = await b.service.review(
+      'l-1',
+      { decision: 'approve', amount: 400, exposureOverrideNote: 'Customer refund sent before the receipt arrived' },
+      'admin-1',
+    );
+    expect(out).toMatchObject({ status: S.PAYABLE, amount: '400.00' });
+    expect(b.overrides).toEqual([
+      expect.objectContaining({
+        source: 'runner_reimbursement',
+        runnerPayoutLineId: 'l-1',
+        amount: '400.00',
+        normalCap: '300.00',
+        createdByUserId: 'admin-1',
+      }),
+    ]);
+    expect(out.exposureOverrides).toHaveLength(1);
+    // The per-line caps still apply even with an override.
+    const capped = build({ itemPaid: 500, totalPaid: 1000 });
+    capped.errands.getById.mockResolvedValue({ id: 'e-1', status: ErrandStatus.CANCELLED });
+    await capped.service.claim('u-run', { errandId: 'e-1', amount: 500, receiptEvidenceId: 'ev-1' });
+    expect(
+      await codeOf(capped.service.review('l-1', { decision: 'approve', amount: 501, exposureOverrideNote: 'Override please now' }, 'a')),
+    ).toBe('reimbursement_exceeds_cap');
+  });
+
+  it('claims take the task lock but are always recorded on hold for ops review', async () => {
+    const b = build({ itemPaid: 500, totalPaid: 1000 });
+    b.refunds.committedRefundTotal.mockResolvedValue(1000);
+    await b.service.claim('u-run', { errandId: 'e-1', amount: 500, receiptEvidenceId: 'ev-1' });
+    expect(b.table[0]).toMatchObject({ status: S.ON_HOLD });
+    expect(b.query.mock.calls.some(([, p]) => (p as string[])[0] === 'task_exposure:e-1')).toBe(true);
   });
 });

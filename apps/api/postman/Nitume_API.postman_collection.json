@@ -55,6 +55,11 @@
       "key": "receipt_evidence_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "refund_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -1746,6 +1751,88 @@
                 "runner-payouts",
                 "{{payout_line_id}}",
                 "review"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin review above the combined cap (row 136 override, audited)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\",\n  \"amount\": 400,\n  \"exposureOverrideNote\": \"Refund went out before the receipt came in\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/{{payout_line_id}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "{{payout_line_id}}",
+                "review"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin refund decision above the combined cap (row 136 override)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refundAmount\": 700,\n  \"exposureOverrideNote\": \"Runner reimbursement approved earlier by ops\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/refunds/{{refund_id}}/decision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refunds",
+                "{{refund_id}}",
+                "decision"
               ]
             }
           },

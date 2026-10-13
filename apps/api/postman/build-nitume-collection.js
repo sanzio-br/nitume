@@ -92,6 +92,7 @@ const collection = {
     { key: 'price_change_request_id', value: '', type: 'string' },
     { key: 'payout_line_id', value: '', type: 'string' },
     { key: 'receipt_evidence_id', value: '', type: 'string' },
+    { key: 'refund_id', value: '', type: 'string' },
   ],
   item: [
     folder('0_Health', [
@@ -216,6 +217,8 @@ const collection = {
       req('Admin runner summary', 'GET', '/runner-payouts/summary?runnerProfileId={{runner_id}}', 'admin'),
       req('Admin line detail', 'GET', '/runner-payouts/{{payout_line_id}}', 'admin'),
       post('Admin review item line (approve, capped)', '/runner-payouts/{{payout_line_id}}/review', '{\n  "decision": "approve",\n  "amount": 450,\n  "note": "Receipt checked"\n}', 'admin'),
+      post('Admin review above the combined cap (row 136 override, audited)', '/runner-payouts/{{payout_line_id}}/review', '{\n  "decision": "approve",\n  "amount": 400,\n  "exposureOverrideNote": "Refund went out before the receipt came in"\n}', 'admin'),
+      patch('Admin refund decision above the combined cap (row 136 override)', '/refunds/{{refund_id}}/decision', '{\n  "refundAmount": 700,\n  "exposureOverrideNote": "Runner reimbursement approved earlier by ops"\n}', 'admin'),
       post('Admin hold item line (receipt mismatch)', '/runner-payouts/{{payout_line_id}}/hold', '{\n  "note": "Receipt total does not match"\n}', 'admin'),
       post('Admin mark paid (one M-Pesa payout, one runner)', '/runner-payouts/mark-paid', '{\n  "lineIds": ["{{payout_line_id}}"],\n  "payoutReference": "SLK4H7XQ2P"\n}', 'admin'),
       post('Admin correction / reversal / resent_payout', '/runner-payouts/{{payout_line_id}}/corrections', '{\n  "kind": "reversal",\n  "newReference": "RVS1234567",\n  "reason": "Sent to the wrong number",\n  "expectedLatestCorrectionId": null\n}', 'admin'),

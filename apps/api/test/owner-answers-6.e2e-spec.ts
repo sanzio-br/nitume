@@ -77,6 +77,10 @@ describe('Owner answers 6 (e2e)', () => {
       );
       // Payments and refund reviews reference price_change_requests.
       await ds.query('DELETE FROM "payments" WHERE "errandId" = ANY($1)', [errandIds]);
+      // Overrides reference refund reviews and runner lines (row 136).
+      await ds.query('ALTER TABLE "task_exposure_overrides" DISABLE TRIGGER USER');
+      await ds.query('DELETE FROM "task_exposure_overrides" WHERE "errandId" = ANY($1)', [errandIds]);
+      await ds.query('ALTER TABLE "task_exposure_overrides" ENABLE TRIGGER USER');
       // Corrections are append-only (DB trigger): lift it for the cleanup only.
       await ds.query('ALTER TABLE "refund_payout_corrections" DISABLE TRIGGER USER');
       await ds.query(
@@ -429,8 +433,56 @@ describe('Owner answers 6 (e2e)', () => {
     expect(feed.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('refunds and the runner item reimbursement share one cap; above it needs an audited override (row 136)', async () => {
+    const { admin, runner, errand } = await paidAndAssigned();
+    await setStatus(admin, errand.id, 'CANCELLED');
+    const [review] = (await db().query('SELECT id FROM "refund_reviews" WHERE "errandId" = $1', [errand.id])) as { id: string }[];
+    // The customer gets 700 of the 1000 paid back.
+    await http().patch(`/api/v1/refunds/${review.id}/decision`).set(bearer(admin.token)).send({ refundAmount: 700 }).expect(200);
+    const receipt = await upload(runner, errand.id);
+    const claim = await http()
+      .post('/api/v1/runners/me/reimbursement-claims')
+      .set(bearer(runner.token))
+      .send({ errandId: errand.id, amount: 500, receiptEvidenceId: receipt.body.id })
+      .expect(201);
+    const over = await http()
+      .post(`/api/v1/runner-payouts/${claim.body.id}/review`)
+      .set(bearer(admin.token))
+      .send({ decision: 'approve', amount: 400 })
+      .expect(409);
+    expect(over.body).toMatchObject({
+      code: 'task_exposure_cap_exceeded',
+      totalPaidToNitume: '1000.00',
+      committedRefunds: '700.00',
+      remaining: '300.00',
+    });
+    await http()
+      .post(`/api/v1/runner-payouts/${claim.body.id}/review`)
+      .set(bearer(admin.token))
+      .send({ decision: 'approve', amount: 400, exposureOverrideNote: 'short' })
+      .expect(400);
+    const ok = await http()
+      .post(`/api/v1/runner-payouts/${claim.body.id}/review`)
+      .set(bearer(admin.token))
+      .send({ decision: 'approve', amount: 400, exposureOverrideNote: 'Refund went out before the receipt came in' })
+      .expect(200);
+    expect(ok.body).toMatchObject({
+      status: 'payable',
+      amount: '400.00',
+      taskExposure: { totalPaidToNitume: '1000.00', committedRefunds: '700.00', committedReimbursements: '400.00', remaining: '0.00' },
+      exposureOverrides: [
+        expect.objectContaining({ source: 'runner_reimbursement', amount: '400.00', normalCap: '300.00', createdByUserId: admin.id }),
+      ],
+    });
+    const refundDetail = await http().get(`/api/v1/refunds/${review.id}`).set(bearer(admin.token)).expect(200);
+    expect(refundDetail.body.taskExposure).toMatchObject({ committedReimbursements: '400.00', remaining: '0.00' });
+    expect(refundDetail.body.exposureOverrides).toHaveLength(1);
+    await expect(db().query('DELETE FROM "task_exposure_overrides" WHERE "errandId" = $1', [errand.id])).rejects.toThrow(/append-only/);
+  });
+
   it('refund corrections cannot be truncated (reviewer follow-up)', async () => {
     await expect(db().query('TRUNCATE "refund_payout_corrections"')).rejects.toThrow(/append-only/);
-    await expect(db().query('TRUNCATE "runner_payout_lines"')).rejects.toThrow(/append-only/);
+    await expect(db().query('TRUNCATE "runner_payout_lines" CASCADE')).rejects.toThrow(/append-only/);
+    await expect(db().query('TRUNCATE "task_exposure_overrides"')).rejects.toThrow(/append-only/);
   });
 });

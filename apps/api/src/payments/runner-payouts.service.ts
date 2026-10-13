@@ -32,6 +32,16 @@ import {
 } from './payout-references';
 import { RefundTrigger } from './refund-review.entity';
 import { RefundsService } from './refunds.service';
+import { TaskExposureOverrideSource } from './task-exposure-override.entity';
+import {
+  TaskExposure,
+  TaskExposureOverrideView,
+  assertWithinExposure,
+  committedReimbursements,
+  exposureOf,
+  lockTaskExposure,
+  overridesFor,
+} from './task-exposure';
 import {
   OBLIGATION_LINE_TYPES,
   RunnerPayoutLine,
@@ -568,6 +578,10 @@ export type AdminRunnerPayoutDetail = AdminRunnerPayoutItem & {
   corrections: RunnerPayoutCorrectionView[];
   /** Paid lines: highest `newAmount` a correction or re-sent payout may carry (the line amount). */
   correctionCeiling: string | null;
+  /** Row 136: the task's combined refunds + runner item reimbursement position. */
+  taskExposure: TaskExposure;
+  /** Row 136: admin overrides of the combined cap on this task, oldest first. */
+  exposureOverrides: TaskExposureOverrideView[];
 };
 
 export interface ListRunnerPayoutsOptions {
@@ -590,6 +604,8 @@ export interface ReviewInput {
   decision: 'approve' | 'reject';
   amount?: number;
   note?: string;
+  /** Row 136: admin override of the task's combined cap, with the reason (10-500). */
+  exposureOverrideNote?: string;
 }
 
 export interface RunnerPayoutCorrectionInput {
@@ -757,6 +773,9 @@ export class RunnerPayoutsService implements OnModuleInit {
     }
     const note = input.note?.trim() || null;
     const id = await this.lines.manager.transaction(async (manager) => {
+      // Row 136: serialised with refund decisions on the task. A claim is
+      // only recorded on hold; the combined cap is enforced when ops approve.
+      await lockTaskExposure(manager, errand.id);
       const itemPaid = await this.itemPaidToNitume(errand.id, manager);
       // Row 105 cap (item amount paid to Nitume) and row 108 limit
       // (the runner's max_purchase_advance) both apply.
@@ -977,6 +996,12 @@ export class RunnerPayoutsService implements OnModuleInit {
     ]);
     const itemPaid =
       line.kind === T.ITEM_REIMBURSEMENT ? await this.itemPaidToNitume(line.errandId) : null;
+    const [totalPaid, refunded, reimbursed, overrides] = await Promise.all([
+      this.refunds.totalPaidToNitume(line.errandId),
+      this.refunds.committedRefundTotal(line.errandId),
+      committedReimbursements(this.lines.manager, line.errandId),
+      overridesFor(this.lines.manager, line.errandId),
+    ]);
     const displayName = user?.displayName ?? null;
     return Object.assign(item, {
       runner: profile
@@ -996,6 +1021,8 @@ export class RunnerPayoutsService implements OnModuleInit {
           : null,
       corrections: own.map((a) => toCorrectionView(a, names)),
       correctionCeiling: line.status === S.PAID ? money(line.amount) : null,
+      taskExposure: exposureOf(totalPaid, refunded, reimbursed),
+      exposureOverrides: overrides,
     });
   }
 
@@ -1007,7 +1034,10 @@ export class RunnerPayoutsService implements OnModuleInit {
    */
   async review(id: string, input: ReviewInput, adminUserId: string): Promise<AdminRunnerPayoutDetail> {
     const note = input.note?.trim() || null;
+    const target = await this.obligation(id);
     await this.lines.manager.transaction(async (manager) => {
+      // Row 136: one task-level lock for refunds and runner reimbursements.
+      await lockTaskExposure(manager, target.errandId);
       const repo = manager.getRepository(RunnerPayoutLine);
       const line = await this.lockObligation(manager, id);
       if (line.kind !== T.ITEM_REIMBURSEMENT || line.status !== S.ON_HOLD) {
@@ -1050,6 +1080,20 @@ export class RunnerPayoutsService implements OnModuleInit {
           },
         );
       }
+      const [totalPaid, refunded, reimbursed] = await Promise.all([
+        this.refunds.totalPaidToNitume(line.errandId, manager),
+        this.refunds.committedRefundTotal(line.errandId, manager),
+        committedReimbursements(manager, line.errandId, line.id),
+      ]);
+      await assertWithinExposure(manager, {
+        errandId: line.errandId,
+        amount,
+        exposure: exposureOf(totalPaid, refunded, reimbursed),
+        overrideNote: input.exposureOverrideNote,
+        adminUserId,
+        source: TaskExposureOverrideSource.RUNNER_REIMBURSEMENT,
+        runnerPayoutLineId: line.id,
+      });
       await repo.update(line.id, {
         status: S.PAYABLE,
         amount: money(amount),
