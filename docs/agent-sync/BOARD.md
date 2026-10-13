@@ -40,6 +40,26 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | admin/drawer-task-merchant-details | merged | — | main | none | merged into main 2026-10-11 (round 4: 1df4daf) |
 | admin/drawer-task-requote | merged | — | main | none | merged into main 2026-10-11 (round 4: 1df4daf) |
 | admin/drawer-dispute-outcome | merged | — | main | none | merged into main 2026-10-11 (round 4: 1df4daf) |
+| runner/shell | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-auth-phone | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-auth-otp | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/x-name-capture | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-onboard-id | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-onboard-selfie | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-onboard-pending | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/x-location-disclosure | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-jobs | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-job-detail | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-active | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-evidence-capture | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-price-request | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-job-summary | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-earnings | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-payout | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/x-payout-history | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-notifications | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-profile | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
+| runner/v-edit-skills | specced | design-auditor | docs/owner-answers-6-runner-specs | app scaffold; see docs/audits/runner-gap-report.md | 5e37c96 |
 
 All 17 existing customer specs + shell updated with owner answers on docs/customer-spec-answers (stages unchanged). x-recurring-tasks dropped (out of MVP).
 
@@ -111,7 +131,10 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | design-auditor | web-parity | (row 96) live-map.panel.ts:148-151 formats time without the Africa/Nairobi zone | done: 311c989 |
 | reviewer | api-contract | (minor follow-ups) lock sibling reviews in addCorrection (cap race); advisory lock on payout reference (reuse race, no unique index); BEFORE TRUNCATE trigger on refund_payout_corrections | open |
 | reviewer | web-parity | Make the TODO(owner-answers-5) fields required now that the round-5 API is on main | built: 817d5fc (round 6) |
-| orchestrator | design-auditor | Round 6: rows 104–111 into System Design §2.2/§6 + admin specs; runner app Mode A specs for all 16 views (docs/specs/runner/), SCREEN_MAP runner rows, runner gap report | in progress (docs/owner-answers-6-runner-specs) |
+| orchestrator | design-auditor | Round 6: rows 104–111 into System Design §2.2/§6 + admin specs; runner app Mode A specs for all 16 views (docs/specs/runner/), SCREEN_MAP runner rows, runner gap report | done: dcb982f (rows 104–111), 5e37c96 (runner specs) on docs/owner-answers-6-runner-specs |
+| design-auditor | flutter-runner | Scaffold apps/runner_app mirroring apps/customer_app (nitume_core by path, --dart-define-from-file=.env + .env.example, AppScope, own app ids, README, smoke test) per docs/specs/runner/_shared.md §12 | open |
+| design-auditor | core-ui | Runner widgets R-01 runnerStatusPresentation, R-02 AvailabilityCard, R-04 JobOfferCard, R-05 InfoRow, R-06 NavigationChip, R-07 ChecklistStepCard, R-08 BalanceCard, R-09 ActionRowCard, R-10 StatTile/StatRow3, R-11 WeeklyBarChart, R-12 LedgerLineRow, R-13 CaptureDropZone, R-14 NitumeTag, R-15 CaptureThumbnail, R-16 JobRouteMap, R-18 EAT/distance/duration formatters, R-19 runner data layer, R-20 LocationPinger, R-21 OfflineActionQueue, R-22 EvidenceUploader; change R-17 NitumeWordmark(suffix), C-24 MenuRow subtitle, C-31 self-position marker. R-20/R-22 wait for row 124 (packages) | open |
+| design-auditor | api-contract | Runner API gaps RA-1..RA-20 (docs/audits/runner-gap-report.md): offers accept/decline (row 113), runner job projection without feeTotal (RA-2), purchase-limit rules, location:ping + geofence, runner:{id} room + events, notification kinds, restricted verification uploads, verification gate, role_mismatch, skills/areas, evidence upload size + guards, post-end receipt upload, earnings/payout lines (RA-14, align with round 6), payout requests (row 117), per-errand lines, idempotent transitions, GET /runners/me, busy/offline | open |
 | orchestrator | api-contract | Round 6: runner payout ledger (107) with runner fee / item reimbursement / correction / reversal / re-sent lines; reimbursement rules 104–106; max_purchase_advance + decline (108); verify 109–111; reviewer follow-ups (sibling lock, payout-reference lock, TRUNCATE trigger) | in progress (feat/api-owner-answers-6) |
 | orchestrator | web-parity | Make TODO(owner-answers-5) fields required | built: 817d5fc on fix/angular-admin-owner-answers-6 (182 tests); awaiting re-audit of gap-report item 4 |
 | web-parity | design-auditor | Admin specs for the runner payout ledger and reimbursement ops review (rows 105–107) once the ledger API lands; no mockup view exists | blocked on row 112 |
@@ -232,6 +255,27 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 110 | design-auditor (round 5 specs) | AQ-10: Can a correction record an amount above the refund ceiling? Default: refused | answered (owner, 2026-10-13): Approve the default. A correction must not record an amount above the applicable refund ceiling. |
 | 111 | api-contract (round 5) | Cumulative refund cap after a reversal: a reversed, not-yet-re-sent payout counts as committed at the decided refund amount (owed again). Confirm or change | answered (owner, 2026-10-13): Confirm the proposed behavior. A reversed, not-yet-re-sent payout remains committed at the decided refund amount until the obligation is resolved/re-sent, and therefore continues to count against the cumulative refund cap. |
 | 112 | web-parity (round 6) | Admin screens for the runner payout ledger (row 107) and the reimbursement ops review (rows 105, 106) are not in the admin mockup. Are they in scope? Recommended: yes, specced by design-auditor from the ledger API, then built by web-parity | open |
+| 113 | design-auditor (runner specs) | RQ-1 (state machine/matching, blocks jobs): offer → accept/decline inside RUNNER_ASSIGNED, EXPIRED when nobody accepts (recommended) vs direct assignment. 1b: accepting above the purchase limit refused, declines not penalised (recommended) | open |
+| 114 | design-auditor (runner specs) | RQ-2: offer acceptance window. Recommended 10 min for admin offers, configurable (§3.4 says 90 s for auto-offers) | open |
+| 115 | design-auditor (runner specs) | RQ-3 (schema, blocks v-edit-skills): runner skills = the six category values with a migration (recommended) vs the current RunnerSkill enum | open |
+| 116 | design-auditor (runner specs) | RQ-4: service-area options. Recommended: an ops-configured list | open |
+| 117 | design-auditor (runner specs) | RQ-5 (payments, blocks v-payout): runner-requested payouts up to the available amount, configurable minimum, one open request, ops pay manually, needs a payout-request record (recommended) vs batch only | open |
+| 118 | design-auditor (runner specs) | RQ-6 (security): payout destination fixed to the sign-in phone. Recommended yes | open |
+| 119 | design-auditor (runner specs) | RQ-7: one "Runner fee" line until pricing rates exist. Recommended yes | open |
+| 120 | design-auditor (runner specs) | RQ-8: generic evidence checklist, no estimated duration. Recommended yes | open |
+| 121 | design-auditor (runner specs) | RQ-9: photos only for runners, no video. Recommended yes | open |
+| 122 | design-auditor (runner specs) | RQ-10: 12-hour EAT in the runner app. Recommended yes | open |
+| 123 | design-auditor (runner specs) | RQ-11 (privacy): location pings every 30 s while online, every 4–8 s during a job, none offline. Recommended yes | open |
+| 124 | design-auditor (runner specs) | RQ-12 (third-party): packages geolocator, image_picker, permission_handler and a local queue store. Recommended approve | open |
+| 125 | design-auditor (runner specs) | RQ-13 (security/third-party): ID and selfie images in restricted storage (separate private folder/bucket, signed admin-only URLs, access logged). Recommended yes | open |
+| 126 | design-auditor (runner specs) | RQ-14 (security): manual review of ID + selfie + M-Pesa name; verified = all four approved. Recommended yes | open |
+| 127 | design-auditor (runner specs) | RQ-15: one phone = one role; the runner app refuses customer numbers. Recommended yes | open |
+| 128 | design-auditor (runner specs) | RQ-16 (privacy): no direct runner-to-customer contact; Support relays. Recommended yes | open |
+| 129 | design-auditor (runner specs) | RQ-17 (payments, row 106): receipt upload allowed up to 24 h after CANCELLED/FAILED. Recommended yes | open |
+| 130 | design-auditor (runner specs) | RQ-18 (payments, row 105): no receipt-total field; ops compare the image. Recommended yes | open |
+| 131 | design-auditor (runner specs) | RQ-19 (minor): Terms & Privacy links on runner sign-in and profile. Recommended yes | open |
+| 132 | design-auditor (runner specs) | RQ-20 (state machine): no FAILED from ARRIVED/IN_PROGRESS; Support handles it (recommended) vs adding transitions | open |
+| 133 | design-auditor (runner specs) | RQ-21 (minor copy): keep "Recent payouts". Recommended yes | open |
 
 ## Session log
 
@@ -306,3 +350,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-12 | Round 5 merged into main: docs/owner-answers-5 (b7a606c), docs/customer-reaudit-5 (1b686e7), feat/api-owner-answers-5 (8e26376), fix/angular-admin-owner-answers-5 (6c186b1), feat/customer-owner-answers-5 (6194396); no conflicts. migration:run on local `nitume`: 2 applied, none pending. main: API tsc clean, 380 unit, lint 1 old warning; core 225; app 115; admin build + 182 | b7a606c … 6194396 |
 | 2026-10-13 | Owner answered rows 104–111 (runner reimbursement = CONFIRMED; receipt issues → ops review, capped; reimburse verified item spend on CANCELLED/FAILED, no runner fee; runner payout ledger approved; max_purchase_advance limit + decline; corrections: only re-sent payout notifies, ceiling enforced; reversal stays committed). Answers normalised. Round 6 started: answers + runner app specs | — |
 | 2026-10-13 | web-parity: round-5 refund payout fields now required, fallbacks removed; ng build clean, 182 tests. New owner question row 112 (admin runner-ledger screens) | 817d5fc |
+| 2026-10-13 | design-auditor: rows 104–111 recorded in System Design §2.2/§6 + admin/customer specs (109–111 already built). Runner app specced: 16 views + shell + x-name-capture, x-payout-history, x-location-disclosure; gap report FAIL (app not built); RA-1..RA-20; owner questions RQ-1..RQ-21 = rows 113–133 | dcb982f, 5e37c96 |
