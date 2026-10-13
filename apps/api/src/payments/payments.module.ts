@@ -17,6 +17,7 @@ import { RefundReview } from './refund-review.entity';
 import { RefundsController } from './refunds.controller';
 import { RefundsService } from './refunds.service';
 import { RunnerPayoutLine } from './runner-payout-line.entity';
+import { TaskExposureOverride } from './task-exposure-override.entity';
 import { RunnerPayoutsService } from './runner-payouts.service';
 import { RunnerPayoutsController } from './runner-payouts.controller';
 import { RunnerEarningsController } from './runner-earnings.controller';
@@ -42,6 +43,7 @@ import { mpesaProviderFactory } from './providers/mpesa-provider.factory';
       RefundReview,
       RefundPayoutCorrection,
       RunnerPayoutLine,
+      TaskExposureOverride,
     ]),
   ],
   controllers: [

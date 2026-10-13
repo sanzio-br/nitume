@@ -21,6 +21,7 @@ import { Payment } from '../payments/payment.entity';
 import { RefundPayoutCorrection } from '../payments/refund-payout-correction.entity';
 import { RefundReview } from '../payments/refund-review.entity';
 import { RunnerPayoutLine } from '../payments/runner-payout-line.entity';
+import { TaskExposureOverride } from '../payments/task-exposure-override.entity';
 import { Rating } from '../ratings/rating.entity';
 import { RunnerLocation } from '../runners/runner-location.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
@@ -55,6 +56,7 @@ export const ENTITY_LIST = [
   RefundReview,
   RefundPayoutCorrection,
   RunnerPayoutLine,
+  TaskExposureOverride,
   Evidence,
   Dispute,
   DisputeEvent,
