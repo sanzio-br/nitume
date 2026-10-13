@@ -296,6 +296,15 @@ describe('Owner answers 6 (e2e)', () => {
       db().query(`UPDATE "runner_payout_lines" SET "payoutReference" = 'X1' WHERE id = $1`, [fee.id]),
     ).rejects.toThrow(/final/);
     await expect(db().query('DELETE FROM "runner_payout_lines" WHERE id = $1', [fee.id])).rejects.toThrow(/append-only/);
+    // An adjustment must belong to its obligation's runner and errand.
+    const stranger = await makeUser(UserRole.RUNNER);
+    await expect(
+      db().query(
+        `INSERT INTO "runner_payout_lines" ("runnerProfileId", "errandId", kind, status, "relatedLineId", note)
+         VALUES ($1, $2, 'reversal', 'recorded', $3, 'not mine')`,
+        [stranger.profileId, errand.id, fee.id],
+      ),
+    ).rejects.toThrow(/must match the runner and errand/);
 
     // The settle job still moves CONFIRMED -> SETTLED.
     await app.get(PaymentsService).settleErrand(errand.id);
