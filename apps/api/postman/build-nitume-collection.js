@@ -90,6 +90,8 @@ const collection = {
     { key: 'runner_id', value: '', type: 'string' },
     { key: 'verification_id', value: '', type: 'string' },
     { key: 'price_change_request_id', value: '', type: 'string' },
+    { key: 'payout_line_id', value: '', type: 'string' },
+    { key: 'receipt_evidence_id', value: '', type: 'string' },
   ],
   item: [
     folder('0_Health', [
@@ -201,6 +203,22 @@ const collection = {
       post('Retry FAILED price-difference STK', '/payments/{{errand_id}}/price-changes/{{price_change_request_id}}/initiate', '{}', 'customer'),
       req('Evidence (15-minute signed URLs)', 'GET', '/errands/{{errand_id}}/evidence', 'customer'),
       req('Tracking (current assignment only for runners)', 'GET', '/errands/{{errand_id}}/tracking', 'runner'),
+    ]),
+    folder('10_Runner_Payout_Ledger_2026_10_13', [
+      req('Runner earnings (available / pending / on hold / paid, EAT week)', 'GET', '/runners/me/earnings?groupBy=day', 'runner'),
+      req('Runner payout feed (signed lines, derived payouts)', 'GET', '/runners/me/payout-lines?limit=25', 'runner'),
+      req('Runner payout feed for one task (RA-16)', 'GET', '/runners/me/payout-lines?errandId={{errand_id}}', 'runner'),
+      post('Runner item claim after CANCELLED/FAILED (row 106)', '/runners/me/reimbursement-claims', '{\n  "errandId": "{{errand_id}}",\n  "amount": 400,\n  "receiptEvidenceId": "{{receipt_evidence_id}}",\n  "note": "Bought before the cancel"\n}', 'runner'),
+      req('Purchase check vs max_purchase_advance (row 108)', 'GET', '/errands/{{errand_id}}/purchase-check', 'runner'),
+      post('Decline over purchase limit (row 108)', '/errands/{{errand_id}}/assignment/decline', '{\n  "reason": "over_purchase_limit"\n}', 'runner'),
+      req('Admin ledger list (status=on_hold|payable|paid|rejected)', 'GET', '/runner-payouts?status=on_hold', 'admin'),
+      req('Admin ledger count', 'GET', '/runner-payouts/count?status=on_hold', 'admin'),
+      req('Admin runner summary', 'GET', '/runner-payouts/summary?runnerProfileId={{runner_id}}', 'admin'),
+      req('Admin line detail', 'GET', '/runner-payouts/{{payout_line_id}}', 'admin'),
+      post('Admin review item line (approve, capped)', '/runner-payouts/{{payout_line_id}}/review', '{\n  "decision": "approve",\n  "amount": 450,\n  "note": "Receipt checked"\n}', 'admin'),
+      post('Admin hold item line (receipt mismatch)', '/runner-payouts/{{payout_line_id}}/hold', '{\n  "note": "Receipt total does not match"\n}', 'admin'),
+      post('Admin mark paid (one M-Pesa payout, one runner)', '/runner-payouts/mark-paid', '{\n  "lineIds": ["{{payout_line_id}}"],\n  "payoutReference": "SLK4H7XQ2P"\n}', 'admin'),
+      post('Admin correction / reversal / resent_payout', '/runner-payouts/{{payout_line_id}}/corrections', '{\n  "kind": "reversal",\n  "newReference": "RVS1234567",\n  "reason": "Sent to the wrong number",\n  "expectedLatestCorrectionId": null\n}', 'admin'),
     ]),
   ],
 };
