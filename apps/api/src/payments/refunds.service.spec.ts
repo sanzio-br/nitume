@@ -333,7 +333,8 @@ describe('RefundsService', () => {
 
   it('mark-paid locks the review and the receipt, and refuses a reused receipt', async () => {
     const ok = build({ row: review({ status: RefundStatus.APPROVED, refundAmount: '200.00' }) });
-    await ok.service.markPaid('r-1', 'qjk12ab34c', 'admin-1');
+    const out = await ok.service.markPaid('r-1', ' qjk12ab34c ', 'admin-1');
+    expect(out.payoutReference).toBe('QJK12AB34C');
     expect(ok.reviews.findOne).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'r-1' }, lock: { mode: 'pessimistic_write' } }),
     );

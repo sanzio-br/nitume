@@ -773,7 +773,8 @@ export class RefundsService implements OnModuleInit {
       }
       await this.assertReferenceFree(manager, payoutReference);
       row.status = RefundStatus.REFUNDED;
-      row.payoutReference = payoutReference;
+      // Stored upper-case, like corrections and runner payout lines.
+      row.payoutReference = normalizeReference(payoutReference);
       row.paidByUserId = adminUserId;
       row.paidAt = new Date();
       return repo.save(row);
