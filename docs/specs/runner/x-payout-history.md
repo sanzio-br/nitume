@@ -42,4 +42,4 @@ C-10, C-16, C-08, R-12, R-05, C-33. NEW: R-12, R-05 (shared with other screens).
 Rows read as one sentence (`Payout to M-Pesa, minus 6,000 shillings, sent Monday 10:03 AM`); filter chips are a radio group.
 
 ## Questions
-- None new (RQ-5 / row 117 covers payout requests). The old `GET /runners/me/payouts` is not built (removed on `feat/api-owner-answers-6`); the derived `payout` entries in the feed replace it for history.
+- None new. Payout requests (row 117) appear in the `Payouts` filter as `Payout requested` rows while open and `Request not approved` (C-05 neutral, with the ops note) when rejected, from `GET /runners/me/payout-requests` (RA-15), merged by time; a paid request is shown by its derived `payout` entry only (no duplicate). The old `GET /runners/me/payouts` is not built (removed on `feat/api-owner-answers-6`); the derived `payout` entries in the feed replace it for history.

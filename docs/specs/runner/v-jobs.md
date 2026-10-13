@@ -12,12 +12,12 @@ Home tab. The runner switches availability on or off and sees the job offers add
 - Entry: default tab after sign-in; tab bar `Jobs`; `Back to jobs` on `v-job-summary`; `Back to app` on `v-onboard-pending`.
 - Bell → `v-notifications`.
 - Offer card tap → `v-job-detail` for that offer.
-- `Accept` → accept (RA-1) → on success select the **Active** tab for that job (mockup `showView('v-active')`); on failure stay with an error notice.
+- `Accept` → accept (RA-1; moves the task RUNNER_ASSIGNED → RUNNER_EN_ROUTE, row 113) → on success select the **Active** tab for that job (mockup `showView('v-active')`); on failure stay with an error notice. Before the first accept the app shows `x-location-disclosure` if location permission was never granted (pings start on accept).
 - `Decline` → C-35 confirm (below) → decline (RA-1) → card removed.
 - Verification card (not verified) → `v-onboard-pending`.
 
 ## Task states
-Offers: errands at PAYMENT_CONFIRMED or RUNNER_ASSIGNED with an assignment `offered` to this runner (RQ-1). Accepted jobs leave this list and appear on `v-active`.
+Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it lapses the task moves to EXPIRED and the card disappears. Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
 
 ## Layout (top to bottom)
 1. C-09 top bar: title `Nearby jobs` (21/700) + C-11 bell (36, white, slate-line; red 7px unread dot from `GET /notifications/unread-count`).
@@ -42,7 +42,7 @@ States:
 | Tag | category display name (R-14) | `Check It For Me` (mockup `Inspection`) |
 | Pay | runner fee (RA-2), `formatKes` | `KSh 1,750` |
 | Title | `title` or category name | `Check apartment — Nyali` |
-| Meta (Fira Code, ` · ` separated, only parts that exist) | distance from the device to the first task point (R-18); estimated duration (RQ-8, hidden until the API has it); purchase terms (§8); evidence requirement (proposed `Photos required`; never `video`, row 32 / RQ-9); `Signature on delivery` only if the API carries such a requirement (it does not today; dropped) | `1.2 km away · Photos required` · `2.8 km away · Item KSh 5,000 · Customer pays the merchant` |
+| Meta (Fira Code, ` · ` separated, only parts that exist) | distance from the device to the first task point (R-18); no estimated duration (row 120); purchase terms (§8); evidence requirement (proposed `Photos required`; never `video`, row 32 / RQ-9); `Signature on delivery` only if the API carries such a requirement (it does not today; dropped) | `1.2 km away · Photos required` · `2.8 km away · Item KSh 5,000 · Customer pays the merchant` |
 | Over-limit notice (row 108) | `send_to_runner` item amount > `maxPurchaseAdvance` | `Above your purchase limit of KSh 3,000. You can decline this job.` |
 
 ## Components
@@ -61,9 +61,9 @@ Exact, from the mockup: `Nearby jobs`, `Online`, `3 offers near you` (pattern `{
 
 Proposed:
 - `Offline`; switch semantics `Available for jobs`.
-- Decline dialog: title `Decline this job?`; body `It will be offered to another runner.`; when over the limit, body `This job needs a purchase above your limit. It will be offered to another runner.`; buttons per the core confirm convention (`showNitumeConfirmDialog`): `Decline` (outline, confirm, not destructive-red) then `Keep offer` (primary). Reason picker (proposed, RQ-1 b): radio rows `Too far`, `Not available now`, `Above my purchase limit` (preselected and only option shown when over the limit), `Other`.
+- Decline dialog: title `Decline this job?`; body `We'll offer it to another runner.`; when over the limit, body `This job needs a purchase above your limit. We'll offer it to another runner. This won't count against you.` (row 113: over-limit declines are not penalised); buttons per the core confirm convention (`showNitumeConfirmDialog`): `Decline` (outline, confirm, not destructive-red) then `Keep offer` (primary). No reason picker: the only stored reason is `over_purchase_limit` (row 134), sent automatically when the offer is over the limit; other declines send no reason.
 - Going offline with an active job: blocked, snackbar `Finish your active job before going offline.`
-- Accept error `purchase_limit_exceeded`: snackbar `This job is above your purchase limit.`
+- Accept errors: `purchase_limit_exceeded` → snackbar `This job is above your purchase limit.`; offer expired or withdrawn (`offer_expired`, 409/404) → `That offer is no longer available.` and the card is removed; `runner_busy` → `Finish your active job first.`; not verified/offline → the matching state above. (Codes are the RA-1 proposal; api-contract confirms them.)
 
 ## Numeric fields (Fira Code)
 - Offer count in the section label; pay; every meta line (distance, item amount, limit); the areas line in the availability card (proposed, as drawn: `.avail-row span` is Fira Code); unread badge count if shown.
@@ -73,10 +73,10 @@ Proposed:
 - `PATCH /runners/me/availability` `{ availability: 'online' | 'offline' }` (exists; no verification gate, RA-8; `busy` is server-set, proposed).
 - Offers: **missing** (RA-1) `GET /runners/me/offers` → `[{ assignmentId, errandId, expiresAt, category, title, runnerFee, itemAmount, merchantRoute, overPurchaseLimit, firstPoint { lat, lng, addressText } }]`; `POST /errands/:id/accept` (named in system design §3.2, not built) and `POST /errands/:id/decline` `{ reason }`.
 - Socket: room `runner:{runnerId}` with `job:offered`, `job:offer_withdrawn` (RA-5, missing). Polling fallback 20 s.
-- Location: while online, RQ-11 decides idle pings (R-20); the distance on cards uses the device position locally (no API).
+- Location: while online without a job, one ping every 30 s (row 123, R-20); offline, none. The distance on cards uses the device position locally (no API).
 - Notifications unread count: `GET /notifications/unread-count` (exists, any role).
-- Task states shown: PAYMENT_CONFIRMED / RUNNER_ASSIGNED (offered).
-- **Built so far (row 137, `feat/api-owner-answers-6` @ `10b6019`)**: no offers, no accept, no general decline. The admin assigns (PAYMENT_CONFIRMED → RUNNER_ASSIGNED) and the job appears on `v-active`. Row 108 is served by `GET /errands/:id/purchase-check` and `POST /errands/:id/assignment/decline` `{ reason: 'over_purchase_limit' }` on the assigned job (spec: `v-active` §6a), only before RUNNER_EN_ROUTE; the task stays RUNNER_ASSIGNED and an admin reassigns it. `purchase-check` is runner-readable only for the current assignment, so an offer card cannot use it: when offers exist (RA-1) they must carry `overPurchaseLimit` (or the runner's `maxPurchaseAdvance` from `GET /runners/me` is compared with the offer's item amount on the client). Until RQ-1 (row 113) is answered the builder ships `v-jobs` with the availability card, the verification card, the empty states and the `You have an active job` card only (no offer cards).
+- Task states shown: RUNNER_ASSIGNED (offered).
+- **Built vs needed** (rows 113, 137): `feat/api-owner-answers-6` has only `GET /errands/:id/purchase-check` and the over-limit decline on an *assigned* job. Row 137 replaces that with the offer model: api-contract builds `GET /runners/me/offers` (each offer: `assignmentId, errandId, expiresAt, category, title, runnerFee, itemAmount, merchantRoute, overPurchaseLimit, maxPurchaseAdvance, firstPoint`), accept (`POST /errands/:id/accept`, → RUNNER_EN_ROUTE, refuses over the limit), decline (`POST /errands/:id/decline` `{ reason?: 'over_purchase_limit' }`, task stays RUNNER_ASSIGNED), expiry → EXPIRED (RA-1, RA-3).
 
 ## Accessibility and mobile
 - Card reads as one item (`Check It For Me, Check apartment — Nyali, 1,750 shillings, 1.2 km away`) with two actions exposed.
@@ -84,7 +84,12 @@ Proposed:
 - New offers are announced politely (`New job offer`), not by stealing focus.
 - Pull-to-refresh.
 
+## Decisions (owner, 2026-10-13)
+- Row 113 (RQ-1): offers inside RUNNER_ASSIGNED; accept → RUNNER_EN_ROUTE; decline → stays RUNNER_ASSIGNED and is reassigned; lapse → EXPIRED; accept above the limit refused; over-limit decline not penalised.
+- Row 114 (RQ-2): admin offers 10 min, auto-offers 90 s (configurable).
+- Row 116 (RQ-4): service areas from an ops-configured list.
+- Row 120 (RQ-8): no estimated duration on cards; generic evidence line `Photos required`.
+- Row 123 (RQ-11): 30 s pings while online without a job; none offline.
+
 ## Questions
-- RQ-1 (state machine / matching, blocking for this screen): how offers work (default in the gap report).
-- RQ-8: estimated duration and per-task evidence requirements (default: not shown until the API has them).
-- RQ-11: location pings while online without a job.
+- RQ-22 (state machine, rows 113/114): when one offer lapses, does the task go straight to EXPIRED (literal reading, specced), or may ops re-offer first and EXPIRED only follows an overall deadline? The runner screens are the same either way.

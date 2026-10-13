@@ -63,5 +63,8 @@ Never shown: the reviewer's internal note (unless RA-7 adds a runner-safe reason
 ## Accessibility and mobile
 Rows read as `National ID, verified`; chips are not colour-only (text label). CTA above the safe area; pull-to-refresh.
 
+## Decisions (owner, 2026-10-13)
+- Row 126 (RQ-14): verified only when every required check (phone, ID, selfie, M-Pesa name) is approved; ops do the M-Pesa name match manually.
+
 ## Questions
-- RQ-14: what "verified" requires (default: all four approved), and who performs the M-Pesa identity match (default: ops, manually).
+- None new.

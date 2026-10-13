@@ -14,7 +14,7 @@ Take photos (and receipt photos) for the job. Each photo uploads immediately, ti
 - `Save to task` → back to `v-active` (mockup `pop()`); enabled when every capture is uploaded or queued.
 
 ## Task states
-ARRIVED and IN_PROGRESS (photos and receipts); receipts also in AWAITING_CUSTOMER (proposed) and, per RQ-17, within the window after CANCELLED/FAILED. Other states: the entry is hidden.
+ARRIVED and IN_PROGRESS (photos and receipts); receipts also in AWAITING_CUSTOMER (proposed) and for 24 hours after CANCELLED/FAILED (row 129; receipt type only, entry from the ended-job card on `v-active`). Other states: the entry is hidden.
 
 ## Layout (top to bottom)
 1. C-10 header `Capture evidence` (`Upload receipt` when the preset type is receipt, proposed).
@@ -51,7 +51,9 @@ Proposed: `Photo`, `Receipt`, `Upload receipt`; receipt hint `Make sure the tota
 - Uploads continue in the background (foreground service while the job is live).
 - Bottom CTA above the safe area.
 
+## Decisions (owner, 2026-10-13)
+- Row 121 (RQ-9): photos only, no video. Row 124 (RQ-12): `image_picker`, `permission_handler` approved.
+- Row 129 (RQ-17): receipt uploads up to 24 h after CANCELLED/FAILED. Row 130 (RQ-18): no receipt-total field; ops read the image.
+
 ## Questions
-- RQ-9: video evidence for runners (default: none in MVP).
-- RQ-18 (payments, row 105): should the runner type the receipt total? Default: no; ops read the photo.
-- RQ-12: camera package approval.
+- None new.

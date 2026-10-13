@@ -9,12 +9,12 @@
 Explain, before the OS prompt, why Nitume needs the runner's location (including in the background during a job), when it is collected and when it stops; then request the permission.
 
 ## Entry / exit
-- Entry: the first time the runner goes online (`v-jobs` switch) or taps `Start trip` without location permission; Profile has no entry (the OS settings own it afterwards).
+- Entry: the first time the runner goes online (`v-jobs` switch) or accepts an offer without location permission; Profile has no entry (the OS settings own it afterwards).
 - `Continue` → OS when-in-use prompt, then (Android 10+/iOS) the background ("Allow all the time") step only when a job starts. Back to the screen that asked.
-- `Not now` → back; going online / `Start trip` stays blocked with C-40 `Turn on location to receive and do jobs.` + `Open Settings` when permanently denied.
+- `Not now` → back; going online / accepting stays blocked with C-40 `Turn on location to receive and do jobs.` + `Open Settings` when permanently denied.
 
 ## Task states
-Before RUNNER_ASSIGNED → RUNNER_EN_ROUTE, or before going online.
+Before an accept (RUNNER_ASSIGNED → RUNNER_EN_ROUTE), or before going online.
 
 ## Layout
 Full-screen pushed (C-10 back), `.auth-wrap`-style centred column, padding 0 28:
@@ -28,17 +28,20 @@ Full-screen pushed (C-10 back), `.auth-wrap`-style centred column, padding 0 28:
 - Body 2: `During a job we keep sharing it even when the app is closed, until you finish the task or go offline.`
 - Body 3: `We never share your location when you're offline, and customers only see it while you're working on their task.`
 - Buttons: `Continue`, `Not now`.
-- Body 2 must match RQ-11's answer (if the owner decides no pings while merely online, the first sentence drops `to show you nearby jobs` and only the during-job wording stays).
+- Body 1 and 2 match row 123: while online without a job the app shares location every 30 seconds (nearby jobs); during a job every few seconds; offline never.
 
 ## Numeric fields (Fira Code)
 None.
 
 ## Data
-None (OS permission). Package: `geolocator` (named in system design §7.2) + permission handling (RQ-12).
+None (OS permission). Packages: `geolocator` + `permission_handler` (row 124).
 
 ## Accessibility and mobile
 Heading announced; buttons 48 dp; Android 14 foreground-service type `location` with a persistent notification during a job (`Nitume is sharing your location for your current job.`, proposed).
 
+## Decisions (owner, 2026-10-13)
+- Row 123 (RQ-11): 30 s online, 4–8 s on a job, nothing offline (collection stops).
+- Row 124 (RQ-12): packages approved.
+
 ## Questions
-- RQ-11 (privacy/security): when location is collected (default: while online and during jobs; stopped when offline).
-- RQ-12: packages.
+- None new.

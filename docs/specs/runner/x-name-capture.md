@@ -38,4 +38,4 @@ None.
 `TextCapitalization.words`, `AutofillHints.name`; keyboard action submits; safe areas.
 
 ## Questions
-- None new. Whether ops must match `displayName` to the ID name is part of RQ-14 (verification process).
+- None new. Row 126 (RQ-14): ops review the name with the ID and M-Pesa checks.

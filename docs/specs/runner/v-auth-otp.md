@@ -12,7 +12,7 @@ Verify the 6-digit SMS code, create the runner account on first sign-in (`role: 
 - Entry: `v-auth-phone` success (or cooldown).
 - Back (C-10 back only, no title) → `v-auth-phone`.
 - Success routing (in order):
-  1. `user.role != runner` → stay, show the wrong-account error (RQ-15), clear tokens.
+  1. `user.role != runner` → stay, show the wrong-account error (row 127), clear tokens.
   2. `displayName` empty → `x-name-capture` (replace stack).
   3. Verification not complete (`_shared.md` §9) and no `government_id`/`selfie` submitted → `v-onboard-id` (replace stack); submitted but not approved → shell on `v-jobs` (which shows the verification card) with `v-onboard-pending` pushed. Mockup: `Verify & continue` → `v-onboard-id` always.
   4. Verified → shell on `v-jobs`.
@@ -39,7 +39,7 @@ Exact, from the mockup:
 - Resend: `Didn't get it?` · `Resend code`
 
 Errors and states: as the customer spec (wrong code with attempts left, expired code, too many attempts → request a new code, cooldown, network). Proposed, runner-only:
-- Wrong account type (RQ-15): `This number is registered as a customer account. Use another number, or contact support.` + C-04 `Contact support` (x-support) when `AppConfig.supportUri` is set.
+- Wrong account type (row 127): `This number is registered as a customer account. Use another number, or contact support.` + C-04 `Contact support` (x-support) when `AppConfig.supportUri` is set.
 - Suspended/banned (`account_suspended`): `This account can't sign in. Contact support.`
 
 ## Numeric fields (Fira Code)
@@ -55,5 +55,8 @@ Errors and states: as the customer spec (wrong code with attempts left, expired 
 - One-time-code autofill (`AutofillHints.oneTimeCode`); boxes read as one field `Verification code, 6 digits`.
 - Errors announced; safe areas; button above the keyboard.
 
+## Decisions (owner, 2026-10-13)
+- Row 127 (RQ-15): one phone, one role; the runner app rejects customer-role numbers (built client-side; RA-9 adds the API refusal).
+
 ## Questions
-- RQ-15 (identity/security): one phone = one role in the API. May a customer also be a runner with the same number? Default: no for MVP; the runner app refuses customer accounts with the copy above.
+- None new.

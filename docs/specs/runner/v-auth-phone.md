@@ -11,7 +11,7 @@ First screen for a signed-out runner. Collects a Kenyan phone number and request
 ## Entry / exit
 - Entry: app launch with no valid session; `Log out` on `v-profile`; session expiry; suspended account refused on refresh.
 - Exit: `Send code` success → push `v-auth-otp` with the normalised number and cooldown end. No back button (root of the signed-out stack).
-- Legal links (RQ-19, proposed) → `x-legal` (external, runner terms URL).
+- Legal links (row 131) → `x-legal` (external, runner terms URL).
 
 ## Task states
 None (pre-auth).
@@ -23,7 +23,7 @@ Full screen on slate, no tab bar. `.auth-wrap`: flex column, vertically centred,
 3. Sub 13 slate-600, margin-bottom 26.
 4. Phone field C-17 phone variant (white, r-s 8, 2px green focus; mockup: 10px radius), full width, margin-bottom 16; inline red 12.5 error below.
 5. Primary button C-01 full width, pill (mockup: radius 14), margin-bottom 14.
-6. (RQ-19, proposed) legal line 12.5 slate-600 with `Terms` and `Privacy Policy` C-04 link widgets (48 dp hit areas), as the customer app.
+6. (row 131) legal line 12.5 slate-600 with `Terms` and `Privacy Policy` C-04 link widgets (48 dp hit areas), as the customer app.
 
 ## Components
 | Element | Component | Status |
@@ -41,7 +41,7 @@ Exact, from the mockup:
 - Button: `Send code`
 
 Proposed:
-- Legal (RQ-19): `By continuing you agree to Nitume's Runner Terms & Privacy Policy.`
+- Legal (row 131): `By continuing you agree to Nitume's Runner Terms & Privacy Policy.`
 - States: identical to the customer spec (OA-17): loading spinner in the button, field read-only; invalid number `Enter a valid Kenyan number, e.g. +254 712 345 678`; cooldown → go to `v-auth-otp` silently; `Too many code requests. Try again in N min.` / `… Try again later.`; send failure `We couldn't send the code. Try again.`; network/unknown generic errors.
 
 ## Numeric fields (Fira Code)
@@ -56,6 +56,8 @@ Proposed:
 - Field label `Phone number`; error is a live region.
 - `TextInputType.phone`; keyboard action submits; button stays above the keyboard; safe areas.
 
+## Decisions (owner, 2026-10-13)
+- Row 131 (RQ-19): Terms and Privacy on runner sign-in. Row 127 (RQ-15): one phone, one role.
+
 ## Questions
-- RQ-19 (compliance): legal line on the runner sign-up. Default: add it, with a runner terms URL from `AppConfig`.
-- RQ-15 (identity): a phone already registered as a customer. Handled on `v-auth-otp`.
+- None new.

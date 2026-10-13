@@ -6,12 +6,13 @@
 - Status: missing
 
 ## Purpose
-Let the runner ask Nitume to send all or part of their available amount to their M-Pesa number. Whether runners can request payouts at all (vs a fixed batch schedule) is an owner decision (RQ-5); this spec follows the mockup and the system design's "on-demand above a threshold" option (§6), pending that answer.
+Let the runner ask Nitume to send all or part of their available amount to their M-Pesa number. Decided (row 117): runners request payouts up to their available amount, above a configurable minimum, one open request at a time; ops pay manually; each request is an auditable record. Destination fixed to the sign-in phone (row 118).
 
 ## Entry / exit
 - Entry: `v-earnings` `Request payout`.
 - Back (C-10) → `v-earnings`.
-- `Confirm payout` → C-35 confirm → request → back to `v-earnings` with snackbar `Payout requested. We'll send it to your M-Pesa and let you know.` (proposed; mockup `pop()`).
+- `Confirm payout` → C-35 confirm → request → back to `v-earnings` with snackbar `Payout requested. We'll send it to your M-Pesa and let you know.` (mockup `pop()`).
+- With a request already open the screen opens read-only: C-40 `You already have a payout on the way: KSh 6,000, requested Mon, 10:03 AM.` (Fira Code), CTA disabled.
 
 ## Task states
 None (ledger).
@@ -19,8 +20,8 @@ None (ledger).
 ## Layout (top to bottom)
 1. C-10 header `Request payout`.
 2. R-08 balance card without actions (margin-top 0): `Available balance`, amount.
-3. C-08 `Amount` (padding-top 0); C-17 money field (padding 0 20), prefilled with the available amount, Fira Code value. Under it C-04 link `Use full amount` when edited (proposed) and the hint `Minimum KSh {min}.` (only if RQ-5 sets a minimum).
-4. C-08 `Send to`; **read-only** R-05-style field (white, r-s 8, slate-line, padding 11 14): `M-Pesa · +254 733 111 222` (Fira Code for the number) = the runner's sign-in phone (RQ-6). Hint 11.5 slate-600 `Payouts go to the number you sign in with.` (proposed). Mockup draws an editable input; editing the destination is not supported (security, RQ-6).
+3. C-08 `Amount` (padding-top 0); C-17 money field (padding 0 20), prefilled with the available amount, Fira Code value. Under it C-04 link `Use full amount` when edited (proposed) and the hint `Minimum KSh {min}.` (`minimumAmount`).
+4. C-08 `Send to`; **read-only** R-05-style field (white, r-s 8, slate-line, padding 11 14): `M-Pesa · +254 733 111 222` (Fira Code for the number) = the runner's sign-in phone (row 118). Hint 11.5 slate-600 `Payouts go to the number you sign in with.` (proposed). Mockup draws an editable input; editing the destination is not supported (row 118).
 5. Fixed bottom C-01 `Confirm payout`.
 
 ## Validation (proposed)
@@ -28,11 +29,11 @@ None (ledger).
 |---|---|
 | number > 0, max 2 decimals | `Enter an amount in KSh.` |
 | ≤ available amount | `You can request up to KSh {available}.` |
-| ≥ minimum (RQ-5) | `The minimum payout is KSh {min}.` |
-| no open request (RQ-5) | screen shows C-40 `You already have a payout on the way.` and the CTA is disabled |
+| ≥ minimum (row 117) | `The minimum payout is KSh {min}.` |
+| no open request (row 117) | screen shows C-40 `You already have a payout on the way.` and the CTA is disabled |
 
 ## Confirm dialog (C-35, proposed)
-Title `Send KSh 8,450 to your M-Pesa?`; body `To +254 733 111 222. Payouts are usually sent within one working day.` (the time promise only if the owner sets one; default body without it); buttons `Send` / `Back`.
+Title `Send KSh 8,450 to your M-Pesa?`; body `To +254 733 111 222. Payouts are usually sent within one working day.` without the second sentence (no time promise has been set; RQ-24); buttons `Send` / `Back`.
 
 ## Copy
 Exact, from the mockup: `Request payout`, `Available balance`, `Amount`, `Send to`, `M-Pesa · +254 733 111 222`, `Confirm payout`. Everything else proposed.
@@ -41,15 +42,22 @@ Exact, from the mockup: `Request payout`, `Available balance`, `Amount`, `Send t
 - Balance; amount input; phone number; minimum and maximum in messages and the dialog.
 
 ## Data
-- `GET /runners/me/earnings` (RA-14, built on `feat/api-owner-answers-6` @ `10b6019`) for `availableAmount`.
-- `POST /runners/me/payouts` `{ amount }` with an `Idempotency-Key` header (as payments) → `{ id, amount, status: 'requested', createdAt }`; errors `payout_exceeds_available`, `payout_below_minimum`, `payout_already_open` (RA-15, missing; depends on RQ-5 / row 117 and a payout-request record, which is a schema decision not covered by row 107). api-contract removed the draft `GET /runners/me/payouts` on `feat/api-owner-answers-6`; sent payouts appear only as derived `payout` entries in `GET /runners/me/payout-lines` (ops record them with `POST /runner-payouts/mark-paid`).
+Decided (rows 117, 118): runner payout requests with their own auditable record; ops pay manually to the sign-in phone. **Missing** in the API (RA-15); names below are what this screen needs:
+- `GET /runners/me/earnings` (built) for `availableAmount`.
+- `GET /runners/me/payout-requests/summary` (proposed) → `{ minimumAmount, openRequest: { id, amount, status, createdAt } | null }`; `minimumAmount` is ops-configured (no number in the docs).
+- `POST /runners/me/payout-requests` `{ amount }` + `Idempotency-Key` header (reused on retry) → `{ id, amount, status: 'requested', destinationPhone, createdAt }`. The destination is the user's sign-in phone, set by the server; the body has no phone field (row 118). Errors: 400 `payout_below_minimum` (`minimumAmount`), 400 `payout_exceeds_available` (`availableAmount`), 409 `payout_request_open` (`requestId`), 403 not verified.
+- `GET /runners/me/payout-requests?cursor=` → `{ items: [{ id, amount, status, destinationPhone, createdAt, decidedAt, paidAt, reference, decisionNote? }], nextCursor }` for `v-earnings` / `x-payout-history`.
+- Lifecycle (proposed; every step stored with actor and time): `requested` → `paid` (ops record the M-Pesa receipt; the payable lines covered become `paid` through the same mark-paid step, so the feed shows the derived `payout` entry) or `rejected` (ops, with a runner-visible note). The runner cannot edit or cancel a request in MVP (proposed). The amount does not lower `availableAmount` until it is paid; while a request is open, a second one is refused.
 - Destination phone: `GET /users/me` `phone` (exists).
-- Payout itself: ops send M-Pesa manually and record the receipt on 1–50 payable lines of one runner (`POST /runner-payouts/mark-paid`), which shows in the runner feed as one derived `payout` entry (not a stored line); the runner is notified `Payout sent` (RA-6). Corrections/reversals/re-sent payouts appear as their own lines (row 107).
+- Notifications: `Payout sent` (`v-notifications.md`).
 - Socket: none needed.
 
 ## Accessibility and mobile
 Money keyboard; errors announced; the read-only destination is announced as `Send to M-Pesa, plus 254 733 111 222, not editable`.
 
+## Decisions (owner, 2026-10-13)
+- Row 117 (RQ-5): payout requests up to the available amount, configurable minimum, one open request, manual ops payment, own auditable record.
+- Row 118 (RQ-6): destination fixed to the sign-in phone.
+
 ## Questions
-- RQ-5 (payments, blocking for this screen): may runners request payouts (default yes, any amount up to the available amount, configurable minimum, one open request at a time, ops pay manually), or are payouts only batched on a schedule (then this screen becomes a read-only "Next payout" view)?
-- RQ-6 (security): payout destination fixed to the sign-in phone. Default yes.
+- RQ-24 (minor, copy/ops): is there a payout time promise to show (e.g. `usually within one working day`)? Default: none.

@@ -49,11 +49,11 @@ Proposed:
 - `Step 1 of 2`.
 
 ## Data
-- Upload each side to **restricted ID storage** (system design §10: separate from general evidence, access logged, never shown to customers or other runners). **Missing** (RA-7): no upload endpoint for verification documents; `POST /runners/me/verifications` takes only `{ verificationType, documentS3Key }` (one key), so front + back need two keys or two records. Proposed: `POST /runners/me/verifications/government_id/documents` (multipart or base64, `side: front|back`) → `{ documentKey }`, then `POST /runners/me/verifications` `{ verificationType: 'government_id', documentKeys: [front, back] }`. Storage choice is RQ-13.
+- Upload each side to **restricted ID storage** (system design §10: separate from general evidence, access logged, never shown to customers or other runners). **Missing** (RA-7): no upload endpoint for verification documents; `POST /runners/me/verifications` takes only `{ verificationType, documentS3Key }` (one key), so front + back need two keys or two records. Proposed: `POST /runners/me/verifications/government_id/documents` (multipart or base64, `side: front|back`) → `{ documentKey }`, then `POST /runners/me/verifications` `{ verificationType: 'government_id', documentKeys: [front, back] }`. Storage: row 125 (restricted, private, signed admin-only URLs, access logged).
 - Re-submission after rejection creates a new `pending` record (the old one stays for audit).
 - `GET /runners/me/verifications` (exists) to show existing uploads.
 - No socket events.
-- Camera package: RQ-12.
+- Camera package: `image_picker` (row 124).
 
 ## Accessibility and mobile
 - Each tile has a label (`ID front, uploaded`); the drop zone is a button `Take a photo of your ID front`.
@@ -61,6 +61,10 @@ Proposed:
 - Keep the CTA above the bottom safe area; body scrolls on small screens.
 - Photos are not kept in the device gallery (capture to app storage, delete after upload).
 
+## Decisions (owner, 2026-10-13)
+- Row 125 (RQ-13): restricted private storage, separate folder/bucket, no public URLs, signed admin-only URLs, access logged.
+- Row 126 (RQ-14): manual review of ID, selfie, M-Pesa name and every other required check; verified only when all are approved. No automated liveness vendor.
+- Row 124 (RQ-12): camera packages approved.
+
 ## Questions
-- RQ-13 (security / third-party): storage for ID images and selfies (restricted bucket, retention, access logging).
-- RQ-14 (security): verification process (manual review of ID, selfie and M-Pesa name match; no automated liveness vendor in MVP).
+- RQ-25 (security/compliance): how long are ID and selfie images kept after an account closes (row 125 did not set a retention period)? No default proposed.

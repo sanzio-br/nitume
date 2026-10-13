@@ -25,16 +25,16 @@ Customer-side answers OA-1 … OA-21 and rows 1–102 apply where they concern s
 | OA-11 … OA-14, rows 33, 38 | Pill buttons, white 8px fields with 2px green focus, red/amber accent rules, off-palette values replaced, high-contrast chip text, blue 50% scrim | §2, every view |
 | OA-17, row 53 | OTP policy (5-minute expiry, 5 attempts, 60 s cooldown, 5 per hour, IP throttling) | v-auth-phone, v-auth-otp |
 | OA-18 | Business Tasks out of MVP; one configurable Support entry point | v-edit-skills, v-profile |
-| rows 25, 32 | Evidence via short-lived signed URLs; **video deferred from MVP** | v-evidence-capture, v-active (RQ-9 confirms the runner side) |
+| rows 25, 32 | Evidence via short-lived signed URLs; **video deferred from MVP** | v-evidence-capture, v-active (row 121 confirms the runner side) |
 | row 27, 65 | Live location only for the current assignment, RUNNER_ASSIGNED → AWAITING_CUSTOMER | §10, v-active |
 | rows 29–31, 39 | `socket_io_client`, `google_maps_flutter`, `firebase_messaging`, `url_launcher` approved (already in `nitume_core`) | §10 |
-| row 34, 47 | No invented pricing rules; no fee components shown until pricing rates exist | v-job-summary (RQ-7) |
+| row 34, 47 | No invented pricing rules; no fee components shown until pricing rates exist | v-job-summary (row 119) |
 | rows 37, 49, 55, 61, 101 | Runner price changes only in IN_PROGRESS, only for Buy For Me and Get It For Me (400 otherwise); reject = customer cancels (IN_PROGRESS → CANCELLED); an admin rejection only rejects | v-active, v-price-request |
 | row 42, 66, 76 | `send_to_runner` is platform-mediated: the customer pays Nitume, never the runner | §8, v-job-detail |
 | row 79 | The dispute resolution note is shown to the runner as well | v-active (ended states) |
 | row 82 | `KSh` everywhere a person reads money | §7 |
 | row 95 | `send_to_runner` item amount is **reimbursed** after the receipt is accepted, never advanced | §8, v-job-detail, v-job-summary, v-earnings |
-| row 96 | Admin times in 12-hour EAT (runner: RQ-10, proposed the same) | §7 |
+| row 96 | Admin times in 12-hour EAT (runner: the same, row 122) | §7 |
 | row 98 | API runs single-instance (no Socket.IO Redis adapter) | §10 (no client impact) |
 | row 102 | Paid tasks ending CANCELLED, EXPIRED or FAILED open a customer refund review (not the runner's concern; no runner copy) | v-active (ended states) |
 | row 104 | Reimbursement becomes payable at **CONFIRMED** | §8, v-job-summary, v-earnings |
@@ -42,6 +42,27 @@ Customer-side answers OA-1 … OA-21 and rows 1–102 apply where they concern s
 | row 106 | Runner already bought the item, task ends CANCELLED or FAILED → verified item spend reimbursed (caps/evidence apply); **no runner fee** | §8, v-active (ended states), v-earnings |
 | row 107 | Runner payout ledger table approved (`runner_payout_lines`): distinct lines for runner fee, item reimbursement, corrections, reversals, re-sent payouts | §8, v-earnings, x-payout-history |
 | row 108 | Out-of-pocket purchases limited by `max_purchase_advance`; a runner may decline a task whose purchase exceeds the limit | §8, v-jobs, v-job-detail |
+| rows 113, 114, 137 (RQ-1, RQ-2) | **Offer model**: the admin's assign puts the task in RUNNER_ASSIGNED with an **offer** to one runner. Accept → RUNNER_EN_ROUTE (the runner's existing transition); decline → the task stays RUNNER_ASSIGNED and ops reassign it; an offer not accepted before it expires → EXPIRED. Admin offers last **10 minutes** (auto-offers keep the configurable 90 s, §3.4). Accepting above `max_purchase_advance` is refused; declining because of it is allowed and not penalised | §1, §6, §8, v-jobs, v-job-detail, v-active |
+| row 115 (RQ-3) | Runner skills = the six category values (migration from `RunnerSkill`) | v-edit-skills, v-profile |
+| row 116 (RQ-4) | Service areas = an ops-configured list | v-edit-skills, v-jobs |
+| rows 117, 118 (RQ-5, RQ-6) | Runner payout requests: up to the available amount, configurable minimum, one open request at a time, ops pay manually, own auditable payout-request record; destination fixed to the sign-in phone | v-payout, v-earnings, x-payout-history |
+| row 119 (RQ-7) | One `Runner fee` line until pricing rates exist | v-job-summary |
+| rows 120, 121 (RQ-8, RQ-9) | Generic evidence checklist, no estimated duration; photos only, no video | v-active, v-evidence-capture, v-jobs, v-job-detail |
+| row 122 (RQ-10) | Runner app shows 12-hour EAT; the API stays canonical (UTC) | §7 |
+| row 123 (RQ-11) | Location: every 30 s online without a job, every 4–8 s on a job, **none offline** (collection stops when offline) | §10, x-location-disclosure |
+| row 124 (RQ-12) | Packages approved: `geolocator`, `image_picker`, `permission_handler`, a local queue store | §4 R-20 … R-22, §12 |
+| rows 125, 126 (RQ-13, RQ-14) | ID and selfie in restricted private storage (no public URLs, signed admin-only URLs, access logged); manual review of ID, selfie, M-Pesa name and every other required check; verified only when all are approved | §9, onboarding |
+| row 127 (RQ-15) | One phone, one role; the runner app refuses customer numbers | v-auth-otp |
+| row 128 (RQ-16) | No direct runner–customer contact; Support relays | v-active |
+| rows 129, 130 (RQ-17, RQ-18) | Receipt upload up to **24 h** after CANCELLED/FAILED, then the ops process; no runner-entered receipt total | v-active, v-evidence-capture, v-job-summary |
+| row 131 (RQ-19) | Terms and Privacy links on runner sign-in and Profile | v-auth-phone, v-profile |
+| row 132 (RQ-20) | No FAILED from ARRIVED or IN_PROGRESS; Support handles those cases | v-active |
+| row 133 (RQ-21) | Keep `Recent payouts` | v-earnings |
+| row 134 | `errand_assignments.declineReason` (nullable, enum `over_purchase_limit`) approved | v-jobs, v-job-detail |
+| row 135 | Over-limit purchase at CONFIRMED → ops review (`over_purchase_limit`); maximum claimable = min(item amount paid to Nitume, `max_purchase_advance`) | §8, v-job-summary |
+| row 136 | Task-level combined exposure cap on CANCELLED/FAILED: customer refund + runner item reimbursement together; above it only through ops review and explicit handling | §8, v-job-summary |
+| row 138 | `max_purchase_advance` default KES 3,000, set per runner by admins (audited: actor, time, previous, new); runners cannot change it | §8, v-profile |
+| row 139 | Runner notifications (copy in `v-notifications.md`); runner socket room scoped to the authenticated runner, never a client-supplied id | §10, v-notifications |
 
 ## 1. Navigation model
 
@@ -171,7 +192,7 @@ Status: **exists** = in `packages/nitume_core` on `main` (class named); **change
 | R-16 | `JobRouteMap`: C-31 map body with task-site/pickup pin (green), drop-off/second pin (blue), the runner's own position, and a route line from the device to the next point; static (no live ETA ticker); placeholder body (blue-050 grid) without a maps key | `.job-map` | NEW (composition of C-31) |
 | R-17 | `NitumeWordmark(suffix: 'Runner')`: suffix 12/600 slate-600 | `.auth-logo` | **change** |
 | R-18 | EAT formatters (RQ-10): `formatClockEat` (`10:28 AM`), `formatDayTimeEat` (`Today, 10:28 AM`), `eatDayKey`, `eatWeekday` (weeks start Monday 00:00 EAT), `formatDistanceKm` (`1.2 km`, `850 m` under 1 km), `formatDurationMin` (`45 min`, `1 h 10 min`) | `.t-num-sm` | NEW |
-| R-19 | Runner data layer: `RunnerAccountRepository` (`GET /runners/me`, availability, verifications + document upload, skills, areas), `JobOffersRepository` (offers, accept, decline; today only `purchaseCheck(errandId)` → `GET /errands/:id/purchase-check` and `declineOverLimit(errandId)` → `POST /errands/:id/assignment/decline`), `RunnerJobsRepository` (runner job view, transitions, runner notes, evidence upload), `PayoutLedgerRepository` (`earnings({from,to,groupBy})` → `GET /runners/me/earnings`, `lines({kind,errandId,cursor,limit})` → `GET /runners/me/payout-lines`, `claim(...)` → `POST /runners/me/reimbursement-claims`; payout requests later, RQ-5), models (`RunnerMe`, `RunnerVerification`, `JobOffer`, `PurchaseCheck`, `RunnerJobView`, `PayoutFeedItem` (kind incl. derived `payout`; status `on_hold | payable | paid | rejected | recorded`; signed string amount; opaque id), `EarningsSummary`, `PayoutRequest` later), `RealtimeEvents` additions (§10) | — | NEW (endpoints per RA-n) |
+| R-19 | Runner data layer: `RunnerAccountRepository` (`GET /runners/me`, availability, verifications + document upload, skills, areas), `JobOffersRepository` (offers list, accept, decline with optional `over_purchase_limit` reason, `purchaseCheck(errandId)` → `GET /errands/:id/purchase-check`), `RunnerJobsRepository` (runner job view, transitions, runner notes, evidence upload), `PayoutLedgerRepository` (`earnings({from,to,groupBy})` → `GET /runners/me/earnings`, `lines({kind,errandId,cursor,limit})` → `GET /runners/me/payout-lines`, `claim(...)` → `POST /runners/me/reimbursement-claims`; payout requests later, RQ-5), models (`RunnerMe`, `RunnerVerification`, `JobOffer`, `PurchaseCheck`, `RunnerJobView`, `PayoutFeedItem` (kind incl. derived `payout`; status `on_hold | payable | paid | rejected | recorded`; signed string amount; opaque id), `EarningsSummary`, `PayoutRequest` later), `RealtimeEvents` additions (§10) | — | NEW (endpoints per RA-n) |
 | R-20 | `LocationPinger` service: `geolocator` (RQ-12) stream, 4–8 s / 15 m throttle (§4.2), emits `location:ping`, Android foreground service + iOS background mode during the live window only, stops on offline/end (§7.2) | — | NEW |
 | R-21 | `OfflineActionQueue`: persists runner status transitions and evidence uploads made without connectivity and replays them in order on reconnect (§7.2), with an idempotency key per action (RA-17) | — | NEW |
 | R-22 | `EvidenceUploader`: camera capture (RQ-12) → compress (long edge 1600 px, JPEG 80) → `POST /errands/:id/evidence` with `capturedAt`, `lat`, `lon`; per-item progress and retry; through R-21 when offline | — | NEW |
@@ -182,13 +203,11 @@ As customer `_shared.md` §5: horizontal padding 20; section label padding `6 20
 
 ## 6. Errand state → runner label (proposed, R-01)
 
-State machine: `docs/design/Nitume_System_Design.md` §3.3 exactly. The runner app renders whatever state the API returns and never invents or skips states. **Runner-fired transitions** (actor R): RUNNER_ASSIGNED → RUNNER_EN_ROUTE; RUNNER_EN_ROUTE → ARRIVED (manual override of the geofence, §4.3); RUNNER_EN_ROUTE → FAILED; ARRIVED → IN_PROGRESS; IN_PROGRESS → AWAITING_CUSTOMER (evidence uploaded). Everything else is customer, admin or system. A runner only sees errands they hold (current assignment, API rule) or are offered (RA-1); states before PAYMENT_CONFIRMED never reach the runner.
+State machine: `docs/design/Nitume_System_Design.md` §3.3 exactly. The runner app renders whatever state the API returns and never invents or skips states. **Runner-fired transitions** (actor R): RUNNER_ASSIGNED → RUNNER_EN_ROUTE; RUNNER_EN_ROUTE → ARRIVED (manual override of the geofence, §4.3); RUNNER_EN_ROUTE → FAILED; ARRIVED → IN_PROGRESS; IN_PROGRESS → AWAITING_CUSTOMER (evidence uploaded). Everything else is customer, admin or system. A runner only sees errands they hold (current assignment, API rule) or are offered (RA-1); states before RUNNER_ASSIGNED never reach the runner. Accepting an offer **is** the RUNNER_ASSIGNED → RUNNER_EN_ROUTE transition (row 113): there is no separate `Start trip` step and no `accepted` waiting state.
 
 | State | Runner label (proposed) | Tone | Runner action on `v-active` (proposed copy) |
 |---|---|---|---|
-| PAYMENT_CONFIRMED | `New offer` (only while offered, RQ-1) | info | Accept / Decline (`v-job-detail`) |
-| RUNNER_ASSIGNED, offer not yet accepted (RQ-1) | `New offer` | info | Accept / Decline |
-| RUNNER_ASSIGNED, accepted | `Accepted` | info | `Start trip` → RUNNER_EN_ROUTE |
+| RUNNER_ASSIGNED (offered to this runner, row 113) | `New offer` | info | Accept (→ RUNNER_EN_ROUTE) / Decline (`v-jobs`, `v-job-detail`); not on `v-active` |
 | RUNNER_EN_ROUTE | `On the way` | pending (amber, same tone as the customer's En route, OA-13) | `I've arrived` → ARRIVED; secondary `Can't complete this task` → FAILED |
 | ARRIVED | `Arrived` | info | `Start task` → IN_PROGRESS |
 | IN_PROGRESS | `In progress` | info | `Mark task complete` → AWAITING_CUSTOMER |
@@ -198,10 +217,10 @@ State machine: `docs/design/Nitume_System_Design.md` §3.3 exactly. The runner a
 | SETTLED | `Paid` | success | none |
 | CANCELLED | `Cancelled` | danger | none |
 | FAILED | `Failed` | danger | none |
-| EXPIRED | `Expired` | info | none (offer ran out; shown only in offer history/notifications) |
+| EXPIRED | `Expired` | info | none (the offer ran out before anyone accepted, row 113; the runner only sees the offer disappear) |
 | DISPUTED | `Disputed` | danger | none; shows `The customer reported a problem. Our team is reviewing it.` |
 
-Active set (`v-active`): RUNNER_ASSIGNED (accepted), RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER, DISPUTED. Finished set (job history inside `x-payout-history` and notifications): COMPLETED, CONFIRMED, SETTLED, CANCELLED, FAILED, EXPIRED.
+Active set (`v-active`): RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER, DISPUTED. Finished set (job history inside `x-payout-history` and notifications): COMPLETED, CONFIRMED, SETTLED, CANCELLED, FAILED, EXPIRED.
 
 ## 7. Copy and naming rules
 
@@ -214,10 +233,10 @@ Active set (`v-active`): RUNNER_ASSIGNED (accepted), RUNNER_EN_ROUTE, ARRIVED, I
 - **No wallet or escrow words** (OA-6, non-negotiable): `wallet`, `escrow`, `held`, `hold your money`, `release`, `top up`, `funds` are banned. `Available balance` (mockup) is kept as the label of a **payout-ledger view** (system design §6: "The Runner app's 'available balance' is a view of the payout ledger"); its info line says so: `What Nitume owes you for confirmed tasks, minus payouts already sent.` (proposed). `On hold` is allowed only as a **ledger line status** for reimbursements waiting for ops review (row 105), never about money Nitume keeps.
 - **Earnings vs reimbursement**: an item reimbursement is **not** earnings. Weekly chart and `You earned` use runner-fee lines only; reimbursements are always their own line labelled `Item reimbursement` (three-flow separation).
 - **Money**: `KSh 1,750` (`formatKes`), Fira Code, `KSh` everywhere (row 82). Signed ledger amounts `+ KSh 1,750` / `− KSh 6,000` (thin space after the sign as drawn).
-- **Times** (RQ-10, proposed same as admin row 96): 12-hour East Africa Time regardless of the device zone: `10:28 AM`, `Today, 10:28 AM`, `Yesterday, 4:12 PM`, `Mon, 10:28 AM`; relative `2m`, `1h`, `Yesterday`, `Mon` in notifications; Fira Code. The API stays UTC.
+- **Times** (row 122): 12-hour East Africa Time regardless of the device zone: `10:28 AM`, `Today, 10:28 AM`, `Yesterday, 4:12 PM`, `Mon, 10:28 AM`; relative `2m`, `1h`, `Yesterday`, `Mon` in notifications; Fira Code. The API stays UTC.
 - **Distances and durations**: `1.2 km`, `850 m`, `45 min`, `6 min` (Fira Code). Distance on offers is device-to-task-site (straight line until the API returns a route distance); never show a distance without a device fix (`Distance unavailable`, proposed).
 - **Generic errors**: as customer §7 (`Check your connection and try again.`, `Something went wrong. Please try again.`, session expiry → `v-auth-phone` + `Please sign in again.`). Suspended or banned account: `This account can't sign in. Contact support.`
-- **Wrong account type** (RQ-15, proposed): a phone that belongs to a customer (or admin) account cannot use the runner app: `This number is registered as a customer account. Use another number, or contact support.`
+- **Wrong account type** (row 127): a phone that belongs to a customer (or admin) account cannot use the runner app: `This number is registered as a customer account. Use another number, or contact support.`
 
 ## 8. Money: what the runner sees (rows 42, 66, 76, 95, 104–108)
 
@@ -228,28 +247,30 @@ Three flows stay separate (system design §6). The runner only ever sees **their
 | No item amount (Check It For Me, Go There For Me, Wait For Me, or Get It For Me without purchase) | `Payout KSh 1,750` = runner fee |
 | `merchant_direct` (customer pays the merchant's Till/Paybill) | runner fee + `Item KSh 5,000 · Customer pays the merchant` (mockup: `Budget KSh 5,000 · Customer pays merchant`). The runner never pays and is never reimbursed for it |
 | `send_to_runner` (customer paid Nitume, row 42) | runner fee + `Item KSh 5,000 · You pay, reimbursed after the customer confirms` (proposed). Row 95/104: reimbursed once the task reaches CONFIRMED, never advanced |
-| item amount above the runner's `max_purchase_advance` (row 108; applies to purchases the runner pays, i.e. `send_to_runner`; also `runner_advance` if ever used) | C-40 notice on the offer: `Above your purchase limit of KSh 3,000. You can decline this job.` (proposed). Decline is allowed with reason `over_purchase_limit` and never counts against the runner (RQ-1 b). Accept stays available only if the API allows it (RA-3; default: the API refuses accept above the limit with `purchase_limit_exceeded`). Built today without offers: the decline is on the assigned job (`v-active` §6a, row 137) |
+| item amount above the runner's `max_purchase_advance` (row 108; applies to purchases the runner pays, i.e. `send_to_runner`; also `runner_advance` if ever used) | C-40 notice on the offer: `Above your purchase limit of KSh 3,000. You can decline this job.` Decline sends reason `over_purchase_limit` and never counts against the runner (row 113). `Accept` is disabled; the API refuses it with `purchase_limit_exceeded` (row 113) |
 
 Reimbursement and payout rules shown in the app:
 - **Payable at CONFIRMED** (row 104): customer confirmed, dispute window closed, no dispute. Before that the reimbursement line is `Pending` with the line `Payable after the customer confirms and the review window closes.` (proposed).
 - **Receipt required** (rows 95, 105): on `send_to_runner` the checklist has a required `Receipt` step. Without a receipt (or with one that does not match), the reimbursement line goes `On hold` for ops review and is capped at the item amount the customer paid to Nitume. Copy: `On hold: our team is checking the receipt.` (proposed). The runner fee is not affected.
 - **Ended without completion** (row 106): CANCELLED or FAILED after the runner bought the item → verified item spend can be reimbursed (on hold until verified, caps apply); **no runner fee**. Copy on the ended job: `This task ended before completion, so there's no runner fee. If you already bought the item, we'll review your receipt and reimburse what you spent.` (proposed). If no receipt is on file the line adds `Upload the receipt from this screen within 24 hours.` only if RQ-17's default is approved; otherwise `Contact support with your receipt.`
 - **Ledger lines** (row 107; built on `feat/api-owner-answers-6` @ `10b6019`, table `runner_payout_lines`, column `kind` = `runner_fee | item_reimbursement | correction | reversal | resent_payout`; job-line statuses `on_hold | payable | paid | rejected`, adjustments `recorded`). The runner feed adds a derived `payout` entry per M-Pesa payout (not a stored row; id `payout:<uuid>`, opaque). Each entry is its own row in `v-earnings` / `x-payout-history`; nothing is merged or netted on screen except the computed `Available balance` (`availableAmount`). Lines exist only from CONFIRMED (or a row-106 claim); before that a task only counts in `pendingAmount`.
-- **Purchase limit in the built API** (row 108): `GET /errands/:id/purchase-check` and `POST /errands/:id/assignment/decline` `{ reason: 'over_purchase_limit' }` on the assigned job before RUNNER_EN_ROUTE (`v-active` §6a); a purchase above the limit found at CONFIRMED goes `on_hold` with reason `over_purchase_limit` (row 135 open); claims are capped at the lower of the item amount paid to Nitume and `max_purchase_advance`. No admin endpoint sets the limit yet (row 138; default KES 3,000).
+- **Purchase limit** (rows 108, 113, 134, 135, 138): the limit is the runner's `max_purchase_advance` (default KES 3,000, set per runner by admins with an audit trail; read-only for the runner, shown on `v-profile`). Offers carry the over-limit flag; accept is refused above it; decline with `over_purchase_limit` is not penalised. A purchase above the limit found at CONFIRMED goes `on_hold` (`over_purchase_limit`). The most a runner can be reimbursed for an item is min(item amount paid to Nitume, `max_purchase_advance`) (row 135). Built on `feat/api-owner-answers-6`: `GET /errands/:id/purchase-check`, the decline on the assigned job (to be folded into the offer decline, RA-1), the CONFIRMED hold and the claim cap.
+- **Combined exposure cap** (row 136): on a CANCELLED/FAILED task the customer refund and the runner's item reimbursement together may not exceed the task-level cap; a claim above what is left goes to ops review and explicit handling. The runner app does not show the customer's refund; it only shows the cap the API returns on a refused claim and `Our team is checking your claim.`
+- **Payout requests** (rows 117, 118): the runner may request a payout of any amount from the configured minimum up to `availableAmount`, one open request at a time, paid manually by ops to the sign-in phone; each request is its own auditable record (`v-payout`).
 
 ## 9. Verification gate (non-negotiable: no ID-verification bypass)
 
 - A runner whose verification is not approved can sign in, finish onboarding and read `v-onboard-pending`, `v-profile`, `v-notifications`, but cannot go online, see offers or accept jobs. `v-jobs` shows the verification card instead of offers; the availability switch is disabled with `You can go online once your verification is approved.` (proposed).
 - The rule must be enforced by the API (RA-8), not only hidden in the UI.
-- Required records (mockup `v-onboard-pending`): `phone` (approved by the OTP sign-in), `government_id` (front + back), `selfie`, `payment_identity` (M-Pesa identity match, done by ops). Approval of all four = verified (proposed; RQ-14).
+- Required records (mockup `v-onboard-pending`): `phone` (approved by the OTP sign-in), `government_id` (front + back), `selfie`, `payment_identity` (M-Pesa identity match, done by ops). Verified only when every required check is approved (row 126); ID and selfie images live in restricted private storage with signed admin-only URLs and logged access (row 125).
 
 ## 10. Live data, location and push
 
-- **Socket** (core `RealtimeClient`, rows 23, 29): one connection per session. The runner joins `errand:{id}` for each job it holds (`errand:join`; the API allows the current runner) and receives `errand:status_changed`, `evidence:uploaded`, `errand:access_revoked`. Needed and missing (RA-5): room `runner:{runnerId}` (§4.2 `runner:{runnerId}:status`) joined on connect, with `job:offered`, `job:offer_withdrawn` (expired, reassigned or cancelled) and `price_change:decided` (approved / rejected / customer cancelled). Event names only through core `RealtimeEvents`.
+- **Socket** (core `RealtimeClient`, rows 23, 29): one connection per session. The runner joins `errand:{id}` for each job it holds (`errand:join`; the API allows the current runner) and receives `errand:status_changed`, `evidence:uploaded`, `errand:access_revoked`. Needed and missing (RA-5): room `runner:{runnerId}` (§4.2 `runner:{runnerId}:status`) joined **by the server** on connect from the authenticated runner (row 139: never a client-supplied room id), with `job:offered`, `job:offer_withdrawn` (expired, reassigned or cancelled) and `price_change:decided` (approved / rejected / customer cancelled). Event names only through core `RealtimeEvents`.
 - **Polling fallback** only while the socket is disconnected: offers 20 s, active job 15 s, earnings on screen open and pull-to-refresh. Banner `Reconnecting…` (C-40) after 5 s disconnected.
-- **Location pings** (RA-4, RQ-11, rows 27, 65): emit `location:ping { lat, lng, errandId, accuracy, ts }` every 4–8 s or 15 m moved while the runner holds an accepted job in RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS; stop at AWAITING_CUSTOMER, on any terminal state, on reassignment, and when the runner goes offline (§7.2). Whether to ping while merely online (for the admin live map and matching) is RQ-11 (default: yes, every 30 s, no `errandId`). Background location only during the live window, behind `x-location-disclosure`.
+- **Location pings** (RA-4, rows 27, 65, 123): emit `location:ping { lat, lng, errandId, accuracy, ts }` every 4–8 s or 15 m moved while the runner holds a job in RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS (from the moment they accept); stop at AWAITING_CUSTOMER, on any terminal state, on reassignment. While online without a job: every 30 s without `errandId`. **Offline: no pings and no collection at all** (the pinger and the location stream stop). Background location only during the live window, behind `x-location-disclosure`.
 - **Navigation**: `Navigate` opens Google Maps turn-by-turn through `url_launcher` (`google.navigation:q=lat,lng` on Android, `https://www.google.com/maps/dir/?api=1&destination=lat,lng` elsewhere; §5). No in-app navigation.
-- **Push** (row 31): register the FCM token after sign-in (`POST /users/me/devices`, runner role allowed), remove on log out. Runner notification kinds are missing in the API (RA-6). Deep links: job offer → `v-job-detail`; job assigned/started/cancelled/failed/disputed/confirmed → `v-active` (or the ended-job state); price change decided → `v-active`; payout sent / reversal / correction → `v-earnings`; rating → `v-profile`; verification decided → `v-onboard-pending`; unknown with `errandId` → `v-active` if it is the current job, else nothing.
+- **Push** (row 31): register the FCM token after sign-in (`POST /users/me/devices`, runner role allowed), remove on log out. Runner notification kinds and copy: `v-notifications.md` (row 139; API: RA-6). Deep links: job offer → `v-job-detail`; job assigned/started/cancelled/failed/disputed/confirmed → `v-active` (or the ended-job state); price change decided → `v-active`; payout sent / reversal / correction → `v-earnings`; rating → `v-profile`; verification decided → `v-onboard-pending`; unknown with `errandId` → `v-active` if it is the current job, else nothing.
 - **Offline** (§7.2): status taps and evidence uploads are queued (R-21) and replayed in order; the UI shows the target state immediately with a C-40 notice `Saved on your phone. We'll send it when you're back online.` (proposed) and never shows a later state than the server confirms after replay (a rejected replay rolls back with the server state and an error notice).
 
 ## 11. Accessibility
@@ -268,4 +289,4 @@ As customer: screen-reader labels on icon-only controls (bell `Notifications, un
 
 ## 13. Questions and API gaps
 
-Listed once in `docs/audits/runner-gap-report.md`: RQ-1 … RQ-21 (owner) and RA-1 … RA-20 (api-contract). View specs cite them by id.
+Listed once in `docs/audits/runner-gap-report.md`: RQ-1 … RQ-21 (all decided 2026-10-13, rows 113–133; new questions RQ-22 …) and RA-1 … RA-n (api-contract). View specs cite them by id.
