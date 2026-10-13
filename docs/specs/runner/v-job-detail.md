@@ -43,7 +43,7 @@ Offered: RUNNER_ASSIGNED with this runner's assignment `offered` (row 113); offe
 | Card, tag, rows | C-07, R-14, R-05 | NEW (R-14, R-05) |
 | Notices | C-40 | exists |
 | Buttons | C-01, C-03 | exists |
-| Decline dialog | C-35 + radio rows (C-16 radio-row variant `NitumeRadioRow`) | exists |
+| Decline dialog | C-35 (no reason picker, row 134; `over_purchase_limit` sent automatically when over the limit) | exists |
 
 ## Copy
 Exact, from the mockup: `Job offer`, `Distance`, `Payout` (`Estimated time` dropped, row 120), `Decline`, `Accept job`; sample description `Video the compound, both bedrooms and the bathroom. Speak to the caretaker about the reported water leak.` (customer-written; the app shows the real `description`).
@@ -71,4 +71,4 @@ Proposed: `Deadline`, `Items`, `Item amount`, `How it's paid`, `Pickup`, `Drop-o
 - Row 120 (RQ-8): no estimated time.
 
 ## Questions
-- RQ-22 (see `v-jobs.md`): offer lapse → EXPIRED directly, or after re-offers.
+- RQ-22, BOARD row 141 pending (see `v-jobs.md`): offer lapse → EXPIRED directly, or after re-offers.

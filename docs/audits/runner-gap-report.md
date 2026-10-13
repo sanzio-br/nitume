@@ -7,29 +7,29 @@
 
 ## 1. Verdict
 
-**FAIL — not built.** `apps/runner_app` does not exist. Every runner view is `missing`. Nothing to audit for tokens, typography, contrast or reuse yet; the specs set those rules (`_shared.md` §2–§4) for the build.
+**Partly built (updated 2026-10-13).** `apps/runner_app` is scaffolded on `feat/runner-scaffold`: shell, v-auth-phone, v-auth-otp and x-name-capture audited PASS (§7). Every other view is `missing`. All RQ-1 … RQ-21 are decided (rows 113–133, §9); blockers below are API (RA-n), shared widgets (R-n) and the still-open rows 140–146.
 
 | View | Spec | Status | Blocked by |
 |---|---|---|---|
 | v-auth-phone | `docs/specs/runner/v-auth-phone.md` | built, audited PASS (§7) | R-17 (stand-in) |
 | v-auth-otp | `docs/specs/runner/v-auth-otp.md` | built, audited PASS (§7) | RA-9 (recommended), RQ-15; onboarding routing waits on R-19 + onboarding screens |
 | x-name-capture (not drawn) | `docs/specs/runner/x-name-capture.md` | built, audited PASS (§7) | none |
-| v-onboard-id | `docs/specs/runner/v-onboard-id.md` | missing | RA-7, RQ-13, RQ-14, RQ-12; R-13, R-15 |
-| v-onboard-selfie | `docs/specs/runner/v-onboard-selfie.md` | missing | RA-7, RA-8, RQ-13, RQ-14 |
+| v-onboard-id | `docs/specs/runner/v-onboard-id.md` | missing | RA-7; R-13, R-15; retention row 144 pending |
+| v-onboard-selfie | `docs/specs/runner/v-onboard-selfie.md` | missing | RA-7, RA-8 |
 | v-onboard-pending | `docs/specs/runner/v-onboard-pending.md` | missing | RA-8 (phone and payment-identity records); R-05 |
-| v-jobs | `docs/specs/runner/v-jobs.md` | missing | **RQ-1**, RA-1, RA-2, RA-5, RA-8; R-02, R-04, R-14 (RA-3 satisfied for the built model) |
-| v-job-detail | `docs/specs/runner/v-job-detail.md` | missing | **RQ-1**, RA-1, RA-2; R-05, R-16 |
-| v-active | `docs/specs/runner/v-active.md` | missing | (§6a purchase-limit decline: API built) RA-2, RA-4, RA-5, RA-11, RA-17; RQ-8, RQ-11, RQ-12, RQ-20; R-01, R-06, R-07, R-09, R-16, R-20, R-21 |
-| v-evidence-capture | `docs/specs/runner/v-evidence-capture.md` | missing | **RA-11** (upload size), RQ-9, RQ-12; R-13, R-15, R-22 |
+| v-jobs | `docs/specs/runner/v-jobs.md` | missing | RA-1 (offer model), RA-2, RA-3 (accept refusal), RA-5, RA-8; R-02, R-04, R-14; row 141 pending |
+| v-job-detail | `docs/specs/runner/v-job-detail.md` | missing | RA-1, RA-2, RA-3; R-05, R-16 |
+| v-active | `docs/specs/runner/v-active.md` | missing | RA-2, RA-4, RA-5, RA-11, RA-12, RA-17; R-01, R-06, R-07, R-09, R-16, R-20, R-21 |
+| v-evidence-capture | `docs/specs/runner/v-evidence-capture.md` | missing | **RA-11** (upload size), RA-12 (24 h window); R-13, R-15, R-22 |
 | v-price-request | `docs/specs/runner/v-price-request.md` | missing | RA-2 (item amount), RA-5 (decision event) |
-| v-job-summary | `docs/specs/runner/v-job-summary.md` | missing | RA-2; RQ-7 (RA-14/RA-16 satisfied; claim endpoint built) |
-| v-earnings | `docs/specs/runner/v-earnings.md` | missing | R-08, R-11, R-12, R-19 (RA-14 satisfied; `Request payout` waits on RQ-5/RA-15) |
-| v-payout | `docs/specs/runner/v-payout.md` | missing | **RQ-5**, RA-15; RQ-6 |
+| v-job-summary | `docs/specs/runner/v-job-summary.md` | missing | RA-2, RA-12 (RA-14/RA-16 satisfied; claim and combined cap built) |
+| v-earnings | `docs/specs/runner/v-earnings.md` | missing | R-08, R-11, R-12, R-19 (RA-14 satisfied; `Request payout` waits on RA-15) |
+| v-payout | `docs/specs/runner/v-payout.md` | missing | **RA-15** (payout requests, rows 117/118 decided); row 143 pending (copy only) |
 | x-payout-history (not drawn) | `docs/specs/runner/x-payout-history.md` | missing | R-12, R-05, R-19 (RA-14 satisfied) |
 | v-notifications | `docs/specs/runner/v-notifications.md` | missing | RA-6 (runner kinds) |
-| v-profile | `docs/specs/runner/v-profile.md` | missing | RA-10, RA-18; RQ-3; R-10, R-14 |
-| v-edit-skills | `docs/specs/runner/v-edit-skills.md` | missing | **RQ-3**, RQ-4, RA-10 |
-| x-location-disclosure (not drawn) | `docs/specs/runner/x-location-disclosure.md` | missing | RQ-11, RQ-12 |
+| v-profile | `docs/specs/runner/v-profile.md` | missing | RA-10, RA-18; R-10, R-14 |
+| v-edit-skills | `docs/specs/runner/v-edit-skills.md` | missing | **RA-10** (skills migration, area list, rows 115/116 decided) |
+| x-location-disclosure (not drawn) | `docs/specs/runner/x-location-disclosure.md` | missing | R-20 (rows 123/124 decided) |
 | shell (4-tab bar) | `docs/specs/runner/_shared.md` §1 (C-13) | built, audited PASS (§7) | tab bodies are placeholders until each root view is built |
 
 Screens that can be built first with no owner answer and no API change: v-auth-phone, v-auth-otp (client-side role check), x-name-capture, v-notifications (generic feed; runner kinds arrive later), v-profile (stats, menu; skills tags from the public profile), the shell. Then v-earnings / x-payout-history once RA-14 lands.
@@ -232,18 +232,18 @@ Read from `BOARD.md` on `main` @ `a99175d`. Specs updated in `f0ea925` (runner) 
 | RA-10 | Skills migration to category values (row 115); `GET /runners/service-areas` from an ops-configured list, `PUT /runners/me/service-areas` accepts listed areas only (row 116) | missing |
 | RA-12 | 24 h receipt upload and claim window after CANCELLED/FAILED (row 129), then refused with a code (e.g. `reimbursement_window_closed`) | missing (claim built without a window) |
 | RA-15 | Payout-request record and endpoints (row 117): runner create/list/summary, ops list/mark-paid/reject, configurable minimum, one open request, destination = sign-in phone (row 118), every step audited; names in `v-payout.md` and the admin specs | missing |
-| RA-21 | Task-level combined exposure cap (row 136) on CANCELLED/FAILED: customer refund decisions and runner item reimbursements (claims and approvals) checked together; above the cap only through an explicit ops override with a reason; the refund drawer and the ledger review both show the remaining exposure | missing |
+| RA-21 | **Built on `feat/api-owner-answers-6` @ `dbc3a76`** (409 `task_exposure_cap_exceeded`, `exposureOverrideNote`, `taskExposure`, `exposureOverrides[]`; storage row 145 pending). Task-level combined exposure cap (row 136) on CANCELLED/FAILED: customer refund decisions and runner item reimbursements (claims and approvals) checked together; above the cap only through an explicit ops override with a reason; the refund drawer and the ledger review both show the remaining exposure | missing |
 | RA-22 | Admin edit of `max_purchase_advance` per runner (row 138): `PATCH /admin/runners/:id/purchase-limit` `{ maxPurchaseAdvance, reason }` + an audit table (actor, time, previous, new, reason); `GET` history; runners cannot change it | missing (schema: audit table) |
 | RA-23 | Approval cap on an `on_hold` item line = min(item paid to Nitume, `max_purchase_advance`) (row 135) | satisfied: `approvalCeilingOf` (`runner-payouts.service.ts`) already takes min(requested, item paid, `capAmount`, `max_purchase_advance`) and `review` refuses above it (`reimbursement_exceeds_cap`). See RQ-23 for the over-limit consequence |
 | RA-24 | Admin maintenance of the service-area list (row 116) | missing (no admin spec yet) |
 
 ### New questions for the owner
 
-- **RQ-22 (state machine, rows 113/114)**: when one offer lapses unaccepted, does the task go straight to EXPIRED (literal reading of row 113, specced), or may ops re-offer it and EXPIRED only follows an overall deadline? Default: literal (EXPIRED on the first lapse).
-- **RQ-23 (payments, row 135)**: with the approval cap at min(item paid, `max_purchase_advance`), a runner who bought a KES 5,000 item with a KES 3,000 limit can be reimbursed at most KES 3,000. Is that intended, or may ops approve up to the item paid after an explicit, audited decision (for example by raising the runner's limit first, row 138)? Default: the cap applies; ops raise the limit (audited) when they accept the purchase.
-- **RQ-24 (minor, copy)**: is there a payout time promise to show on `v-payout`? Default: none.
-- **RQ-25 (security/compliance, row 125)**: retention period for ID and selfie images after an account closes. No default.
-- **RQ-26 (schema, row 136)**: the combined exposure cap needs a stored ops override (who, when, amount, reason). Approve an override record (or columns on the refund review and the ledger line)? Default: a small append-only override table keyed by errand.
+- **RQ-22 → BOARD row 141 (state machine, rows 113/114)**: when one offer lapses unaccepted, does the task go straight to EXPIRED (literal reading of row 113, specced), or may ops re-offer it and EXPIRED only follows an overall deadline? Default: literal (EXPIRED on the first lapse).
+- **RQ-23 → row 142 (payments, row 135)**: with the approval cap at min(item paid, `max_purchase_advance`), a runner who bought a KES 5,000 item with a KES 3,000 limit can be reimbursed at most KES 3,000. Is that intended, or may ops approve up to the item paid after an explicit, audited decision (for example by raising the runner's limit first, row 138)? Default: the cap applies; ops raise the limit (audited) when they accept the purchase.
+- **RQ-24 → row 143 (minor, copy)**: is there a payout time promise to show on `v-payout`? Default: none.
+- **RQ-25 → row 144 (security/compliance, row 125)**: retention period for ID and selfie images after an account closes. No default.
+- **RQ-26 → row 145 (schema, row 136; override built as `task_exposure_overrides` on `dbc3a76`)**: the combined exposure cap needs a stored ops override (who, when, amount, reason). Approve an override record (or columns on the refund review and the ledger line)? Default: a small append-only override table keyed by errand.
 
 ### System Design: changes (applied 2026-10-13; text depending on rows 140–146 marked pending)
 

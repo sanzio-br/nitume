@@ -53,4 +53,4 @@ Proposed: `Retake`; upload error `Not uploaded` + `Retry`; submit error C-40 `We
 - Row 124 (RQ-12): camera packages approved.
 
 ## Questions
-- RQ-25 (security/compliance): how long are ID and selfie images kept after an account closes (row 125 did not set a retention period)? No default proposed.
+- RQ-25, BOARD row 144 pending (security/compliance): how long are ID and selfie images kept after an account closes (row 125 did not set a retention period)? No default proposed.

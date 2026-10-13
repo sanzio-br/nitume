@@ -17,7 +17,7 @@ Home tab. The runner switches availability on or off and sees the job offers add
 - Verification card (not verified) → `v-onboard-pending`.
 
 ## Task states
-Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it lapses the task moves to EXPIRED and the card disappears. Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
+Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it lapses the task moves to EXPIRED (row 141 pending: at once or after re-offers) and the card disappears. Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
 
 ## Layout (top to bottom)
 1. C-09 top bar: title `Nearby jobs` (21/700) + C-11 bell (36, white, slate-line; red 7px unread dot from `GET /notifications/unread-count`).
@@ -92,4 +92,4 @@ Proposed:
 - Row 123 (RQ-11): 30 s pings while online without a job; none offline.
 
 ## Questions
-- RQ-22 (state machine, rows 113/114): when one offer lapses, does the task go straight to EXPIRED (literal reading, specced), or may ops re-offer first and EXPIRED only follows an overall deadline? The runner screens are the same either way.
+- RQ-22, BOARD row 141 pending (state machine, rows 113/114): when one offer lapses, does the task go straight to EXPIRED (literal reading, specced), or may ops re-offer first and EXPIRED only follows an overall deadline? The runner screens are the same either way.

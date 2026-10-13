@@ -33,7 +33,7 @@ None (ledger).
 | no open request (row 117) | screen shows C-40 `You already have a payout on the way.` and the CTA is disabled |
 
 ## Confirm dialog (C-35, proposed)
-Title `Send KSh 8,450 to your M-Pesa?`; body `To +254 733 111 222. Payouts are usually sent within one working day.` without the second sentence (no time promise has been set; RQ-24); buttons `Send` / `Back`.
+Title `Send KSh 8,450 to your M-Pesa?`; body `To +254 733 111 222.`; buttons `Send` / `Back`. No payout time promise (row 143 pending).
 
 ## Copy
 Exact, from the mockup: `Request payout`, `Available balance`, `Amount`, `Send to`, `M-Pesa · +254 733 111 222`, `Confirm payout`. Everything else proposed.
@@ -60,4 +60,4 @@ Money keyboard; errors announced; the read-only destination is announced as `Sen
 - Row 118 (RQ-6): destination fixed to the sign-in phone.
 
 ## Questions
-- RQ-24 (minor, copy/ops): is there a payout time promise to show (e.g. `usually within one working day`)? Default: none.
+- Row 143 (RQ-24, pending): whether to promise a payout time. Default: none.
