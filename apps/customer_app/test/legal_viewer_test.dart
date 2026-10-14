@@ -13,7 +13,7 @@ Evidence photo(String id, int minute) => Evidence(
   id: id,
   errandId: 'e1',
   type: EvidenceType.photo,
-  capturedAt: DateTime(2026, 10, 7, 10, minute),
+  capturedAt: fixtureAt(10, minute),
 );
 
 void main() {

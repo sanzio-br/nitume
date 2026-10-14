@@ -32,7 +32,7 @@ void main() {
           status: ErrandStatus.cancelled,
           title: 'NTSA queue',
           withRunner: false,
-          updatedAt: DateTime(2026, 10, 1),
+          updatedAt: fixtureAt(0, 0, -6),
         ),
       );
       b.errands.put(errand(id: 'e3', status: ErrandStatus.inProgress));
