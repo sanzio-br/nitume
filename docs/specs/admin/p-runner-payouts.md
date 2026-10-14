@@ -63,7 +63,7 @@ Below 1100px hide `Created`; below 900px hide `Type`.
 - Status filter options (order): `Needs review` (`on_hold`), `Payable` (`payable`; includes reversed payouts, the API's effective status), `Paid` (`paid`), `Not approved` (`rejected`), `All statuses`.
 - Headers: `Task`, `Runner`, `Type`, `Amount`, `Status`, `Created`.
 - Row buttons: `Review`, `View`, `Re-send`.
-- Empty states: Needs review `Nothing to review` / `Item reimbursements without a receipt, above the runner's purchase limit, or claimed after a cancelled or failed task land here.`; Payable `Nothing owed` / `Confirmed runner fees and approved reimbursements wait here until you record the M-Pesa payout.`; Paid `No payouts yet` / `Lines you mark as paid appear here.`; Not approved `No rejected reimbursements` / `Reimbursements you reject appear here.`; All `No payout lines yet` / `A runner fee line appears when a task is confirmed.`
+- Empty states: Needs review `Nothing to review` / `Item reimbursements without a receipt, above the runner's purchase limit, waiting for a price-decrease refund decision, or claimed after a cancelled or failed task land here.`; Payable `Nothing owed` / `Confirmed runner fees and approved reimbursements wait here until you record the M-Pesa payout.`; Paid `No payouts yet` / `Lines you mark as paid appear here.`; Not approved `No rejected reimbursements` / `Reimbursements you reject appear here.`; All `No payout lines yet` / `A runner fee line appears when a task is confirmed.`
 - Loading `Loading runner payouts…`; error `Couldn't load runner payouts.` + `Try again`; load more error `Couldn't load more. Try again.`
 
 ## Numeric fields (Fira Code)

@@ -168,7 +168,7 @@ Differences from what the specs assumed, now applied:
 3. `payout` is not a stored line: a derived feed entry per M-Pesa payout (id `payout:<uuid>`, opaque), possibly covering several tasks (`errandId` null, `lineIds`).
 4. Adjustments (`correction`, `reversal`, `resent_payout`) point at the **job line** (`relatedLineId`), not at the payout entry. `correction` and `reversal` have status `recorded`; `resent_payout` is `paid`.
 5. Signs: reversal positive (owed again), re-sent payout negative, correction = previous − new sent amount (0 for a receipt-only fix).
-6. `reviewReason` on `on_hold` lines: `receipt_missing`, `receipt_mismatch`, `out_of_pocket_claim`, `over_purchase_limit`.
+6. `reviewReason` on `on_hold` lines: `receipt_missing`, `receipt_mismatch`, `out_of_pocket_claim`, `over_purchase_limit`, and (from `cf525cf`) `price_decrease_pending`.
 7. The chart is runner fee per day of line creation (= CONFIRMED day), current EAT week.
 8. The decline exists only on the assigned job (no offers), only for `over_purchase_limit`, only at RUNNER_ASSIGNED.
 9. The claim cap is min(item paid to Nitume, `max_purchase_advance`); no time window.

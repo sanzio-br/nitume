@@ -179,7 +179,7 @@ API effective status (`effectiveStatus`, with `effectivePayout`) → A-02 `kind=
 | `paid` | `Paid` | success (complete state) | none |
 | `rejected` | `Not approved` | neutral (slate) | none |
 
-Review reasons (`reviewReason`): `receipt_missing` → `No receipt`; `receipt_mismatch` → `Receipt doesn't match`; `out_of_pocket_claim` → `Claim after cancel/fail`; `over_purchase_limit` → `Above purchase limit`. Line kinds: `runner_fee` → `Runner fee`; `item_reimbursement` → `Item reimbursement`. Adjustment kinds: `correction` → `Payout corrected`; `reversal` → `Payout reversed`; `resent_payout` → `Payout sent again`. Payout requests (N-17): `requested` → `Waiting` (pending), `paid` → `Paid` (success), `rejected` → `Not approved` (neutral). Unknown values: raw value title-cased.
+Review reasons (`reviewReason`): `receipt_missing` → `No receipt`; `receipt_mismatch` → `Receipt doesn't match`; `out_of_pocket_claim` → `Claim after cancel/fail`; `over_purchase_limit` → `Above purchase limit`; `price_decrease_pending` → `Waiting for the price-decrease refund decision` (built on `cf525cf`: the item line waits at CONFIRMED while a price-decrease refund review is undecided; decide that refund first). Line kinds: `runner_fee` → `Runner fee`; `item_reimbursement` → `Item reimbursement`. Adjustment kinds: `correction` → `Payout corrected`; `reversal` → `Payout reversed`; `resent_payout` → `Payout sent again`. Payout requests (N-17): `requested` → `Waiting` (pending), `paid` → `Paid` (success), `rejected` → `Not approved` (neutral). Unknown values: raw value title-cased.
 
 ## 7. Cross-cutting API gaps (needs: api-contract)
 

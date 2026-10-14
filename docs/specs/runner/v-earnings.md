@@ -35,7 +35,7 @@ Any (ledger). Lines are created when a task reaches CONFIRMED (runner fee `payab
 
    Status chip on job lines (`runner_fee`, `item_reimbursement`; C-05 small, proposed): `payable` → none (it is in the available balance); `paid` → none on this screen; `on_hold` → `On hold` (pending tone); `rejected` → `Not approved` (neutral tone) and the amount is shown **without a sign** in slate-600 because it is not counted. A line whose payout was reversed comes back as `payable` (the API returns the effective status). There is **no** `pending` line status: tasks waiting for confirmation are not on the ledger yet; they only add to `pendingAmount` (balance sub-line).
 
-   `reviewReason` captions on `on_hold` item lines (11 slate-600, proposed): `receipt_missing` → `We need your receipt. Contact support to send it.`; `receipt_mismatch` → `Our team is checking the receipt.`; `out_of_pocket_claim` → `Our team is checking your claim.`; `over_purchase_limit` → `Above your purchase limit. Our team is checking it.`
+   `reviewReason` captions on `on_hold` item lines (11 slate-600, proposed): `receipt_missing` → `We need your receipt. Contact support to send it.`; `receipt_mismatch` → `Our team is checking the receipt.`; `out_of_pocket_claim` → `Our team is checking your claim.`; `over_purchase_limit` → `Above your purchase limit. Our team is checking it.`; `price_decrease_pending` → `Waiting for a price change on this task to be settled.`
 6. Tab bar (Earnings selected).
 
 States:
