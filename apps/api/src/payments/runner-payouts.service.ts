@@ -675,11 +675,14 @@ export class RunnerPayoutsService implements OnModuleInit {
    * - `runner_fee`: the completed runner-fee STK leg, payable.
    * - `item_reimbursement` (send_to_runner only: an item amount was paid to
    *   Nitume): payable for the item amount paid to Nitume, net of approved or
-   *   sent price-decrease refunds; to ops review (row 105) when the runner
-   *   uploaded no receipt, or (row 108) when it is above the runner's
-   *   max_purchase_advance.
+   *   sent price-decrease refunds; to ops review when a price-decrease refund
+   *   review is still undecided (the amount may drop), when the runner
+   *   uploaded no receipt (row 105), or when it is above the runner's
+   *   max_purchase_advance (row 108).
    */
   async recordConfirmed(manager: EntityManager, errandId: string): Promise<string[]> {
+    // Serialised with refund decisions and reimbursement reviews (row 136).
+    await lockTaskExposure(manager, errandId);
     const assignment = await this.errands.activeAssignmentFor(errandId, manager);
     if (!assignment) {
       this.logger.warn(`Errand ${errandId} confirmed without a current runner; no payout lines`);
@@ -711,11 +714,14 @@ export class RunnerPayoutsService implements OnModuleInit {
     }
     if (item > 0) {
       const [receipt] = await this.evidence.receiptsFor(errandId, runner.userId, manager);
-      const reason = !receipt
-        ? RunnerPayoutReviewReason.RECEIPT_MISSING
-        : item > Number(runner.maxPurchaseAdvance)
-          ? RunnerPayoutReviewReason.OVER_PURCHASE_LIMIT
-          : null;
+      const decreasePending = await this.refunds.hasPendingDecrease(errandId, manager);
+      const reason = decreasePending
+        ? RunnerPayoutReviewReason.PRICE_DECREASE_PENDING
+        : !receipt
+          ? RunnerPayoutReviewReason.RECEIPT_MISSING
+          : item > Number(runner.maxPurchaseAdvance)
+            ? RunnerPayoutReviewReason.OVER_PURCHASE_LIMIT
+            : null;
       const id = await this.insertObligation(manager, {
         runnerProfileId: runner.id,
         errandId,

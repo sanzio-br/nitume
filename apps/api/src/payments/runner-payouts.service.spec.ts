@@ -206,6 +206,7 @@ const build = (
   /** Paid to Nitume (fees + item) and committed customer refunds on the task (row 136). */
   const refunds = {
     committedRefundTotal: vi.fn(() => Promise.resolve(0)),
+    hasPendingDecrease: vi.fn(() => Promise.resolve(false)),
     totalPaidToNitume: vi.fn(() => Promise.resolve(opts.totalPaid ?? 10_000)),
   };
   const service = new RunnerPayoutsService(
@@ -764,5 +765,25 @@ describe('row 136: combined cap with customer refunds', () => {
     await b.service.claim('u-run', { errandId: 'e-1', amount: 500, receiptEvidenceId: 'ev-1' });
     expect(b.table[0]).toMatchObject({ status: S.ON_HOLD });
     expect(b.query.mock.calls.some(([, p]) => (p as string[])[0] === 'task_exposure:e-1')).toBe(true);
+  });
+});
+
+describe('pending price decrease at CONFIRMED (re-review fix)', () => {
+  it('puts the item line on hold (price_decrease_pending) and takes the task lock first', async () => {
+    const b = build({ feePaid: 300, itemPaid: 1000 });
+    b.refunds.hasPendingDecrease.mockResolvedValue(true);
+    await b.service.recordConfirmed(b.manager as never, 'e-1');
+    expect(b.query.mock.calls[0]).toEqual([expect.stringContaining('pg_advisory_xact_lock'), ['task_exposure:e-1']]);
+    expect(b.table).toEqual([
+      expect.objectContaining({ kind: T.RUNNER_FEE, status: S.PAYABLE }),
+      expect.objectContaining({
+        kind: T.ITEM_REIMBURSEMENT,
+        status: S.ON_HOLD,
+        amount: null,
+        requestedAmount: '1000.00',
+        reviewReason: R.PRICE_DECREASE_PENDING,
+      }),
+    ]);
+    expect(b.refunds.hasPendingDecrease).toHaveBeenCalledWith('e-1', b.manager);
   });
 });

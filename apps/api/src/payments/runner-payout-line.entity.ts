@@ -72,6 +72,11 @@ export enum RunnerPayoutReviewReason {
   OUT_OF_POCKET_CLAIM = 'out_of_pocket_claim',
   /** The purchase is above the runner's max_purchase_advance (row 108). */
   OVER_PURCHASE_LIMIT = 'over_purchase_limit',
+  /**
+   * A price-decrease refund review on the task was still undecided at
+   * CONFIRMED: the item amount owed may still drop.
+   */
+  PRICE_DECREASE_PENDING = 'price_decrease_pending',
 }
 
 /**
