@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 
-export type DrawerKind = 'task' | 'runner' | 'dispute' | 'refund';
+export type DrawerKind = 'task' | 'runner' | 'dispute' | 'refund' | 'runner_payout';
 
 export interface DrawerTarget {
   kind: DrawerKind;
@@ -23,6 +23,12 @@ export type CloseGuard = (proceed: () => void) => boolean;
 @Injectable({ providedIn: 'root' })
 export class DrawerNavService {
   readonly current = signal<DrawerTarget | null>(null);
+  /**
+   * A runner whose payout lines should be shown (`View payouts` on the runner
+   * drawer): the shell switches to the Runner payouts panel, which applies
+   * the filter and clears it.
+   */
+  readonly runnerPayoutsFor = signal<string | null>(null);
   private guard: CloseGuard | null = null;
 
   open(kind: DrawerKind, id: string): void {

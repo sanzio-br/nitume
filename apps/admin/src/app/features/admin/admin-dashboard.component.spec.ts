@@ -50,7 +50,8 @@ describe('AdminDashboardComponent sidebar (row 77)', () => {
     const g = groups(el);
     expect(g.map((x) => x.label)).toEqual(['Monitor', 'Network', 'Payments', 'Insights']);
     expect(g[1].items.some((i) => i.startsWith('Refunds'))).toBe(false);
-    expect(g[2].items).toEqual(['Refunds 99+']);
+    // Row 112: Runner payouts under Refunds, with the on_hold badge.
+    expect(g[2].items).toEqual(['Refunds 99+', 'Runner payouts 4']);
     expect(TestBed.inject(AdminDataService).refundBadge()).toEqual({ count: 99, more: true });
   });
 });
