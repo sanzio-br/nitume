@@ -130,4 +130,32 @@ void main() {
     await advance(const Duration(seconds: 30));
     expect(pings, hasLength(4));
   });
+
+  test('DevicePosition.distanceTo is a haversine in metres', () {
+    final a = DevicePosition(
+      lat: -4.03,
+      lng: 39.71,
+      timestamp: DateTime.utc(2026),
+    );
+    // 0.0002° of latitude ≈ 22.2 m.
+    final b = DevicePosition(
+      lat: -4.0302,
+      lng: 39.71,
+      timestamp: DateTime.utc(2026),
+    );
+    expect(a.distanceTo(b), closeTo(22.24, 0.05));
+    expect(a.distanceTo(a), 0);
+    // Nairobi CBD → Mombasa ≈ 441 km.
+    final nbo = DevicePosition(
+      lat: -1.2864,
+      lng: 36.8172,
+      timestamp: DateTime.utc(2026),
+    );
+    final msa = DevicePosition(
+      lat: -4.0435,
+      lng: 39.6682,
+      timestamp: DateTime.utc(2026),
+    );
+    expect(nbo.distanceTo(msa) / 1000, closeTo(441, 3));
+  });
 }

@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:geolocator/geolocator.dart';
 
 /// One device fix. Coordinates in degrees, [accuracy] in metres,
 /// [timestamp] in UTC.
@@ -19,9 +19,19 @@ class DevicePosition {
   final double? accuracy;
   final DateTime timestamp;
 
-  /// Straight-line distance to [other] in metres.
-  double distanceTo(DevicePosition other) =>
-      Geolocator.distanceBetween(lat, lng, other.lat, other.lng);
+  /// Straight-line (great-circle, haversine) distance to [other] in metres.
+  double distanceTo(DevicePosition other) {
+    const earthRadius = 6371000.0;
+    double rad(double deg) => deg * math.pi / 180;
+    final dLat = rad(other.lat - lat);
+    final dLng = rad(other.lng - lng);
+    final a =
+        math.pow(math.sin(dLat / 2), 2) +
+        math.cos(rad(lat)) *
+            math.cos(rad(other.lat)) *
+            math.pow(math.sin(dLng / 2), 2);
+    return 2 * earthRadius * math.asin(math.min(1, math.sqrt(a)));
+  }
 }
 
 /// Location permission as the app needs to read it.
@@ -36,8 +46,9 @@ enum LocationAccess {
   always,
 }
 
-/// Source of device positions. The default is [GeolocatorPositionSource];
-/// tests inject a fake. Apps never import `geolocator` directly.
+/// Source of device positions. The runner app uses
+/// `GeolocatorPositionSource` from `package:nitume_runner_device`; tests
+/// inject a fake. Apps never import `geolocator` directly.
 abstract interface class PositionSource {
   /// Current permission without prompting.
   Future<LocationAccess> access();
@@ -58,89 +69,4 @@ abstract interface class PositionSource {
     double distanceFilterMeters = 0,
     bool background = false,
   });
-}
-
-/// [PositionSource] on `geolocator` (owner row 124).
-class GeolocatorPositionSource implements PositionSource {
-  const GeolocatorPositionSource({
-    this.notificationTitle = 'Nitume Runner',
-    this.notificationText = 'Sharing your location for your active job.',
-  });
-
-  /// Android foreground-service notification shown while [positions] runs
-  /// with `background: true`.
-  final String notificationTitle;
-  final String notificationText;
-
-  static LocationAccess _map(LocationPermission p) => switch (p) {
-    LocationPermission.denied => LocationAccess.denied,
-    LocationPermission.deniedForever => LocationAccess.deniedForever,
-    LocationPermission.whileInUse => LocationAccess.whileInUse,
-    LocationPermission.always => LocationAccess.always,
-    LocationPermission.unableToDetermine => LocationAccess.denied,
-  };
-
-  static DevicePosition _from(Position p) => DevicePosition(
-    lat: p.latitude,
-    lng: p.longitude,
-    accuracy: p.accuracy,
-    timestamp: p.timestamp.toUtc(),
-  );
-
-  @override
-  Future<LocationAccess> access() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      return LocationAccess.serviceDisabled;
-    }
-    return _map(await Geolocator.checkPermission());
-  }
-
-  @override
-  Future<LocationAccess> requestAccess() async {
-    final now = await access();
-    if (now != LocationAccess.denied) return now;
-    return _map(await Geolocator.requestPermission());
-  }
-
-  @override
-  Future<DevicePosition?> current() async {
-    final a = await access();
-    if (a != LocationAccess.whileInUse && a != LocationAccess.always) {
-      return null;
-    }
-    try {
-      return _from(await Geolocator.getCurrentPosition());
-    } on Exception {
-      return null;
-    }
-  }
-
-  @override
-  Stream<DevicePosition> positions({
-    required Duration interval,
-    double distanceFilterMeters = 0,
-    bool background = false,
-  }) {
-    final distance = distanceFilterMeters.round();
-    final LocationSettings settings = switch (defaultTargetPlatform) {
-      TargetPlatform.android => AndroidSettings(
-        distanceFilter: distance,
-        intervalDuration: interval,
-        foregroundNotificationConfig: background
-            ? ForegroundNotificationConfig(
-                notificationTitle: notificationTitle,
-                notificationText: notificationText,
-              )
-            : null,
-      ),
-      TargetPlatform.iOS || TargetPlatform.macOS => AppleSettings(
-        distanceFilter: distance,
-        allowBackgroundLocationUpdates: background,
-        showBackgroundLocationIndicator: background,
-        pauseLocationUpdatesAutomatically: !background,
-      ),
-      _ => LocationSettings(distanceFilter: distance),
-    };
-    return Geolocator.getPositionStream(locationSettings: settings).map(_from);
-  }
 }
