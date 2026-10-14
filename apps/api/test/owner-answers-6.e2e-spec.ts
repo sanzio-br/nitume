@@ -542,6 +542,17 @@ describe('Owner answers 6 (e2e)', () => {
       errand.id,
     ])) as { source: string; amount: string; normalCap: string }[];
     expect(override).toEqual({ source: 'refund_decision', amount: '200.00', normalCap: '0.00' });
+    // An override can only name its own errand (DB trigger).
+    const other = await createErrand(customer);
+    await expect(
+      db().query(
+        `INSERT INTO "task_exposure_overrides"
+           ("errandId", source, "refundReviewId", amount, "normalCap", "totalPaidToNitume",
+            "committedRefunds", "committedReimbursements", note, "createdByUserId")
+         VALUES ($1, 'refund_decision', $2, 10, 0, 0, 0, 0, 'wrong task', $3)`,
+        [other.id, decreaseId, admin.id],
+      ),
+    ).rejects.toThrow(/errandId must match/);
   });
 
   it('decrease decided first: the runner can only be approved for the reduced item amount', async () => {
