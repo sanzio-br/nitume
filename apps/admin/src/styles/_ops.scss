@@ -1589,3 +1589,60 @@ tr.clickable:hover {
     display: none;
   }
 }
+
+// --- A-16 row checkbox + batch bar (p-runner-payouts) ---
+.table-card.has-batch {
+  // `clip` keeps the rounded corners without making the card a scroll
+  // container, so the batch bar can stick to the bottom of the viewport.
+  overflow: clip;
+}
+.col-check {
+  width: 44px;
+}
+.row-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--nitume-green);
+  cursor: pointer;
+}
+.row-check:disabled {
+  cursor: not-allowed;
+}
+.batch-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--nitume-white);
+  border-top: 1px solid var(--nitume-slate-line);
+  font-size: 13px;
+  font-weight: 600;
+}
+.cell-caption {
+  display: block;
+  font-size: 12px;
+  color: var(--nitume-slate-600);
+  font-family: var(--nitume-font-ui);
+  font-weight: 400;
+}
+.panel-caption {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--nitume-slate-600);
+}
+.panel-notice {
+  margin-bottom: 14px;
+}
+@media (max-width: 1100px) {
+  .runner-payouts-table .col-created {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .runner-payouts-table .col-type {
+    display: none;
+  }
+}
