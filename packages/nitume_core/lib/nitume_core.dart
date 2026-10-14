@@ -40,6 +40,7 @@ export 'src/repositories/errand_activity_repositories.dart';
 export 'src/repositories/errand_repository.dart';
 export 'src/repositories/payments_repository.dart';
 export 'src/repositories/runner_repositories.dart';
+export 'src/storage/evidence_file_store.dart';
 export 'src/storage/idempotency_key_store.dart';
 export 'src/storage/offline_action_queue.dart';
 export 'src/storage/runner_action_replay.dart';

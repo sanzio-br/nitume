@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -126,7 +128,10 @@ void main() {
       final rejected = <QueuedAction>[];
       final q = OfflineActionQueue(
         store: InMemoryQueueStore(),
-        onRejected: rejected.add,
+        onDropped: (a, reason) {
+          expect(reason, QueueDropReason.refused);
+          rejected.add(a);
+        },
         runner: (a) async => throw _conflict,
       );
       await q.enqueue(
@@ -220,4 +225,250 @@ void main() {
       expect(a.calls, ['POST /errands/e1/evidence']);
     });
   });
+
+  group('replayOutcomeFor (B1)', () {
+    NitumeApiException status(int s) =>
+        NitumeApiException(message: 'x', statusCode: s);
+
+    test('temporary failures retry later', () {
+      for (final e in <Object>[
+        _net,
+        status(500),
+        status(502),
+        status(503),
+        status(408),
+        status(429),
+        status(401),
+        const NitumeApiException(message: 'no status'),
+        TimeoutException('slow'),
+        const SocketException('down'),
+      ]) {
+        expect(replayOutcomeFor(e), ReplayOutcome.retryLater, reason: '$e');
+      }
+    });
+
+    test('real refusals drop; a missing file is its own outcome', () {
+      for (final s in [400, 403, 404, 409, 422]) {
+        expect(replayOutcomeFor(status(s)), ReplayOutcome.rejected);
+      }
+      expect(
+        replayOutcomeFor(const PathNotFoundException('/x', OSError())),
+        ReplayOutcome.fileMissing,
+      );
+    });
+
+    test('a 503 during replay keeps the action', () async {
+      final q = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async => throw status(503),
+      );
+      await q.enqueue(
+        QueuedActionKind.runnerNotes,
+        errandId: 'e1',
+        payload: const {'runnerNotes': 'x'},
+      );
+      await q.replay();
+      expect(q.pending.single.attempts, 1);
+    });
+  });
+
+  group('queue integrity (item 9)', () {
+    test('clear() during a replay does not re-add the action', () async {
+      final gate = Completer<ReplayOutcome>();
+      final settled = <String>[];
+      final store = InMemoryQueueStore();
+      final q = OfflineActionQueue(
+        store: store,
+        runner: (_) => gate.future,
+        onSettled: (a) async => settled.add(a.id),
+        newId: () => 'k1',
+      );
+      await q.enqueue(
+        QueuedActionKind.runnerNotes,
+        errandId: 'e1',
+        payload: const {'runnerNotes': 'x'},
+      );
+      final replay = q.replay();
+      await q.clear();
+      gate.complete(ReplayOutcome.retryLater);
+      await replay;
+      expect(q.isEmpty, isTrue);
+      expect(store.entries, isEmpty);
+      expect(settled, ['k1']);
+    });
+
+    test('writes are serialised in call order', () async {
+      final store = _SlowStore();
+      var n = 0;
+      final q = OfflineActionQueue(
+        store: store,
+        runner: (_) async => ReplayOutcome.done,
+        newId: () => 'k${n++}',
+      );
+      await Future.wait([
+        for (var i = 0; i < 3; i++)
+          q.enqueue(
+            QueuedActionKind.runnerNotes,
+            errandId: 'e1',
+            payload: const {'runnerNotes': 'x'},
+          ),
+      ]);
+      expect(store.writes.map((w) => w.length), [1, 2, 3]);
+      expect(store.maxConcurrent, 1);
+    });
+
+    test('a refused status change drops later status changes for the '
+        'same errand only', () async {
+      var n = 0;
+      final dropped = <(String, QueueDropReason)>[];
+      final ran = <String>[];
+      final q = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        newId: () => 'k${n++}',
+        onDropped: (a, r) => dropped.add((a.id, r)),
+        runner: (a) async {
+          ran.add(a.id);
+          return a.id == 'k0' ? ReplayOutcome.rejected : ReplayOutcome.done;
+        },
+      );
+      Future<void> transition(
+        String errand,
+        ErrandStatus from,
+        ErrandStatus to,
+      ) => q.enqueue(
+        QueuedActionKind.statusTransition,
+        errandId: errand,
+        payload: RunnerQueuedActions.transition(from: from, to: to),
+      );
+      await transition('e1', ErrandStatus.runnerEnRoute, ErrandStatus.arrived);
+      await q.enqueue(
+        QueuedActionKind.runnerNotes,
+        errandId: 'e1',
+        payload: const {'runnerNotes': 'x'},
+      );
+      await transition('e1', ErrandStatus.arrived, ErrandStatus.inProgress);
+      await transition('e2', ErrandStatus.arrived, ErrandStatus.inProgress);
+      await q.replay();
+      expect(dropped, [
+        ('k0', QueueDropReason.refused),
+        ('k2', QueueDropReason.superseded),
+      ]);
+      expect(ran, ['k0', 'k1', 'k3']);
+      expect(q.isEmpty, isTrue);
+    });
+
+    test(
+      'a missing photo is reported, and settled actions are cleaned up',
+      () async {
+        final dropped = <QueueDropReason>[];
+        final settled = <String>[];
+        final q = OfflineActionQueue(
+          store: InMemoryQueueStore(),
+          newId: () => 'k1',
+          onDropped: (_, r) => dropped.add(r),
+          onSettled: (a) async => settled.add(a.id),
+          runner: (_) async => ReplayOutcome.fileMissing,
+        );
+        await q.enqueue(
+          QueuedActionKind.evidenceUpload,
+          errandId: 'e1',
+          payload: RunnerQueuedActions.evidence(
+            path: '/gone.jpg',
+            type: EvidenceType.photo,
+            contentType: 'image/jpeg',
+          ),
+        );
+        await q.replay();
+        expect(dropped, [QueueDropReason.fileMissing]);
+        expect(settled, ['k1']);
+      },
+    );
+  });
+
+  group('EvidenceFileStore', () {
+    late Directory tmp;
+    setUp(() => tmp = Directory.systemTemp.createTempSync('nitume_ev'));
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    test('keeps a copy, cleans it up, never deletes outside', () async {
+      final src = File('${tmp.path}/cache.jpg')..writeAsBytesSync([1, 2]);
+      final files = DirectoryEvidenceFileStore(() async => tmp);
+      final kept = await files.keep(src.path);
+      expect(kept, isNot(src.path));
+      expect(File(kept).readAsBytesSync(), [1, 2]);
+      src.deleteSync();
+      expect(File(kept).existsSync(), isTrue);
+
+      final cleanup = RunnerQueuedActions.cleanupFor(files);
+      await cleanup(
+        QueuedAction(
+          id: 'k',
+          kind: QueuedActionKind.evidenceUpload,
+          errandId: 'e1',
+          payload: {'path': kept},
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      expect(File(kept).existsSync(), isFalse);
+
+      final outside = File('${tmp.path}/other.jpg')..writeAsBytesSync([1]);
+      await files.discard(outside.path);
+      expect(outside.existsSync(), isTrue);
+    });
+
+    test('keep throws when the source is gone', () async {
+      final files = DirectoryEvidenceFileStore(() async => tmp);
+      expect(
+        files.keep('${tmp.path}/missing.jpg'),
+        throwsA(isA<FileSystemException>()),
+      );
+    });
+  });
+
+  test('replay runner reports a missing file', () async {
+    final runner = RunnerQueuedActions.runnerFor(
+      RunnerJobsRepository(
+        NitumeApiClient(
+          config: const ApiConfig(baseUrl: 'https://api.test/api/v1'),
+          tokenStore: InMemoryTokenStore(),
+          httpClientAdapter: _Adapter({}),
+        ),
+      ),
+      readFile: (p) => throw PathNotFoundException(p, const OSError()),
+    );
+    final outcome = await runner(
+      QueuedAction(
+        id: 'k',
+        kind: QueuedActionKind.evidenceUpload,
+        errandId: 'e1',
+        payload: RunnerQueuedActions.evidence(
+          path: '/gone.jpg',
+          type: EvidenceType.photo,
+          contentType: 'image/jpeg',
+        ),
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+    expect(outcome, ReplayOutcome.fileMissing);
+  });
+}
+
+class _SlowStore implements QueueStore {
+  final writes = <List<String>>[];
+  int _active = 0;
+  int maxConcurrent = 0;
+
+  @override
+  Future<List<String>> read() async => const [];
+
+  @override
+  Future<void> write(List<String> entries) async {
+    _active++;
+    if (_active > maxConcurrent) maxConcurrent = _active;
+    // Earlier writes take longer: without serialisation they would finish
+    // out of order.
+    await Future<void>.delayed(Duration(milliseconds: 30 - writes.length * 10));
+    writes.add(entries);
+    _active--;
+  }
 }

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -114,20 +116,55 @@ enum ReplayOutcome {
   /// The server accepted it: remove from the queue.
   done,
 
-  /// Still offline: keep it and stop this replay (order is preserved).
+  /// Not sent (offline, timeout, 5xx, 408, 429, 401 before re-auth): keep
+  /// it and stop this replay, so order is preserved.
   retryLater,
 
-  /// The server refused it (e.g. 409, the job moved on): remove it and
-  /// report through `onRejected` so the screen reloads the server state.
+  /// The server refused it for good (e.g. 403, 409 after re-check, 422):
+  /// remove it and report it so the screen reloads the server state.
   rejected,
+
+  /// The queued photo is no longer on the phone: remove it and tell the
+  /// runner to take it again.
+  fileMissing,
 }
 
-/// Maps a replay failure to an outcome: network errors retry later,
-/// anything else is a server refusal.
-ReplayOutcome replayOutcomeFor(Object error) =>
-    error is NitumeApiException && error.isNetworkError
-    ? ReplayOutcome.retryLater
-    : ReplayOutcome.rejected;
+/// Why an action left the queue without being applied.
+enum QueueDropReason {
+  /// The server refused it ([ReplayOutcome.rejected]).
+  refused,
+
+  /// Its local photo file is gone ([ReplayOutcome.fileMissing]).
+  fileMissing,
+
+  /// An earlier status change for the same errand was refused, so this
+  /// later one no longer applies.
+  superseded,
+}
+
+/// Maps a replay failure to an outcome. Transport problems and temporary
+/// server answers retry later; only real refusals drop the action.
+ReplayOutcome replayOutcomeFor(Object error) {
+  if (error is NitumeApiException) {
+    if (error.isNetworkError) return ReplayOutcome.retryLater;
+    final status = error.statusCode;
+    if (status == null ||
+        status == 401 ||
+        status == 408 ||
+        status == 429 ||
+        status >= 500) {
+      return ReplayOutcome.retryLater;
+    }
+    return ReplayOutcome.rejected;
+  }
+  if (error is TimeoutException ||
+      error is SocketException ||
+      error is HttpException) {
+    return ReplayOutcome.retryLater;
+  }
+  if (error is FileSystemException) return ReplayOutcome.fileMissing;
+  return ReplayOutcome.rejected;
+}
 
 /// Runs one queued action against the API.
 typedef QueuedActionRunner = Future<ReplayOutcome> Function(
@@ -138,14 +175,23 @@ typedef QueuedActionRunner = Future<ReplayOutcome> Function(
 /// in order on reconnect (§7.2).
 ///
 /// The screen shows the target state at once with the offline notice and
-/// calls [replay] when the connection returns; a [ReplayOutcome.rejected]
-/// action is dropped and passed to [onRejected] so the screen reloads and
-/// never shows a later state than the server confirms.
+/// calls [replay] when the connection returns.
+///
+/// * Temporary failures keep the action and stop the replay (order kept).
+/// * A refused or file-missing action is dropped and passed to [onDropped]
+///   so the screen reloads and tells the runner; a refused status change
+///   also drops the later queued status changes of the same errand
+///   ([QueueDropReason.superseded]).
+/// * [onSettled] runs for every action that leaves the queue (applied,
+///   dropped or cleared): use it to delete queued photo files
+///   (`RunnerQueuedActions.cleanupFor`).
+/// * Writes to [store] are serialised in call order.
 class OfflineActionQueue extends ChangeNotifier {
   OfflineActionQueue({
     required this.store,
     required this.runner,
-    this.onRejected,
+    this.onDropped,
+    this.onSettled,
     String Function()? newId,
     DateTime Function()? clock,
   }) : _newId = newId ?? PaymentsRepository.newIdempotencyKey,
@@ -153,12 +199,15 @@ class OfflineActionQueue extends ChangeNotifier {
 
   final QueueStore store;
   final QueuedActionRunner runner;
-  final void Function(QueuedAction action)? onRejected;
+  final void Function(QueuedAction action, QueueDropReason reason)? onDropped;
+  final Future<void> Function(QueuedAction action)? onSettled;
   final String Function() _newId;
   final DateTime Function() _clock;
 
   List<QueuedAction> _pending = [];
   bool _replaying = false;
+  int _generation = 0;
+  Future<void> _writes = Future.value();
 
   /// Oldest first.
   List<QueuedAction> get pending => List.unmodifiable(_pending);
@@ -203,13 +252,15 @@ class OfflineActionQueue extends ChangeNotifier {
   }
 
   /// Replays pending actions in order until one must wait. Safe to call
-  /// repeatedly; overlapping calls are ignored.
+  /// repeatedly; overlapping calls are ignored. A [clear] during a replay
+  /// wins: nothing is re-added.
   Future<void> replay() async {
     if (_replaying) return;
     _replaying = true;
     notifyListeners();
     try {
       while (_pending.isNotEmpty) {
+        final generation = _generation;
         final action = _pending.first;
         ReplayOutcome outcome;
         try {
@@ -217,14 +268,44 @@ class OfflineActionQueue extends ChangeNotifier {
         } on Object catch (e) {
           outcome = replayOutcomeFor(e);
         }
+        if (generation != _generation) break; // cleared meanwhile
         if (outcome == ReplayOutcome.retryLater) {
-          _pending = [action._retried(), ..._pending.skip(1)];
+          _pending = [
+            for (final a in _pending) a.id == action.id ? a._retried() : a,
+          ];
           await _persist();
           break;
         }
-        _pending = _pending.skip(1).toList();
+        final dropped = <(QueuedAction, QueueDropReason)>[];
+        if (outcome != ReplayOutcome.done) {
+          dropped.add((
+            action,
+            outcome == ReplayOutcome.fileMissing
+                ? QueueDropReason.fileMissing
+                : QueueDropReason.refused,
+          ));
+          if (outcome == ReplayOutcome.rejected &&
+              action.kind == QueuedActionKind.statusTransition) {
+            for (final a in _pending) {
+              if (a.id != action.id &&
+                  a.errandId == action.errandId &&
+                  a.kind == QueuedActionKind.statusTransition) {
+                dropped.add((a, QueueDropReason.superseded));
+              }
+            }
+          }
+        }
+        final leaving = {action.id, for (final (a, _) in dropped) a.id};
+        _pending = [
+          for (final a in _pending)
+            if (!leaving.contains(a.id)) a,
+        ];
         await _persist();
-        if (outcome == ReplayOutcome.rejected) onRejected?.call(action);
+        await _settle(action);
+        for (final (a, reason) in dropped) {
+          if (a.id != action.id) await _settle(a);
+          onDropped?.call(a, reason);
+        }
       }
     } finally {
       _replaying = false;
@@ -232,13 +313,33 @@ class OfflineActionQueue extends ChangeNotifier {
     }
   }
 
-  /// Drops everything (log out).
+  /// Drops everything (log out). Settles each dropped action.
   Future<void> clear() async {
+    _generation++;
+    final dropped = _pending;
     _pending = [];
     await _persist();
+    for (final a in dropped) {
+      await _settle(a);
+    }
     notifyListeners();
   }
 
-  Future<void> _persist() =>
-      store.write([for (final a in _pending) jsonEncode(a.toJson())]);
+  Future<void> _settle(QueuedAction action) async {
+    final hook = onSettled;
+    if (hook == null) return;
+    try {
+      await hook(action);
+    } on Object {
+      // Cleanup is best effort.
+    }
+  }
+
+  /// Serialised: each write starts after the previous one finished.
+  Future<void> _persist() {
+    final snapshot = [for (final a in _pending) jsonEncode(a.toJson())];
+    return _writes = _writes
+        .catchError((Object _) {})
+        .then((_) => store.write(snapshot));
+  }
 }

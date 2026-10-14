@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../api/api_exception.dart';
 import '../models/enums.dart';
 import '../repositories/runner_repositories.dart';
+import 'evidence_file_store.dart';
 import 'offline_action_queue.dart';
 
 /// Payload helpers and the replay runner for the runner app's queued
@@ -21,8 +22,9 @@ abstract final class RunnerQueuedActions {
     'runnerNotes': notes,
   };
 
-  /// Payload for a queued evidence upload. [path] is the compressed local
-  /// image file; it must stay until the upload succeeds.
+  /// Payload for a queued evidence upload. [path] is the compressed photo
+  /// kept in app storage ([EvidenceFileStore.keep]); the queue's
+  /// [cleanupFor] hook deletes it once the action leaves the queue.
   static Map<String, Object?> evidence({
     required String path,
     required EvidenceType type,
@@ -39,7 +41,19 @@ abstract final class RunnerQueuedActions {
     'lon': ?lon,
   };
 
-  /// A [QueuedActionRunner] that replays through [repo].
+  /// An `OfflineActionQueue.onSettled` hook that deletes the kept photo of
+  /// an evidence action once it leaves the queue (uploaded, refused,
+  /// superseded or cleared).
+  static Future<void> Function(QueuedAction action) cleanupFor(
+    EvidenceFileStore files,
+  ) => (action) async {
+    if (action.kind != QueuedActionKind.evidenceUpload) return;
+    final path = action.payload['path'];
+    if (path is String) await files.discard(path);
+  };
+
+  /// A [QueuedActionRunner] that replays through [repo]. A missing photo
+  /// file answers [ReplayOutcome.fileMissing] (reported to the runner).
   ///
   /// A replayed transition answered 409 counts as done when the job is
   /// already in the target state (the API has no idempotent replay yet,
@@ -87,9 +101,6 @@ abstract final class RunnerQueuedActions {
             );
         }
         return ReplayOutcome.done;
-      } on FileSystemException {
-        // The local photo is gone: nothing left to send.
-        return ReplayOutcome.rejected;
       } on Object catch (e) {
         return replayOutcomeFor(e);
       }
