@@ -447,7 +447,12 @@ export type RunnerPayoutStatus = 'on_hold' | 'payable' | 'paid' | 'rejected';
 export type RunnerPayoutAdjustmentKind = 'correction' | 'reversal' | 'resent_payout';
 /** Why an item reimbursement waits for ops review (rows 105, 106, 108). */
 export type RunnerPayoutReviewReason =
-  'receipt_missing' | 'receipt_mismatch' | 'out_of_pocket_claim' | 'over_purchase_limit';
+  | 'receipt_missing'
+  | 'receipt_mismatch'
+  | 'out_of_pocket_claim'
+  | 'over_purchase_limit'
+  // The item line waits at CONFIRMED while a price-decrease refund review is undecided.
+  | 'price_decrease_pending';
 
 /** Admin list item (`GET /runner-payouts`): the stored line plus effective status and summaries. */
 export interface RunnerPayoutItem {
@@ -580,7 +585,6 @@ export type ReviewRunnerPayoutDto =
 /** `POST /runner-payouts/:id/corrections`. Amounts are JSON numbers. */
 export interface CreateRunnerPayoutCorrectionDto {
   kind: RunnerPayoutAdjustmentKind;
-  exposureOverrideNote?: string;
   newReference?: string;
   newAmount?: number;
   reason: string;

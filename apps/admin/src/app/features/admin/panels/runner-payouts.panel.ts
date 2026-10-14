@@ -58,7 +58,7 @@ export const MIXED_RUNNERS_COPY = 'One payout can cover one runner only.';
 const EMPTY: Record<RunnerPayoutFilter, { title: string; text: string }> = {
   on_hold: {
     title: 'Nothing to review',
-    text: "Item reimbursements without a receipt, above the runner's purchase limit, or claimed after a cancelled or failed task land here.",
+    text: "Item reimbursements without a receipt, above the runner's purchase limit, waiting for a price-decrease refund decision, or claimed after a cancelled or failed task land here.",
   },
   payable: {
     title: 'Nothing owed',

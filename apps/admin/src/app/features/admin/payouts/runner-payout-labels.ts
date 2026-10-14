@@ -23,6 +23,7 @@ const REVIEW_REASON_LABELS: Record<string, string> = {
   receipt_mismatch: "Receipt doesn't match",
   out_of_pocket_claim: 'Claim after cancel/fail',
   over_purchase_limit: 'Above purchase limit',
+  price_decrease_pending: 'Waiting for the price-decrease refund decision',
 };
 
 export function runnerPayoutKindLabel(kind: string): string {

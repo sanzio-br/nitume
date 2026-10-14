@@ -14,10 +14,37 @@ export const OVERRIDE_NOTE_ERROR = 'Explain the override in 10 to 500 characters
 export const OVERRIDE_CONFIRM_NOTE =
   'This goes over the task cap. Your note is kept in the audit history.';
 
-/** Extras of a 409 `task_exposure_cap_exceeded`. */
+/**
+ * Extras of a 409 `task_exposure_cap_exceeded`. `scope` `task`: the total
+ * paid to Nitume against every refund and the runner's item reimbursement;
+ * `item`: the item amount paid against price-decrease refunds and the item
+ * reimbursement.
+ */
 export interface ExposureCap extends TaskExposure {
   requested: string;
+  scope: 'task' | 'item';
 }
+
+/** Figure labels and notice wording per scope (drawer-refund / drawer-runner-payout 2a). */
+export const EXPOSURE_SCOPE_COPY: Record<
+  'task' | 'item',
+  { total: string; refunds: string; reimbursements: string; remaining: string; lead: string }
+> = {
+  task: {
+    total: 'Total paid to Nitume',
+    refunds: 'Customer refunds committed',
+    reimbursements: 'Runner reimbursements committed',
+    remaining: 'Left within the task cap',
+    lead: '',
+  },
+  item: {
+    total: 'Item amount paid',
+    refunds: 'Other price-decrease refunds',
+    reimbursements: 'Runner item reimbursement committed',
+    remaining: 'Left of the item amount',
+    lead: "Price-decrease refunds and the runner's item reimbursement both come out of the item amount paid. ",
+  },
+};
 
 /** The figures of a 409 `task_exposure_cap_exceeded`, else null. */
 export function exposureCapFrom(err: ApiErrorInfo): ExposureCap | null {
@@ -30,6 +57,7 @@ export function exposureCapFrom(err: ApiErrorInfo): ExposureCap | null {
     committedReimbursements: str('committedReimbursements'),
     remaining: str('remaining'),
     requested: str('requested'),
+    scope: x['scope'] === 'item' ? 'item' : 'task',
   };
 }
 

@@ -2,7 +2,7 @@ import { Component, input } from '@angular/core';
 import { InlineNoticeComponent } from '../../../shared/inline-notice.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
 import { formatKshExact } from '../shared-format';
-import { ExposureOverrideState, OVERRIDE_NOTE_MAX } from './task-exposure';
+import { EXPOSURE_SCOPE_COPY, ExposureOverrideState, OVERRIDE_NOTE_MAX } from './task-exposure';
 
 /**
  * Row 136 override field: after a 409 `task_exposure_cap_exceeded`, while the
@@ -15,22 +15,30 @@ import { ExposureOverrideState, OVERRIDE_NOTE_MAX } from './task-exposure';
   template: `
     @let st = state();
     @if (st.active() && st.cap(); as cap) {
+      @let c = scopeCopy[cap.scope];
       <app-inline-notice tone="info">
-        This is <span class="num">{{ formatKshExact(st.over()) }}</span> above the task cap.
+        @if (cap.scope === 'item') {
+          {{ c.lead }}This is <span class="num">{{ formatKshExact(st.over()) }}</span> above it.
+        } @else {
+          This is <span class="num">{{ formatKshExact(st.over()) }}</span> above the task cap.
+        }
       </app-inline-notice>
       <div class="drawer-card">
         <div class="drawer-row">
-          <span>Total paid to Nitume</span><b>{{ formatKshExact(cap.totalPaidToNitume) }}</b>
+          <span>{{ c.total }}</span
+          ><b>{{ formatKshExact(cap.totalPaidToNitume) }}</b>
         </div>
         <div class="drawer-row">
-          <span>Customer refunds committed</span><b>{{ formatKshExact(cap.committedRefunds) }}</b>
+          <span>{{ c.refunds }}</span
+          ><b>{{ formatKshExact(cap.committedRefunds) }}</b>
         </div>
         <div class="drawer-row">
-          <span>Runner reimbursements committed</span
+          <span>{{ c.reimbursements }}</span
           ><b>{{ formatKshExact(cap.committedReimbursements) }}</b>
         </div>
         <div class="drawer-row drawer-row-strong">
-          <span>Left within the task cap</span><b>{{ formatKshExact(cap.remaining) }}</b>
+          <span>{{ c.remaining }}</span
+          ><b>{{ formatKshExact(cap.remaining) }}</b>
         </div>
       </div>
       <app-form-field
@@ -60,6 +68,7 @@ export class ExposureOverrideFieldComponent {
   readonly hint = input('Kept in the audit history.');
 
   protected readonly max = OVERRIDE_NOTE_MAX;
+  protected readonly scopeCopy = EXPOSURE_SCOPE_COPY;
 
   protected val(event: Event): string {
     return (event.target as HTMLTextAreaElement).value;
