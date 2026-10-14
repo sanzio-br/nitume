@@ -226,7 +226,7 @@ void main() {
         () => RunnerJobsRepository(
           _client(a),
         ).transition('e1', from: ErrandStatus.arrived, to: ErrandStatus.failed),
-        throwsA(isA<AssertionError>()),
+        throwsA(isA<ArgumentError>()),
       );
     });
 

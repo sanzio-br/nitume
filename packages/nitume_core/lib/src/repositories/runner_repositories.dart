@@ -147,7 +147,8 @@ class RunnerJobsRepository {
       _errands.history(errandId);
 
   /// Runner transition, `PATCH /errands/:id/status` `{ to, note? }`.
-  /// Asserts the step is a runner transition; the API checks the actor.
+  /// Throws [ArgumentError] unless it is a runner transition; the API also
+  /// checks the actor.
   /// [note] (≤ 500) carries the reason for RUNNER_EN_ROUTE → FAILED.
   Future<ErrandTransitionResult> transition(
     String errandId, {
@@ -155,10 +156,9 @@ class RunnerJobsRepository {
     required ErrandStatus to,
     String? note,
   }) {
-    assert(
-      runnerTransitions[from]?.contains(to) ?? false,
-      'Not a runner transition: ${from.wire} → ${to.wire}',
-    );
+    if (!(runnerTransitions[from]?.contains(to) ?? false)) {
+      throw ArgumentError('Not a runner transition: ${from.wire} → ${to.wire}');
+    }
     return _errands.transition(errandId, to, note: note);
   }
 
@@ -188,10 +188,13 @@ class RunnerJobsRepository {
     double? lat,
     double? lon,
   }) {
-    assert(
-      type == EvidenceType.photo || type == EvidenceType.receipt,
-      'Runners upload photos and receipts only',
-    );
+    if (type != EvidenceType.photo && type != EvidenceType.receipt) {
+      throw ArgumentError.value(
+        type,
+        'type',
+        'Runners upload photos and receipts only',
+      );
+    }
     return _api
         .postMap(
           '/errands/$errandId/evidence',
