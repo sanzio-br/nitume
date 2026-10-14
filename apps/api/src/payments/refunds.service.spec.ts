@@ -49,7 +49,14 @@ const build = (
   };
   const transactions = { createQueryBuilder: vi.fn(() => qb) };
   /** Mirrors INSERT ... ON CONFLICT ("errandId") DO UPDATE ... WHERE pending. */
-  const query = vi.fn((_sql: string, [errandId, trigger, amountPaid, pending]: string[]) => {
+  const query = vi.fn((sql: string, [errandId, trigger, amountPaid, pending]: string[]) => {
+    // Row 136 reads: item paid (large, so the item cap never binds here) and runner reimbursements.
+    if (sql.includes('merchant_payment')) {
+      return Promise.resolve([{ total: '100000.00' }]);
+    }
+    if (sql.includes('SUM("amount")')) {
+      return Promise.resolve([{ total: '0' }]);
+    }
     const existing = table.get(errandId);
     if (!existing) {
       table.set(errandId, review({ id: `r-${table.size + 1}`, errandId, trigger: trigger as RefundTrigger, amountPaid }));

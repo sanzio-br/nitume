@@ -27,6 +27,7 @@ import {
   assertWithinExposure,
   committedReimbursements,
   exposureOf,
+  itemPaidGross,
   lockTaskExposure,
   overridesFor,
 } from './task-exposure';
@@ -754,6 +755,16 @@ export class RefundsService implements OnModuleInit {
           },
         );
       }
+      if (refundAmount > 0 && row.trigger === RefundTrigger.PRICE_CHANGE_DECREASE) {
+        await this.assertItemExposure(
+          manager,
+          row,
+          refundAmount,
+          adminUserId,
+          exposureOverrideNote,
+          TaskExposureOverrideSource.REFUND_DECISION,
+        );
+      }
       if (refundAmount > 0) {
         await assertWithinExposure(manager, {
           errandId: row.errandId,
@@ -954,6 +965,16 @@ export class RefundsService implements OnModuleInit {
             { correctionCeiling: ceiling, amountPaid: ceiling },
           );
         }
+        if (row.trigger === RefundTrigger.PRICE_CHANGE_DECREASE) {
+          await this.assertItemExposure(
+            manager,
+            row,
+            amount,
+            adminUserId,
+            input.exposureOverrideNote,
+            TaskExposureOverrideSource.REFUND_CORRECTION,
+          );
+        }
         const others = withCommitted(
           siblings.filter((r) => r.id !== row.id),
           corrections,
@@ -1093,6 +1114,49 @@ export class RefundsService implements OnModuleInit {
       .groupBy('p."errandId"')
       .getRawMany<{ errandId: string; total: string }>();
     return new Map(raw.map((r) => [r.errandId, Number(r.total)]));
+  }
+
+  /** True when the task has a price-decrease refund review still pending. */
+  async hasPendingDecrease(errandId: string, manager?: EntityManager): Promise<boolean> {
+    const repo = manager ? manager.getRepository(RefundReview) : this.reviews;
+    const pending = await repo.count({
+      where: { errandId, trigger: RefundTrigger.PRICE_CHANGE_DECREASE, status: RefundStatus.PENDING_REVIEW },
+    });
+    return pending > 0;
+  }
+
+  /**
+   * A price-decrease refund and the runner's item reimbursement come out of
+   * the same money: the item amount paid to Nitume. Committed decrease
+   * refunds (other than `row`) + committed item reimbursement + `amount`
+   * must stay <= the item amount paid (gross), else 409
+   * task_exposure_cap_exceeded (`scope: item`) unless overridden. Without
+   * this, a decrease decided after the runner's line was approved would be
+   * paid out of Nitume's fees.
+   */
+  private async assertItemExposure(
+    manager: EntityManager,
+    row: RefundReview,
+    amount: number,
+    adminUserId: string,
+    overrideNote: string | undefined,
+    source: TaskExposureOverrideSource,
+  ): Promise<void> {
+    const [gross, decreases, reimbursed] = await Promise.all([
+      itemPaidGross(manager, row.errandId),
+      this.committedRefundTotal(row.errandId, manager, [RefundTrigger.PRICE_CHANGE_DECREASE], row.id),
+      committedReimbursements(manager, row.errandId),
+    ]);
+    await assertWithinExposure(manager, {
+      errandId: row.errandId,
+      amount,
+      exposure: exposureOf(gross, decreases, reimbursed),
+      overrideNote,
+      adminUserId,
+      source,
+      refundReviewId: row.id,
+      scope: 'item',
+    });
   }
 
   /** Everything the customer paid to Nitume for the task (completed STK legs). */

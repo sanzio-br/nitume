@@ -57,6 +57,23 @@ export const committedReimbursements = async (
   return Number(rows?.[0]?.total ?? 0);
 };
 
+/**
+ * Item amount paid to Nitume for the task, gross: every completed
+ * merchant-payment leg (original item amount and price-increase STKs),
+ * before any refund.
+ */
+export const itemPaidGross = async (manager: EntityManager, errandId: string): Promise<number> => {
+  const rows: { total: string | null }[] = await manager.query(
+    `SELECT COALESCE(SUM(t.amount), 0) AS total
+       FROM "payment_transactions" t
+       JOIN "payments" p ON p.id = t."paymentId"
+       JOIN "payment_type" pt ON pt.id = t."paymentTypeId"
+      WHERE p."errandId" = $1 AND t.status = 'completed' AND pt.code = 'merchant_payment'`,
+    [errandId],
+  );
+  return Number(rows?.[0]?.total ?? 0);
+};
+
 export const exposureOf = (totalPaid: number, refunds: number, reimbursements: number): TaskExposure => ({
   totalPaidToNitume: money(totalPaid),
   committedRefunds: money(refunds),
@@ -82,6 +99,14 @@ export const assertWithinExposure = async (
     source: TaskExposureOverrideSource;
     refundReviewId?: string | null;
     runnerPayoutLineId?: string | null;
+    /**
+     * `task` (default): basis is the total paid to Nitume. `item`: basis is
+     * the item amount paid to Nitume (gross), against price-decrease refunds
+     * plus the runner's item reimbursement; the override row then stores the
+     * item basis in `totalPaidToNitume` and the decrease refunds in
+     * `committedRefunds`.
+     */
+    scope?: 'task' | 'item';
   },
 ): Promise<TaskExposureOverride | null> => {
   const remaining = Number(args.exposure.remaining);
@@ -93,8 +118,10 @@ export const assertWithinExposure = async (
     throw new ApiError(
       HttpStatus.CONFLICT,
       'task_exposure_cap_exceeded',
-      `Refunds and the runner's item reimbursement on this task can't go above KSh ${args.exposure.totalPaidToNitume}; at most KSh ${args.exposure.remaining} more without an ops override`,
-      { ...args.exposure, requested: money(args.amount) },
+      args.scope === 'item'
+        ? `Price-decrease refunds and the runner's item reimbursement can't go above the item amount paid, KSh ${args.exposure.totalPaidToNitume}; at most KSh ${args.exposure.remaining} more without an ops override`
+        : `Refunds and the runner's item reimbursement on this task can't go above KSh ${args.exposure.totalPaidToNitume}; at most KSh ${args.exposure.remaining} more without an ops override`,
+      { ...args.exposure, requested: money(args.amount), scope: args.scope ?? 'task' },
     );
   }
   if (note.length < EXPOSURE_OVERRIDE_NOTE_MIN || note.length > EXPOSURE_OVERRIDE_NOTE_MAX) {

@@ -92,11 +92,15 @@ const build = (row: RefundReview = review(), others: RefundReview[] = [], usedRe
   };
   /** Runner item reimbursement committed on the task (row 136). */
   let reimbursed = '0';
+  /** Item amount paid to Nitume, gross (item cap on decrease refunds). */
+  let itemGross = '1500.00';
   const manager = {
     query: vi.fn((sql: string, params: string[]) =>
       sql.includes('runner_payout_lines') && sql.includes('SUM')
         ? Promise.resolve([{ total: reimbursed }])
-        : query(sql, params),
+        : sql.includes('merchant_payment')
+          ? Promise.resolve([{ total: itemGross }])
+          : query(sql, params),
     ),
     getRepository: (entity: { name: string }) =>
       entity.name === 'RefundPayoutCorrection'
@@ -149,7 +153,10 @@ const build = (row: RefundReview = review(), others: RefundReview[] = [], usedRe
   const setReimbursed = (v: string) => {
     reimbursed = v;
   };
-  return { service, table, row, original, reviewRepo, emit, add, query, overrides, setReimbursed };
+  const setItemGross = (v: string) => {
+    itemGross = v;
+  };
+  return { service, table, row, original, reviewRepo, emit, add, query, overrides, setReimbursed, setItemGross };
 };
 
 const codeOf = (p: Promise<unknown>) =>
@@ -441,8 +448,9 @@ describe('Row 136: combined cap with the runner item reimbursement', () => {
 
   it('a refund decision counts the runner reimbursement; above it needs an audited override', async () => {
     // Paid 1500; r-1 refunded 1000; runner reimbursed 300 -> 200 left.
-    const { service, setReimbursed, overrides, query } = build(review(), [pending()]);
+    const { service, setReimbursed, setItemGross, overrides, query } = build(review(), [pending()]);
     setReimbursed('300.00');
+    setItemGross('100000.00'); // only the task cap is under test here
     const err = await service.decide('r-2', 200.01, undefined, 'admin-1').catch((e: unknown) => e);
     expect(err).toMatchObject({ code: 'task_exposure_cap_exceeded' });
     expect((err as ApiError).getStatus()).toBe(409);
@@ -476,6 +484,7 @@ describe('Row 136: combined cap with the runner item reimbursement', () => {
     // Within the cap, no override is recorded.
     const within = build(review(), [pending()]);
     within.setReimbursed('300.00');
+    within.setItemGross('100000.00');
     await within.service.decide('r-2', 200, undefined, 'admin-1');
     expect(within.overrides).toHaveLength(0);
   });
@@ -488,5 +497,61 @@ describe('Row 136: combined cap with the runner item reimbursement', () => {
     expect(await codeOf(add({ kind: K.CORRECTED, newAmount: 950, reason }))).toBe('task_exposure_cap_exceeded');
     await add({ kind: K.CORRECTED, newAmount: 950, reason, exposureOverrideNote: 'Ops approved by phone' });
     expect(overrides).toEqual([expect.objectContaining({ source: 'refund_correction', amount: '950.00', normalCap: '900.00' })]);
+  });
+});
+
+describe('Price-decrease refund vs runner item reimbursement (re-review fix)', () => {
+  // Service 200 + runner fee 300 + item 1000 = 1500 paid; price drops to 800.
+  const decrease = (over: Partial<RefundReview> = {}) =>
+    review({
+      id: 'r-1',
+      trigger: RefundTrigger.PRICE_CHANGE_DECREASE,
+      priceChangeRequestId: 'pc-1',
+      amountPaid: '200.00',
+      refundAmount: null,
+      status: RefundStatus.PENDING_REVIEW,
+      payoutReference: null,
+      paidAt: null,
+      ...over,
+    });
+
+  it('deciding the decrease after the runner was approved for the full item is refused (scope item)', async () => {
+    const { service, setReimbursed, setItemGross, overrides } = build(decrease());
+    setItemGross('1000.00');
+    setReimbursed('1000.00');
+    const err = await service.decide('r-1', 200, undefined, 'admin-1').catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'task_exposure_cap_exceeded' });
+    expect((err as ApiError).getResponse()).toMatchObject({
+      scope: 'item',
+      totalPaidToNitume: '1000.00',
+      committedReimbursements: '1000.00',
+      remaining: '0.00',
+      requested: '200.00',
+    });
+    const ok = await service.decide('r-1', 200, undefined, 'admin-1', 'Runner overpaid; recovering separately');
+    expect(ok).toMatchObject({ status: RefundStatus.APPROVED });
+    expect(overrides).toEqual([
+      expect.objectContaining({ source: 'refund_decision', amount: '200.00', normalCap: '0.00', totalPaidToNitume: '1000.00' }),
+    ]);
+  });
+
+  it('within the item amount the decrease is decided normally', async () => {
+    const { service, setReimbursed, setItemGross, overrides } = build(decrease());
+    setItemGross('1000.00');
+    setReimbursed('800.00');
+    await expect(service.decide('r-1', 200, undefined, 'admin-1')).resolves.toMatchObject({ status: RefundStatus.APPROVED });
+    expect(overrides).toHaveLength(0);
+  });
+
+  it('a correction raising a decrease refund is checked against the item amount too', async () => {
+    const { add, setReimbursed, setItemGross } = build(
+      decrease({ status: RefundStatus.REFUNDED, amountPaid: '300.00', refundAmount: '200.00', payoutReference: 'QAB1', paidAt: PAID_AT }),
+    );
+    setItemGross('1000.00');
+    setReimbursed('900.00');
+    expect(await codeOf(add({ kind: K.CORRECTED, newAmount: 150, reason }))).toBe('task_exposure_cap_exceeded');
+    await expect(add({ kind: K.CORRECTED, newAmount: 100, reason })).resolves.toMatchObject({
+      effectivePayout: { amount: '100.00' },
+    });
   });
 });
