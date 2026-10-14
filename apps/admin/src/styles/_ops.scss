@@ -1667,3 +1667,12 @@ tr.clickable:hover {
 .send-back {
   margin-top: 10px;
 }
+
+// --- Task drawer: Runner payouts rows (SA-3) ---
+.drawer-row.clickable {
+  cursor: pointer;
+}
+.drawer-row.clickable:hover b,
+.drawer-row.clickable:focus-visible b {
+  text-decoration: underline;
+}

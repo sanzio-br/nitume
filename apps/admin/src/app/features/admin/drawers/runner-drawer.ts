@@ -1,4 +1,5 @@
 import { Component, inject, input } from '@angular/core';
+import { DrawerNavService } from '../drawer-nav.service';
 import { AdminDataService, shortId, timeAgo } from '../admin-data.service';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { formatKsh } from '../shared-format';
@@ -59,6 +60,14 @@ import { formatKsh } from '../shared-format';
           </div>
         </div>
       </section>
+      <!-- p-runner-payouts Entry: this runner's payout lines. -->
+      <section class="drawer-section">
+        <div class="drawer-actions">
+          <button type="button" class="btn btn-outline" (click)="viewPayouts(r.id)">
+            View payouts
+          </button>
+        </div>
+      </section>
     } @else {
       <div class="ops-empty">
         <b>Runner not found</b>This profile isn't in the current runners feed.
@@ -70,7 +79,14 @@ import { formatKsh } from '../shared-format';
 export class RunnerDrawerComponent {
   protected readonly s = inject(AdminDataService);
 
+  private readonly nav = inject(DrawerNavService);
+
   readonly runnerId = input.required<string>();
+
+  /** Opens Runner payouts filtered to this runner (the shell switches panel). */
+  protected viewPayouts(id: string): void {
+    this.nav.runnerPayoutsFor.set(id);
+  }
 
   protected runner() {
     return this.s.runners().find((r) => r.id === this.runnerId());
