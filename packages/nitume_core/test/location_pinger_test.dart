@@ -15,9 +15,13 @@ class _FakeSource implements PositionSource {
   @override
   Future<LocationAccess> requestAccess() async => LocationAccess.whileInUse;
 
+  Object? currentError;
+
   @override
   Future<DevicePosition?> current() async {
     currentCalls++;
+    final e = currentError;
+    if (e != null) throw e;
     return currentFix;
   }
 
@@ -158,4 +162,97 @@ void main() {
     );
     expect(nbo.distanceTo(msa) / 1000, closeTo(441, 3));
   });
+
+  testWidgets('idle pauses in the background; active keeps going (B3)', (
+    tester,
+  ) async {
+    final source = _FakeSource()..currentFix = _at(-4.03);
+    final pings = <LocationPing>[];
+    final p = LocationPinger(source: source, onPing: pings.add);
+    p.setMode(const PingIdle());
+    await tester.pump();
+    expect(pings, hasLength(1));
+
+    p.setAppForeground(false);
+    expect(p.collecting, isFalse);
+    await tester.pump(const Duration(minutes: 2));
+    expect(pings, hasLength(1));
+    expect(source.lastStream, isNull, reason: 'idle never streams');
+
+    p.setAppForeground(true);
+    await tester.pump();
+    expect(pings, hasLength(2), reason: 'samples at once on resume');
+
+    // Active job: background updates requested and continue in background.
+    p.setMode(const PingActiveJob('e1'));
+    expect(source.lastStream!.background, isTrue);
+    p.setAppForeground(false);
+    expect(p.collecting, isTrue);
+    expect(source.controller.hasListener, isTrue);
+    p.dispose();
+  });
+
+  testWidgets('re-setting an equal mode is a no-op (item 5)', (tester) async {
+    final source = _FakeSource()..currentFix = _at(-4.03);
+    final p = LocationPinger(source: source, onPing: (_) {});
+    // ignore: prefer_const_constructors
+    p.setMode(PingIdle());
+    await tester.pump();
+    // ignore: prefer_const_constructors
+    p.setMode(PingIdle());
+    await tester.pump();
+    expect(source.currentCalls, 1);
+    // ignore: prefer_const_constructors
+    expect(PingOffline(), const PingOffline());
+    expect(const PingActiveJob('a'), isNot(const PingActiveJob('b')));
+    p.dispose();
+  });
+
+  testWidgets('heartbeat sends a fresh current() fix (item 6)', (tester) async {
+    final source = _FakeSource();
+    final pings = <LocationPing>[];
+    final p = LocationPinger(source: source, onPing: pings.add);
+    p.setMode(const PingActiveJob('e1'));
+    source.controller.add(_at(-4.0300));
+    await tester.pump();
+    source.currentFix = _at(-4.0310);
+    await tester.pump(const Duration(seconds: 8));
+    expect(pings, hasLength(2));
+    expect(pings.last.position.lat, -4.0310);
+    p.dispose();
+  });
+
+  testWidgets('location errors are reported, never thrown (item 7)', (
+    tester,
+  ) async {
+    final statuses = <PingerStatus>[];
+    final source = _FakeSource()
+      ..currentError = const LocationServiceDisabled();
+    final pings = <LocationPing>[];
+    final p = LocationPinger(
+      source: source,
+      onPing: pings.add,
+      onStatus: statuses.add,
+    );
+    p.setMode(const PingIdle());
+    await tester.pump();
+    expect(p.status, PingerStatus.locationUnavailable);
+    expect(pings, isEmpty);
+
+    p.setMode(const PingActiveJob('e1'));
+    source.controller.addError(const LocationServiceDisabled());
+    await tester.pump();
+    expect(p.status, PingerStatus.locationUnavailable);
+
+    source.controller.add(_at(-4.03));
+    await tester.pump();
+    expect(p.status, PingerStatus.ok);
+    expect(pings, hasLength(1));
+    expect(statuses, [PingerStatus.locationUnavailable, PingerStatus.ok]);
+    p.dispose();
+  });
+}
+
+class LocationServiceDisabled implements Exception {
+  const LocationServiceDisabled();
 }

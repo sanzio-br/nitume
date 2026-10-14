@@ -24,7 +24,8 @@ class LocationPing {
   };
 }
 
-/// What the pinger is doing (owner row 123).
+/// What the pinger is doing (owner row 123). Modes compare by value, so
+/// setting the same mode again is a no-op.
 sealed class PingMode {
   const PingMode();
 }
@@ -32,15 +33,30 @@ sealed class PingMode {
 /// Offline: no location collection at all.
 final class PingOffline extends PingMode {
   const PingOffline();
+
+  @override
+  bool operator ==(Object other) => other is PingOffline;
+
+  @override
+  int get hashCode => (PingOffline).hashCode;
 }
 
-/// Online without a job: one ping every [LocationPinger.idleInterval].
+/// Online without a job: one fix every [LocationPinger.idleInterval] while
+/// the app is in the foreground; paused in the background.
 final class PingIdle extends PingMode {
   const PingIdle();
+
+  @override
+  bool operator ==(Object other) => other is PingIdle;
+
+  @override
+  int get hashCode => (PingIdle).hashCode;
 }
 
-/// Holding an accepted job in RUNNER_ASSIGNED … IN_PROGRESS: pings every
-/// 4–8 s, sooner when moved 15 m (§4.2), in the background too.
+/// The live job window after the runner accepted: RUNNER_EN_ROUTE, ARRIVED
+/// and IN_PROGRESS (row 113; `_shared.md` §10). Pings every 4–8 s, sooner
+/// when moved 15 m (§4.2), in the background too. Stop at
+/// AWAITING_CUSTOMER, any terminal state and on reassignment.
 final class PingActiveJob extends PingMode {
   const PingActiveJob(this.errandId);
 
@@ -54,30 +70,46 @@ final class PingActiveJob extends PingMode {
   int get hashCode => errandId.hashCode;
 }
 
+/// Health of location collection, for a screen notice
+/// (`Location is off…`).
+enum PingerStatus {
+  /// Fixes are arriving (or nothing is being collected).
+  ok,
+
+  /// The last attempt produced no fix: services off, permission revoked or
+  /// a stream error.
+  locationUnavailable,
+}
+
 /// R-20. Collects device positions and hands `location:ping` payloads to
 /// [onPing] at the cadence approved by the owner (row 123):
 ///
-/// * [PingOffline]: nothing; the position stream is cancelled, so the
-///   device stops collecting.
-/// * [PingIdle] (online, no job): one fix every [idleInterval] (30 s,
-///   first one at once), no `errandId`, no continuous stream.
-/// * [PingActiveJob]: at most every [activeMinInterval] (4 s) once moved
-///   [activeDistanceMeters] (15 m), and at least every [activeMaxInterval]
-///   (8 s) with the latest fix.
+/// * [PingOffline]: nothing; any stream or timer is cancelled.
+/// * [PingIdle] (online, no job): one fresh fix every [idleInterval]
+///   (30 s, first one at once), no `errandId`, no continuous stream, and
+///   **only while the app is in the foreground** ([setAppForeground]).
+/// * [PingActiveJob]: a continuous stream with background updates; a ping
+///   when moved [activeDistanceMeters] (15 m) at most every
+///   [activeMinInterval] (4 s), and a heartbeat with a **fresh**
+///   `current()` fix (falling back to the latest streamed one) at least
+///   every [activeMaxInterval] (8 s). The only mode that collects in the
+///   background.
 ///
-/// The screen sets the mode from the runner's availability and job state
-/// (stop at AWAITING_CUSTOMER, any terminal state, reassignment, and when
-/// going offline). [onPing] sends the payload; the socket producer is RA-4
+/// Errors (location services off, permission revoked) never escape: they
+/// set [status] to [PingerStatus.locationUnavailable] and call [onStatus].
+/// [onPing] sends the payload; the socket producer is RA-4
 /// (`RealtimeEvents.locationPing`).
 class LocationPinger {
   LocationPinger({
     required this.source,
     required this.onPing,
+    this.onStatus,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
   final PositionSource source;
   final void Function(LocationPing ping) onPing;
+  final void Function(PingerStatus status)? onStatus;
   final DateTime Function() _clock;
 
   static const idleInterval = Duration(seconds: 30);
@@ -86,29 +118,49 @@ class LocationPinger {
   static const activeDistanceMeters = 15.0;
 
   PingMode _mode = const PingOffline();
+  bool _foreground = true;
+  PingerStatus _status = PingerStatus.ok;
   StreamSubscription<DevicePosition>? _sub;
   Timer? _timer;
+  int _run = 0;
   DevicePosition? _latest;
   DevicePosition? _lastSent;
   DateTime? _lastSentAt;
 
   PingMode get mode => _mode;
+  PingerStatus get status => _status;
+  bool get appInForeground => _foreground;
 
   /// True while positions are being collected.
   bool get collecting => _sub != null || _timer != null;
 
   /// Switches cadence. Setting the same mode again is a no-op.
   void setMode(PingMode mode) {
-    if (mode == _mode && (mode is PingOffline || collecting)) return;
-    _stop();
+    if (mode == _mode) return;
     _mode = mode;
-    switch (mode) {
+    _restart();
+  }
+
+  /// Call from the app lifecycle (resumed → `true`; paused/hidden →
+  /// `false`). Idle pinging pauses in the background; an active job keeps
+  /// going.
+  void setAppForeground(bool foreground) {
+    if (foreground == _foreground) return;
+    _foreground = foreground;
+    if (_mode is PingIdle) _restart();
+  }
+
+  void _restart() {
+    _stop();
+    final run = ++_run;
+    switch (_mode) {
       case PingOffline():
-        return;
+        _setStatus(PingerStatus.ok);
       case PingIdle():
+        if (!_foreground) return;
         // One fix per ping; no continuous stream while idle (battery).
-        _timer = Timer.periodic(idleInterval, (_) => _sampleIdle());
-        _sampleIdle();
+        _timer = Timer.periodic(idleInterval, (_) => _sampleIdle(run));
+        _sampleIdle(run);
       case PingActiveJob():
         _sub = source
             .positions(
@@ -116,42 +168,66 @@ class LocationPinger {
               distanceFilterMeters: activeDistanceMeters,
               background: true,
             )
-            .listen(_onActiveFix);
-        _armMaxTimer();
+            .listen(
+              (p) => _onActiveFix(p, run),
+              onError: (Object _) =>
+                  _setStatus(PingerStatus.locationUnavailable),
+            );
+        _armHeartbeat(run);
     }
   }
 
-  Future<void> _sampleIdle() async {
-    final p = await source.current();
-    if (p == null || _mode is! PingIdle) return;
+  Future<DevicePosition?> _fresh() async {
+    try {
+      final p = await source.current();
+      _setStatus(
+        p == null ? PingerStatus.locationUnavailable : PingerStatus.ok,
+      );
+      return p;
+    } on Object {
+      _setStatus(PingerStatus.locationUnavailable);
+      return null;
+    }
+  }
+
+  Future<void> _sampleIdle(int run) async {
+    final p = await _fresh();
+    if (p == null || run != _run) return;
     _latest = p;
     _send();
   }
 
-  /// Active mode: guarantees a ping at least every [activeMaxInterval]
-  /// (re-armed after each ping).
-  void _armMaxTimer() {
+  /// Active mode: guarantees a ping at least every [activeMaxInterval],
+  /// re-armed after each ping.
+  void _armHeartbeat(int run) {
     _timer?.cancel();
-    _timer = Timer(activeMaxInterval, () {
-      _send();
-      _armMaxTimer();
-    });
+    _timer = Timer(activeMaxInterval, () => _heartbeat(run));
   }
 
-  void _onActiveFix(DevicePosition p) {
+  Future<void> _heartbeat(int run) async {
+    final p = await _fresh();
+    if (run != _run) return;
+    if (p != null) _latest = p;
+    _send();
+    _armHeartbeat(run);
+  }
+
+  void _onActiveFix(DevicePosition p, int run) {
+    if (run != _run) return;
     _latest = p;
+    _setStatus(PingerStatus.ok);
     final at = _lastSentAt;
     final last = _lastSent;
     if (at == null || last == null) {
       _send();
-      _armMaxTimer();
+      _armHeartbeat(run);
       return;
     }
     final elapsed = _clock().difference(at);
     if (elapsed >= activeMinInterval &&
         p.distanceTo(last) >= activeDistanceMeters) {
       _send();
-      _armMaxTimer();
+      _armHeartbeat(run);
     }
   }
 
@@ -169,6 +245,12 @@ class LocationPinger {
     );
   }
 
+  void _setStatus(PingerStatus s) {
+    if (s == _status) return;
+    _status = s;
+    onStatus?.call(s);
+  }
+
   void _stop() {
     _timer?.cancel();
     _timer = null;
@@ -181,6 +263,7 @@ class LocationPinger {
 
   /// Stops collecting (same as [PingOffline]).
   void dispose() {
+    _run++;
     _stop();
     _mode = const PingOffline();
   }
