@@ -37,7 +37,7 @@ None.
 None (OS permission). Packages: `geolocator` + `permission_handler` (row 124).
 
 ## Accessibility and mobile
-Heading announced; buttons 48 dp; Android 14 foreground-service type `location` with a persistent notification during a job (`Nitume is sharing your location for your current job.`, proposed).
+Heading announced; buttons 48 dp; Android 14 foreground-service type `location` with a persistent notification during a job: title `Nitume Runner`, text `Sharing your location for your active job.` (final, `_shared.md` §10).
 
 ## Decisions (owner, 2026-10-13)
 - Row 123 (RQ-11): 30 s online, 4–8 s on a job, nothing offline (collection stops).

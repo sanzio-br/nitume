@@ -24,6 +24,9 @@ Row 138 (owner, 2026-10-13): "KES 3,000 default, configurable per runner by admi
 
 Success: A-11 success `Purchase limit saved.`; the drawer reloads. Errors (proposed codes): 409 `purchase_limit_conflict` (someone changed it; only if api-contract adopts the proposed `expectedPrevious` check) → reload + A-11; 400 validation → field errors; 403 → `_shared.md` §2.
 
+## Runner drawer section `Payouts` (decided at the 2026-10-14 audit)
+Above `Purchase limit`: `.drawer-label` `Payouts`; rows from `GET /runner-payouts/summary?runnerProfileId=` (built): `Owed now` → `availableAmount`; `In review` → `onHoldAmount`; `Waiting for confirmation` → `pendingAmount`; `Paid so far` → `paidAmount` (Fira Code); then the existing `View payouts` button. Labels avoid the forbidden words (`_shared.md` §3). Copy (proposed). Not built yet.
+
 ## Numeric fields (Fira Code)
 Limits, previous/new values, times.
 

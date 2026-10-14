@@ -551,3 +551,36 @@ Audited `fix/angular-admin-owner-answers-6` @ `817d5fc` (1 commit on `main` @ `9
 - `refundChipStatus` / `refundRowAction` / `payoutReversed` take the required field; fixtures give the API shapes (`effectivePayout: null` for unrefunded, a `sent` payout for refunded). Row-100 behaviour (`Payout reversed` chip, `Record payout` action) unchanged and still tested.
 
 Round-5 builder list: item 4 **closed**. Items 1–3 (m-10, m-11, m-12) remain open minors; none blocks a merge.
+
+## Audit round 6: runner payouts (2026-10-14), `feat/admin-runner-payouts`
+
+Audited `feat/admin-runner-payouts` @ `04837b4` (8 commits on `main` @ `cd22e4d`: `73034bf`, `dc44a7b`, `5f1f75d`, `12aef17`, `dd0ee44`, `60d8442`, `acce986`, `04837b4`), read-only. Specs: `docs/owner-answers-6-runner-specs` @ `915f920`. The commits touch only `apps/admin`. From a `git archive` of `apps/admin`: `ng test` **220 tests pass** (25 files), `ng build` clean, Prettier clean on every changed file. Searches: no hex outside `_tokens.scss`, no `font-family` outside the token variables (`inherit` only), and none of the `_shared.md` §3 banned words in user-facing copy (`on_hold` and `/hold` appear only as API values).
+
+| View | Verdict | Findings |
+|---|---|---|
+| p-runner-payouts | **PASS** | m-13 (minor) |
+| drawer-runner-payout (+ SA-3 task drawer section, `View payouts` on the runner drawer) | **PASS** | none |
+| drawer-refund, row-136 amendment (task exposure card, override form with scope labels, override history) | **PASS** | none new (m-10, m-11 still open) |
+
+### p-runner-payouts: PASS
+- `Payments` nav item `Runner payouts` with the `on_hold` count badge (`99+`); three filters (runner, type, status, default `Needs review`), `↻ Refresh`, columns, chip and reason caption, row actions `Review` / `View` / `Re-send`, `requested` caption, load more, empty / loading / error copy, sub-line counts and `Payable` total all match the spec. `Created` and `Type` hide at 1100 / 900 px.
+- A-16 (`shared/batch-bar.component.ts`): checkboxes only in `Payable` with one runner chosen; a reversed (stored `paid`) line can't be selected; 50-line limit notice; polite live total. The record payout dialog fetches the runner's phone, validates the receipt, maps `payout_reference_reused`, `runner_payout_not_payable` / `runner_payout_locked` / 404 (reload + notice), `runner_payout_mixed_runners`, 403; rows patch in place and the badge refreshes.
+13. m-13 (minor) `panels/runner-payouts.panel.ts:367-372`. Spec: searchable runner filter. Code: plain `select`; runners with no loaded line show `Runner …abcd` because `GET /runners` returns no names. Fix: a typeahead, or names on `GET /runners` (needs api-contract), then label every option.
+
+### drawer-runner-payout: PASS
+- Sections 1–10 as specced: summary with `Why it needs review`; amounts with `Most you can approve` (`approvalCeiling`); task exposure on item lines; receipt thumbnail with the runner's or the system note; review form with the approve/reject toggle, `Full amount`, the `reimbursement_exceeds_cap` caption from `itemPaidToNitume` / `maxPurchaseAdvance`, and the reject reason; the `price_decrease_pending` notice with `Open refund review`; the payout form; `Send back for review` with focus return; read-only decision and payout; current / original payout; corrections through the **shared** form and cards (refund-correction code moved to `features/admin/payouts/`, no copy); activity.
+- Row 136: `app-task-exposure-card` (figures + `Cap overrides`) and `app-exposure-override-field` (409 figures labelled by scope, required note 10–500, `exposure_override_note_invalid`, label `Approve over the cap`, confirm line). Task and item scope are both tested.
+- SA-3: `payouts/runner-payouts-link.section.ts` in the task drawer for CONFIRMED, SETTLED, CANCELLED and FAILED tasks, hidden without lines; `View payouts` on the runner drawer opens the panel filtered to that runner.
+
+### drawer-refund row-136 amendment: PASS
+- Task exposure card (reimbursement row only when > 0) and override history after `What the customer paid`; override field in the decision form and in the correction form (`over the cap` labels, confirm line, hint `… Not shown to the customer.`). The one-note design matches the API (one `exposureOverrideNote` per request applied to every binding scope); the spec's "its own note" wording was wrong and is corrected.
+
+### Decisions on the builder's additions
+- (a) Accepted and written into `drawer-runner-payout.md`: `Enter an amount in KSh, up to 2 decimal places.`, `Say why in 5 to 500 characters.`, `Reimbursement approved: KSh x. Record the payout once you have sent it.`, `Reimbursement rejected.`, `Sent back for review.`, and the single-line `Mark as paid` confirm (`Mark KSh x as paid?` / `M-Pesa receipt R. This can't be undone; a later change is recorded as a correction.`), which matches the batch and refund payout flows. The panel's two fallback error strings are accepted in `p-runner-payouts.md`.
+- (b) `GET /runner-payouts/summary` does **not** go on p-runner-payouts (it already shows the loaded `Payable` total and the batch total; a second set of all-rows totals next to a filtered list would confuse). It is specced as a `Payouts` section of the runner drawer in `drawer-runner-purchase-limit.md` (`Owed now`, `In review`, `Waiting for confirmation`, `Paid so far`), not built yet.
+- (c) Runner Android foreground notification: title `Nitume Runner`, text `Sharing your location for your active job.` confirmed as final in `docs/specs/runner/_shared.md` §10 and `x-location-disclosure.md`. It is valid because background collection runs only during a job; the online-only 30 s pings are foreground and show no notification.
+
+### Builder list (web-parity, next touch; none blocks the merge)
+1. m-13 runner filter names / search.
+2. Runner drawer `Payouts` summary section (new, `drawer-runner-purchase-limit.md`), together with the purchase-limit section once N-19 exists.
+3. Carried: m-10, m-11, m-12.

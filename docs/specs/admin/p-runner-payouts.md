@@ -3,8 +3,8 @@
 - Mockup: **not drawn. EXTENDS MOCKUP** (row 112, owner 2026-10-13: "Admin runner payout ledger and reimbursement ops-review screens are in scope"). Built from the same patterns as `p-refunds` (A-03 topbar + A-04 table card + A-12 load more) and the sidebar `Payments` group. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md` (A-n components, §3 money, §3.1 EAT, §6.1 runner payout vocabulary, §7 API gaps N-17 …)
 - API: `feat/api-owner-answers-6` @ `10b6019` (read-only), controller `src/payments/runner-payouts.controller.ts`
-- Implementation: none
-- Status: missing
+- Implementation: `apps/admin/src/app/features/admin/panels/runner-payouts.panel.ts`, `shared/batch-bar.component.ts` (A-16), `payouts/runner-payout-labels.ts`; nav item in `admin-dashboard.component.ts` (branch `feat/admin-runner-payouts` @ `04837b4`)
+- Status: matches-design (audit 2026-10-14 PASS, minor m-13; `docs/audits/admin-gap-report.md`)
 
 ## Purpose
 One place where ops sees every runner payout line (row 107: `runner_fee` and `item_reimbursement` obligations), works the item reimbursements waiting for review (rows 105, 106, 108, 135), and records manual M-Pesa payouts to runners in batches (one runner and one M-Pesa receipt per payout). Lines are records, not task states. What Nitume owes a runner is always derived from the lines (§3).
@@ -66,6 +66,11 @@ Below 1100px hide `Created`; below 900px hide `Type`.
 - Empty states: Needs review `Nothing to review` / `Item reimbursements without a receipt, above the runner's purchase limit, waiting for a price-decrease refund decision, or claimed after a cancelled or failed task land here.`; Payable `Nothing owed` / `Confirmed runner fees and approved reimbursements wait here until you record the M-Pesa payout.`; Paid `No payouts yet` / `Lines you mark as paid appear here.`; Not approved `No rejected reimbursements` / `Reimbursements you reject appear here.`; All `No payout lines yet` / `A runner fee line appears when a task is confirmed.`
 - Loading `Loading runner payouts…`; error `Couldn't load runner payouts.` + `Try again`; load more error `Couldn't load more. Try again.`
 
+Accepted builder copy (audit 2026-10-14): unknown 400 on record payout → A-11 danger `Couldn't record this payout. Check the lines and the receipt, then try again.`; network → `Couldn't save. Check your connection and try again.`; the receipt field shows `Enter the M-Pesa code, letters and numbers only.` when the API rejects the format.
+
+## Per-runner summary (decided at the 2026-10-14 audit: not on this panel)
+`GET /runner-payouts/summary?runnerProfileId=` is **not** shown here: the panel already shows the loaded `Payable` total for the chosen runner (sub-line) and the batch total, and a second set of totals beside a filtered list would invite confusion between loaded rows and all rows. It belongs to the runner drawer (`drawer-runner-purchase-limit.md`, section `Payouts`).
+
 ## Numeric fields (Fira Code)
 Task references, amounts, the batch total and count, the sub-line counts and sums, created times, the receipt input, the badge.
 
@@ -87,4 +92,5 @@ Rows 104–108, 112, 117, 135, 136, 138 (`_shared.md` §1).
 - AQ-11 (see `p-payout-requests.md`): paying a request with whole lines.
 
 ## Current vs design
-Not built. `apps/admin` has no runner payout types, routes or panels (checked on `main`).
+Audit 2026-10-14 against `feat/admin-runner-payouts` @ `04837b4`: **PASS** (`docs/audits/admin-gap-report.md`, "Audit round 6: runner payouts").
+- m-13 (minor): the runner filter is a plain `select` whose options show `Runner …abcd` for runners with no loaded line (`GET /runners` has no names); spec asked for a searchable select. Fix when `GET /runners` returns names (api-contract) or with a typeahead.

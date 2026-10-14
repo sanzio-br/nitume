@@ -3,8 +3,8 @@
 - Mockup: **not drawn. EXTENDS MOCKUP** (row 112). Same drawer anatomy and form patterns as `drawer-refund` (A-01, A-05, A-06, A-08, A-09, A-11). Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md` (§3, §3.1, §6.1, §7 N-17 …)
 - API: `feat/api-owner-answers-6` @ `10b6019` (read-only): `GET /runner-payouts/:id`, `POST /runner-payouts/:id/review`, `/hold`, `/corrections`, `POST /runner-payouts/mark-paid`
-- Implementation: none
-- Status: missing
+- Implementation: `apps/admin/src/app/features/admin/drawers/runner-payout-drawer.ts`; shared `payouts/` (`payout-correction-form.ts`, `payout-correction-card.ts`, `current-payout-card.ts`, `task-exposure-card.ts`, `exposure-override-field.ts`, `task-exposure.ts`, `runner-payouts-link.section.ts` for SA-3) (branch `feat/admin-runner-payouts` @ `04837b4`)
+- Status: matches-design (audit 2026-10-14 PASS; `docs/audits/admin-gap-report.md`)
 
 ## Purpose
 Show one runner payout line and let any authorized admin (row 77 rule applied to runner payouts) (1) review an `on_hold` item reimbursement: approve an amount up to the cap, or reject with a note (rows 105, 106, 108, 135); (2) send an unpaid payable item line back for review when the receipt does not match (row 105); (3) record the manual M-Pesa payout of this line alone; (4) after it is paid, record an append-only correction, reversal or re-sent payout (row 107, same rules as refund corrections, row 100); (5) on CANCELLED/FAILED tasks, see the task's combined exposure and override it with a reason (row 136).
@@ -50,6 +50,16 @@ Show one runner payout line and let any authorized admin (row 77 rule applied to
    - **A reversed line is never paid through `mark-paid`** (409 `runner_payout_locked`): it is re-sent here with `resent_payout`.
 10. **Activity** (timeline): `Line created` (createdAt; `Claimed by the runner` for a claim), `Sent for review · {reason label}`, `Approved · KSh x` / `Rejected`, `Paid · {receipt}`, each adjustment (`Payout corrected · …`, `Payout reversed · {code}`, `Payout sent again · {receipt}`), `Cap override · KSh x` (N-18). Times Fira Code 11.
 
+## Accepted builder copy (audit 2026-10-14)
+- Approve amount format error: `Enter an amount in KSh, up to 2 decimal places.`
+- Reject reason / send-back note rule error: `Say why in 5 to 500 characters.`
+- Success notices (A-11 success): `Reimbursement approved: KSh {amount}. Record the payout once you have sent it.`; `Reimbursement rejected.`; `Sent back for review.`
+- **Single-line `Mark as paid` confirm** (A-08, added by the builder, accepted to match the refund payout and batch flows): title `Mark KSh {amount} as paid?`; body `M-Pesa receipt {R}. This can't be undone; a later change is recorded as a correction.` (receipt Fira Code); buttons `Back` / `Mark as paid`.
+- Other states: `This line changed since you opened it. Showing the latest.`, `This payout line no longer exists.`, `Couldn't save. Check your connection and try again.`
+
+## Override note: one field for both scopes (correction 2026-10-14)
+The API takes **one** `exposureOverrideNote` per request and applies it to every cap that binds (task and item scope), recording one override row per bound scope. The form therefore has one `Why go over the cap?` field. After a 409 it shows the figures of that 409's scope; if a later request (sent without a note because the amount was within the first cap) returns a 409 with the other scope, the figures switch to that scope and the same field is required. The earlier wording "asks for its own note" in §5.2a is superseded.
+
 ## SA-3: task drawer section `Runner payouts`
 In the task drawer (`drawer-task`), for tasks at CONFIRMED or later and CANCELLED/FAILED tasks with lines: `.drawer-label` `Runner payouts`, one `.drawer-row` per line from `GET /runner-payouts?errandId=` (`Runner fee` / `Item reimbursement` → amount + chip), row click → this drawer. Hidden when there are no lines.
 
@@ -76,4 +86,4 @@ Rows 104–108, 112, 135 (cap = min(item paid, purchase limit); `approvalCeiling
 - Row 145 (RQ-26, pending): approval of the override record (built as `task_exposure_overrides`).
 
 ## Current vs design
-Not built.
+Audit 2026-10-14 against `feat/admin-runner-payouts` @ `04837b4`: **PASS**. Review (approve with ceiling, quick fill, cap detail caption, reject), price-decrease notice with `Open refund review`, payout with confirm, send back for review, read-only decision and payout, current/original payout, corrections via the shared form and cards (no copy), task exposure card with overrides, override field with scope labels (task and item tested), activity, SA-3 task drawer section and `View payouts` on the runner drawer. No forbidden words in user-facing copy.
