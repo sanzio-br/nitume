@@ -14,6 +14,7 @@ import type {
   QuoteErrandDto,
   QuoteErrandResult,
   RefundReview,
+  RunnerPayoutItem,
   ResolveDisputeResult,
   ResolveDisputeVerdict,
   ReviewVerificationDto,
@@ -288,6 +289,7 @@ export class AdminDataService {
       this.me.set(me);
       this.refreshedAt.set(Date.now());
       void this.refreshRefundBadge();
+      void this.refreshRunnerPayoutBadge();
       void this.refreshQuoteRequests();
     } catch (e) {
       this.error.set(syncErrorCopy(e));
@@ -502,6 +504,26 @@ export class AdminDataService {
   refundUpdated(review: RefundReview): void {
     this.lastRefundUpdate.set(review);
     void this.refreshRefundBadge();
+  }
+
+  // --- Runner payouts (row 107): sidebar badge + cross-view updates ---
+  /** `Needs review` line count for the sidebar badge; `more` = show `99+`. */
+  readonly runnerPayoutBadge = signal<{ count: number; more: boolean }>({ count: 0, more: false });
+  /** Lines saved in the runner payout drawer or a batch payout (the panel patches its rows). */
+  readonly lastRunnerPayoutUpdate = signal<RunnerPayoutItem[] | null>(null);
+
+  async refreshRunnerPayoutBadge(): Promise<void> {
+    try {
+      const { count } = await firstValueFrom(this.api.countRunnerPayouts('on_hold'));
+      this.runnerPayoutBadge.set({ count: Math.min(count, 99), more: count > 99 });
+    } catch {
+      /* the badge keeps its last value; the panel shows its own error */
+    }
+  }
+
+  runnerPayoutsUpdated(lines: RunnerPayoutItem[]): void {
+    this.lastRunnerPayoutUpdate.set(lines);
+    void this.refreshRunnerPayoutBadge();
   }
 
   async reviewVerification(

@@ -92,12 +92,31 @@ const REFUND_VARIANTS: Record<string, ChipVariant> = {
   payout_reversed: 'pending',
 };
 
+// Runner payout lines by effective status (`_shared.md` §6.1, row 107).
+const RUNNER_PAYOUT_LABELS: Record<string, string> = {
+  on_hold: 'Needs review',
+  payable: 'Payout due',
+  // Not an API status: a payable line whose payout was reversed.
+  payout_reversed: 'Payout reversed',
+  paid: 'Paid',
+  rejected: 'Not approved',
+};
+
+const RUNNER_PAYOUT_VARIANTS: Record<string, ChipVariant> = {
+  on_hold: 'pending',
+  payable: 'pending',
+  payout_reversed: 'pending',
+  paid: 'success',
+  rejected: 'neutral',
+};
+
 /**
  * Which vocabulary a status string belongs to. The same API string can mean
  * different things per surface (`approved` is a verification outcome but a
  * "payout due" refund), so the caller always says which one it shows.
  */
-export type ChipKind = 'errand' | 'refund' | 'verification' | 'availability' | 'level';
+export type ChipKind =
+  'errand' | 'refund' | 'runner_payout' | 'verification' | 'availability' | 'level';
 
 interface Vocabulary {
   labels: Record<string, string>;
@@ -120,6 +139,12 @@ const VOCABULARIES: Record<ChipKind, Vocabulary> = {
   refund: {
     labels: REFUND_LABELS,
     variants: REFUND_VARIANTS,
+    key: (s) => s,
+    fallbackVariant: 'neutral',
+  },
+  runner_payout: {
+    labels: RUNNER_PAYOUT_LABELS,
+    variants: RUNNER_PAYOUT_VARIANTS,
     key: (s) => s,
     fallbackVariant: 'neutral',
   },

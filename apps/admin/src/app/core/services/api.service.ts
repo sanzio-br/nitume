@@ -5,6 +5,14 @@ import {
   AssignErrandDto,
   AssignErrandResult,
   CreateRefundCorrectionDto,
+  CreateRunnerPayoutCorrectionDto,
+  EvidenceView,
+  ListRunnerPayoutsResult,
+  ReviewRunnerPayoutDto,
+  RunnerPayoutDetail,
+  RunnerPayoutItem,
+  RunnerPayoutQuery,
+  RunnerPayoutStatus,
   Dispute,
   Errand,
   ErrandRefundView,
@@ -169,7 +177,10 @@ export class ApiService {
   }
 
   /** PATCH /refunds/:id/decision — 0 closes with no refund, > 0 approves. */
-  decideRefund(id: string, body: { refundAmount: number; note?: string }) {
+  decideRefund(
+    id: string,
+    body: { refundAmount: number; note?: string; exposureOverrideNote?: string },
+  ) {
     return this.http.patch<RefundReview>(`${this.base}/refunds/${id}/decision`, body);
   }
 
@@ -185,6 +196,61 @@ export class ApiService {
    */
   addRefundCorrection(id: string, body: CreateRefundCorrectionDto) {
     return this.http.post<RefundDetail>(`${this.base}/refunds/${id}/corrections`, body);
+  }
+
+  /** GET /runner-payouts — admin runner payout lines, newest first (row 107). */
+  listRunnerPayouts(query: RunnerPayoutQuery, cursor?: string | null, limit = 25) {
+    let params = new HttpParams();
+    for (const key of ['status', 'kind', 'runnerProfileId', 'errandId'] as const) {
+      const value = query[key];
+      if (value) params = params.set(key, value);
+    }
+    if (cursor) params = params.set('cursor', cursor);
+    params = params.set('limit', String(limit));
+    return this.http.get<ListRunnerPayoutsResult>(`${this.base}/runner-payouts`, { params });
+  }
+
+  /** GET /runner-payouts/count — `{ count }`, optionally in one effective status (badge). */
+  countRunnerPayouts(status?: RunnerPayoutStatus | null) {
+    let params = new HttpParams();
+    if (status) params = params.set('status', status);
+    return this.http.get<{ count: number }>(`${this.base}/runner-payouts/count`, { params });
+  }
+
+  /** GET /runner-payouts/:id — line + runner contact, caps and adjustments. */
+  getRunnerPayout(id: string) {
+    return this.http.get<RunnerPayoutDetail>(`${this.base}/runner-payouts/${id}`);
+  }
+
+  /** POST /runner-payouts/:id/review — approve (capped) or reject an item reimbursement. */
+  reviewRunnerPayout(id: string, body: ReviewRunnerPayoutDto) {
+    return this.http.post<RunnerPayoutDetail>(`${this.base}/runner-payouts/${id}/review`, body);
+  }
+
+  /** POST /runner-payouts/:id/hold — an unpaid payable item line goes back to review. */
+  holdRunnerPayout(id: string, note: string) {
+    return this.http.post<RunnerPayoutDetail>(`${this.base}/runner-payouts/${id}/hold`, { note });
+  }
+
+  /** POST /runner-payouts/mark-paid — one M-Pesa payout for 1-50 payable lines of one runner. */
+  markRunnerPayoutsPaid(lineIds: string[], payoutReference: string) {
+    return this.http.post<{ items: RunnerPayoutItem[] }>(`${this.base}/runner-payouts/mark-paid`, {
+      lineIds,
+      payoutReference,
+    });
+  }
+
+  /** POST /runner-payouts/:id/corrections — correction, reversal or re-sent payout (201 detail). */
+  addRunnerPayoutCorrection(id: string, body: CreateRunnerPayoutCorrectionDto) {
+    return this.http.post<RunnerPayoutDetail>(
+      `${this.base}/runner-payouts/${id}/corrections`,
+      body,
+    );
+  }
+
+  /** GET /errands/:errandId/evidence — evidence with signed URLs (receipt image). */
+  listErrandEvidence(errandId: string) {
+    return this.http.get<EvidenceView[]>(`${this.base}/errands/${errandId}/evidence`);
   }
 
   /** GET /runners/verifications — admin verification inbox. */
