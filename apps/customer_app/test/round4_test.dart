@@ -15,7 +15,7 @@ MerchantPayment till({bool changed = false}) => MerchantPayment(
   amount: '40000.00',
   merchantName: 'Sarit Shoes',
   tillNumber: '654321',
-  merchantDetailsUpdatedAt: changed ? DateTime(2026, 10, 9, 16, 45) : null,
+  merchantDetailsUpdatedAt: changed ? fixtureAt(16, 45, 2) : null,
   merchantDetailsChangedAfterPayment: changed,
 );
 
@@ -76,9 +76,9 @@ void main() {
       status: DisputeStatus.resolved,
       resolution: 'The runner returns the item and buys the right one.',
       verdict: DisputeVerdict.values.first,
-      createdAt: DateTime(2026, 10, 7, 10, 41),
-      resolvedAt: DateTime(2026, 10, 8, 14, 15),
-      updatedAt: DateTime(2026, 10, 9, 9, 0),
+      createdAt: fixtureAt(10, 41),
+      resolvedAt: fixtureAt(14, 15, 1),
+      updatedAt: fixtureAt(9, 0, 2),
     );
     await b.pumpScreen(
       t,

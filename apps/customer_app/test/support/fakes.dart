@@ -16,7 +16,25 @@ final _api = NitumeApiClient(
   tokenStore: InMemoryTokenStore(),
 );
 
-final _epoch = DateTime(2026, 10, 7, 10, 3);
+/// Fixture day, three calendar days before the real clock, so relative
+/// formatting (`Mon, 10:03 AM`) renders the same whatever day the suite runs.
+/// Fixture dates must never be fixed: a fixed date drifts past the one-week
+/// window and switches to the absolute `7 Oct, 10:03 AM` form.
+final DateTime fixtureDay = () {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day - 3);
+}();
+
+/// [hour]:[minute] on [fixtureDay], shifted by [days] calendar days.
+DateTime fixtureAt(int hour, [int minute = 0, int days = 0]) => DateTime(
+  fixtureDay.year,
+  fixtureDay.month,
+  fixtureDay.day + days,
+  hour,
+  minute,
+);
+
+final _epoch = fixtureAt(10, 3);
 
 AppUser user({String? displayName = 'Achieng Otieno'}) => AppUser(
   id: 'u1',

@@ -11,7 +11,7 @@ Evidence photo(String id, {DateTime? expires}) => Evidence(
   type: EvidenceType.photo,
   // No network image in tests; the expiry alone triggers the re-fetch.
   urlExpiresAt: expires,
-  capturedAt: DateTime(2026, 10, 7, 10, 41),
+  capturedAt: fixtureAt(10, 41),
 );
 
 void main() {

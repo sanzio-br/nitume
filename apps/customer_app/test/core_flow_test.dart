@@ -19,7 +19,7 @@ void main() {
           id: 'e2',
           status: ErrandStatus.completed,
           title: 'Buy shoes — Sarit Centre',
-          updatedAt: DateTime(2026, 10, 6),
+          updatedAt: fixtureAt(0, 0, -1),
         ),
       );
       await b.pumpApp(t);
