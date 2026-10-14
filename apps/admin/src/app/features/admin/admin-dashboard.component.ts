@@ -12,6 +12,7 @@ import { TaskDrawerComponent } from './drawers/task-drawer';
 import { RunnerDrawerComponent } from './drawers/runner-drawer';
 import { DisputeDrawerComponent } from './drawers/dispute-drawer';
 import { RefundDrawerComponent } from './drawers/refund-drawer';
+import { RunnerPayoutDrawerComponent } from './drawers/runner-payout-drawer';
 import { RefundsPanelComponent } from './panels/refunds.panel';
 import { RunnerPayoutsPanelComponent } from './panels/runner-payouts.panel';
 import { OpsDrawerComponent } from '../../shared/ops-drawer.component';
@@ -46,6 +47,7 @@ type Panel =
     RunnerDrawerComponent,
     DisputeDrawerComponent,
     RefundDrawerComponent,
+    RunnerPayoutDrawerComponent,
     RefundsPanelComponent,
     RunnerPayoutsPanelComponent,
     OpsDrawerComponent,
@@ -219,7 +221,12 @@ type Panel =
               <app-refunds-panel />
             }
             @case ('runner-payouts') {
-              <app-runner-payouts-panel />
+              <!-- Lazy chunk: keeps the initial bundle within budget. -->
+              @defer (on immediate) {
+                <app-runner-payouts-panel />
+              } @loading {
+                <div class="ops-loading">Loading runner payouts…</div>
+              }
             }
             @case ('reports') {
               <app-reports-panel />
@@ -253,6 +260,13 @@ type Panel =
           }
           @case ('refund') {
             <app-refund-drawer [reviewId]="t.id" />
+          }
+          @case ('runner_payout') {
+            @defer (on immediate) {
+              <app-runner-payout-drawer [lineId]="t.id" />
+            } @loading {
+              <div class="ops-loading">Loading runner payout…</div>
+            }
           }
         }
       }
