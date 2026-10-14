@@ -159,37 +159,75 @@ class TaskHistoryCard extends StatelessWidget {
 /// C-24. Menu row (`.menu-row`): 13.5/500 label, slate-400 chevron. The
 /// destructive variant colours the label with
 /// [NitumeDesignChoices.destructiveText] (Q13); the chevron stays slate-400.
+///
+/// R-09 (action row card, runner `v-active` "Request price authorization"):
+/// pass a [subtitle] and usually a [leadingIcon]. The label then becomes the
+/// step-card title (13/600) with the subtitle under it in 11 slate-600
+/// Fira Sans (words only; numbers belong in a `NumText` elsewhere), and the
+/// icon sits on the left in 20px slate-600. Without either the row is the
+/// plain C-24 menu row.
 class MenuRow extends StatelessWidget {
   const MenuRow({
     super.key,
     required this.label,
     required this.onTap,
     this.destructive = false,
+    this.subtitle,
+    this.leadingIcon,
   });
 
   final String label;
   final VoidCallback? onTap;
   final bool destructive;
 
+  /// Optional second line (R-09).
+  final String? subtitle;
+
+  /// Optional 20px slate-600 outline icon on the left (R-09).
+  final IconData? leadingIcon;
+
   @override
   Widget build(BuildContext context) {
+    final color = destructive
+        ? NitumeDesignChoices.destructiveText
+        : NitumeColors.blue;
+    final Widget title = subtitle == null
+        ? Text(
+            label,
+            style: NitumeTextStyles.body.copyWith(
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: NitumeTextStyles.rowTitle.copyWith(
+                  fontSize: 13,
+                  color: color,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle!,
+                style: NitumeTextStyles.mutedSmall.copyWith(fontSize: 11),
+              ),
+            ],
+          );
     return _RowSurface(
       onTap: onTap,
-      semanticLabel: label,
+      semanticLabel: subtitle == null ? label : '$label. $subtitle',
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              label,
-              style: NitumeTextStyles.body.copyWith(
-                fontWeight: FontWeight.w500,
-                color: destructive
-                    ? NitumeDesignChoices.destructiveText
-                    : NitumeColors.blue,
-              ),
-            ),
-          ),
+          if (leadingIcon != null) ...[
+            Icon(leadingIcon, size: 20, color: NitumeColors.slate600),
+            const SizedBox(width: 12),
+          ],
+          Expanded(child: title),
           const Icon(
             Icons.chevron_right_rounded,
             size: 18,
