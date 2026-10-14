@@ -480,6 +480,109 @@ describe('Owner answers 6 (e2e)', () => {
     await expect(db().query('DELETE FROM "task_exposure_overrides" WHERE "errandId" = $1', [errand.id])).rejects.toThrow(/append-only/);
   });
 
+  /** Paid send_to_runner task in IN_PROGRESS with an approved, undecided decrease of 200 (item 500 -> 300). */
+  const withPendingDecrease = async () => {
+    const actors = await paidAndAssigned();
+    const { customer, runner, errand } = actors;
+    for (const to of ['RUNNER_EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']) {
+      await setStatus(runner, errand.id, to);
+    }
+    const req = await http()
+      .post(`/api/v1/errands/${errand.id}/price-change`)
+      .set(bearer(runner.token))
+      .send({ toPrice: 300, reason: 'Cheaper at the shop' })
+      .expect(201);
+    const approved = await http()
+      .post(`/api/v1/errands/${errand.id}/price-change/${req.body.id}/approve`)
+      .set(bearer(customer.token))
+      .send({})
+      .expect(201);
+    expect(approved.body.refundReview).toMatchObject({ amountPaid: '200.00', status: 'pending_review' });
+    return { ...actors, decreaseId: approved.body.refundReview.id as string };
+  };
+
+  const confirmFromInProgress = async (customer: Actor, runner: Actor, errandId: string) => {
+    await upload(runner, errandId);
+    await setStatus(runner, errandId, 'AWAITING_CUSTOMER');
+    await setStatus(customer, errandId, 'COMPLETED');
+    await app
+      .get(ErrandsService)
+      .transition(errandId, ErrandStatus.CONFIRMED, { type: StatusHistoryActor.SYSTEM }, 'Dispute window passed');
+  };
+
+  const decideRefund = (admin: Actor, id: string, body: Record<string, unknown>, expected: number) =>
+    http().patch(`/api/v1/refunds/${id}/decision`).set(bearer(admin.token)).send(body).expect(expected);
+
+  const approveItem = (admin: Actor, id: string, body: Record<string, unknown>, expected: number) =>
+    http()
+      .post(`/api/v1/runner-payouts/${id}/review`)
+      .set(bearer(admin.token))
+      .send({ decision: 'approve', ...body })
+      .expect(expected);
+
+  it('a decrease still pending at CONFIRMED holds the item line; runner approved first, the decrease needs an override', async () => {
+    const { customer, admin, runner, errand, decreaseId } = await withPendingDecrease();
+    await confirmFromInProgress(customer, runner, errand.id);
+    const [item, fee] = await linesOf(errand.id);
+    expect(fee).toMatchObject({ kind: 'runner_fee', status: 'payable', amount: '300.00' });
+    expect(item).toMatchObject({ kind: 'item_reimbursement', status: 'on_hold', amount: null, reviewReason: 'price_decrease_pending' });
+    // Ops approve the full item before deciding the decrease...
+    await approveItem(admin, item.id, { amount: 500 }, 200);
+    // ...so the decrease would come out of Nitume's fees: refused (scope item).
+    const refused = await decideRefund(admin, decreaseId, { refundAmount: 200 }, 409);
+    expect(refused.body).toMatchObject({
+      code: 'task_exposure_cap_exceeded',
+      scope: 'item',
+      totalPaidToNitume: '500.00',
+      committedReimbursements: '500.00',
+      remaining: '0.00',
+    });
+    await decideRefund(admin, decreaseId, { refundAmount: 200, exposureOverrideNote: 'Recovering the 200 from the runner' }, 200);
+    const [override] = (await db().query('SELECT source, amount, "normalCap" FROM "task_exposure_overrides" WHERE "errandId" = $1', [
+      errand.id,
+    ])) as { source: string; amount: string; normalCap: string }[];
+    expect(override).toEqual({ source: 'refund_decision', amount: '200.00', normalCap: '0.00' });
+  });
+
+  it('decrease decided first: the runner can only be approved for the reduced item amount', async () => {
+    const { customer, admin, runner, errand, decreaseId } = await withPendingDecrease();
+    await confirmFromInProgress(customer, runner, errand.id);
+    const [item] = await linesOf(errand.id);
+    await decideRefund(admin, decreaseId, { refundAmount: 200 }, 200);
+    const over = await approveItem(admin, item.id, { amount: 500 }, 400);
+    expect(over.body).toMatchObject({ code: 'reimbursement_exceeds_cap', cap: '300.00', itemPaidToNitume: '300.00' });
+    await approveItem(admin, item.id, { amount: 300 }, 200);
+    // Out: refund 200 + item 300 + runner fee 300 = 800 of the 1000 paid; the service fee stays with Nitume.
+    const lines = await linesOf(errand.id);
+    expect(lines.map((l) => [l.kind, l.amount])).toEqual([
+      ['item_reimbursement', '300.00'],
+      ['runner_fee', '300.00'],
+    ]);
+  });
+
+  it('CANCELLED with a pending decrease: an approved claim blocks the decrease without an override', async () => {
+    const { customer, admin, runner, errand, decreaseId } = await withPendingDecrease();
+    const second = await http()
+      .post(`/api/v1/errands/${errand.id}/price-change`)
+      .set(bearer(runner.token))
+      .send({ toPrice: 900, reason: 'Out of stock, bigger pack' })
+      .expect(201);
+    await http()
+      .post(`/api/v1/errands/${errand.id}/price-change/${second.body.id}/reject`)
+      .set(bearer(customer.token))
+      .send({})
+      .expect(201);
+    const receipt = await upload(runner, errand.id);
+    const claim = await http()
+      .post('/api/v1/runners/me/reimbursement-claims')
+      .set(bearer(runner.token))
+      .send({ errandId: errand.id, amount: 500, receiptEvidenceId: receipt.body.id })
+      .expect(201);
+    await approveItem(admin, claim.body.id, { amount: 500 }, 200);
+    const refused = await decideRefund(admin, decreaseId, { refundAmount: 200 }, 409);
+    expect(refused.body).toMatchObject({ code: 'task_exposure_cap_exceeded', scope: 'item' });
+  });
+
   it('refund corrections cannot be truncated (reviewer follow-up)', async () => {
     await expect(db().query('TRUNCATE "refund_payout_corrections"')).rejects.toThrow(/append-only/);
     await expect(db().query('TRUNCATE "runner_payout_lines" CASCADE')).rejects.toThrow(/append-only/);
