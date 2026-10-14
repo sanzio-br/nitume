@@ -40,6 +40,9 @@ import {
   correctionDialogTitle,
   correctionKindLabel,
 } from '../payouts/payout-correction';
+import { TaskExposureCardComponent } from '../payouts/task-exposure-card';
+import { ExposureOverrideFieldComponent } from '../payouts/exposure-override-field';
+import { ExposureOverrideState, OVERRIDE_CONFIRM_NOTE } from '../payouts/task-exposure';
 import {
   CorrectionFormState,
   PayoutCorrectionFormComponent,
@@ -112,6 +115,8 @@ type Dialog =
     PayoutCorrectionCardComponent,
     PayoutCorrectionFormComponent,
     CurrentPayoutCardComponent,
+    TaskExposureCardComponent,
+    ExposureOverrideFieldComponent,
   ],
   template: `
     @if (loading()) {
@@ -224,6 +229,16 @@ type Dialog =
         }
       </section>
 
+      <!-- Row 136: customer refunds and the runner's item reimbursement share one cap. -->
+      @if (r.taskExposure; as te) {
+        <app-task-exposure-card
+          [exposure]="te"
+          [overrides]="r.exposureOverrides ?? []"
+          [meId]="meId()"
+          [hideZeroReimbursements]="true"
+        />
+      }
+
       <!-- 3. Decision -->
       <section class="drawer-section">
         <div class="drawer-label">Decision</div>
@@ -280,6 +295,11 @@ type Dialog =
                 (input)="note.set(val($event))"
               ></textarea>
             </app-form-field>
+            <app-exposure-override-field
+              [state]="decisionOverride"
+              [saving]="saving()"
+              hint="Kept in the audit history. Not shown to the customer."
+            />
             <div class="drawer-actions">
               <button
                 type="button"
@@ -288,7 +308,8 @@ type Dialog =
                 (click)="submitDecision()"
               >
                 @if (amountValue(); as v) {
-                  Approve refund · <span class="num">{{ formatKshExact(v) }}</span>
+                  Approve refund{{ decisionOverride.active() ? ' over the cap' : '' }} ·
+                  <span class="num">{{ formatKshExact(v) }}</span>
                 } @else {
                   {{ decisionLabel(amount(), ceiling()) }}
                 }
@@ -404,9 +425,17 @@ type Dialog =
           [state]="correction"
           [saving]="saving()"
           [hasPhone]="!!phone()"
-          (submitted)="dialog.set('correction')"
+          [overCap]="correctionOverride.active()"
+          [blocked]="!!correctionOverride.noteError()"
+          (submitted)="submitCorrection()"
           (discardRequested)="dialog.set('correction_discard')"
-        />
+        >
+          <app-exposure-override-field
+            [state]="correctionOverride"
+            [saving]="saving()"
+            hint="Kept in the audit history. Not shown to the customer."
+          />
+        </app-payout-correction-form>
       }
 
       <!-- 5. Activity -->
@@ -470,6 +499,9 @@ type Dialog =
               The customer will be told a refund is on its way. You'll record the M-Pesa payout
               next. You can't change the amount after this.
             </p>
+            @if (decisionOverride.active()) {
+              <p>{{ overrideConfirmNote }}</p>
+            }
           }
           @case ('no_refund') {
             <p>
@@ -487,6 +519,9 @@ type Dialog =
           }
           @case ('correction') {
             <p><app-num-text [parts]="correctionDialogParts()" /></p>
+            @if (correctionOverride.active()) {
+              <p>{{ overrideConfirmNote }}</p>
+            }
           }
           @case ('correction_discard') {
             <p>What you entered will be lost.</p>
@@ -596,6 +631,12 @@ export class RefundDrawerComponent implements OnInit {
     },
     REFUND_CORRECTION_COPY,
   );
+  /** Row 136: override notes for the decision and the correction amounts. */
+  readonly decisionOverride = new ExposureOverrideState(() => this.amountValue());
+  readonly correctionOverride = new ExposureOverrideState(() =>
+    this.correction.formKind() === 'reversed' ? null : parseKsh(this.correction.amount()),
+  );
+  protected readonly overrideConfirmNote = OVERRIDE_CONFIRM_NOTE;
   protected readonly correctionDialogParts = computed(() =>
     correctionDialogParts(this.correction.form()),
   );
@@ -662,7 +703,10 @@ export class RefundDrawerComponent implements OnInit {
       case 'correction_discard':
         return 'Discard';
       case 'correction':
-        return CORRECTION_SUBMIT[this.correction.formKind()];
+        return (
+          CORRECTION_SUBMIT[this.correction.formKind()] +
+          (this.correctionOverride.active() ? ' over the cap' : '')
+        );
       default:
         return '';
     }
@@ -708,6 +752,8 @@ export class RefundDrawerComponent implements OnInit {
     this.receipt.set('');
     this.receiptTouched.set(false);
     this.receiptServerError.set(null);
+    this.decisionOverride.reset();
+    this.correctionOverride.reset();
     this.correction.reset();
   }
 
@@ -766,9 +812,16 @@ export class RefundDrawerComponent implements OnInit {
     if (r) this.nav.open('task', r.errandId);
   }
 
+  protected submitCorrection(): void {
+    this.correctionOverride.touched.set(true);
+    if (this.correctionOverride.noteError()) return;
+    this.dialog.set('correction');
+  }
+
   protected submitDecision(): void {
     this.amountTouched.set(true);
-    if (this.amountError() || this.saving()) return;
+    this.decisionOverride.touched.set(true);
+    if (this.amountError() || this.decisionOverride.noteError() || this.saving()) return;
     this.dialog.set(parseKsh(this.amount())! > 0 ? 'approve' : 'no_refund');
   }
 
@@ -810,7 +863,10 @@ export class RefundDrawerComponent implements OnInit {
     this.saving.set(true);
     try {
       const detail = await firstValueFrom(
-        this.api.addRefundCorrection(r.id, correctionBody(form, latest)),
+        this.api.addRefundCorrection(r.id, {
+          ...correctionBody(form, latest),
+          ...this.correctionOverride.body(),
+        }),
       );
       this.review.set(detail);
       this.resetForms();
@@ -832,6 +888,8 @@ export class RefundDrawerComponent implements OnInit {
 
   /** drawer-refund "Corrections" → Error codes (A-14). */
   private async handleCorrectionError(err: ApiErrorInfo, form: CorrectionForm): Promise<void> {
+    // Row 136: above the task cap: keep the input, ask for the override note.
+    if (this.correctionOverride.applyError(err)) return;
     switch (err.code) {
       case 'refund_not_refunded':
         return this.reloadWith({
@@ -877,7 +935,11 @@ export class RefundDrawerComponent implements OnInit {
     this.saving.set(true);
     try {
       const saved = await firstValueFrom(
-        this.api.decideRefund(r.id, { refundAmount, ...(note ? { note } : {}) }),
+        this.api.decideRefund(r.id, {
+          refundAmount,
+          ...(note ? { note } : {}),
+          ...this.decisionOverride.body(),
+        }),
       );
       this.applySaved(saved);
       this.notice.set({
@@ -938,6 +1000,8 @@ export class RefundDrawerComponent implements OnInit {
   }
 
   private async handleError(err: ApiErrorInfo, kind: 'decision' | 'payout'): Promise<void> {
+    // Row 136: above the task cap: keep the input, ask for the override note.
+    if (kind === 'decision' && this.decisionOverride.applyError(err)) return;
     if (err.code === 'refund_already_decided') {
       await this.reloadWith({
         tone: 'info',

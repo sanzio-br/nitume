@@ -405,6 +405,8 @@ export class CorrectionFormState {
               (blur)="st.touch('reason')"
             ></textarea>
           </app-form-field>
+          <!-- Row 136: the cap override field, when the drawer needs one. -->
+          <ng-content />
           <div class="drawer-actions">
             @if (!st.reversed()) {
               <button
@@ -419,10 +421,10 @@ export class CorrectionFormState {
             <button
               type="button"
               class="btn btn-primary"
-              [disabled]="st.invalid() || saving()"
+              [disabled]="st.invalid() || blocked() || saving()"
               (click)="submit()"
             >
-              {{ submitLabels[st.formKind()] }}
+              {{ submitLabels[st.formKind()] }}{{ overCap() ? ' over the cap' : '' }}
             </button>
           </div>
         </div>
@@ -446,6 +448,10 @@ export class PayoutCorrectionFormComponent {
   readonly saving = input(false);
   /** False when the payee's M-Pesa number is unknown (re-send caption). */
   readonly hasPhone = input(true);
+  /** Row 136: the amount is above the task cap (label gains `over the cap`). */
+  readonly overCap = input(false);
+  /** A projected field (the override note) is invalid. */
+  readonly blocked = input(false);
 
   /** Valid and confirmed by the admin's click: the drawer confirms and saves. */
   readonly submitted = output<void>();
@@ -501,6 +507,7 @@ export class PayoutCorrectionFormComponent {
     const st = this.state();
     st.touchAll();
     if (st.invalid() || this.saving()) return;
+    // The projected override field shows its own error; the drawer re-checks it.
     this.submitted.emit();
   }
 

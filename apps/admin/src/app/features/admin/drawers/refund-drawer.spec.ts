@@ -979,4 +979,136 @@ describe('RefundDrawerComponent corrections (row 100)', () => {
     expect(button(fixture, 'Record a correction')).toHaveLength(1);
     expect((fixture.nativeElement as HTMLElement).querySelector('textarea')).toBeNull();
   });
+
+  // --- Row 136: combined task cap ---
+  const capError = {
+    statusCode: 409,
+    code: 'task_exposure_cap_exceeded',
+    message: 'x',
+    totalPaidToNitume: '1200.00',
+    committedRefunds: '0.00',
+    committedReimbursements: '700.00',
+    remaining: '500.00',
+    requested: '1200.00',
+  };
+  const NOTE = 'Runner bought the wrong item; customer refunded in full.';
+
+  it('shows the task exposure and the recorded cap overrides (row 136)', async () => {
+    const fixture = await render(
+      review({
+        taskExposure: {
+          totalPaidToNitume: '1200.00',
+          committedRefunds: '0.00',
+          committedReimbursements: '700.00',
+          remaining: '500.00',
+        },
+        exposureOverrides: [
+          {
+            id: 'o1',
+            source: 'runner_reimbursement',
+            refundReviewId: null,
+            runnerPayoutLineId: 'l1',
+            amount: '700.00',
+            normalCap: '600.00',
+            totalPaidToNitume: '1200.00',
+            committedRefunds: '600.00',
+            committedReimbursements: '0.00',
+            note: 'Receipt checked with the merchant.',
+            createdByUserId: 'aaaaaaaa-0000-0000-0000-00000000beef',
+            createdAt: '2026-10-08T08:00:00Z',
+          },
+        ],
+      }),
+    );
+    expect(card(fixture, 'Task exposure')).toEqual({
+      'Total paid to Nitume': 'KSh 1,200',
+      'Customer refunds committed': 'KSh 0',
+      'Runner reimbursements committed': 'KSh 700',
+      'Left within the task cap': 'KSh 500',
+    });
+    expect(card(fixture, 'Cap overrides')).toEqual({
+      Amount: 'KSh 700',
+      'Normal cap at the time': 'KSh 600',
+      Note: 'Receipt checked with the merchant.',
+      By: '…beef',
+    });
+    expect(text(fixture)).toContain('Runner reimbursement');
+  });
+
+  it('asks for an override note after 409 task_exposure_cap_exceeded on the decision', async () => {
+    const fixture = await render(review());
+    type(fixture, 'Refund amount', '1200');
+    button(fixture, 'Approve refund · KSh 1,200')[0].click();
+    fixture.detectChanges();
+    await confirm(fixture, 'Approve refund');
+    http
+      .expectOne(`${API}/refunds/${RID}/decision`)
+      .flush(capError, { status: 409, statusText: 'Conflict' });
+    await flushAsync();
+    fixture.detectChanges();
+    // The input stays; the figures and the note field appear.
+    expect(field(fixture, 'Refund amount').value).toBe('1200');
+    expect(text(fixture)).toContain('This is KSh 700 above the task cap.');
+    const primary = button(fixture, 'Approve refund over the cap · KSh 1,200')[0];
+    primary.click();
+    fixture.detectChanges();
+    expect(text(fixture)).toContain('Explain the override in 10 to 500 characters.');
+    expect(text(fixture)).not.toContain('Approve a refund of');
+    type(fixture, 'Why go over the cap?', NOTE);
+    button(fixture, 'Approve refund over the cap · KSh 1,200')[0].click();
+    fixture.detectChanges();
+    expect(text(fixture)).toContain(
+      'This goes over the task cap. Your note is kept in the audit history.',
+    );
+    await confirm(fixture, 'Approve refund');
+    const req = http.expectOne(`${API}/refunds/${RID}/decision`);
+    expect(req.request.body).toEqual({ refundAmount: 1200, exposureOverrideNote: NOTE });
+    req.flush({ ...review(), status: 'approved', refundAmount: '1200.00' });
+    await flushAsync();
+    http.match(() => true).forEach((r) => r.flush({ count: 0 }));
+  });
+
+  it('lowering the amount to the cap hides the override field', async () => {
+    const fixture = await render(review());
+    type(fixture, 'Refund amount', '1200');
+    button(fixture, 'Approve refund · KSh 1,200')[0].click();
+    fixture.detectChanges();
+    await confirm(fixture, 'Approve refund');
+    http
+      .expectOne(`${API}/refunds/${RID}/decision`)
+      .flush(capError, { status: 409, statusText: 'Conflict' });
+    await flushAsync();
+    fixture.detectChanges();
+    type(fixture, 'Refund amount', '500');
+    expect(text(fixture)).not.toContain('Why go over the cap?');
+    expect(button(fixture, 'Approve refund · KSh 500')).toHaveLength(1);
+  });
+
+  it('carries the override note on a re-sent payout over the cap', async () => {
+    const reversal = record({ kind: 'reversed', newReference: 'RVS9K2L1MX' });
+    const fixture = await render(
+      refunded({ effectivePayout: reversedPayout, corrections: [reversal] }),
+    );
+    type(fixture, 'M-Pesa receipt', 'new8p3q2rs');
+    type(fixture, 'Reason', 'Sent again to the right number');
+    button(fixture, 'Record new payout')[0].click();
+    fixture.detectChanges();
+    await confirm(fixture, 'Record new payout');
+    http
+      .expectOne(`${API}/refunds/${RID}/corrections`)
+      .flush(capError, { status: 409, statusText: 'Conflict' });
+    await flushAsync();
+    fixture.detectChanges();
+    expect(text(fixture)).toContain('This is KSh 700 above the task cap.');
+    expect(button(fixture, 'Record new payout over the cap')[0].disabled).toBe(true);
+    type(fixture, 'Why go over the cap?', NOTE);
+    button(fixture, 'Record new payout over the cap')[0].click();
+    fixture.detectChanges();
+    await confirm(fixture, 'Record new payout over the cap');
+    const req = http.expectOne(`${API}/refunds/${RID}/corrections`);
+    expect(req.request.body).toMatchObject({ kind: 'resent', exposureOverrideNote: NOTE });
+    req.flush(refunded({ effectivePayout: sent({ reference: 'NEW8P3Q2RS' }), corrections: [] }));
+    await flushAsync();
+    http.match(() => true).forEach((r) => r.flush({ count: 0 }));
+  });
 });
