@@ -482,3 +482,44 @@ describe('runner views carry no customer pricing (RA-2)', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+describe('history actors are admin-only (reviewer B2)', () => {
+  const build = () => {
+    const rows = [
+      { id: 'h-1', actorType: 'customer', actorId: 'u-cust', toStatus: 'REQUESTED' },
+      { id: 'h-2', actorType: 'system', actorId: null, toStatus: 'EXPIRED' },
+    ];
+    const users = { displayNames: vi.fn(() => Promise.resolve(new Map([['u-cust', 'Achieng Otieno']]))) };
+    const service = new ErrandsService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { find: vi.fn(() => Promise.resolve(rows.map((r) => ({ ...r })))) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { emit: () => undefined } as never,
+      {} as never,
+      {} as never,
+      undefined,
+      users as never,
+    );
+    return { service, users };
+  };
+
+  it('adds actor { id, displayName } for an admin viewer', async () => {
+    const { service } = build();
+    const out = (await service.historyViewsFor('e-1', { role: 'admin', userId: 'a-1' })) as { actor: unknown }[];
+    expect(out.map((r) => r.actor)).toEqual([{ id: 'u-cust', displayName: 'Achieng Otieno' }, null]);
+  });
+
+  it('returns plain rows without names to customers and runners', async () => {
+    for (const role of ['customer', 'runner']) {
+      const { service, users } = build();
+      const out = (await service.historyViewsFor('e-1', { role, userId: 'u-1' })) as object[];
+      expect(out.every((r) => !('actor' in r))).toBe(true);
+      expect(users.displayNames).not.toHaveBeenCalled();
+    }
+  });
+});

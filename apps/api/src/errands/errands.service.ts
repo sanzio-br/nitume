@@ -667,9 +667,16 @@ export class ErrandsService {
     };
   }
 
-  /** `GET /errands/:id/history` with each row's actor (round-11 item 6). */
-  async historyViewsFor(errandId: string): Promise<ErrandHistoryView[]> {
+  /**
+   * `GET /errands/:id/history` (round-11 item 6). Admin viewers get each
+   * row's `actor { id, displayName }` (null for system rows). Customers and
+   * runners get the plain rows: no actor names (reviewer B2).
+   */
+  async historyViewsFor(errandId: string, viewer: ViewerContext): Promise<ErrandStatusHistory[] | ErrandHistoryView[]> {
     const rows = await this.historyFor(errandId);
+    if (viewer.role !== UserRole.ADMIN) {
+      return rows;
+    }
     const ids = [...new Set(rows.map((r) => r.actorId).filter((v): v is string => !!v))];
     const names = ids.length > 0 && this.users ? await this.users.displayNames(ids) : new Map<string, string>();
     return rows.map((r) =>

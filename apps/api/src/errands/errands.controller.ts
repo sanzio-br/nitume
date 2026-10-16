@@ -174,10 +174,9 @@ export class ErrandsController {
 
   @Get(':id/history')
   history(@Param('id') id: string, @CurrentUser() user: AuthContext) {
-    // Each row carries `actor { id, displayName }` (null for system rows).
-    return this.errands.getById(id, { role: user.role, userId: user.userId }).then(() =>
-      this.errands.historyViewsFor(id),
-    );
+    // Admin viewers: each row carries `actor { id, displayName }` (null for system rows).
+    const viewer = { role: user.role, userId: user.userId };
+    return this.errands.getById(id, viewer).then(() => this.errands.historyViewsFor(id, viewer));
   }
 
   @Post(':id/submit')
