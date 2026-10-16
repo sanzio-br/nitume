@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 257–284 (`#v-track`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-owner-answers`
-- Status: partial (round 8, 2026-10-16: EXPIRED copy and `Start a new task` not built)
+- Status: matches-design (re-audit 2026-10-16, `feat/customer-expired-next-action` @ `9978345`: EXPIRED copy and `Start a new task` PASS)
 
 ## Purpose
 Watch the assigned runner on a map, see ETA and runner identity, follow the status timeline, and act on what the task needs (price change, item payment, evidence review).
