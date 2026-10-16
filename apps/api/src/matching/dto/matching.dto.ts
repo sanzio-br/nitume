@@ -101,3 +101,29 @@ export class PurchaseCheckQueryDto {
   @IsUUID()
   runnerProfileId?: string;
 }
+
+/**
+ * POST /errands/:id/decline (rows 113, 134). `reason` is optional; the only
+ * stored value is `over_purchase_limit` (checked against the limit). Any
+ * other value: 400 decline_reason_invalid (checked by the controller).
+ */
+export class DeclineOfferDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  reason?: string;
+}
+
+export class ListOffersQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  cursor?: string;
+}

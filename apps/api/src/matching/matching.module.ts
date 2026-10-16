@@ -10,6 +10,8 @@ import { PriceChangeController } from './price-change.controller';
 import { PriceChangeRequest } from './price-change-request.entity';
 import { PriceChangeService } from './price-change.service';
 import { PurchaseLimitService } from './purchase-limit.service';
+import { RunnerJobsController } from './runner-jobs.controller';
+import { RunnerJobsService } from './runner-jobs.service';
 import { RunnersModule } from '../runners/runners.module';
 
 @Module({
@@ -24,8 +26,8 @@ import { RunnersModule } from '../runners/runners.module';
       RunnerProfile,
     ]),
   ],
-  controllers: [MatchingController, PriceChangeController],
-  providers: [PriceChangeService, PurchaseLimitService],
+  controllers: [MatchingController, PriceChangeController, RunnerJobsController],
+  providers: [PriceChangeService, PurchaseLimitService, RunnerJobsService],
   exports: [PriceChangeService],
 })
 export class MatchingModule {}

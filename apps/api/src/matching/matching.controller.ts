@@ -29,10 +29,10 @@ export class MatchingController {
   }
 
   /**
-   * Row 108: the current runner declines while the task is RUNNER_ASSIGNED
-   * because the required purchase is above their limit. The task keeps its
-   * status (no new state) and waits for an admin to reassign it. Errors: 409
-   * purchase_within_limit, assignment_not_declinable; 403 not the runner.
+   * Row 108, kept for existing clients: same as `POST /errands/:id/decline`
+   * with `reason: over_purchase_limit` (required here). Prefer the general
+   * decline (row 137). Errors: 409 purchase_within_limit,
+   * assignment_not_declinable, offer_expired; 403 not the runner.
    */
   @Post(':id/assignment/decline')
   @HttpCode(200)
