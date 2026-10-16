@@ -77,6 +77,12 @@ export class RunnerPayoutsController {
    * `itemPaidToNitume`, `maxPurchaseAdvance` = the line's limit,
    * `currentPurchaseLimit`); 400 purchase_limit_override_note_invalid;
    * 409 task_exposure_cap_exceeded; decision_note_required.
+   *
+   * Review minor 10: both override notes only act above their ceiling. At
+   * or below `approvalCeiling` a `purchaseLimitOverrideNote` is ignored
+   * (not validated, not stored, no override row); within the remaining task
+   * exposure an `exposureOverrideNote` is ignored the same way. The client
+   * should only ask for a note when the amount needs it.
    */
   @Post(':id/review')
   @HttpCode(200)

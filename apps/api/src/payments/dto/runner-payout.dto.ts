@@ -174,7 +174,8 @@ export class ReviewRunnerPayoutDto {
    * Row 142 / 151 (N-21): reason for approving above the runner's purchase
    * limit (10-500 characters, checked by the service so the error carries
    * `purchase_limit_override_note_invalid`). Only used when the amount is
-   * above `approvalCeiling`; ignored otherwise.
+   * above `approvalCeiling`; ignored otherwise: not validated, not stored,
+   * no `task_exposure_overrides` row (review minor 10).
    */
   @IsOptional()
   @IsString()
