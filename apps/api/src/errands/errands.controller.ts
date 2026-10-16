@@ -35,6 +35,7 @@ import {
   ErrandView,
   ErrandsService,
   ListErrandViewsResponse,
+  withoutCustomerPricing,
 } from './errands.service';
 import { Errand } from './errand.entity';
 import { Quote } from './quote.entity';
@@ -211,13 +212,9 @@ export class ErrandsController {
     @Body() dto: TransitionErrandDto,
   ): Promise<ErrandResult> {
     const actorType: StatusHistoryActor = this.actorTypeFor(user.role);
-    return this.errands.transition(
-      id,
-      dto.to,
-      { type: actorType, id: user.userId },
-      dto.note,
-      { role: user.role, userId: user.userId },
-    );
+    return this.errands
+      .transition(id, dto.to, { type: actorType, id: user.userId }, dto.note, { role: user.role, userId: user.userId })
+      .then((r) => (user.role === UserRole.RUNNER ? { ...r, errand: withoutCustomerPricing(r.errand) } : r));
   }
 
   private actorTypeFor(role: UserRole): StatusHistoryActor {

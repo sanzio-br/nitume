@@ -14,7 +14,7 @@ const build = (status: ErrandStatus) => {
   const repos = new Map<unknown, unknown>([
     [Errand, { findOne: vi.fn(() => Promise.resolve(errand)), save: vi.fn((e: Errand) => Promise.resolve(e)) }],
     [CustomerProfile, { findOne: vi.fn(() => Promise.resolve({ id: 'cust-1' })) }],
-    [ErrandAssignment, { update: vi.fn(() => Promise.resolve({ affected: 0 })) }],
+    [ErrandAssignment, { update: vi.fn(() => Promise.resolve({ affected: 0 })), findOne: vi.fn(() => Promise.resolve(null)) }],
     [
       ErrandStatusHistory,
       { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) },
@@ -23,6 +23,7 @@ const build = (status: ErrandStatus) => {
   const manager = { getRepository: (entity: unknown) => repos.get(entity) };
   const dataSource = { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) };
   const emit = vi.fn();
+  const runners = { startJob: vi.fn(() => Promise.resolve()), endJob: vi.fn(() => Promise.resolve()) };
   const service = new ErrandsService(
     dataSource as never,
     {} as never,
@@ -33,10 +34,10 @@ const build = (status: ErrandStatus) => {
     {} as never,
     {} as never,
     { emit } as never,
-    {} as never,
+    runners as never,
     {} as never,
   );
-  return { service, errand, emit, dataSource, manager };
+  return { service, errand, emit, dataSource, manager, runners, repos };
 };
 
 const customer = { type: StatusHistoryActor.CUSTOMER, id: 'user-1' };
@@ -510,5 +511,137 @@ describe('ErrandsService closes an open offer when the task ends before an accep
       { errandId: 'e-1', status: 'assigned' },
       { status: 'expired', decidedAt: expect.any(Date) },
     );
+  });
+});
+
+describe('runner accept checks and busy (RA-3, RA-8, RA-20, row 185)', () => {
+  const runner = { type: StatusHistoryActor.RUNNER, id: 'rp-1' };
+
+  const withOffer = (status = ErrandStatus.RUNNER_ASSIGNED) => {
+    const built = build(status);
+    const offer = {
+      id: 'a-1',
+      errandId: 'e-1',
+      runnerProfileId: 'rp-1',
+      status: status === ErrandStatus.RUNNER_ASSIGNED ? 'assigned' : 'accepted',
+      offerExpiresAt: new Date(Date.now() + 60_000),
+    };
+    const qb = { where: vi.fn(), andWhere: vi.fn(), getOne: vi.fn(() => Promise.resolve(offer)) };
+    qb.where.mockReturnValue(qb);
+    qb.andWhere.mockReturnValue(qb);
+    const repo = {
+      createQueryBuilder: vi.fn(() => qb),
+      findOne: vi.fn(() => Promise.resolve(offer)),
+      update: vi.fn((_id: unknown, patch: object) => Promise.resolve(Object.assign(offer, patch))),
+    };
+    const original = built.manager.getRepository;
+    built.manager.getRepository = (entity: unknown) => (entity === ErrandAssignment ? repo : original(entity));
+    return { ...built, offer };
+  };
+
+  it('makes the runner busy and runs the accept guards inside the transition', async () => {
+    const { service, runners, manager } = withOffer();
+    const guard = vi.fn(() => Promise.resolve());
+    service.onRunnerAccept(guard);
+    await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
+    expect(runners.startJob).toHaveBeenCalledWith('rp-1', manager);
+    expect(guard).toHaveBeenCalledWith(manager, { errandId: 'e-1', runnerProfileId: 'rp-1' });
+  });
+
+  it('a refused guard or start rolls the accept back (errand unchanged)', async () => {
+    const a = withOffer();
+    a.service.onRunnerAccept(() => Promise.reject(new ApiError(409, 'purchase_limit_exceeded', 'over')));
+    await expect(a.service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner)).rejects.toMatchObject({
+      code: 'purchase_limit_exceeded',
+    });
+    expect(a.errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+    const b = withOffer();
+    b.runners.startJob.mockRejectedValueOnce(new ApiError(403, 'runner_not_verified', 'no'));
+    await expect(b.service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner)).rejects.toMatchObject({
+      code: 'runner_not_verified',
+    });
+    expect(b.errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+  });
+
+  it('refuses the accept once the task deadline has passed: offer_expired with reason task_deadline_passed', async () => {
+    const { service, errand, runners } = withOffer();
+    errand.deadlineAt = new Date(Date.now() - 1_000);
+    const err = await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, code: 'offer_expired' });
+    expect((err as ApiError).getResponse()).toMatchObject({ reason: 'task_deadline_passed', deadlineAt: errand.deadlineAt.toISOString() });
+    expect(runners.startJob).not.toHaveBeenCalled();
+  });
+
+  it('frees the runner when the job leaves the active states, not between them', async () => {
+    const moving = withOffer(ErrandStatus.RUNNER_EN_ROUTE);
+    await moving.service.transition('e-1', ErrandStatus.ARRIVED, runner);
+    expect(moving.runners.endJob).not.toHaveBeenCalled();
+    const done = withOffer(ErrandStatus.IN_PROGRESS);
+    await done.service.transition('e-1', ErrandStatus.AWAITING_CUSTOMER, runner);
+    expect(done.runners.endJob).toHaveBeenCalledWith('rp-1', done.manager);
+    const failed = withOffer(ErrandStatus.RUNNER_EN_ROUTE);
+    await failed.service.transition('e-1', ErrandStatus.FAILED, runner);
+    expect(failed.runners.endJob).toHaveBeenCalled();
+  });
+});
+
+describe('ErrandsService.expirePastDeadline (row 185)', () => {
+  const sweep = (errand: Partial<Errand>) => {
+    const built = build(errand.status ?? ErrandStatus.RUNNER_ASSIGNED);
+    Object.assign(built.errand, errand);
+    const qb = {
+      select: vi.fn(),
+      where: vi.fn(),
+      andWhere: vi.fn(),
+      orderBy: vi.fn(),
+      limit: vi.fn(),
+      getRawMany: vi.fn(() => Promise.resolve([{ id: 'e-1' }])),
+    };
+    for (const k of ['select', 'where', 'andWhere', 'orderBy', 'limit'] as const) {
+      qb[k].mockReturnValue(qb);
+    }
+    const hook = vi.fn(() => Promise.resolve());
+    const service = new ErrandsService(
+      built.dataSource as never,
+      { createQueryBuilder: () => qb } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { emit: built.emit } as never,
+      built.runners as never,
+      {} as never,
+    );
+    service.onTerminated(hook);
+    return { ...built, service, hook };
+  };
+
+  it('moves a RUNNER_ASSIGNED task past its deadline to EXPIRED (system), runs the termination hooks and closes the open offer', async () => {
+    const { service, errand, hook, repos } = sweep({ deadlineAt: new Date(Date.now() - 1_000) });
+    await expect(service.expirePastDeadline()).resolves.toEqual(['e-1']);
+    expect(errand.status).toBe(ErrandStatus.EXPIRED);
+    expect(hook).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ to: ErrandStatus.EXPIRED, actor: 'system' }));
+    const assignments = repos.get(ErrandAssignment) as { update: ReturnType<typeof vi.fn> };
+    expect(assignments.update).toHaveBeenCalledWith(
+      { errandId: 'e-1', status: 'assigned' },
+      expect.objectContaining({ status: 'expired' }),
+    );
+  });
+
+  it('skips a task accepted or re-dated meanwhile (re-checked under the lock)', async () => {
+    const accepted = sweep({ status: ErrandStatus.RUNNER_EN_ROUTE, deadlineAt: new Date(Date.now() - 1_000) });
+    await expect(accepted.service.expirePastDeadline()).resolves.toEqual([]);
+    expect(accepted.errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
+    const later = sweep({ deadlineAt: new Date(Date.now() + 60_000) });
+    await expect(later.service.expirePastDeadline()).resolves.toEqual([]);
+  });
+
+  it('one failing errand never stops the batch', async () => {
+    const { service, hook } = sweep({ deadlineAt: new Date(Date.now() - 1_000) });
+    hook.mockRejectedValueOnce(new Error('refund review failed'));
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    await expect(service.expirePastDeadline()).resolves.toEqual([]);
   });
 });

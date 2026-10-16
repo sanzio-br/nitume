@@ -29,8 +29,11 @@ const build = (status: ErrandStatus, assignments: Partial<ErrandAssignment>[] = 
         findOne: vi.fn(({ where }: { where: { runnerProfileId?: string; status?: { value?: string[] } } }) =>
           Promise.resolve(
             where.runnerProfileId
-              ? (rows.filter((r) => r.runnerProfileId === where.runnerProfileId && where.status?.value?.includes(r.status)).at(-1) ??
-                  null)
+              ? (rows
+                  .filter(
+                    (r) => r.runnerProfileId === where.runnerProfileId && (!where.status || where.status.value?.includes(r.status)),
+                  )
+                  .at(-1) ?? null)
               : (active().at(-1) ?? null),
           ),
         ),
@@ -178,5 +181,46 @@ describe('ErrandsService.assign after a decline or an expired offer (rows 108, 1
     const out = await service.assign('e-1', 'rp-1', { type: StatusHistoryActor.ADMIN, id: 'admin-1' });
     expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
     expect(out.history).not.toBeNull();
+  });
+});
+
+describe('general decline and assign checks (rows 113, 178, 185, 186)', () => {
+  it('declines without a reason: stored as null, the event says so', async () => {
+    const { service, rows, emit } = build(ErrandStatus.RUNNER_ASSIGNED, [
+      { runnerProfileId: 'rp-1', status: AssignmentStatus.ASSIGNED, offerExpiresAt: new Date(Date.now() + 60_000) },
+    ]);
+    await service.declineAssignment('e-1', 'u-run', null);
+    expect(rows[0]).toMatchObject({ status: AssignmentStatus.DECLINED, declineReason: null });
+    await tick();
+    expect(emit).toHaveBeenCalledWith(ASSIGNMENT_DECLINED_EVENT, expect.objectContaining({ reason: null }));
+  });
+
+  it('refuses a decline after the offer deadline, before and after the sweep (409 offer_expired)', async () => {
+    const past = new Date(Date.now() - 1_000);
+    const open = build(ErrandStatus.RUNNER_ASSIGNED, [{ runnerProfileId: 'rp-1', status: AssignmentStatus.ASSIGNED, offerExpiresAt: past }]);
+    await expect(open.service.declineAssignment('e-1', 'u-run', null)).rejects.toMatchObject({ code: 'offer_expired' });
+    expect(open.rows[0].status).toBe(AssignmentStatus.ASSIGNED);
+    const swept = build(ErrandStatus.RUNNER_ASSIGNED, [{ runnerProfileId: 'rp-1', status: AssignmentStatus.EXPIRED, offerExpiresAt: past }]);
+    await expect(swept.service.declineAssignment('e-1', 'u-run', null)).rejects.toMatchObject({ code: 'offer_expired' });
+  });
+
+  it('refuses to assign once the task deadline has passed (409 task_deadline_passed)', async () => {
+    const { service, errand, rows } = build(ErrandStatus.RUNNER_ASSIGNED, [
+      { runnerProfileId: 'rp-1', status: AssignmentStatus.DECLINED },
+    ]);
+    errand.deadlineAt = new Date(Date.now() - 1_000);
+    await expect(service.assign('e-1', 'rp-2', { type: StatusHistoryActor.ADMIN, id: 'admin-1' })).rejects.toMatchObject({
+      code: 'task_deadline_passed',
+    });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('runs the assign guards before writing the offer', async () => {
+    const { service, rows } = build(ErrandStatus.RUNNER_ASSIGNED, [{ runnerProfileId: 'rp-1', status: AssignmentStatus.DECLINED }]);
+    const guard = vi.fn(() => Promise.reject(new Error('runner_not_eligible')));
+    service.onAssign(guard);
+    await expect(service.assign('e-1', 'rp-2', { type: StatusHistoryActor.ADMIN, id: 'admin-1' })).rejects.toThrow('runner_not_eligible');
+    expect(guard).toHaveBeenCalledWith(expect.anything(), { errandId: 'e-1', runnerProfileId: 'rp-2' });
+    expect(rows).toHaveLength(1);
   });
 });
