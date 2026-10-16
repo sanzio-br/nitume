@@ -407,7 +407,8 @@ class _TrackBody extends StatelessWidget {
   static const _terminalCopy = {
     ErrandStatus.cancelled: 'This task was cancelled.',
     ErrandStatus.failed: "This task couldn't be completed.",
-    ErrandStatus.expired: 'No runner was available in time.',
+    // Same wording as the `errand.EXPIRED` notification (owner 2026-10-16).
+    ErrandStatus.expired: 'No runner accepted your task in time.',
     ErrandStatus.disputed: "We're reviewing your report.",
   };
 
@@ -435,6 +436,14 @@ class _TrackBody extends StatelessWidget {
                 size: NitumeButtonSize.small,
                 onPressed: () => Nav.toTaskDetail(context, errand.id),
               ),
+              // EXPIRED: the next action (owner 2026-10-16). No refund
+              // wording here; the review shows on Task detail only.
+              if (status == ErrandStatus.expired)
+                NitumeButton.text(
+                  label: 'Start a new task',
+                  size: NitumeButtonSize.small,
+                  onPressed: () => Nav.toNewTask(context),
+                ),
             ],
           ),
         ),
