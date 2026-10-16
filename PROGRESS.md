@@ -357,4 +357,9 @@ onboarding → profile → jobs → active job → job summary → earnings → 
 - Next: runner API round (offers RA-1, pool and matching-exhausted rules, admin "Expire task — no runner
   available", runner notifications incl. payout cancel, location producer, skills/areas, evidence upload,
   idempotent transitions), then runner screens one by one.
+- `feat/core-id-side` (a24db2a): nitume_core sends the ID side (front | back) on government ID uploads and
+  groups the latest Front, Back, unknown-side and selfie records (RunnerVerificationDocuments). core 393.
+- `docs/owner-answers-11-specs` (023653d): owner answers 185–200 in specs and System Design; admin
+  "Expire task — no runner available" specced; §3.3 RUNNER_ASSIGNED → EXPIRED actor S → S, A (row 208,
+  owner to confirm).
 
