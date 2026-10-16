@@ -57,9 +57,15 @@
 | 135 | Over-limit purchase at CONFIRMED → ops review; maximum claimable = min(item amount paid to Nitume, `max_purchase_advance`) | drawer-runner-payout |
 | 136 | "Add a task-level combined financial exposure cap covering the customer refund and the runner item reimbursement on CANCELLED/FAILED tasks … Cases above the normal cap require ops review and explicit handling." | drawer-runner-payout, drawer-refund (amendment) |
 | 138 | "KES 3,000 default, configurable per runner by admins. Changes audited with actor, timestamp, previous and new value. Runners cannot change their own limit." | drawer-runner-purchase-limit |
+| 140 | (2026-10-16) "A runner-favour dispute keeps the runner eligible for the applicable payout/reimbursement; the dispute outcome does not cancel an otherwise valid runner payout." | drawer-dispute-outcome (no change) |
+| 141 | (2026-10-16) "At the acceptance deadline with no acceptance the offer expires and the task goes EXPIRED at once; no runner acceptance after expiry." | N-20 (assign flow), p-refunds (`Task expired` reviews) |
+| 142 | (2026-10-16) "Ordinary approval is capped at min(verified item amount paid to Nitume, runner max_purchase_advance) and must not silently override the runner's limit. Paying above max_purchase_advance needs an explicit exceptional override with an auditable reason and actor." Not the earlier "raise the runner's limit first" | drawer-runner-payout (§5 2b), drawer-runner-purchase-limit, N-21 |
+| 143 | (2026-10-16) No payout-time promise/SLA anywhere; status only | p-payout-requests (and the runner copy it triggers) |
+| 144 | (2026-10-16) Runner ID/selfie images kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; never indefinitely; retention configurable; access restricted and logged throughout | admin verification views when specced (none yet) |
+| 146 | (2026-10-16) "A request paid below the requested amount closes as PAID; store requested and actual paid amounts separately … The remainder is not carried in the same request; it stays in available balance for a new payout request." | p-payout-requests |
 | 93 | The four admin tones `#DCE3EE`, `#C3CADC`, `#7E8CA8`, `#EEF1F5` are approved admin palette tokens in `_tokens.scss` | §4.1 |
 
-Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94 (AQ-1 … AQ-6, AQ-R1, AQ-R2). Answered 2026-10-12 and applied on `docs/owner-answers-5`: rows 95, 96 (AQ-7), 98, 100, 101, 102 (AQ-8). Answered 2026-10-13 and applied on `docs/owner-answers-6-runner-specs`: rows 104–108 (runner reimbursement and payout ledger, system design §2.2/§6), 109 (AQ-9), 110 (AQ-10), 111. Still open on the BOARD and relevant here: row 85 (PayHero contract, no admin UI impact).
+Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94 (AQ-1 … AQ-6, AQ-R1, AQ-R2). Answered 2026-10-12 and applied on `docs/owner-answers-5`: rows 95, 96 (AQ-7), 98, 100, 101, 102 (AQ-8). Answered 2026-10-13 and applied on `docs/owner-answers-6-runner-specs`: rows 104–108 (runner reimbursement and payout ledger, system design §2.2/§6), 109 (AQ-9), 110 (AQ-10), 111. Answered 2026-10-16 and applied on `docs/owner-answers-7-specs`: rows 140–144, 146. Still open on the BOARD and relevant here: row 85 (PayHero contract, no admin UI impact), rows 145 and 148 (override storage and cap scope), row 147 (process).
 
 ## 2. Access
 
@@ -201,10 +207,11 @@ Collected here; each spec repeats the ones it depends on.
 - N-15 (rows 82, 100; **schema approved 2026-10-12, build now**) Payout correction/reversal records, append-only table `refund_payout_corrections` (system design §2.2): `POST /refunds/:id/corrections`, `corrections[]` and `effectivePayout` on admin refund responses, customer view on the effective payout. Full contract in `drawer-refund.md` "Corrections" → Data.
 - N-16 (row 102, **approved 2026-10-12**) New `RefundTrigger` values `expired_after_payment` and `failed_after_payment` (enum migration); open a review (same upsert as the cancellation review, `priceChangeRequestId` null, so at most one cancellation-type review per errand) when a **paid** errand moves RUNNER_ASSIGNED → EXPIRED or RUNNER_EN_ROUTE → FAILED, with the same ceiling rules (rows 81, 87) and the same customer notification as a cancellation review. "Paid" = at least one completed STK leg to Nitume, as for `cancelled_after_payment`. A late STK completion on an EXPIRED/FAILED errand refreshes `amountPaid` while `pending_review`, as for CANCELLED.
 - Row 98 (note, no admin change): the API runs as **one instance** (no Socket.IO Redis adapter). The `admins` room and live events assume that; nothing in these screens needs a change.
-- N-17 (row 117) Runner payout requests: record + endpoints (`/runner-payout-requests` list/count/detail/pay/reject, runner create/list/summary), configurable minimum with an audited setting, one open request per runner, destination = sign-in phone; `pay` marks whole lines paid like `mark-paid` and links them (paying a total below the request: pending row 146, AQ-11).
+- N-17 (row 117) Runner payout requests: record + endpoints (`/runner-payout-requests` list/count/detail/pay/reject, runner create/list/summary), configurable minimum with an audited setting, one open request per runner, destination = sign-in phone; `pay` marks whole lines paid like `mark-paid` and links them; the request stores `requestedAmount` and `paidAmount` separately and closes `paid` even when `paidAmount` < `requestedAmount`; the remainder is not carried on the request (row 146, decided). No payout time anywhere (row 143).
 - N-18 (row 136) **Built on `feat/api-owner-answers-6` @ `dbc3a76`**: 409 `task_exposure_cap_exceeded`, `exposureOverrideNote`, `taskExposure`, `exposureOverrides[]`, table `task_exposure_overrides` (storage approval pending row 145). Original requirement: task-level combined exposure cap on CANCELLED/FAILED: one figure across the customer refund reviews and the runner's item reimbursements; refund decisions, refund corrections, item approvals and claims checked against it; above it only with an explicit override (amount, reason ≥ 20 chars, actor, time; schema RQ-26); expose `exposure { itemPaidToNitume, customerRefundsCommitted, runnerReimbursementCommitted, remaining }` on the refund detail and the runner payout detail.
 - N-19 (row 138) `PATCH /runners/:id/purchase-limit` + append-only audit history, `GET …/history`; runners refused.
-- N-20 (row 113) Admin assign creates an offer (10 min) instead of an accepted assignment; the task drawer's assign action and the queue need an `Offered to {runner}, ends {time}` state and the decline/expiry outcomes (spec to follow with RA-1).
+- N-20 (rows 113, 141) Admin assign creates an offer (10 min) instead of an accepted assignment; at the deadline with no acceptance the offer expires and the task goes RUNNER_ASSIGNED → EXPIRED at once (row 141: no re-offer step, no acceptance after expiry; a paid task then opens the `Task expired` refund review, row 102); the task drawer's assign action and the queue need an `Offered to {runner}, ends {time}` state and the decline/expiry outcomes (spec to follow with RA-1).
+- N-21 (row 142, 2026-10-16) Purchase-limit exception on item reimbursement review: `POST /runner-payouts/:id/review` accepts `purchaseLimitOverrideNote` (10–500); without it the approval stays ≤ min(item amount paid to Nitume, `max_purchase_advance`) (today's `approvalCeilingOf`); with it up to `overLimitCeiling` = min(requested, item amount paid to Nitume, the line's cap without the limit); never above the item amount paid to Nitume. Record actor, time, line, limit at the time, amount and reason append-only (storage: owner question, recommended the row-136 override record with source `purchase_limit`); expose `overLimitCeiling` and `purchaseLimitOverride` on the detail; 400 `purchase_limit_override_note_invalid`. Today the ceiling reads the runner's **current** limit, so raising the limit (N-19) would lift it without a per-line record: see the open question in `drawer-runner-payout.md`.
 - N-8 Non-`ApiError` conflicts (`ConflictException` in `performDisputeResolution`, state-machine 409s) have no `code`; the client can only switch on status 409. A code such as `errand_not_disputed` would let the UI word it precisely.
 
 ## 8. Owner questions (AQ-n)
@@ -239,8 +246,16 @@ Answered 2026-10-13:
 
 Answered 2026-10-13 (rows 112–139): applied in §1 and the runner payout specs.
 
+Answered 2026-10-16:
+
+| AQ | BOARD row | Answer |
+|---|---|---|
+| AQ-11 | 146 | A request paid below the requested amount closes `paid`; requested and paid amounts stored and shown separately; the remainder stays owed for a new request |
+| RQ-23 | 142 | Ordinary approval capped at min(item paid to Nitume, purchase limit); above the limit only through an explicit, audited exception (reason + actor); not by raising the limit first |
+
 Open:
 | AQ | Question | Default |
 |---|---|---|
-| AQ-11 (payments, BOARD row 146, pending) | Paying part of a payout request with whole lines (`p-payout-requests.md`) | Yes: pay whole lines up to the requested amount; the request closes `paid` with the actual total |
-| RQ-23, RQ-26 (BOARD rows 142, 145, pending) | See `docs/audits/runner-gap-report.md` §9 (approval cap on an accepted over-limit purchase; override storage) | as there |
+| RQ-26 (BOARD row 145) | See `docs/audits/runner-gap-report.md` §9 (override storage) | as there |
+| new (row 142 follow-up, schema) | Storage of the purchase-limit exception (`drawer-runner-payout.md`) | the row-136 override record with source `purchase_limit` |
+| new (row 142 follow-up, payments) | Does a limit change lift the ordinary ceiling of item lines already in review? | No: the limit at line creation applies |

@@ -86,10 +86,10 @@ Task references, amounts, the batch total and count, the sub-line counts and sum
 Checkboxes have names `Select {type} for #{reference}`; the batch bar is announced (`aria-live="polite"`) when its total changes; row buttons ≥ 32px tall with the reference in the accessible name; the filters have `aria-label`s. Desktop surface (sidebar hidden below 900px, as the shell).
 
 ## Owner decisions applied
-Rows 104–108, 112, 117, 135, 136, 138 (`_shared.md` §1).
+Rows 104–108, 112, 117, 135, 136, 138 (`_shared.md` §1). Row 146 (AQ-11, 2026-10-16; see `p-payout-requests.md`): a request paid with whole lines below the requested amount closes as paid; requested and paid stored separately. Row 140: lines of a task whose dispute was decided for the runner are created at CONFIRMED like any other (no panel change). No change to this panel's screens from rows 140–146.
 
 ## Open questions for the owner
-- AQ-11 (see `p-payout-requests.md`): paying a request with whole lines.
+None.
 
 ## Current vs design
 Audit 2026-10-14 against `feat/admin-runner-payouts` @ `04837b4`: **PASS** (`docs/audits/admin-gap-report.md`, "Audit round 6: runner payouts").
