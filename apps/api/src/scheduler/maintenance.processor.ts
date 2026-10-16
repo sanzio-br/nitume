@@ -7,6 +7,7 @@ import { PaymentsService } from '../payments/payments.service';
 
 export const DISPUTE_WINDOW_JOB = 'dispute-window';
 export const STK_RECONCILE_JOB = 'stk-reconcile';
+export const OFFER_EXPIRY_JOB = 'offer-expiry';
 
 /**
  * Scheduled system jobs (rows 26, 50, 52). Every write goes through the
@@ -27,6 +28,8 @@ export class MaintenanceProcessor extends WorkerHost {
     switch (job.name) {
       case DISPUTE_WINDOW_JOB:
         return this.disputeWindow();
+      case OFFER_EXPIRY_JOB:
+        return this.offerExpiry();
       case STK_RECONCILE_JOB:
         return { resolved: await this.payments.resolveTimedOut() };
       case PAYMENT_VERIFY_JOB:
@@ -48,6 +51,15 @@ export class MaintenanceProcessor extends WorkerHost {
       throw new Error(`Payment ${paymentId} still pending at the provider; retrying`);
     }
     return { paymentId, state };
+  }
+
+  /** Lapsed offers: RUNNER_ASSIGNED -> EXPIRED at the deadline (row 141). */
+  async offerExpiry(): Promise<{ expired: string[] }> {
+    const expired = await this.errands.expireLapsedOffers();
+    if (expired.length > 0) {
+      this.logger.log(`Offer expiry: expired ${expired.length}`);
+    }
+    return { expired };
   }
 
   /** COMPLETED past the dispute window -> CONFIRMED, then CONFIRMED -> SETTLED. */

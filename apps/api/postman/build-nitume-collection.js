@@ -186,7 +186,8 @@ const collection = {
       patch('Resolve dispute', '/errands/{{errand_id}}/resolve-dispute', '{\n  "verdict": "refund_customer",\n  "note": "Runner failed to deliver within SLA; refund initiated."\n}', 'admin'),
     ]),
     folder('7_Matching', [
-      post('Admin assign', '/errands/{{errand_id}}/assign', '{\n  "candidateRunnerIds": ["{{runner_id}}"]\n}', 'admin'),
+      post('Admin assign (offer open 10 min: assignment.offerExpiresAt, rows 114, 141)', '/errands/{{errand_id}}/assign', '{\n  "runnerProfileId": "{{runner_id}}"\n}', 'admin'),
+      patch('Runner accept offer (RUNNER_EN_ROUTE; 409 offer_expired { offerExpiresAt } after the deadline)', '/errands/{{errand_id}}/status', '{\n  "to": "RUNNER_EN_ROUTE"\n}', 'runner'),
       post('Admin quote', '/errands/{{errand_id}}/quote', '{\n  "runnerId": "{{runner_id}}",\n  "amount": 500\n}', 'admin'),
     ]),
     folder('8_Payments', [

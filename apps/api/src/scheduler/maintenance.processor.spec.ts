@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
-import { DISPUTE_WINDOW_JOB, MaintenanceProcessor, STK_RECONCILE_JOB } from './maintenance.processor';
+import { DISPUTE_WINDOW_JOB, MaintenanceProcessor, OFFER_EXPIRY_JOB, STK_RECONCILE_JOB } from './maintenance.processor';
 
 const build = () => {
-  const errands = { confirmPastDisputeWindow: vi.fn(() => Promise.resolve(['e-1'])) };
+  const errands = {
+    confirmPastDisputeWindow: vi.fn(() => Promise.resolve(['e-1'])),
+    expireLapsedOffers: vi.fn(() => Promise.resolve(['e-9'])),
+  };
   const payments = {
     settleConfirmed: vi.fn(() => Promise.resolve(['e-1', 'e-0'])),
     resolveTimedOut: vi.fn(() => Promise.resolve(2)),
@@ -29,6 +32,12 @@ describe('MaintenanceProcessor (rows 26, 50, 52)', () => {
       settled: ['e-1'],
     });
     expect(order).toEqual(['confirm', 'settle']);
+  });
+
+  it('offer-expiry expires lapsed offers (row 141)', async () => {
+    const { processor, errands } = build();
+    await expect(processor.process({ name: OFFER_EXPIRY_JOB } as never)).resolves.toEqual({ expired: ['e-9'] });
+    expect(errands.expireLapsedOffers).toHaveBeenCalled();
   });
 
   it('stk-reconcile resolves TIMEOUT payments', async () => {
