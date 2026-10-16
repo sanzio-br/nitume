@@ -14,6 +14,7 @@ import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { PaymentsService } from '../src/payments/payments.service';
 import { RunnerPayoutsService } from '../src/payments/runner-payouts.service';
+import { deleteRunnerVerifications, readyRunner } from './support/runner-fixtures';
 
 /**
  * Contract checks for the owner answers 6 (BOARD rows 104-108: runner payout
@@ -48,6 +49,8 @@ describe('Owner answers 6 (e2e)', () => {
       profileId = (await app.get(CustomersService).createForUser(user.id)).id;
     } else if (role === UserRole.RUNNER) {
       profileId = (await app.get(RunnersService).createForUser(user.id)).id;
+      // RA-8: verified and online, so assign and accept work.
+      await readyRunner(app.get(DataSource), profileId);
     }
     return { id: user.id, token: tokenFor(user), profileId };
   };
@@ -113,6 +116,7 @@ describe('Owner answers 6 (e2e)', () => {
            (SELECT id FROM "customer_profiles" WHERE "userId" = ANY($1))`,
         [userIds],
       );
+      await deleteRunnerVerifications(ds, userIds);
       await ds.query('DELETE FROM "runner_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "customer_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "users" WHERE "id" = ANY($1)', [userIds]);

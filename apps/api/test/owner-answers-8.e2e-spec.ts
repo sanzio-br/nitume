@@ -13,6 +13,7 @@ import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { IdDocumentRetentionService } from '../src/scheduler/id-document-retention.service';
+import { readyRunner } from './support/runner-fixtures';
 
 /**
  * Contract checks for the owner answers 8 (BOARD rows 151-154 and the OTP
@@ -36,7 +37,7 @@ describe('Owner answers 8 (e2e)', () => {
 
   type Actor = { id: string; token: string; profileId: string | null };
 
-  const makeUser = async (role: UserRole, displayName?: string): Promise<Actor> => {
+  const makeUser = async (role: UserRole, displayName?: string, opts: { ready?: boolean } = {}): Promise<Actor> => {
     const users = app.get(UsersService);
     const user = await users.create({ phone: randomPhone(), role });
     if (displayName) {
@@ -48,6 +49,10 @@ describe('Owner answers 8 (e2e)', () => {
       profileId = (await app.get(CustomersService).createForUser(user.id)).id;
     } else if (role === UserRole.RUNNER) {
       profileId = (await app.get(RunnersService).createForUser(user.id)).id;
+      if (opts.ready !== false) {
+        // RA-8: verified and online, so assign and accept work (opt out for ID upload tests).
+        await readyRunner(app.get(DataSource), profileId);
+      }
     }
     return { id: user.id, token: tokenFor(user), profileId };
   };
@@ -449,7 +454,7 @@ describe('Owner answers 8 (e2e)', () => {
 
   describe('rows 125, 144, 154 (RA-7): restricted ID and selfie images', () => {
     it('upload, admin-only logged signed access, no raw keys, purge after retention', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
       const uploaded = await http()
         .post('/api/v1/runners/me/verifications/documents')

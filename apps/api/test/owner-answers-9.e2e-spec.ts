@@ -23,6 +23,7 @@ import {
 } from '../src/runners/verification-storage/verification-document-storage';
 import { NOTIFICATIONS_QUEUE } from '../src/infra/queue/queues';
 import { FEED_JOB, FeedJob, NotificationsService } from '../src/notifications/notifications.service';
+import { readyRunner } from './support/runner-fixtures';
 
 /**
  * Contract checks for the owner answers 9 (BOARD rows 161-166 and the
@@ -48,7 +49,7 @@ describe('Owner answers 9 (e2e)', () => {
 
   type Actor = { id: string; token: string; profileId: string | null };
 
-  const makeUser = async (role: UserRole, displayName?: string): Promise<Actor> => {
+  const makeUser = async (role: UserRole, displayName?: string, opts: { ready?: boolean } = {}): Promise<Actor> => {
     const users = app.get(UsersService);
     const user = await users.create({ phone: randomPhone(), role });
     if (displayName) {
@@ -60,6 +61,10 @@ describe('Owner answers 9 (e2e)', () => {
       profileId = (await app.get(CustomersService).createForUser(user.id)).id;
     } else if (role === UserRole.RUNNER) {
       profileId = (await app.get(RunnersService).createForUser(user.id)).id;
+      if (opts.ready !== false) {
+        // RA-8: verified and online, so assign and accept work (opt out for ID upload tests).
+        await readyRunner(app.get(DataSource), profileId);
+      }
     }
     return { id: user.id, token: tokenFor(user), profileId };
   };
@@ -519,7 +524,7 @@ describe('Owner answers 9 (e2e)', () => {
 
   describe('row 163: 10 MB per ID/selfie image, refused before storage', () => {
     it('answers 413 verification_document_too_large with maxBytes and stores nothing', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const storage = app.get<VerificationDocumentStorage>(VERIFICATION_DOCUMENT_STORAGE);
       const upload = vi.spyOn(storage, 'upload');
       try {
@@ -539,7 +544,7 @@ describe('Owner answers 9 (e2e)', () => {
   });
 
   it('a file whose bytes are not the declared image type is refused before storage (review minor 4)', async () => {
-    const runner = await makeUser(UserRole.RUNNER);
+    const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
     const res = await uploadDoc(runner, Buffer.from('%PDF-1.7 not an image'), 'image/jpeg', 'selfie').expect(400);
     expect(res.body).toMatchObject({ code: 'verification_document_type_invalid' });
     expect(await db().query('SELECT id FROM "runner_verifications" WHERE "runnerProfileId" = $1', [runner.profileId])).toEqual([]);
@@ -569,7 +574,7 @@ describe('Owner answers 9 (e2e)', () => {
     const later = () => new Date(Date.now() + 800 * 86_400_000);
 
     it('a view never restarts the clock; an audited re-review does; pending is never purged or re-reviewed', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
       const id = (await uploadDoc(runner, jpeg()).expect(201)).body.id as string;
       await approve(admin, runner, id);
@@ -627,7 +632,7 @@ describe('Owner answers 9 (e2e)', () => {
     });
 
     it('a new payment-identity check does not restart the clock; a new selfie does (row 191)', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
       const id = (await uploadDoc(runner, jpeg()).expect(201)).body.id as string;
       await approve(admin, runner, id);
@@ -858,7 +863,7 @@ describe('Owner answers 9 (e2e)', () => {
 
   describe('row 195: ID side', () => {
     it('a government ID upload needs front or back; a selfie takes none', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const missing = await uploadDoc(runner, jpeg(), 'image/jpeg', 'government_id', null).expect(400);
       expect(missing.body).toMatchObject({ code: 'verification_document_side_invalid', allowed: ['front', 'back'] });
       await uploadDoc(runner, jpeg(), 'image/jpeg', 'government_id', 'side-ways').expect(400);
