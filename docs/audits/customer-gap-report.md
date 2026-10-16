@@ -810,3 +810,16 @@ Build: `feat/customer-expired-next-action` — `b624803` (`feat(customer): EXPIR
 `errand.EXPIRED` is not in core `NotificationEventType` yet, so `tryFromWire` returns null and `Nav.openNotification` (`nav.dart:143-186`) falls through to `toTaskDetail` — the target `v-notifications.md` specifies. Acceptable until the API sends the event; then add the explicit case and a test (round-8 item 3 stays open, not blocking).
 
 No findings. v-track and v-task-detail → `matches-design` (on `feat/customer-expired-next-action`).
+
+## Owner answers round 9 (rows 157, 158, 2026-10-16), applied on `docs/owner-answers-9-specs`
+
+Spec-only update. Full list: `docs/audits/runner-gap-report.md` §12.
+
+### What changed
+- `v-notifications.md`: `errand.EXPIRED` body is now the owner's sentence, word for word, for every expired task: `Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.` The refund-review variant is withdrawn (row 158: no refund sentence unless the refund flow has already determined a refund is due; an opened review is not that). The notification fires only when no further runner can be assigned (row 157), never on an offer lapse.
+- `v-auth-otp.md`: OTP SMS owner wording `Your Nitume verification code is {{code}}. It expires in 5 minutes. Do not share this code with anyone.`
+- `v-track.md`, `v-task-detail.md`: EXPIRED line `No runner accepted your task in time.` and `Start a new task` **kept** as the build default (design-auditor proposal, RQ-29 / BOARD row 174 open); no rebuild unless the owner picks the alternative.
+- `_shared.md`: decision rows 157, 158; §6 EXPIRED row.
+
+### Conflicts with built code
+None in `apps/customer_app` (the app renders the API's `title` / `body`). API: `notifications.service.ts:507-514` (body) and `africas-talking-otp-sender.ts:23` (SMS) on `main` need the owner copy (api-contract). All customer screens keep their status.

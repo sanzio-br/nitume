@@ -55,13 +55,13 @@ C-10, C-28 (unread change), C-04, C-33. Built except the unread styling change.
 
 Title and body come from the API (`title`, `body`); the app does not compose them.
 
-**EXPIRED notification** (owner decision 2026-10-16; BOARD Needs row "api-contract (round 7) | design-auditor"). Today the API sends nothing when a task expires (`NotificationEventType` has no `errand.EXPIRED`; `statusCopy` returns null for EXPIRED). New feed item + push to the errand's customer on every RUNNER_ASSIGNED → EXPIRED transition (admin-offer lapse as built, row 141 / row 157 pending; no eligible runner left, row 150; task deadline reached, row 155):
+**EXPIRED notification** (owner decision 2026-10-16; BOARD Needs row "api-contract (round 7) | design-auditor"). Today the API sends nothing when a task expires (`NotificationEventType` has no `errand.EXPIRED`; `statusCopy` returns null for EXPIRED). New feed item + push to the errand's customer on every RUNNER_ASSIGNED → EXPIRED transition (only when no further runner can be assigned, rows 150, 157, or the task deadline is reached, row 155; an offer lapse alone sends nothing because the task does not change state):
 - `eventType`: `errand.EXPIRED` (enum `NotificationEventType.ERRAND_EXPIRED`).
 - Title (API, via the existing status builder `{title} · {status}`): `No runner available · Expired`.
-- Body when a refund review was opened for the task (paid task, `expired_after_payment`, row 102): `No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready.`
-- Body otherwise: `No runner accepted your task in time, so it has ended. You can start a new task whenever you're ready.`
-- Never `refund` as a promise (`you will be refunded`, `your money is on its way`, `automatic refund`): the review may end in `No refund` (row 102). The review's outcome arrives later as `refund.approved` / `refund.no_refund` / `refund.refunded`.
-- Feed row as every item: `{ id, eventType: 'errand.EXPIRED', title, body, errandId, createdAt, readAt }`; push data `{ eventType: 'errand.EXPIRED', errandId }`. The internal job carries `{ kind: 'errand_status', errandId, status: 'EXPIRED', refundReviewOpened: boolean }`; it is queued after the N-16 refund review is opened in the same flow so `refundReviewOpened` is known.
+- Body, owner wording word for word (row 158, 2026-10-16), for every expired task, paid or not: `Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.`
+- No refund sentence. The owner allows one only when the refund flow has already determined that a refund is due; at the moment of expiry the paid task only has a `pending_review` refund review (row 102, `expired_after_payment`), which is not that determination. The round-8 body with `We're reviewing a refund and will let you know the outcome.` is withdrawn. The review's outcome arrives later as `refund.approved` / `refund.no_refund` / `refund.refunded`; Task detail shows the review (`v-task-detail.md`).
+- Never `refund` as a promise (`you will be refunded`, `your money is on its way`, `automatic refund`).
+- Feed row as every item: `{ id, eventType: 'errand.EXPIRED', title, body, errandId, createdAt, readAt }`; push data `{ eventType: 'errand.EXPIRED', errandId }`. The internal job carries `{ kind: 'errand_status', errandId, status: 'EXPIRED' }`; the body no longer depends on whether a refund review was opened, so `refundReviewOpened` is not needed for the copy.
 - Icon: info/clock glyph (no amber/red fill; Expired is an info-tone state, `_shared.md` §6). Deep link above.
 
 States (proposed):
@@ -86,6 +86,7 @@ States (proposed):
 
 ## Resolved by owner answers
 - Unread styling: red dot allowed (OA-13, was Q2).
+- `errand.EXPIRED` body (row 158, 2026-10-16): owner wording, no refund sentence. The screen renders the API's `title` / `body`, so this is an API change only; the built screen stays `matches-design`.
 
 ## Open questions (non-blocking; build default given)
 - Q1: Rows tappable? Default: yes, table above.

@@ -65,7 +65,7 @@ States (proposed):
 - **Expired or failed after payment (row 102)**: an EXPIRED or FAILED task that was paid shows the receipt as paid (not `Not paid yet.`), plus the refund group. While the review is `pending_review` the line under the chip follows the trigger (`_shared.md` §11):
   - EXPIRED (`expired_after_payment`): `We couldn't find a runner for this task in time. We're reviewing a refund and will let you know the outcome.`
   - FAILED (`failed_after_payment`): `This task couldn't be completed. We're reviewing a refund and will let you know the outcome.`
-  - EXPIRED with no refund review (never paid, or before the API opens it): 13 slate-600 line under the chip `No runner accepted your task in time.` (proposed, same wording as the `errand.EXPIRED` notification, `v-notifications.md`).
+  - EXPIRED with no refund review (never paid, or before the API opens it): 13 slate-600 line under the chip `No runner accepted your task in time.` (kept as the build default, RQ-29 / BOARD row 174 open; the notification now carries the owner's longer sentence).
   - Decided reviews use the common lines (`Refund approved`, `Refunded`, `No refund`). Never write that a refund is automatic or guaranteed: it is a review (row 102). Before the API opens the review (and for an EXPIRED/FAILED task that was never paid), show nothing about refunds.
 - **Corrected payouts (row 100)**: nothing extra. The refund group shows whatever effective status and amount the API returns (a reversed payout reads `Refund approved` until a new payout is sent).
 - Refund status changes live: refresh on `errand:status_changed` and on a refund notification (event type needs api-contract).
@@ -98,6 +98,7 @@ States (proposed):
 - Row 101 (2026-10-12): no `payoutReference` in the customer refund view (already handled).
 
 ## Open questions (non-blocking; build default given)
+- RQ-29 (BOARD row 174, row 158 follow-up): the owner set the `errand.EXPIRED` notification body word for word (`v-notifications.md`). Build default (design-auditor proposal, not an owner answer): the EXPIRED line `No runner accepted your task in time.` and the action `Start a new task` stay as built (same meaning as the owner's sentence, short enough for a status line; `Start a new task` is the app's wizard wording, "submit a new request" is notification prose). Alternative if the owner wants the screens to echo the notification: `No runner was available to accept your task in time.` (button unchanged). No rebuild unless the owner picks the alternative.
 - Q2: Active tasks open this screen with a `Track live` button (default, as the table above).
 - Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
 

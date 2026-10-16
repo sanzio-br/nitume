@@ -67,7 +67,7 @@ States (proposed):
 - ARRIVED: ETA chip `Arrived`.
 - Socket disconnected: 12 slate-600 line under the map `Reconnecting…`; the map keeps the last position (still inside the window) while polling runs.
 - Item-payment notice: `Pay the item amount: KSh 40,000` (amount in Fira Code) + button `View details` → `x-merchant-payment` (variant A for `merchant_direct`, variant B STK for `send_to_runner`).
-- FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner accepted your task in time.` (EXPIRED, updated 2026-10-16 to match the `errand.EXPIRED` notification), `We're reviewing your report.`) and outline `View task` → `v-task-detail`. EXPIRED adds a C-04 text button `Start a new task` → `v-new-category` under `View task` (the next action, owner 2026-10-16). No refund wording on this card: the refund review (paid tasks, row 102) is shown on `v-task-detail` only.
+- FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner accepted your task in time.` (EXPIRED; kept as the build default, RQ-29 / BOARD row 174 open), `We're reviewing your report.`) and outline `View task` → `v-task-detail`. EXPIRED adds a C-04 text button `Start a new task` → `v-new-category` under `View task` (the next action, owner 2026-10-16). No refund wording on this card: the refund review (paid tasks, row 102) is shown on `v-task-detail` only.
 - Load error: C-33 `Couldn't load your task.` + `Try again`.
 
 ## Numeric fields (Fira Code)
@@ -94,6 +94,7 @@ States (proposed):
 - Off-palette map colours and shadows: OA-14.
 
 ## Open questions (non-blocking; build default given)
+- RQ-29 (BOARD row 174, row 158 follow-up): the owner set the `errand.EXPIRED` notification body word for word (`v-notifications.md`). Build default (design-auditor proposal, not an owner answer): the EXPIRED line `No runner accepted your task in time.` and the action `Start a new task` stay as built (same meaning as the owner's sentence, short enough for a status line; `Start a new task` is the app's wizard wording, "submit a new request" is notification prose). Alternative if the owner wants the screens to echo the notification: `No runner was available to accept your task in time.` (button unchanged). No rebuild unless the owner picks the alternative.
 - Q1: Timeline mixes states and events ("Task accepted", "Evidence upload"). Default: status history rows with §6 labels plus evidence events, next expected state as pending.
 - Q2: Multiple active errands. Default: chip selector above the map.
 - Q3: Emoji in buttons vs icons. Default: icons.

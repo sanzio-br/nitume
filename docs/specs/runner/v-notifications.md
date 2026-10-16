@@ -63,6 +63,7 @@ Written 2026-10-13 for api-contract (RA-6). The API writes these strings into th
 | `payout.reversed` | Ops recorded a reversal (row 139) | `Payout reversed` | `Your payout of KSh {previousAmount} was reversed. It's back in your available balance and we'll send it again.` | `v-earnings` |
 | `payout.resent` | Ops re-sent a reversed payout | `Payout sent again` | `KSh {amount} to M-Pesa · {reference}.` | `v-earnings` |
 | `payout_request.rejected` | Ops rejected a payout request (row 117) | `Payout request not approved` | `Your request for KSh {amount} wasn't approved: {decisionNote}` (runner-visible note, required on reject) | `v-earnings` |
+| `payout_request.cancelled` | Ops cancelled an open payout request (row 166) | `Payout request cancelled` | `Your request for KSh {requestedAmount} was cancelled by our team. Anything still owed stays in your available balance, and you can make a new request.` (proposed; no ops reason, pending the owner, see `v-payout.md`; no time promise) | `v-earnings` |
 | `rating.received` | The customer rated the runner | `You were rated {stars} stars` (`1 star`) | `"{comment}" — {customerShortName}` or `{task}` when there is no comment | `v-profile` |
 | `verification.approved` | All required checks approved (row 126) | `Verification approved` | `You're now a {levelLabel} Runner. You can go online and get jobs.` | `v-onboard-pending` |
 | `verification.rejected` | A required check was not approved | `Verification not approved` | `Some checks need another look. Open your verification to see what to fix.` | `v-onboard-pending` |
