@@ -10,7 +10,7 @@ Show what Nitume owes the runner (the `Available balance`, computed from the pay
 
 ## Entry / exit
 - Entry: tab bar `Earnings`; push `payout sent` / correction / reversal.
-- `Request payout` → `v-payout` (row 117; disabled when `availableAmount` is below `minimumAmount`, KES 500, row 159; with an open request it still opens `v-payout`, which shows the open request). RA-15 is built on `main`. When disabled for the minimum, a caption 11.5 blue-050 under the card actions: `Payouts start at KSh 500.` (`minimumAmount` from `GET /runners/me/payout-requests/summary`, Fira Code span; proposed).
+- `Request payout` → `v-payout` (row 117; disabled when `availableAmount` is below `minimumAmount`, KES 500, row 159; with an open request it still opens `v-payout`, which shows the open request). RA-15 is built on `main`. When disabled for the minimum, a caption 11.5 blue-050 **inside the blue R-08 balance card**, under its actions (blue-050 text is only for the blue fill; on the light page it would fail contrast and must be slate-600): `Payouts start at KSh 500.` (`minimumAmount` from `GET /runners/me/payout-requests/summary`, Fira Code span; proposed).
 - `Payout history` → `x-payout-history` (not drawn; the mockup button has no target).
 - Ledger row tap: job lines and adjustments (they carry `errandId`) → `v-job-summary` for that errand; `payout` entries → `x-payout-history` (proposed).
 

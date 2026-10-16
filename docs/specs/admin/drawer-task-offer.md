@@ -34,12 +34,11 @@ Show ops who the task is offered to and until when, what happened to the offer (
 Actions (`.drawer-actions` of the section):
 - PAYMENT_CONFIRMED: primary `Assign runner` (built dialog, unchanged).
 - Offered: none (ops wait; there is no withdraw action, out of scope).
-- **Offer ended or Declined**: primary `Reassign runner` (mockup label) → the same assign dialog as `Assign runner`, title `Reassign runner`, confirm `Send offer`, with a line 12 slate-600 under the title `The new runner has 10 minutes to accept.` (`10` = the admin offer window from the API, Fira Code span; proposed). The runner list excludes runners who already declined or let an offer to this task lapse (proposed; shown greyed with `Already offered` if the API cannot filter them). `POST /errands/:id/assign` `{ runnerProfileId, note? }` (built: reassigns a RUNNER_ASSIGNED task with no open assignment, no state change). Success notice A-11 `Offer sent to {runner}.`
+- **Offer ended or Declined**: primary `Reassign runner` (mockup label) → the same assign dialog as `Assign runner`, title `Reassign runner`, confirm `Send offer`, with a line 12 slate-600 under the title `The new runner has 10 minutes to accept.` (`10` = the admin offer window from the API, Fira Code span; proposed). The runner list excludes runners who already declined or let an offer to this task lapse (proposed; shown greyed with `Already offered` if the API cannot filter them). `POST /errands/:id/assign` `{ runnerProfileId, note? }` (the existing assign endpoint, built: reassigns a RUNNER_ASSIGNED task with no open assignment, no state change). Success notice A-11 `Offer sent to {runner}.`
 - Cancel stays where it is today (admin RUNNER_ASSIGNED → CANCELLED, §3.3); not part of this section.
 
 Errors (assign / reassign):
 - 409 the task already has an open offer or moved on → reload, notice `This task changed. Check the latest offer.`
-- 409 `purchase_limit_exceeded` (if returned for the chosen runner) → `This runner's purchase limit is below this task's purchase. Choose another runner.`
 - 403 → `FORBIDDEN_COPY`; 404 → `That runner or task no longer exists.` (built copy); other → `Couldn't send the offer. Try again.`
 
 ## Queue (`p-queue`)
@@ -57,10 +56,10 @@ Exact, from the mockup: `Runner`, `Reassign runner`, `Verified · 4.9 · 137 tas
 `Offered at`, `Offer ends`, `Ended`, `Declined` times (12-hour EAT, §3.1); the `{m:ss} left` countdown; the earlier-offers count and times; the rating, task count and `10` (minutes) in captions.
 
 ## Data
-- Built on `main`: `GET /errands/:id` and `GET /errands` items carry `assignment { id, status ('assigned' | 'accepted' | 'declined' | 'expired'), assignedAt, offerExpiresAt, runner { …public summary } }` (latest assignment only); `POST /errands/:id/assign` (offer, 10 min, `MATCHING_ADMIN_OFFER_WINDOW_SECONDS`); `assignment_declined` admin feed item; `GET /errands/:id/purchase-check?runnerProfileId=` (purchase limit before offering).
+- Built on `main`: `GET /errands/:id` and `GET /errands` items carry `assignment { id, status, assignedAt, offerExpiresAt, runner { …public summary } }`, filled **only from `ACTIVE_ASSIGNMENT_STATUSES` (`assigned`, `accepted`)** (`errands.service.ts:89`, `:600-640`). After a decline or a lapse `assignment` is null, so `Offer ended`, `Declined`, the queue chips and `Reassign runner` cannot be derived from it today (only Offered, and Offer ended from a past `offerExpiresAt` before the sweep runs); `POST /errands/:id/assign` (offer, 10 min, `MATCHING_ADMIN_OFFER_WINDOW_SECONDS`); `assignment_declined` admin feed item; `GET /errands/:id/purchase-check?runnerProfileId=` (purchase limit before offering).
 - **Must change (api-contract, row 157)**: the offer-expiry job (`expireLapsedOffers`) sets the assignment `expired` and **leaves the task RUNNER_ASSIGNED** (today it moves it to EXPIRED at once). No customer notification on a lapse (the task did not change).
-- **Missing (N-20)**: `declineReason` and `decidedAt` on the assignment view; an `assignment_expired` admin feed item; the offer window in seconds on the errand view or a config read (for the `10 minutes` line); the list of earlier assignments (e.g. `assignments[]` on the admin detail) for `Earlier offers` and for excluding runners already offered; an assignment `status` filter on `GET /errands` for the `Needs a runner` filter.
-- **Open (AQ-12)**: when a task in RUNNER_ASSIGNED with no open offer becomes EXPIRED ("no further runner can be assigned"). api-contract will propose; this spec does not decide it.
+- **Missing (N-20)**: the errand views expose the latest assignment whatever its status (or a `lastAssignment`); `declineReason` and `decidedAt` on the assignment view; an `assignment_expired` admin feed item; the offer window in seconds on the errand view or a config read (for the `10 minutes` line); the list of earlier assignments (e.g. `assignments[]` on the admin detail) for `Earlier offers` and for excluding runners already offered; a purchase-limit check on assign (today `assign` does none; row 113 refuses accept above the limit; once it exists its 409, e.g. `purchase_limit_exceeded`, maps to `This runner's purchase limit is below this task's purchase. Choose another runner.`); an assignment `status` filter on `GET /errands` for the `Needs a runner` filter.
+- **Open (AQ-12, BOARD row 167)**: when a task in RUNNER_ASSIGNED with no open offer becomes EXPIRED ("no further runner can be assigned"). api-contract will propose; this spec does not decide it. Row 155's task-deadline path is decided but not built.
 
 ## Accessibility
 The countdown is not announced every second (announce at open and at 1 minute left); chips carry text; `Reassign runner` has a 40 px target as other drawer buttons.
@@ -69,7 +68,7 @@ The countdown is not announced every second (announce at open and at 1 minute le
 Rows 113, 114, 134, 141, 150, 155, 156, 157 (`_shared.md` §1).
 
 ## Open questions for the owner
-- AQ-12: the EXPIRED trigger after an admin-offer lapse or a decline (api-contract proposal to come).
+- AQ-12 (BOARD row 167): the EXPIRED trigger after an admin-offer lapse or a decline (api-contract proposal to come). Nothing built yet moves such a task to EXPIRED; row 155's "task deadline reached" path stays owner-decided and still needs building.
 - Customer side (not this screen): during RUNNER_ASSIGNED the customer app shows `Runner assigned` even while the offer is open, declined or lapsed. Should the customer label read differently until a runner accepts (for example `Finding a runner`)? Label only, no state change. No recommendation from design-auditor.
 
 ## Current vs design

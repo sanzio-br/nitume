@@ -31,7 +31,7 @@ In the card body (`.vc-body`), after `Type` and `Submitted`:
 Panel hint (A-03 sub or `.kpi-note`, once per panel, proposed): `Opening an image is logged. Images are deleted at the end of the retention period.`
 
 ## Purged verification (what an admin sees)
-A purged card keeps: the runner header (short id / name, phone), the status chip (`Approved`, `Rejected` …, unchanged), `Type` (label below), `Submitted` (`createdAt`), `Decided` (`reviewedAt`) and `By` (`reviewedBy`, admin name or short id), and `Image` → `Deleted {date}`. It does **not** show the reviewer's note (strict reading of row 161, AQ-15: the API clears it at purge; if the owner keeps it, the row `Admin note` stays). No `View image`, no actions. Cards are never hidden because they were purged; the status filter works as for any card.
+A purged card keeps: the runner header (short id / name, phone), the status chip (`Approved`, `Rejected` …, unchanged), `Type` (label below), `Submitted` (`createdAt`), `Decided` (`reviewedAt`) and `By` (`reviewedBy`, admin name or short id), and `Image` → `Deleted {date}`. The reviewer's note (`Admin note`) is shown while the API keeps it; it is kept until BOARD row 170 (AQ-15) is answered. If the owner decides it is not part of the outcome, the API clears it at purge and the row disappears. No `View image`, no actions. Cards are never hidden because they were purged; the status filter works as for any card.
 
 Type labels (mockup rows): `government_id` → `National ID` (when the API adds `side`: `National ID · front` / `· back`), `selfie` → `Selfie / liveness check`, `phone` → `Phone number`, `payment_identity` → `M-Pesa identity match`.
 
@@ -49,7 +49,7 @@ Exact, from the mockup: `Runner verification` (panel title; built as `Verificati
 
 ## Data
 - Built on `main`: `GET /runners/verifications?status=&cursor=&limit=` → `{ items: [{ id, runnerProfileId, verificationType, status, reviewerNote, reviewedBy, reviewedAt, createdAt, purgedAt, hasDocument, runnerProfile { id, userId }, user { id, phone } }], nextCursor }` (no storage key, row 154); `GET /runners/verifications/:verificationId/document` → `{ verificationId, url, expiresAt }` (≤ 5 min, logged); `PATCH /runners/:runnerId/verifications/:verificationId` `{ decision, reviewerNote? }`.
-- **Must change (api-contract, N-23)**: the purge clock (row 161: upload of a new/replacement ID or selfie, verification or re-verification started, an admin review that needs the evidence; not task assignments/offers or disputes, which the built `purgeExpiredDocuments` counts); clear `reviewerNote` at purge (AQ-15); separate restricted credential for ID media and backups that cannot keep a purged image (row 162).
+- **Must change (api-contract, N-23)**: the purge clock (row 161: upload of a new/replacement ID or selfie, verification or re-verification started, an admin review that needs the evidence; not task assignments/offers or disputes, which the built `purgeExpiredDocuments` counts); keep `reviewerNote` until BOARD row 170 (AQ-15) is answered (a purge cannot be undone); separate restricted credential for ID media and backups that cannot keep a purged image (row 162).
 - **Missing (recommended)**: `side` (`front | back`) on ID images; the reviewer's display name on the item (today an id only).
 - **Open (AQ-16)**: how "an admin verification review that needs the stored evidence" is recorded on an already-decided verification. Proposed: the approve/reject decision of a pending verification counts as one; a later review (for example a fraud check) would need an explicit, logged action with a reason (`Keep for review`, not specced until the owner approves it).
 
@@ -60,7 +60,7 @@ Exact, from the mockup: `Runner verification` (panel title; built as `Verificati
 Rows 125, 126, 144, 154, 161, 162 (`_shared.md` §1). Row 163 (10 MB per image) is enforced at upload; nothing to show here.
 
 ## Open questions for the owner
-- AQ-15: is the reviewer's note part of the "outcome" kept after the purge? Strict reading: no.
+- AQ-15 (BOARD row 170): is the reviewer's note part of the "outcome" kept after the purge? Kept until answered.
 - AQ-16: how a later review that needs the evidence is recorded (see Data).
 
 ## Current vs design
@@ -69,4 +69,4 @@ Rows 125, 126, 144, 154, 161, 162 (`_shared.md` §1). Row 163 (10 MB per image) 
 2. blocker: no purged state; `purgedAt` and `hasDocument` are not read (`core/api-types.ts:646-660` has `documentKey`, `submittedAt`). Fix: add `purgedAt`, `hasDocument`, `createdAt`, `reviewedAt` to the type and render the Deleted and No image states.
 3. minor: `Submitted` reads `v.submittedAt` (`:61`), which the API does not send (`createdAt`).
 4. minor: type labels (`typeLabel`, `:194-201`) use `Government ID`, `Driving License`; the mockup labels are above. Selfie, phone and M-Pesa identity fall back to the raw value.
-5. minor: the reviewer note row `Admin note` (`:71-75`) must not render for a purged card if the owner confirms AQ-15's strict reading.
+5. (conditional) the reviewer note row `Admin note` (`:71-75`) stops rendering on purged cards only if row 170 (AQ-15) decides the note is cleared.
