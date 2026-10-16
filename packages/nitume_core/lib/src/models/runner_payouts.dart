@@ -17,8 +17,9 @@ enum RunnerPayoutRequestStatus {
   /// Closed by ops with a runner-visible `decisionNote`.
   rejected('rejected'),
 
-  /// Closed without a payout (row 166). See `cancelledAt` and
-  /// `cancellationReason`.
+  /// Closed by ops without a payout, with a mandatory reason (row 166). The
+  /// runner cannot cancel; the screen offers no cancel action. See
+  /// `cancelledAt` and `cancellationReason`.
   cancelled('cancelled');
 
   const RunnerPayoutRequestStatus(this.wire);
