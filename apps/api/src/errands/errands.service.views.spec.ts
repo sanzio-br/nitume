@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  AssignmentDeclineReason,
   AssignmentStatus,
   ErrandStatus,
   VerificationLevel,
@@ -34,6 +35,7 @@ const build = (opts: {
   locations?: object[];
   items?: object[];
   quotes?: object[];
+  latest?: ErrandAssignment[];
 }) => {
   const locationsRepo = { find: vi.fn(() => Promise.resolve(opts.locations ?? [])) };
   const quotesRepo = { find: vi.fn(() => Promise.resolve(opts.quotes ?? [])) };
@@ -43,9 +45,15 @@ const build = (opts: {
       Promise.resolve(opts.errands?.find((e) => e.id === where.id) ?? null),
     ),
   };
+  const latestQb: Record<string, ReturnType<typeof vi.fn>> = {};
+  for (const m of ['distinctOn', 'where', 'orderBy', 'addOrderBy']) {
+    latestQb[m] = vi.fn(() => latestQb);
+  }
+  latestQb.getMany = vi.fn(() => Promise.resolve(opts.latest ?? []));
   const assignmentsRepo = {
     find: vi.fn(() => Promise.resolve(opts.assignments ?? [])),
     findOne: vi.fn(() => Promise.resolve(opts.assignments?.[0] ?? null)),
+    createQueryBuilder: vi.fn(() => latestQb),
   };
   const runners = {
     publicSummaries: vi.fn((ids: string[]) =>
@@ -97,6 +105,9 @@ describe('ErrandsService errand views (A-4)', () => {
       status: AssignmentStatus.ASSIGNED,
       assignedAt: new Date('2026-10-01T11:00:00Z'),
       offerExpiresAt: new Date('2026-10-01T11:10:00Z'),
+      offeredAt: new Date('2026-10-01T10:30:00Z'),
+      decidedAt: null,
+      declineReason: null,
       runner: {
         id: 'runner-1',
         verificationLevel: VerificationLevel.TWO_ID_VERIFIED,
@@ -104,6 +115,44 @@ describe('ErrandsService errand views (A-4)', () => {
         errandsCompleted: 12,
       },
     });
+  });
+
+  it('admin detail lists every assignment newest first with decision fields, and the offer window (row 157)', async () => {
+    const declined = assignment({
+      id: 'asg-0',
+      runnerProfileId: 'runner-0',
+      status: AssignmentStatus.DECLINED,
+      decidedAt: new Date('2026-10-01T10:20:00Z'),
+      declineReason: AssignmentDeclineReason.OVER_PURCHASE_LIMIT,
+      createdAt: new Date('2026-10-01T10:15:00Z'),
+    });
+    const { service, assignmentsRepo } = build({ errands: [errand('e-1')], assignments: [declined] });
+    const view = await service.getDetail('e-1', admin);
+    expect(assignmentsRepo.find).toHaveBeenLastCalledWith({
+      where: { errandId: 'e-1' },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+    expect(view.assignments).toEqual([
+      expect.objectContaining({
+        id: 'asg-0',
+        status: AssignmentStatus.DECLINED,
+        offeredAt: new Date('2026-10-01T10:15:00Z'),
+        decidedAt: new Date('2026-10-01T10:20:00Z'),
+        declineReason: AssignmentDeclineReason.OVER_PURCHASE_LIMIT,
+        runner: expect.objectContaining({ id: 'runner-0' }),
+      }),
+    ]);
+    expect(view.offerWindowSeconds).toBe(600);
+    expect(view.lastAssignment).toMatchObject({ id: 'asg-0', status: AssignmentStatus.DECLINED });
+  });
+
+  it('non-admin detail carries no assignment history', async () => {
+    const { service } = build({ errands: [errand('e-1')], assignments: [assignment({})] });
+    Object.assign(service, { getById: vi.fn(() => Promise.resolve(errand('e-1'))) });
+    const view = await service.getDetail('e-1', { role: 'customer', userId: 'u-1' });
+    expect(view.assignments).toBeUndefined();
+    expect(view.lastAssignment).toBeUndefined();
+    expect(view.offerWindowSeconds).toBeUndefined();
   });
 
   it('returns assignment: null when no runner holds the errand', async () => {
@@ -146,6 +195,27 @@ describe('ErrandsService errand views (A-4)', () => {
     expect(page.items[0].assignment?.id).toBe('asg-new');
     expect(page.items[0].assignment?.runner?.id).toBe('runner-2');
     expect(page.items[1].assignment).toBeNull();
+  });
+
+  it('admin list items carry lastAssignment whatever its status; assignment unchanged (row 157)', async () => {
+    const { service } = build({
+      latest: [
+        assignment({ id: 'asg-x', errandId: 'e-2', runnerProfileId: 'runner-3', status: AssignmentStatus.EXPIRED }),
+      ],
+    });
+    vi.spyOn(service, 'listFor').mockResolvedValue({ items: [errand('e-1'), errand('e-2')], nextCursor: null });
+    const page = await service.listViewsFor(admin, { limit: 2 });
+    expect(page.items[0].lastAssignment).toBeNull();
+    expect(page.items[1].assignment).toBeNull();
+    expect(page.items[1].lastAssignment).toMatchObject({
+      id: 'asg-x',
+      status: AssignmentStatus.EXPIRED,
+      decidedAt: new Date('2026-10-01T11:00:00Z'),
+      runner: expect.objectContaining({ id: 'runner-3' }),
+    });
+    vi.spyOn(service, 'listFor').mockResolvedValue({ items: [errand('e-1'), errand('e-2')], nextCursor: null });
+    const customerPage = await service.listViewsFor({ role: 'customer', userId: 'u-1' }, { limit: 2 });
+    expect(customerPage.items[1]).not.toHaveProperty('lastAssignment');
   });
 
   it('embeds locations as lat/lng and structured items, grouped per errand', async () => {

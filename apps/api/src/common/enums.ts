@@ -252,4 +252,6 @@ export enum NotificationEventType {
   QUOTE_REQUESTED = 'quote.requested',
   /** Admin feed: the runner declined, the purchase is above their limit (row 108). */
   ASSIGNMENT_DECLINED = 'assignment.declined',
+  /** Admin feed: an admin offer lapsed unaccepted; the task needs another runner (row 157, N-20). */
+  ASSIGNMENT_EXPIRED = 'assignment.expired',
 }

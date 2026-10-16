@@ -409,8 +409,8 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
   const past = new Date('2026-10-16T09:59:00Z');
 
   const sweep = (state: { status: ErrandStatus; offer: { status: string; offerExpiresAt: Date | null } | null }) => {
-    const errand = { id: 'e-1', status: state.status } as Errand;
-    const offer = state.offer ? { id: 'a-1', errandId: 'e-1', ...state.offer } : null;
+    const errand = { id: 'e-1', reference: 'NT-1', status: state.status } as Errand;
+    const offer = state.offer ? { id: 'a-1', errandId: 'e-1', runnerProfileId: 'rp-1', ...state.offer } : null;
     const assignmentRepo = {
       findOne: vi.fn(() => Promise.resolve(offer)),
       update: vi.fn(() => Promise.resolve()),
@@ -459,6 +459,13 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
     expect(history.save).not.toHaveBeenCalled();
     await new Promise((r) => setImmediate(r));
     expect(emit).toHaveBeenCalledWith('errand.access_changed', { errandId: 'e-1' });
+    expect(emit).toHaveBeenCalledWith('assignment.expired', {
+      errandId: 'e-1',
+      reference: 'NT-1',
+      assignmentId: 'a-1',
+      runnerProfileId: 'rp-1',
+      offerExpiresAt: past.toISOString(),
+    });
     expect(emit).not.toHaveBeenCalledWith('errand.status_changed', expect.anything());
   });
 

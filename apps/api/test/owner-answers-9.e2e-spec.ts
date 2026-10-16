@@ -5,13 +5,17 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { getQueueToken } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { ErrandStatus, StatusHistoryActor, UserRole } from '../src/common/enums';
 import { ErrandsService } from '../src/errands/errands.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
+import { NOTIFICATIONS_QUEUE } from '../src/infra/queue/queues';
+import { FEED_JOB, FeedJob, NotificationsService } from '../src/notifications/notifications.service';
 
 /**
  * Contract checks for the owner answers 9 (BOARD rows 161-166 and the
@@ -375,6 +379,87 @@ describe('Owner answers 9 (e2e)', () => {
         .send({ reason: 'Cancel after the reject' })
         .expect(409);
       expect(res.body).toMatchObject({ code: 'payout_request_not_open', status: 'rejected' });
+    });
+  });
+
+  describe('row 157: a lapsed admin offer (admin feed, assignment history)', () => {
+    it('the sweep tells the admins (Offer ended), not the customer; the admin detail lists the offers', async () => {
+      const { customer, admin, runner, errand } = await paidAndAssigned();
+      await db().query(
+        `UPDATE "errand_assignments" SET "offerExpiresAt" = now() - interval '1 second' WHERE "errandId" = $1`,
+        [errand.id],
+      );
+      // The notifications queue is in the shared Redis: capture this errand's jobs here.
+      const queue = app.get<Queue>(getQueueToken(NOTIFICATIONS_QUEUE));
+      const original = queue.add.bind(queue);
+      const captured: FeedJob[] = [];
+      const spy = vi.spyOn(queue, 'add').mockImplementation(((name: string, data: FeedJob, opts?: unknown) => {
+        if (name === FEED_JOB && data.errandId === errand.id) {
+          captured.push(data);
+          return Promise.resolve({ id: 'captured' } as never);
+        }
+        return original(name, data, opts as never);
+      }) as never);
+      try {
+        expect(await app.get(ErrandsService).expireLapsedOffers()).toContain(errand.id);
+        for (let i = 0; i < 30 && captured.length === 0; i += 1) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      } finally {
+        spy.mockRestore();
+      }
+      // Only the admin item: no customer notification for a lapse.
+      expect(captured).toEqual([{ kind: 'assignment_expired', errandId: errand.id, reference: expect.any(String) }]);
+      await app.get(NotificationsService).deliverFeed(captured[0]);
+      const [item] = (await db().query(
+        `SELECT title, body, "eventType" FROM "notifications" WHERE "userId" = $1 AND "errandId" = $2 AND "eventType" = 'assignment.expired'`,
+        [admin.id, errand.id],
+      )) as { title: string; body: string; eventType: string }[];
+      expect(item).toMatchObject({ title: 'Offer ended', body: expect.stringContaining('in time. Offer it to another runner.') });
+      expect(
+        await db().query(`SELECT id FROM "notifications" WHERE "userId" = $1 AND "eventType" = 'assignment.expired'`, [customer.id]),
+      ).toEqual([]);
+
+      // Before the reassign: no current holder, but ops see the lapsed offer.
+      const lapsed = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(admin.token)).expect(200);
+      expect(lapsed.body.assignment).toBeNull();
+      expect(lapsed.body.lastAssignment).toMatchObject({
+        status: 'expired',
+        decidedAt: expect.any(String),
+        offerExpiresAt: expect.any(String),
+        declineReason: null,
+        runner: expect.objectContaining({ id: runner.profileId }),
+      });
+      const listed = await http().get('/api/v1/errands?status=RUNNER_ASSIGNED&limit=100').set(bearer(admin.token)).expect(200);
+      const row = (listed.body.items as { id: string; lastAssignment: { status: string } | null }[]).find((e) => e.id === errand.id);
+      expect(row?.lastAssignment).toMatchObject({ status: 'expired' });
+      const customerView = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
+      expect(customerView.body).not.toHaveProperty('lastAssignment');
+
+      const other = await makeUser(UserRole.RUNNER);
+      await http()
+        .post(`/api/v1/errands/${errand.id}/assign`)
+        .set(bearer(admin.token))
+        .send({ runnerProfileId: other.profileId })
+        .expect(201);
+      const detail = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(admin.token)).expect(200);
+      expect(detail.body.offerWindowSeconds).toBe(600);
+      expect(detail.body.assignment).toMatchObject({ status: 'assigned', decidedAt: null, declineReason: null });
+      expect(detail.body.assignments).toEqual([
+        expect.objectContaining({ status: 'assigned', runner: expect.objectContaining({ id: other.profileId }) }),
+        expect.objectContaining({
+          status: 'expired',
+          decidedAt: expect.any(String),
+          declineReason: null,
+          offeredAt: expect.any(String),
+          runner: expect.objectContaining({ id: runner.profileId }),
+        }),
+      ]);
+      // Customers and runners get no history.
+      const mine = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
+      expect(mine.body).not.toHaveProperty('assignments');
+      expect(mine.body).not.toHaveProperty('offerWindowSeconds');
     });
   });
 });

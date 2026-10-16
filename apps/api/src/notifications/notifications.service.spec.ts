@@ -384,3 +384,26 @@ describe('assignment_declined admin feed (row 108)', () => {
     });
   });
 });
+
+describe('assignment_expired admin feed (row 157, N-20)', () => {
+  it('has admin copy with the task reference', () => {
+    expect(copyFor({ kind: 'assignment_expired', errandId: 'e-1', reference: 'NT-7' })).toEqual({
+      eventType: 'assignment.expired',
+      title: 'Offer ended',
+      body: "The runner didn't accept NT-7 in time. Offer it to another runner.",
+    });
+  });
+
+  it('is queued from assignment.expired, never as a customer status item', async () => {
+    const { service, queue } = build();
+    await service.onAssignmentExpired({
+      errandId: 'e-1',
+      reference: 'NT-7',
+      assignmentId: 'a-1',
+      runnerProfileId: 'rp-1',
+      offerExpiresAt: '2026-10-16T10:00:00.000Z',
+    });
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, { kind: 'assignment_expired', errandId: 'e-1', reference: 'NT-7' });
+  });
+});

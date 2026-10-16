@@ -17,7 +17,9 @@ import { DevicesService } from '../users/devices.service';
 import { UsersService } from '../users/users.service';
 import {
   ASSIGNMENT_DECLINED_EVENT,
+  ASSIGNMENT_EXPIRED_EVENT,
   AssignmentDeclinedEvent,
+  AssignmentExpiredEvent,
   MERCHANT_DETAILS_UPDATED_EVENT,
   MerchantDetailsUpdatedEvent,
   QUOTE_REISSUED_EVENT,
@@ -86,10 +88,12 @@ export type FeedJob =
   /** Admin-facing (row 68): written to every active admin's feed. */
   | { kind: 'quote_requested'; errandId: string; reference: string }
   /** Admin-facing (row 108): the runner declined; the task needs another runner. */
-  | { kind: 'assignment_declined'; errandId: string; reference: string };
+  | { kind: 'assignment_declined'; errandId: string; reference: string }
+  /** Admin-facing (row 157): an admin offer lapsed; the task needs another runner. */
+  | { kind: 'assignment_expired'; errandId: string; reference: string };
 
 /** Feed jobs whose recipients are the admins, not the errand's customer. */
-const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested', 'assignment_declined']);
+const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested', 'assignment_declined', 'assignment_expired']);
 
 export const FEED_JOB = 'feed';
 export const PUSH_JOB = 'push';
@@ -262,6 +266,15 @@ export class NotificationsService {
   @OnEvent(ASSIGNMENT_DECLINED_EVENT, { async: true })
   async onAssignmentDeclined(event: AssignmentDeclinedEvent): Promise<void> {
     await this.enqueue({ kind: 'assignment_declined', errandId: event.errandId, reference: event.reference });
+  }
+
+  /**
+   * Admin offer lapsed (row 157) -> admin feed (N-20). The customer gets
+   * nothing: the task is still RUNNER_ASSIGNED.
+   */
+  @OnEvent(ASSIGNMENT_EXPIRED_EVENT, { async: true })
+  async onAssignmentExpired(event: AssignmentExpiredEvent): Promise<void> {
+    await this.enqueue({ kind: 'assignment_expired', errandId: event.errandId, reference: event.reference });
   }
 
   private async enqueue(job: FeedJob): Promise<void> {
@@ -442,6 +455,12 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.ASSIGNMENT_DECLINED,
         title: 'Runner declined a task',
         body: `The runner declined ${job.reference}: the purchase is above their limit. Assign another runner.`,
+      };
+    case 'assignment_expired':
+      return {
+        eventType: NotificationEventType.ASSIGNMENT_EXPIRED,
+        title: 'Offer ended',
+        body: `The runner didn't accept ${job.reference} in time. Offer it to another runner.`,
       };
     case 'merchant_details':
       return {
