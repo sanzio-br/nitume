@@ -259,3 +259,40 @@ Reviewed READY; merged into main 2026-10-12 with merge commits (every commit com
 - Admin: make the TODO(owner-answers-5) fields required now that the API is merged.
 - Migration 1790101100000 down is a no-op (Postgres can't drop enum values).
 
+
+## Owner answers rounds 7–8: rows 140–156 (2026-10-16) — stacked on the round-6 branches
+
+Merge order: feat/api-owner-answers-6 → feat/api-owner-answers-7; docs/owner-answers-6-runner-specs →
+docs/owner-answers-7-specs → docs/owner-answers-8-specs → docs/customer-expired-audit → then
+feat/customer-expired-next-action (its specs live on the docs stack).
+
+**Reviewed (READY)**
+
+- `feat/api-owner-answers-7` (0549c5c, a83d179, f595637, 7165eb1, eeb9cc5, fb31f1c): admin offers
+  expire after 10 min (`offerExpiresAt`, 409 `offer_expired`), 30 s maintenance sweep moves the task
+  RUNNER_ASSIGNED → EXPIRED (row 141, held as built pending row 157) and opens the refund review for
+  paid tasks; status transitions serialised with a row lock (accept/cancel vs sweep race); accepting
+  marks the assignment `accepted`; tests for rows 140–142. 442 unit, 59 e2e (one file at a time).
+- `docs/owner-answers-7-specs` (493f133, e2112ae, 2800da5, fb84a36): rows 140–144, 146 in runner/admin
+  specs. Partly superseded by round 8 — merge together.
+- `docs/owner-answers-8-specs` (96d69c0 … 5748303): rows 150–156, customer EXPIRED notification,
+  OTP 5-minute copy; round-7 review findings closed.
+- `feat/customer-expired-next-action` (b624803, eb50eaf, 9978345) + audit `docs/customer-expired-audit`
+  (eb86f5c): EXPIRED copy and "Start a new task" on v-track and v-task-detail; design-auditor PASS;
+  122 tests. Copy waits on row 158 (recommended before merge).
+
+**In progress**
+
+- `feat/api-owner-answers-8` (api-contract): rows 151–154 (above-limit exception, limit at creation,
+  payout requests, ID/selfie storage + retention), errand.EXPIRED notification, OTP email/SMS copy;
+  merges feat/api-owner-answers-7 before review.
+
+**Open / deferred**
+
+- Owner rows 85 (PayHero), 145, 147, 148, 157, 158.
+- System Design edits (11, runner-gap-report §11 on docs/owner-answers-8-specs) wait on row 147.
+- Auto-offer fall-through (row 150) needs the RA-1 offer model; not built.
+- Customer: explicit errand.EXPIRED notification route + core-ui enum once the API sends it.
+- Admin: drawer-runner-payout findings 14, 15 and p-payout-requests after the round-8 API.
+- e2e suite flaky in parallel (pre-existing); run with --no-file-parallelism.
+- Shared local DB `nitume` has round-6 migrations applied (ahead of main).
