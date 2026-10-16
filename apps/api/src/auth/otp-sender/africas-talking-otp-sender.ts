@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { DEFAULT_OTP_TTL_SECONDS, otpExpiryPhrase } from '../../common/otp-expiry';
 import { OtpSender } from './otp-sender.interface';
 
 /**
@@ -30,7 +31,9 @@ export class AfricasTalkingOtpSender extends OtpSender {
     const form = new URLSearchParams({
       username,
       to: phone,
-      message: `Nitume verification code: ${code}. Valid 10 minutes. Do not share it.`,
+      message: `Nitume verification code: ${code}. Expires in ${otpExpiryPhrase(
+        this.config.get<number>('otp.ttlSeconds', DEFAULT_OTP_TTL_SECONDS),
+      )}. Do not share it.`,
       ...(senderId ? { from: senderId } : {}),
     });
     const response = await fetch(
