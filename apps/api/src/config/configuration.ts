@@ -59,6 +59,10 @@ export interface AppConfig {
     scheduledAfterHours: number;
     disputeWindowHours: number;
   };
+  matching: {
+    /** Acceptance window of an admin-made offer (rows 114, 141). */
+    adminOfferWindowSeconds: number;
+  };
   payments: {
     /** Active M-Pesa provider (row 73): console | payhero | daraja. */
     provider: 'console' | 'payhero' | 'daraja';
@@ -98,6 +102,7 @@ export interface AppConfig {
     attempts: number;
     disputeSweepIntervalSeconds: number;
     stkReconcileIntervalSeconds: number;
+    offerExpirySweepIntervalSeconds: number;
   };
   push: {
     fcm: {
@@ -224,6 +229,11 @@ export const configuration = (): AppConfig => ({
     // the system moves COMPLETED -> CONFIRMED (payout eligibility).
     disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
   },
+  // Row 114 (owner, 2026-10-13): admin-created offers stay open 10 minutes.
+  // Row 141: an offer not accepted by then expires and the task goes EXPIRED.
+  matching: {
+    adminOfferWindowSeconds: int(process.env.MATCHING_ADMIN_OFFER_WINDOW_SECONDS, 600),
+  },
   // Evidence storage. `console` (dev default) logs uploads without storing;
   // `cloudinary` uploads to Cloudinary (needs CLOUDINARY_CLOUD_NAME/API_KEY/
   // API_SECRET). The transport resolves through the evidence storage provider.
@@ -246,6 +256,8 @@ export const configuration = (): AppConfig => ({
     disputeSweepIntervalSeconds: int(process.env.ERRANDS_DISPUTE_SWEEP_INTERVAL_SECONDS, 300),
     // How often TIMEOUT STK payments are resolved by STK Query.
     stkReconcileIntervalSeconds: int(process.env.PAYMENTS_STK_RECONCILE_INTERVAL_SECONDS, 60),
+    // How often lapsed offers are expired (RUNNER_ASSIGNED -> EXPIRED, row 141).
+    offerExpirySweepIntervalSeconds: int(process.env.MATCHING_OFFER_EXPIRY_SWEEP_INTERVAL_SECONDS, 30),
   },
   // FCM push (row 31). All three set -> firebase-admin; otherwise a no-op.
   // The private key may use literal \n sequences (single-line env value).

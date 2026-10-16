@@ -4,6 +4,7 @@ import { ApiError } from '../common/api-error';
 import { ErrandStatus, StatusHistoryActor, UserRole } from '../common/enums';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { Errand } from './errand.entity';
+import { ErrandAssignment } from './errand-assignment.entity';
 import { ErrandStatusHistory } from './errand-status-history.entity';
 import { TransitionGuard } from './errand-state-machine';
 import { ErrandsService } from './errands.service';
@@ -340,5 +341,43 @@ describe('ErrandsService confirmation hooks (rows 104, 107)', () => {
     ).rejects.toThrow('ledger failed');
     await new Promise((r) => setImmediate(r));
     expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('ErrandsService offer deadline (row 141)', () => {
+  const runner = { type: StatusHistoryActor.RUNNER, id: 'rp-1' };
+
+  const withOffer = (offerExpiresAt: Date | null) => {
+    const built = build(ErrandStatus.RUNNER_ASSIGNED);
+    const offer = { id: 'a-1', errandId: 'e-1', runnerProfileId: 'rp-1', status: 'assigned', offerExpiresAt };
+    const qb = { where: vi.fn(), andWhere: vi.fn(), getOne: vi.fn(() => Promise.resolve(offer)) };
+    qb.where.mockReturnValue(qb);
+    qb.andWhere.mockReturnValue(qb);
+    const repo = { createQueryBuilder: vi.fn(() => qb), findOne: vi.fn(() => Promise.resolve(offer)) };
+    const original = built.manager.getRepository;
+    built.manager.getRepository = (entity: unknown) =>
+      entity === ErrandAssignment ? repo : original(entity);
+    return built;
+  };
+
+  it('accepts (RUNNER_ASSIGNED -> RUNNER_EN_ROUTE) before the deadline', async () => {
+    const { service, errand } = withOffer(new Date(Date.now() + 60_000));
+    await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
+    expect(errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
+  });
+
+  it('refuses the accept after the deadline with 409 offer_expired', async () => {
+    const deadline = new Date(Date.now() - 1_000);
+    const { service, errand } = withOffer(deadline);
+    const err = await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, code: 'offer_expired' });
+    expect((err as ApiError).getResponse()).toMatchObject({ offerExpiresAt: deadline.toISOString() });
+    expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+  });
+
+  it('an assignment without a deadline (made before row 141) never lapses', async () => {
+    const { service, errand } = withOffer(null);
+    await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
+    expect(errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
   });
 });

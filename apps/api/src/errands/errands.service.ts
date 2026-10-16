@@ -96,6 +96,11 @@ export interface ErrandAssignmentView {
   status: AssignmentStatus;
   /** When the assignment was decided (falls back to creation time). */
   assignedAt: Date;
+  /**
+   * Acceptance deadline of the offer (rows 114, 141): after it the runner can
+   * no longer accept and the task goes EXPIRED. Null on older assignments.
+   */
+  offerExpiresAt: Date | null;
   runner: RunnerPublicSummary | null;
 }
 
@@ -613,6 +618,7 @@ export class ErrandsService {
             id: a.id,
             status: a.status,
             assignedAt: a.decidedAt ?? a.createdAt,
+            offerExpiresAt: a.offerExpiresAt ?? null,
             runner: summaries.get(a.runnerProfileId) ?? null,
           }
         : null;
@@ -1040,6 +1046,9 @@ export class ErrandsService {
       );
     }
     await this.enforceSubject(manager, errand, actor, subject);
+    if (fromStatus === ErrandStatus.RUNNER_ASSIGNED && to === ErrandStatus.RUNNER_EN_ROUTE) {
+      await this.assertOfferOpen(manager, errandId);
+    }
     let acceptedQuote: Quote | null = null;
     if (fromStatus === ErrandStatus.QUOTED && to === ErrandStatus.ACCEPTED) {
       acceptedQuote = await this.currentQuote(errandId, manager);
@@ -1155,6 +1164,98 @@ export class ErrandsService {
       }
     }
     return confirmed;
+  }
+
+  /** Acceptance window of an admin-made offer in seconds (row 114: 10 minutes). */
+  private adminOfferWindowSeconds(): number {
+    return this.config?.get<number>('matching.adminOfferWindowSeconds', 600) ?? 600;
+  }
+
+  /**
+   * Row 141: the runner's accept (RUNNER_ASSIGNED -> RUNNER_EN_ROUTE) is
+   * refused once the current offer's deadline has passed, even before the
+   * sweep has expired the task. 409 `offer_expired` with `offerExpiresAt`.
+   * Assignments without a deadline (made before row 141) never lapse.
+   */
+  private async assertOfferOpen(manager: EntityManager, errandId: string, now = new Date()): Promise<void> {
+    const current = await this.activeAssignmentFor(errandId, manager);
+    if (current?.offerExpiresAt && current.offerExpiresAt.getTime() <= now.getTime()) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'offer_expired',
+        'This offer has expired and can no longer be accepted',
+        { offerExpiresAt: current.offerExpiresAt.toISOString() },
+      );
+    }
+  }
+
+  /**
+   * Row 141 (owner, 2026-10-16): an offer that reaches its acceptance
+   * deadline unaccepted expires, and the task goes RUNNER_ASSIGNED ->
+   * EXPIRED at once (system, §3.3); no re-offer first. The assignment
+   * becomes `expired`. A paid task opens its refund review through the
+   * termination hooks (row 102). Run by the `offer-expiry` maintenance job.
+   * Only an open offer (`assigned`) lapses: a declined task waits for the
+   * admin to reassign it. Returns the ids it expired.
+   */
+  async expireLapsedOffers(now: Date = new Date(), limit = 100): Promise<string[]> {
+    const due = await this.errands
+      .createQueryBuilder('e')
+      .select('e.id', 'id')
+      .innerJoin(
+        ErrandAssignment,
+        'a',
+        `a."errandId" = e.id AND a.id = (SELECT l.id FROM "errand_assignments" l
+           WHERE l."errandId" = e.id ORDER BY l."createdAt" DESC, l.id DESC LIMIT 1)`,
+      )
+      .where('e.status = :assigned', { assigned: ErrandStatus.RUNNER_ASSIGNED })
+      .andWhere('a.status = :open', { open: AssignmentStatus.ASSIGNED })
+      .andWhere('a."offerExpiresAt" <= :now', { now })
+      .orderBy('a."offerExpiresAt"', 'ASC')
+      .limit(limit)
+      .getRawMany<{ id: string }>();
+    const expired: string[] = [];
+    for (const { id } of due) {
+      try {
+        const done = await this.inTx(async (manager) => {
+          const errand = await manager
+            .getRepository(Errand)
+            .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+          const offer = await this.activeAssignmentFor(id, manager);
+          if (
+            errand?.status !== ErrandStatus.RUNNER_ASSIGNED ||
+            offer?.status !== AssignmentStatus.ASSIGNED ||
+            !offer.offerExpiresAt ||
+            offer.offerExpiresAt.getTime() > now.getTime()
+          ) {
+            return false; // Accepted, declined or reassigned meanwhile.
+          }
+          await manager.getRepository(ErrandAssignment).update(offer.id, {
+            status: AssignmentStatus.EXPIRED,
+            decidedAt: now,
+          });
+          await this.performTransition(
+            manager,
+            id,
+            ErrandStatus.EXPIRED,
+            { type: StatusHistoryActor.SYSTEM },
+            `Offer not accepted by ${offer.offerExpiresAt.toISOString()}`,
+          );
+          return true;
+        });
+        if (done) {
+          expired.push(id);
+          // The runner loses access: the realtime gateway re-checks the room.
+          setImmediate(() => this.events.emit('errand.access_changed', { errandId: id }));
+        }
+      } catch (err) {
+        // Modified meanwhile: skip, the next run re-checks.
+        if (!(err instanceof ConflictException) && !(err instanceof ApiError)) {
+          throw err;
+        }
+      }
+    }
+    return expired;
   }
 
   /** Ids of errands in a status, oldest first (system jobs only, no access check). */
@@ -1496,6 +1597,7 @@ export class ErrandsService {
           runnerProfileId,
           status: AssignmentStatus.ASSIGNED,
           decidedAt: new Date(),
+          offerExpiresAt: new Date(Date.now() + this.adminOfferWindowSeconds() * 1000),
         }),
       );
       return { errand: done.errand, history: done.history, assignment };
