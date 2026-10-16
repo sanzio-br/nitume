@@ -46,7 +46,7 @@ Written 2026-10-13 for api-contract (RA-6). The API writes these strings into th
 | `eventType` | When (recipient: the runner) | Title | Body | Opens |
 |---|---|---|---|---|
 | `job.offered` | An offer is made to this runner (row 113) | `New job offer` | `{task} · KSh {runnerFee}. Accept by {offerExpiresAt, h:mm a}.` | `v-job-detail` (if no longer offered: snackbar `That offer is no longer available.`) |
-| `job.offer_withdrawn` | The offer is withdrawn before the runner answered (customer cancelled, ops reassigned) | `Offer no longer available` | `The offer for {task} has been withdrawn.` | none (feed only; no push) |
+| `job.offer_withdrawn` | The offer is withdrawn before the runner answered (customer cancelled, ops cancelled or reassigned, or the task's customer deadline passed, row 185; the reason is never shown) | `Offer no longer available` | `The offer for {task} has been withdrawn.` | none (feed only; no push) |
 | `job.offer_expired` | The offer lapsed without an answer | `Offer ended` | `The offer for {task} ended before you accepted it.` | none (feed only; no push) |
 | `errand.CANCELLED` | A task the runner holds is cancelled | `Job cancelled` | `{task} was cancelled, so there's no runner fee.[ If you already bought the item, upload the receipt within 24 hours.]` (bracket: `send_to_runner` with an item amount, row 129) | `v-active` (ended card) |
 | `errand.FAILED` | A task the runner holds ends FAILED | `Job ended as failed` | `{task} ended as failed, so there's no runner fee.[ If you already bought the item, upload the receipt within 24 hours.]` | `v-active` (ended card) |
@@ -63,7 +63,7 @@ Written 2026-10-13 for api-contract (RA-6). The API writes these strings into th
 | `payout.reversed` | Ops recorded a reversal (row 139) | `Payout reversed` | `Your payout of KSh {previousAmount} was reversed. It's back in your available balance and we'll send it again.` | `v-earnings` |
 | `payout.resent` | Ops re-sent a reversed payout | `Payout sent again` | `KSh {amount} to M-Pesa · {reference}.` | `v-earnings` |
 | `payout_request.rejected` | Ops rejected a payout request (row 117) | `Payout request not approved` | `Your request for KSh {amount} wasn't approved: {decisionNote}` (runner-visible note, required on reject) | `v-earnings` |
-| `payout_request.cancelled` | Ops cancelled an open payout request (row 166) | `Payout request cancelled` | `Your request for KSh {requestedAmount} was cancelled by our team. Anything still owed stays in your available balance, and you can make a new request.` (body proposed; title `Payout request cancelled` per row 168; never the ops reason, row 168 decided; no time promise) | `v-earnings` |
+| `payout_request.cancelled` | Ops cancelled an open payout request (row 166) | `Payout request cancelled` | `Your payout request was cancelled by Nitume operations.` (owner wording, row 194, decided 2026-10-16; title per rows 168, 194; never the ops reason, row 168; no time promise; replaces the earlier proposed body) | `v-earnings` |
 | `rating.received` | The customer rated the runner | `You were rated {stars} stars` (`1 star`) | `"{comment}" — {customerShortName}` or `{task}` when there is no comment | `v-profile` |
 | `verification.approved` | All required checks approved (row 126) | `Verification approved` | `You're now a {levelLabel} Runner. You can go online and get jobs.` | `v-onboard-pending` |
 | `verification.rejected` | A required check was not approved | `Verification not approved` | `Some checks need another look. Open your verification to see what to fix.` | `v-onboard-pending` |
@@ -85,6 +85,8 @@ As customer: rows read `Unread. New job offer nearby. Apartment check — Nyali,
 
 ## Decisions (owner, 2026-10-13)
 - Row 139: proceed once copy is defined (done above); at least payout sent, payout reversed, reimbursement approved, rejected, paid/sent.
+- Row 194 (2026-10-16): payout cancel copy `Payout request cancelled` / `Your payout request was cancelled by Nitume operations.`, sent once runner notifications exist; never the reason.
+- Row 185 (2026-10-16): an offer that ends because the task's deadline passed uses `job.offer_withdrawn` and its existing copy; the deadline is not named. Row 188: titles are sent exactly as written here, with no `· {status}` suffix.
 
 ## Questions
 - None new.
