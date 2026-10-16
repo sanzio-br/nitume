@@ -48,6 +48,11 @@ class RunnerPayoutRepository {
   /// next request gets a fresh key. The destination is the sign-in phone,
   /// set by the server (row 118).
   ///
+  /// A retry with the stored key returns the request the first attempt
+  /// created, even if the runner typed a different amount since: always
+  /// show the returned [RunnerPayoutRequest.requestedAmount], never the
+  /// amount typed in.
+  ///
   /// Errors (`NitumeApiException.code`): `payout_below_minimum`
   /// (`minimumAmount`), `payout_exceeds_available` (`availableAmount`),
   /// `payout_request_open` (`requestId`), `payout_destination_missing`.
