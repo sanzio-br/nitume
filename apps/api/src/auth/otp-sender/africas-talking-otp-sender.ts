@@ -18,9 +18,14 @@ export class AfricasTalkingOtpSender extends OtpSender {
     super();
   }
 
-  /** OTP SMS body; the minutes come from `otp.ttlSeconds` (300 s -> 5 minutes). */
+  /**
+   * OTP SMS body, owner wording (row 158): "Your Nitume verification code is
+   * {code}. It expires in 5 minutes. Do not share this code with anyone." The
+   * minutes come from `otp.ttlSeconds` (300 s -> 5 minutes). The email copy
+   * is separate (MailService.otpText) and unchanged.
+   */
   static otpText(code: string, ttlSeconds: number): string {
-    return `Nitume verification code: ${code}. Your verification code expires in ${otpExpiryPhrase(ttlSeconds)}. Do not share it.`;
+    return `Your Nitume verification code is ${code}. It expires in ${otpExpiryPhrase(ttlSeconds)}. Do not share this code with anyone.`;
   }
 
   async send(phone: string, code: string): Promise<void> {
