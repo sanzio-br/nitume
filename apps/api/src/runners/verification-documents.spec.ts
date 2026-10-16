@@ -147,9 +147,10 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
     const now = new Date('2027-11-01T00:00:00Z');
     await expect(b.service.documentsDueForPurge(now)).resolves.toEqual([{ id: 'v-1', runnerProfileId: 'rp-1' }]);
     const [sql, params] = b.verificationRepo.query.mock.calls[0] as unknown as [string, unknown[]];
-    expect(params).toEqual([now.toISOString(), 365, 200]);
-    // The clock: verification rows, ID/selfie decisions and re-reviews only.
-    expect(sql).toContain('MAX(v."createdAt")');
+    expect(params).toEqual([now.toISOString(), 365, 200, null, [], []]);
+    // Row 191: only ID/selfie rows, their decisions and re-reviews restart the clock.
+    expect(sql).toContain(`MAX(v."createdAt") FILTER (WHERE v."verificationType"::text IN ('government_id', 'selfie'))`);
+    expect(sql).toContain('NOT (v."runnerProfileId" = ANY($5::uuid[]))');
     expect(sql).toContain(`FILTER (WHERE v."verificationType"::text IN ('government_id', 'selfie'))`);
     expect(sql).toContain(`l.action::text = 're_review'`);
     expect(sql).not.toMatch(/errand_assignments|disputes|'view'/);

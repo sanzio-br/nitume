@@ -601,13 +601,14 @@ export class ErrandsService {
    * Errand ids each runner was ever assigned to (any assignment status), for
    * other modules' read models (disputes: the ID-image purge guard, row 175).
    */
-  async errandIdsByRunner(runnerProfileIds: string[]): Promise<Map<string, string[]>> {
+  async errandIdsByRunner(runnerProfileIds: string[], manager?: EntityManager): Promise<Map<string, string[]>> {
     const out = new Map<string, string[]>();
     const unique = [...new Set(runnerProfileIds)].filter(Boolean);
     if (unique.length === 0) {
       return out;
     }
-    const rows = await this.assignments.find({
+    const repo = manager ? manager.getRepository(ErrandAssignment) : this.assignments;
+    const rows = await repo.find({
       where: { runnerProfileId: In(unique) },
       select: { errandId: true, runnerProfileId: true },
     });

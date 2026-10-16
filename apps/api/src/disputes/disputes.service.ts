@@ -84,13 +84,14 @@ export class DisputesService implements OnModuleInit {
    * they were assigned to. Their ID/selfie evidence is never purged while
    * such a dispute exists (the hold comes before the retention purge).
    */
-  async runnersWithOpenDisputes(runnerProfileIds: string[]): Promise<Set<string>> {
-    const byRunner = await this.errands.errandIdsByRunner(runnerProfileIds);
+  async runnersWithOpenDisputes(runnerProfileIds: string[], manager?: EntityManager): Promise<Set<string>> {
+    const byRunner = await this.errands.errandIdsByRunner(runnerProfileIds, manager);
     const errandIds = [...new Set([...byRunner.values()].flat())];
     if (errandIds.length === 0) {
       return new Set();
     }
-    const open = await this.disputes.find({
+    const repo = manager ? manager.getRepository(Dispute) : this.disputes;
+    const open = await repo.find({
       where: { errandId: In(errandIds), status: In([DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW]) },
       select: { errandId: true },
     });

@@ -377,11 +377,12 @@ export class RunnersService {
   }
 
   /**
-   * Rows 161, 171 (owner, 2026-10-16): the runner's retention clock is the
-   * latest of
-   *  (a)/(b) a new or replacement ID or selfie submitted, and (c) any
-   *  verification or re-verification started: `createdAt` of every
-   *  verification row of the runner;
+   * Rows 161, 171, 191 (owner, 2026-10-16): the runner's retention clock is
+   * the latest of
+   *  (a)/(b)/(c) a verification that creates or replaces stored identity
+   *  evidence: `createdAt` of the runner's government_id and selfie rows
+   *  (payment identity stores no image today, so it does not count; it
+   *  would only if it reused the retained images);
    *  (d) an admin review that needs the stored evidence: the decision on a
    *  pending ID/selfie verification (`reviewedAt`, the initial review) and
    *  every audited "Re-review evidence" (`re_review` log rows, row 171).
@@ -393,23 +394,28 @@ export class RunnersService {
   async documentsDueForPurge(
     now: Date = new Date(),
     batch = 200,
-    onlyRunnerProfileIds?: string[],
+    opts: { onlyRunnerProfileIds?: string[]; excludeRunnerProfileIds?: string[]; excludeIds?: string[] } = {},
   ): Promise<{ id: string; runnerProfileId: string }[]> {
     const days = this.retentionDays();
-    const params: unknown[] = [now.toISOString(), days, batch];
-    if (onlyRunnerProfileIds) {
-      params.push(onlyRunnerProfileIds);
-    }
     return this.verifications.query(
       `WITH clock AS (${RETENTION_CLOCK_SQL})
        SELECT v.id, v."runnerProfileId" FROM "runner_verifications" v
          JOIN clock c ON c.runner = v."runnerProfileId"
         WHERE v."documentS3Key" IS NOT NULL AND v."purgedAt" IS NULL AND v.status::text <> 'pending'
           AND c.at < $1::timestamptz - make_interval(days => $2::int)
-          ${onlyRunnerProfileIds ? 'AND v."runnerProfileId" = ANY($4::uuid[])' : ''}
+          AND ($4::uuid[] IS NULL OR v."runnerProfileId" = ANY($4::uuid[]))
+          AND NOT (v."runnerProfileId" = ANY($5::uuid[]))
+          AND NOT (v.id = ANY($6::uuid[]))
         ORDER BY v."createdAt" ASC
         LIMIT $3`,
-      params,
+      [
+        now.toISOString(),
+        days,
+        batch,
+        opts.onlyRunnerProfileIds ?? null,
+        opts.excludeRunnerProfileIds ?? [],
+        opts.excludeIds ?? [],
+      ],
     );
   }
 
@@ -420,9 +426,15 @@ export class RunnersService {
    * record (row 170): status/outcome, timestamps, reviewer id, `purgedAt`,
    * evidence type and the log ids. The storage key and the reviewer's note
    * are cleared. Logs a `purge` row. A storage failure leaves the row as it
-   * is (retried the next day). Callers must apply the open-dispute guard.
+   * is (retried the next day). Callers pass the open-dispute hold (`isHeld`),
+   * checked with the row locked just before the delete.
    */
-  async purgeDocuments(ids: string[], now: Date = new Date()): Promise<string[]> {
+  async purgeDocuments(
+    ids: string[],
+    now: Date = new Date(),
+    /** Row 175 hold, re-checked inside the purge transaction (reviewer minor 3). */
+    isHeld?: (runnerProfileId: string, manager: EntityManager) => Promise<boolean>,
+  ): Promise<string[]> {
     const days = this.retentionDays();
     const purged: string[] = [];
     for (const id of ids) {
@@ -438,6 +450,9 @@ export class RunnersService {
           const at = await this.retentionClockOf(row.runnerProfileId, manager);
           if (at && at.getTime() >= now.getTime() - days * 86_400_000) {
             return false; // Restarted meanwhile (new upload, decision or re-review).
+          }
+          if (isHeld && (await isHeld(row.runnerProfileId, manager))) {
+            return false; // A dispute opened meanwhile (row 175).
           }
           // Storage first: a failure rolls back and leaves the row for the next run.
           await this.documents.destroy(row.documentS3Key);
@@ -774,7 +789,7 @@ export class RunnersService {
 const RETENTION_CLOCK_SQL = `
   SELECT v."runnerProfileId" AS runner,
          GREATEST(
-           MAX(v."createdAt"),
+           MAX(v."createdAt") FILTER (WHERE v."verificationType"::text IN ('government_id', 'selfie')),
            MAX(v."reviewedAt") FILTER (WHERE v."verificationType"::text IN ('government_id', 'selfie')),
            (SELECT MAX(l."createdAt") FROM "verification_document_access_log" l
              WHERE l."runnerProfileId" = v."runnerProfileId" AND l.action::text = 're_review')

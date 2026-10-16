@@ -552,30 +552,21 @@ describe('Owner answers 9 (e2e)', () => {
         .set(bearer(admin.token))
         .send({ decision: 'approved', ...(reviewerNote ? { reviewerNote } : {}) })
         .expect(200);
-    const backdate = async (runner: Actor, opts: { reReviews?: boolean } = {}) => {
-      await db().query(
+    // runner_verifications has no guard trigger; the append-only access log
+    // is never touched: a later `now` stands in for elapsed time instead.
+    const backdate = (runner: Actor) =>
+      db().query(
         `UPDATE "runner_verifications" SET "createdAt" = now() - interval '730 days',
                 "reviewedAt" = CASE WHEN "reviewedAt" IS NULL THEN NULL ELSE now() - interval '730 days' END
           WHERE "runnerProfileId" = $1`,
         [runner.profileId],
       );
-      if (opts.reReviews) {
-        // Test only: the log is append-only, so lift its trigger for this one update.
-        await db().query('ALTER TABLE "verification_document_access_log" DISABLE TRIGGER USER');
-        try {
-          await db().query(
-            `UPDATE "verification_document_access_log" SET "createdAt" = now() - interval '730 days'
-              WHERE "runnerProfileId" = $1 AND action::text = 're_review'`,
-            [runner.profileId],
-          );
-        } finally {
-          await db().query('ALTER TABLE "verification_document_access_log" ENABLE TRIGGER USER');
-        }
-      }
-    };
-    const dueIds = async (runner: Actor) =>
-      (await app.get(Runners).documentsDueForPurge(new Date(), 200, [runner.profileId!])).map((d) => d.id);
-    const purge = (runner: Actor) => app.get(IdDocumentRetentionService).purgeExpired(new Date(), 200, [runner.profileId!]);
+    const dueIds = async (runner: Actor, at = new Date()) =>
+      (await app.get(Runners).documentsDueForPurge(at, 200, { onlyRunnerProfileIds: [runner.profileId!] })).map((d) => d.id);
+    const purge = (runner: Actor, at = new Date()) =>
+      app.get(IdDocumentRetentionService).purgeExpired(at, 200, [runner.profileId!]);
+    /** Two years and a bit from now: older than any retention event made in this test. */
+    const later = () => new Date(Date.now() + 800 * 86_400_000);
 
     it('a view never restarts the clock; an audited re-review does; pending is never purged or re-reviewed', async () => {
       const runner = await makeUser(UserRole.RUNNER);
@@ -635,6 +626,22 @@ describe('Owner answers 9 (e2e)', () => {
       expect(await dueIds(runner)).toEqual([]);
     });
 
+    it('a new payment-identity check does not restart the clock; a new selfie does (row 191)', async () => {
+      const runner = await makeUser(UserRole.RUNNER);
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const id = (await uploadDoc(runner, jpeg()).expect(201)).body.id as string;
+      await approve(admin, runner, id);
+      await backdate(runner);
+      await http()
+        .post('/api/v1/runners/me/verifications')
+        .set(bearer(runner.token))
+        .send({ verificationType: 'payment_identity' })
+        .expect(201);
+      expect(await dueIds(runner)).toEqual([id]);
+      await uploadDoc(runner, jpeg(), 'image/jpeg', 'selfie').expect(201);
+      expect(await dueIds(runner)).toEqual([]);
+    });
+
     it('an open dispute holds the purge; once resolved the image goes and only minimum metadata stays (note cleared)', async () => {
       const ctx = await paidAndAssigned();
       const { runner, admin, customer, errand } = ctx;
@@ -655,16 +662,15 @@ describe('Owner answers 9 (e2e)', () => {
         .set(bearer(customer.token))
         .send({ errandId: errand.id, reason: 'Wrong item delivered' })
         .expect(201);
-      await backdate(runner, { reReviews: true });
-      expect(await dueIds(runner)).toEqual([id]);
-      expect(await purge(runner)).toEqual([]);
+      expect(await dueIds(runner, later())).toEqual([id]);
+      expect(await purge(runner, later())).toEqual([]);
 
       await http()
         .patch(`/api/v1/errands/${errand.id}/resolve-dispute`)
         .set(bearer(admin.token))
         .send({ verdict: 'runner', rationale: 'Receipt and photos show the runner bought the right item.' })
         .expect(200);
-      expect(await purge(runner)).toEqual([id]);
+      expect(await purge(runner, later())).toEqual([id]);
       const [row] = await db().query(
         `SELECT "documentS3Key", "reviewerNote", "purgedAt", status::text AS status, "verificationType"::text AS type,
                 "reviewedBy", "reviewedAt", "createdAt"
