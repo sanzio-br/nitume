@@ -71,4 +71,4 @@ Proposed: `Deadline`, `Items`, `Item amount`, `How it's paid`, `Pickup`, `Drop-o
 - Row 120 (RQ-8): no estimated time.
 
 ## Questions
-- RQ-22, BOARD row 141 pending (see `v-jobs.md`): offer lapse → EXPIRED directly, or after re-offers.
+- None open. RQ-22 (row 141) decided 2026-10-16: at the deadline the offer expires and the task goes EXPIRED at once; no acceptance after expiry. When the countdown reaches zero the screen switches to the `This offer is no longer available.` state and hides `Accept` without waiting for the server.

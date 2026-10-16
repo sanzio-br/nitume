@@ -33,7 +33,7 @@ Body centred, padding-top 10.
    | COMPLETED | `The customer confirmed. Payable when the review window closes.` |
    | CONFIRMED | `Payable now. It's in your available balance.` |
    | SETTLED | `Paid to your M-Pesa.` |
-   | DISPUTED | `On hold while our team reviews the customer's report.` |
+   | DISPUTED | `Our team is reviewing the customer's report. If it's decided in your favour, you're paid as normal.` (row 140; replaces the earlier `On hold …` line, since `On hold` is only a line status) |
    | CANCELLED / FAILED | `This task ended before completion, so there's no runner fee.` (+ reimbursement sentence from `_shared.md` §8 when relevant, and the `Claim item spend` action below on `send_to_runner`) |
 7. Fixed bottom C-01 `Back to jobs`.
 
@@ -60,6 +60,11 @@ Heading announced on open; amounts read as currency; CTA above the safe area.
 ## Decisions (owner, 2026-10-13)
 - Row 119 (RQ-7): one `Runner fee` line until pricing rates exist.
 - Row 129 (RQ-17): 24 h receipt/claim window after CANCELLED/FAILED. Row 135: max claimable = min(item paid to Nitume, `max_purchase_advance`). Row 136: task-level combined cap with the customer refund; above it, ops review.
+
+## Decisions (owner, 2026-10-16)
+- Row 140: a dispute decided in the runner's favour keeps the runner fee and item reimbursement payable as normal (COMPLETED → CONFIRMED, then the CONFIRMED rows above).
+- Row 142: the claim form keeps the ordinary cap min(item amount paid to Nitume, `max_purchase_advance`); only ops can approve above the limit, through an audited override; no runner copy for it.
+- Row 143: the `SETTLED` / `paid` lines state status only, never a payout time.
 
 ## Questions
 - None new.

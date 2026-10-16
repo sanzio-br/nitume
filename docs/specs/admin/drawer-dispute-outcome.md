@@ -7,7 +7,7 @@
 
 ## Purpose
 Let an admin resolve a dispute with a written rationale and make the consequence of each verdict explicit (row 36, §3.3 as updated by row 56):
-- **Side with runner** → task DISPUTED → **COMPLETED**. The normal runner payout follows (system moves COMPLETED → CONFIRMED → SETTLED after the dispute window; row 50: a new dispute window applies where relevant).
+- **Side with runner** → task DISPUTED → **COMPLETED**. The normal runner payout follows (system moves COMPLETED → CONFIRMED → SETTLED after the dispute window; row 50: a new dispute window applies where relevant). Row 140 (owner, 2026-10-16): a runner-favourable outcome keeps the runner eligible for the applicable payout and item reimbursement; it does not cancel an otherwise valid runner payout. The copy below already says so; no build change.
 - **Side with customer** → task DISPUTED → **CANCELLED**. If the customer had paid, a refund review opens in `Refunds` in the same transaction, where an admin sets the amount (KSh 0 up to everything paid; row 37). The verdict itself moves no money.
 
 ## Entry / exit

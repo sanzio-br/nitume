@@ -22,13 +22,13 @@ Any (ledger). Lines are created when a task reaches CONFIRMED (runner fee `payab
 2. R-08 balance card (margin 0 20 16): label `Available balance`; amount Fira Code 30/600 white (`availableAmount`); sub-line (proposed, Fira Code 11.5 blue-050) `KSh 2,450 pending confirmation` when `pendingAmount` > 0, and `KSh 5,000 on hold` when `onHoldAmount` > 0 (two lines max); actions: C-03 small `Request payout`, C-03 small `Payout history` (mockup: translucent white buttons, replaced, `_shared.md` §2).
    - Info icon button (48 hit) next to the label → C-35 info dialog (proposed): title `Available balance`; body `What Nitume owes you for confirmed tasks, minus payouts already sent. Runner fees and item reimbursements become available when the customer confirms and the review window closes.`; button `OK`.
 3. R-11 weekly chart card (margin 0 20 16): C-08 `This week` (padding 0 0 2) + total Fira Code 13/600 right-aligned (proposed `KSh 4,470`), 7 bars Mon–Sun (EAT week, R-18), bar height = the day's **runner-fee** earnings relative to the week's max; today's bar blue, others blue-050; labels `M T W T F S S`.
-4. C-08 `Recent payouts` (mockup label kept, row 133). An open payout request (RA-15) shows first as an R-12 row `Payout requested` / `Requested Mon, 10:03 AM` / `KSh 6,000` (no sign: nothing has moved yet) with a C-05 `Requested` chip (pending tone).
+4. C-08 `Recent payouts` (mockup label kept, row 133). An open payout request (RA-15) shows first as an R-12 row `Payout requested` / `Requested Mon, 10:03 AM` / `KSh 6,000` (no sign: nothing has moved yet) with a C-05 `Requested` chip (pending tone). Status only: no expected payout time (row 143).
 5. R-12 ledger rows (margin 0 20 8), newest first, max 10, then C-04 `See all` → `x-payout-history`:
    | Feed `kind` (API) | Title | Caption | Amount (signed `amount` from the API) |
    |---|---|---|---|
    | `runner_fee` | `errandTitle` (else `Task ` + `errandReference` in Fira Code) | `Runner fee` + chip by `status` (below) | `+ KSh 1,750` |
    | `item_reimbursement` | as above | `Item reimbursement` + chip by `status`; on `on_hold` a second caption line by `reviewReason` (below) | `+ KSh 5,000` |
-   | `payout` (derived, not a stored line; `id` = `payout:<uuid>`, opaque) | `Payout to M-Pesa` | `Sent Mon, 10:03 AM` (`paidAt`, EAT); `errandId` is null when the payout covered several tasks | `− KSh 6,000` |
+   | `payout` (derived, not a stored line; `id` = `payout:<uuid>`, opaque) | `Payout to M-Pesa` | `Sent Mon, 10:03 AM` (`paidAt`, EAT); `errandId` is null when the payout covered several tasks. When the payout paid a payout request below the requested amount (row 146), a second caption line (11 slate-600) `Requested KSh 5,000 · Paid KSh 4,000` (amounts Fira Code) | `− KSh 4,000` (the paid amount) |
    | `correction` (`status: recorded`) | `Payout corrected` | `amount` 0 → `Receipt updated`; else `Amount adjusted` | `+ KSh 500` / `KSh 0` (no sign at 0) |
    | `reversal` (`status: recorded`) | `Payout reversed` | `We'll send it again` | `+ KSh 6,000` (owed again) |
    | `resent_payout` (`status: paid`) | `Payout re-sent to M-Pesa` | `Sent …` (`paidAt`) | `− KSh 6,000` |
@@ -80,6 +80,11 @@ Built on `feat/api-owner-answers-6` @ `10b6019` (row 107, table `runner_payout_l
 
 ## Decisions (owner, 2026-10-13)
 - Row 117 (RQ-5): payout requests (see `v-payout.md`). Row 133 (RQ-21): keep `Recent payouts`.
+
+## Decisions (owner, 2026-10-16)
+- Row 143: no payout-time promise; status only.
+- Row 146: a request paid below the requested amount closes as `Paid`; requested and paid are shown separately (caption above); the rest stays in `availableAmount` for a new request. Needs the derived `payout` entry to carry `payoutRequestId` and `requestedAmount` when it settled a request (api-contract, RA-15).
+- Row 142: an item line approved above the purchase limit through the ops override shows like any approved line (amount as approved, no extra caption).
 
 ## Questions
 - None new.

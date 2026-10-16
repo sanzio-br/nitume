@@ -584,3 +584,25 @@ Audited `feat/admin-runner-payouts` @ `04837b4` (8 commits on `main` @ `cd22e4d`
 1. m-13 runner filter names / search.
 2. Runner drawer `Payouts` summary section (new, `drawer-runner-purchase-limit.md`), together with the purchase-limit section once N-19 exists.
 3. Carried: m-10, m-11, m-12.
+
+## Owner answers round 7 (rows 140–144, 146, 2026-10-16), applied on `docs/owner-answers-7-specs`
+
+Spec-only update; no admin code read beyond `feat/admin-runner-payouts` @ `04837b4` (read-only) for the conflict check. Full list and the System Design edits waiting on row 147: `docs/audits/runner-gap-report.md` §10.
+
+### What changed in the admin specs
+- `drawer-runner-payout.md`: row 142 purchase-limit exception (§5 2b: `Approve above the purchase limit`, required `Why pay above the purchase limit?` 10–500, `Approve above the limit · KSh {amount}`, confirm line; read-only exception rows in §7; activity entry); `With a purchase-limit exception` amount row; `Change` link next to the purchase limit dropped (raising the limit is not the mechanism). Status `matches-design` → `partial`.
+- `drawer-runner-purchase-limit.md`: confirm body `It applies to new offers and new purchases. To pay one purchase above the limit, use the exception on that reimbursement.`; no entry from the payout drawer.
+- `p-payout-requests.md`: row 146 decided: `requestedAmount` and `paidAmount` stored and shown separately (table `Paid` column, read-only rows, activity), below-request caption and confirm, request closes `paid`; AQ-11 closed. Row 143: no payout time anywhere.
+- `p-runner-payouts.md`, `drawer-dispute-outcome.md`: notes only (rows 146, 140).
+- `_shared.md`: decision rows 140–144, 146; N-17 (two amounts), N-20 (offer expiry → EXPIRED at once, row 141), new N-21 (purchase-limit exception API); §8 AQ table.
+
+### drawer-runner-payout: conflict with the build (`feat/admin-runner-payouts`)
+14. **blocker (when N-21 lands)** — `runner-payout-drawer.ts:219-222`, `:300-335`, `:1124-1132`. Design (row 142): an ordinary approval up to `approvalCeiling`, plus an explicit, recorded exception up to `overLimitCeiling` with a required reason (§5 2b, §7, §10). Code: only the ordinary path. Fix: add the exception action, the note field (reuse the `app-exposure-override-field` pattern as a shared component, no copy-paste), the label/confirm changes and the read-only rows once the API exposes `overLimitCeiling`, `purchaseLimitOverride` and `purchaseLimitOverrideNote`.
+
+### Builder lists
+- api-contract: N-21 / RA-25 (purchase-limit exception, storage per the owner's answer); N-17 / RA-15 with `requestedAmount` + `paidAmount`; N-20 / RA-26 (offer expiry → EXPIRED at once).
+- web-parity: item 14 after N-21; `p-payout-requests` after N-17.
+
+### Questions for the owner (new)
+- Row 142 follow-ups: storage of the purchase-limit exception; whether a later limit change lifts the ordinary ceiling of lines already in review (recommended no).
+- Row 141 follow-up: does "EXPIRED at once" also remove the auto-offer fall-through in System Design §3.4?

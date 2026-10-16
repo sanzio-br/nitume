@@ -11,7 +11,7 @@ Row 138 (owner, 2026-10-13): "KES 3,000 default, configurable per runner by admi
 
 ## Entry / exit
 - In `drawer-runner`, after the verification section: `.drawer-label` `Purchase limit`.
-- From `drawer-runner-payout` (`Change` next to `Runner's purchase limit`): opens the runner drawer scrolled to this section.
+- Not linked from `drawer-runner-payout` (row 142, 2026-10-16): raising the limit is not the way to pay one purchase above it; that drawer has its own recorded exception.
 
 ## Layout
 1. `.drawer-card` rows: `Current limit` → `KSh 3,000` (Fira Code, 600); `Last changed` → `{time} by {admin}` or `Default` when never changed.
@@ -19,7 +19,7 @@ Row 138 (owner, 2026-10-13): "KES 3,000 default, configurable per runner by admi
    - A-06 `New limit` (money input, `KSh` prefix, Fira Code, whole or 2 dp, > 0; hint `Default KSh 3,000.`).
    - A-06 `Reason` (required, 5–500, counter; hint `Kept in the audit history. Not shown to the runner.`). **Proposal for api-contract**: row 138 names only actor, time, previous and new value; a reason field is an addition. If api-contract does not add it, drop this field and the reason from History.
    - Actions `Cancel` / primary `Save limit`, disabled until valid and different from the current limit (`This is already the limit.`).
-   - A-08 `Change {runner}'s purchase limit to KSh {x}?` / `It applies to new offers and to reimbursements decided from now on.` / `Back` · `Save limit`.
+   - A-08 `Change {runner}'s purchase limit to KSh {x}?` / `It applies to new offers and new purchases. To pay one purchase above the limit, use the exception on that reimbursement.` / `Back` · `Save limit`. (Whether a raised limit also lifts the ordinary ceiling of item lines already waiting for review is an open question, see `drawer-runner-payout.md`; recommended no.)
 3. `History` (`.drawer-timeline`, newest first): `KSh {previous} → KSh {new} · {admin} · {reason}` with time (Fira Code). Empty: `No changes yet.`
 
 Success: A-11 success `Purchase limit saved.`; the drawer reloads. Errors (proposed codes): 409 `purchase_limit_conflict` (someone changed it; only if api-contract adopts the proposed `expectedPrevious` check) → reload + A-11; 400 validation → field errors; 403 → `_shared.md` §2.
@@ -36,10 +36,10 @@ Limits, previous/new values, times.
 - `GET /runners` / runner detail already return `maxPurchaseAdvance`.
 
 ## Owner decisions applied
-Row 138.
+Row 138. Row 142 (2026-10-16): paying above the limit is a per-reimbursement exception with a recorded reason and actor (`drawer-runner-payout.md` §5 2b), not a limit change; the earlier "raise the limit first" proposal is withdrawn.
 
 ## Open questions for the owner
-None.
+- Row 142 follow-up (see `drawer-runner-payout.md`): does a limit change apply to item lines already waiting for review? Recommended no.
 
 ## Current vs design
 Not built.

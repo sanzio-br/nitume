@@ -50,7 +50,7 @@ Proposed:
 
 ## Data
 - Upload each side to **restricted ID storage** (system design §10: separate from general evidence, access logged, never shown to customers or other runners). **Missing** (RA-7): no upload endpoint for verification documents; `POST /runners/me/verifications` takes only `{ verificationType, documentS3Key }` (one key), so front + back need two keys or two records. Proposed: `POST /runners/me/verifications/government_id/documents` (multipart or base64, `side: front|back`) → `{ documentKey }`, then `POST /runners/me/verifications` `{ verificationType: 'government_id', documentKeys: [front, back] }`. Storage: row 125 (restricted, private, signed admin-only URLs, access logged).
-- Re-submission after rejection creates a new `pending` record (the old one stays for audit).
+- Re-submission after rejection creates a new `pending` record (the old one stays for audit, within the row-144 retention period, then it is securely deleted like any other ID image).
 - `GET /runners/me/verifications` (exists) to show existing uploads.
 - No socket events.
 - Camera package: `image_picker` (row 124).
@@ -63,8 +63,9 @@ Proposed:
 
 ## Decisions (owner, 2026-10-13)
 - Row 125 (RQ-13): restricted private storage, separate folder/bucket, no public URLs, signed admin-only URLs, access logged.
+- Row 144 (RQ-25, owner 2026-10-16): images are kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; never indefinitely. The retention period is a configurable setting (final legal period not set yet); access stays restricted and logged for the whole period. Screen impact: no copy may say the photos are kept permanently; the device copy is deleted after upload (unchanged). API impact: RA-7 (retention setting, secure deletion job, access log).
 - Row 126 (RQ-14): manual review of ID, selfie, M-Pesa name and every other required check; verified only when all are approved. No automated liveness vendor.
 - Row 124 (RQ-12): camera packages approved.
 
 ## Questions
-- RQ-25, BOARD row 144 pending (security/compliance): how long are ID and selfie images kept after an account closes (row 125 did not set a retention period)? No default proposed.
+- None open. RQ-25 (row 144) decided 2026-10-16, see Decisions.
