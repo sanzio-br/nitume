@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 225–253 (`#v-home`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/shell/home_tab.dart` on branch `feat/customer-screens`
-- Status: partial (row 176, 2026-10-16: RUNNER_ASSIGNED card meta; see Current vs design)
+- Implementation: `apps/customer_app/lib/src/screens/shell/home_tab.dart` on branch `feat/customer-finding-a-runner` (meta copy in `util/display.dart` `activeCardMeta`)
+- Status: matches-design (re-audit 2026-10-16, round 10, `feat/customer-finding-a-runner` @ `3b5a8e4`: rows 176, 182, 183 PASS)
 
 ## Purpose
 Landing screen after sign-in: greet the customer by name, start a new task by category, jump to the active task, and reopen recent tasks.
@@ -112,6 +112,8 @@ States (proposed):
 - Q8: Several active errands. Default: one card + `+N more in progress`.
 
 ## Current vs design
+Re-audit 2026-10-16, customer round 10, `feat/customer-finding-a-runner` @ `3b5a8e4` (app `99e6839`, `4e21f10`, `575be0d`, `f4f735e`; core `153509e`, `21cfa5f`): **PASS**, no findings. Items 1–2 of the row-176 update below are closed: RUNNER_ASSIGNED meta `Finding a runner` with no runner name (Fira Code 12 via core `ActiveTaskCard`); RUNNER_EN_ROUTE `Brian K. is en route`; chips follow core. Details: `docs/audits/customer-gap-report.md` → "Re-audit 2026-10-16: customer round 10".
+
 Spec update 2026-10-16 (round 10, row 176), `main`: 1. blocker (flutter-customer): `apps/customer_app/lib/src/util/display.dart:147` shows `'$name is assigned'` for RUNNER_ASSIGNED (the offered runner); must be `Finding a runner`. 2. minor (core-ui CC-176): `Recent` / card chips come from `StatusChip.forStatus` and follow the core label change automatically.
 
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `+N more in progress` count renders in Fira Sans (core link label is string-only, CC-2); with no name the greeting is shown as the 21/700 title instead of the greeting line only. ETA in the active-card meta waits for rows 29/30.

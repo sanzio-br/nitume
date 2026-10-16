@@ -850,3 +850,28 @@ CQ-176a (EN_ROUTE chip), CQ-176b (hide the offered runner), CQ-176c (notificatio
 - Rows 182–184 decide CQ-176a–c. `_shared.md` §6.1: RUNNER_EN_ROUTE chip `En route`; timeline step `Runner assigned`; the offered runner's name, marker and ETA are never shown before acceptance; no notification when an offer is made; on acceptance `Runner assigned` / `A runner accepted your task and is on the way.` (API).
 - Findings 1–5 of the round-10 section are valid blockers/minors as written (row 183 makes 2, 4 and 5 owner-backed). Finding 6 (API copy) no longer waits on the owner.
 - Row 185 (open): `deadline_at` as an EXPIRED trigger; no customer copy depends on it.
+
+## Re-audit 2026-10-16: customer round 10 (rows 176, 182, 183)
+
+Audited `feat/customer-finding-a-runner` @ `3b5a8e4` (flutter-customer `99e6839`, `4e21f10`, `575be0d`, `f4f735e`; core-ui `153509e`, `21cfa5f` merged in) against `_shared.md` §6 / §6.1, `v-track.md`, `v-task-detail.md`, `v-home.md` and findings 1–5 of "Owner answers round 10" above. Finding 6 (API notification copy) is api-contract work and was not part of this audit.
+
+Build health: `flutter analyze` clean in `packages/nitume_core` and `apps/customer_app`; `flutter test` passes (core 383, customer app 131). New tests: `packages/nitume_core/test/widgets_test.dart` (`statusPresentation` RUNNER_ASSIGNED, `customerTimelineTitle`), `apps/customer_app/test/finding_a_runner_test.dart` (Track, Task detail, Home in PAYMENT_CONFIRMED / RUNNER_ASSIGNED / RUNNER_EN_ROUTE, with the API sending the offered runner, a position and an ETA, plus a live `location:update`).
+
+### v-track — PASS
+No findings. Round-10 findings 1, 2 and 3 closed.
+- Chip: `status_presentation.dart:33-34` RUNNER_ASSIGNED → `Finding a runner`, `StatusTone.info`; RUNNER_EN_ROUTE stays `En route` with `NitumeDesignChoices.enRouteTone` (= `StatusTone.pending`, amber).
+- Offered runner hidden (row 183): `track_tab.dart:25-36` takes RUNNER_ASSIGNED out of `runnerWindow` and adds `findingStatuses` {PAYMENT_CONFIRMED, RUNNER_ASSIGNED}. `:485` sets `r = null` while finding, whatever `errand.runner` / `tracking.runner` hold, so the card shows `We're finding a runner for your task.` plus the chip. Marker and ETA are blocked three times: `_applyTracking` (`:173-183`) clears both outside the window, the live `onLocation` handler returns early (`:148-152`, `_inWindow()`), and the map builder passes `pos` / `etaLabel` only when `inWindow` (`:512-536`). The test sends an offered `TrackingSnapshot` (runner, position, ETA 7 min) and then `emitLocation`; no name, dot or `ETA` appears.
+- Timeline (C-19): `:682-693` titles history rows with `customerTimelineTitle()`, so RUNNER_ASSIGNED rows (re-offers included) are dropped and the RUNNER_EN_ROUTE row reads `Runner assigned` with the acceptance time from `formatClock` (Fira Code 11 in core `StatusTimeline`). Next step (`:711-722`) skips titleless states: after PAYMENT_CONFIRMED or RUNNER_ASSIGNED it is `Runner assigned`, after RUNNER_EN_ROUTE it is `Arrived`. Tested both ways.
+- Tokens and reuse: the diff adds no hex, `Color(0x…)`, `fontFamily` or new layout markup; only `StatusChip`, `RunnerSummaryTile`, `StatusTimeline`, `NitumeCard` (core). ETA still uses `formatEta` in core `LiveTrackingMap` (Fira Code).
+
+### v-task-detail — PASS
+No findings. Round-10 findings 1 and 4 closed.
+- `task_detail_screen.dart:212-218`: `r` is null in PAYMENT_CONFIRMED and RUNNER_ASSIGNED, so the `Runner` section label and `RunnerSummaryTile` (`:248-260`) are hidden even when the API returns the offered runner; it shows from RUNNER_EN_ROUTE. The summary chip reads `Finding a runner` (info) through core. `Track live` stays. Tested for both states and for RUNNER_EN_ROUTE.
+
+### v-home — PASS
+No findings. Round-10 finding 5 closed.
+- `display.dart:147-148`: RUNNER_ASSIGNED meta `Finding a runner` (no name); RUNNER_EN_ROUTE `$name is en route`. The meta renders in Fira Code 12 via core `ActiveTaskCard`. `Recent` chips follow core. Tested for both states (`Track live →` kept).
+
+### Notes (not findings on these three screens)
+- Task detail hides the runner only in the two states the spec names. If the API ever kept an offered (never accepted) runner on a task that then went EXPIRED or CANCELLED, Task detail and `history_tab.dart:125` (v-history) would show that name. This depends on the API dropping the `assigned` assignment when the offer ends (`ACTIVE_ASSIGNMENT_STATUSES`); api-contract can confirm it. No spec change proposed.
+- The schematic fallback map (`SchematicMap`, dev builds without a Maps key) reads the runner notifier directly rather than `pos`; it stays empty because the notifier is cleared outside the window.
