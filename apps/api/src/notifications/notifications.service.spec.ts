@@ -395,6 +395,13 @@ describe('assignment_declined admin feed (row 108)', () => {
       body: 'The runner declined NT-7: the purchase is above their limit. Assign another runner.',
     });
   });
+
+  it('a decline without the over-limit reason does not mention the limit (row 113)', async () => {
+    const { copyFor } = await import('./notifications.service');
+    expect(copyFor({ kind: 'assignment_declined', errandId: 'e-1', reference: 'NT-7', overPurchaseLimit: false })).toMatchObject({
+      body: 'The runner declined NT-7. Assign another runner.',
+    });
+  });
 });
 
 describe('assignment_expired admin feed (row 157, N-20)', () => {

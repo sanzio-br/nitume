@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { Queue } from 'bullmq';
 import { IsNull, Repository } from 'typeorm';
 import {
+  AssignmentDeclineReason,
   ErrandStatus,
   NotificationChannel,
   NotificationEventType,
@@ -88,7 +89,7 @@ export type FeedJob =
   /** Admin-facing (row 68): written to every active admin's feed. */
   | { kind: 'quote_requested'; errandId: string; reference: string }
   /** Admin-facing (row 108): the runner declined; the task needs another runner. */
-  | { kind: 'assignment_declined'; errandId: string; reference: string }
+  | { kind: 'assignment_declined'; errandId: string; reference: string; overPurchaseLimit?: boolean }
   /** Admin-facing (row 157): an admin offer lapsed; the task needs another runner. */
   | { kind: 'assignment_expired'; errandId: string; reference: string };
 
@@ -266,7 +267,12 @@ export class NotificationsService {
   /** Runner declined over their purchase limit -> admin feed (row 108). */
   @OnEvent(ASSIGNMENT_DECLINED_EVENT, { async: true })
   async onAssignmentDeclined(event: AssignmentDeclinedEvent): Promise<void> {
-    await this.enqueue({ kind: 'assignment_declined', errandId: event.errandId, reference: event.reference });
+    await this.enqueue({
+      kind: 'assignment_declined',
+      errandId: event.errandId,
+      reference: event.reference,
+      overPurchaseLimit: event.reason === AssignmentDeclineReason.OVER_PURCHASE_LIMIT,
+    });
   }
 
   /**
@@ -455,7 +461,11 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
       return {
         eventType: NotificationEventType.ASSIGNMENT_DECLINED,
         title: 'Runner declined a task',
-        body: `The runner declined ${job.reference}: the purchase is above their limit. Assign another runner.`,
+        // Jobs queued before the general decline (row 113) carry no flag: they were all over the limit.
+        body:
+          job.overPurchaseLimit === false
+            ? `The runner declined ${job.reference}. Assign another runner.`
+            : `The runner declined ${job.reference}: the purchase is above their limit. Assign another runner.`,
       };
     case 'assignment_expired':
       return {
