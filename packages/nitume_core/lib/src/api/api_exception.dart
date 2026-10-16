@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../models/enums.dart';
+
 /// A normalised API failure, safe to show to a user.
 ///
 /// The NestJS API returns `{ statusCode, message, error }` where `message` may
@@ -54,6 +56,45 @@ class NitumeApiException implements Exception {
     final v = details['expiresAt'];
     return v is String ? DateTime.tryParse(v) : null;
   }
+
+  /// Decimal-string detail such as `minimumAmount` or `availableAmount`
+  /// (`"500.00"`), when present.
+  String? decimalDetail(String key) {
+    final v = details[key];
+    if (v is num) return v.toStringAsFixed(2);
+    if (v is String && v.trim().isNotEmpty) return v;
+    return null;
+  }
+
+  /// `minimumAmount` of a [ApiErrorCodes.payoutBelowMinimum] error.
+  String? get minimumAmount => decimalDetail('minimumAmount');
+
+  /// `availableAmount` of a [ApiErrorCodes.payoutExceedsAvailable] error.
+  String? get availableAmount => decimalDetail('availableAmount');
+
+  /// HTTP 413: the upload is above the server's size limit (e.g. an ID image
+  /// over 10 MB, row 163). Newer APIs send
+  /// [ApiErrorCodes.verificationDocumentTooLarge] with `maxBytes`; older
+  /// ones (and the upload middleware) send a 413 without a [code], so check
+  /// this rather than the code.
+  bool get isPayloadTooLarge => statusCode == 413;
+
+  /// `maxBytes` of a [ApiErrorCodes.verificationDocumentTooLarge] error;
+  /// `null` when absent (fall back to `VerificationDocumentRules.maxBytes`).
+  int? get maxBytes => intDetail('maxBytes');
+
+  /// `offerExpiresAt` of an [ApiErrorCodes.offerExpired] error, when sent.
+  DateTime? get offerExpiresAt {
+    final v = details['offerExpiresAt'];
+    return v is String ? DateTime.tryParse(v) : null;
+  }
+
+  /// `from` of an [ApiErrorCodes.illegalTransition] error: the task's
+  /// committed state; `null` when absent or unknown.
+  ErrandStatus? get transitionFrom => ErrandStatus.tryFromWire(details['from']);
+
+  /// `to` of an [ApiErrorCodes.illegalTransition] error.
+  ErrandStatus? get transitionTo => ErrandStatus.tryFromWire(details['to']);
 
   /// Session-level 401 (no [code]): the app signs the user out. Coded 401s
   /// such as `otp_incorrect` are not session failures.
@@ -198,8 +239,17 @@ abstract final class ApiErrorCodes {
   /// it (409, admin re-quote). Details: `paymentId`, `paymentStatus`.
   static const paymentInProgress = 'payment_in_progress';
 
-  /// The task's state does not allow this transition (409).
+  /// The task's state does not allow this transition (409), e.g. it moved
+  /// on (another actor, a lost race, an expired offer). Details: `from`,
+  /// `to` ([NitumeApiException.transitionFrom] / `transitionTo`). Reload
+  /// the task.
   static const illegalTransition = 'illegal_transition';
+
+  /// Runner accept (RUNNER_ASSIGNED → RUNNER_EN_ROUTE) after the offer's
+  /// deadline (409, rows 141, 150), even before the task shows EXPIRED.
+  /// Details: `offerExpiresAt` ([NitumeApiException.offerExpiresAt]).
+  /// Remove the offer and reload.
+  static const offerExpired = 'offer_expired';
 
   /// Someone else changed the task at the same time; reload and retry (409).
   static const concurrentModification = 'concurrent_modification';
@@ -297,4 +347,73 @@ abstract final class ApiErrorCodes {
   /// Admin side (409, row 82): the payout receipt of a refunded review is
   /// final.
   static const refundPayoutLocked = 'refund_payout_locked';
+
+  /// `POST /runners/me/payout-requests`: the amount is below the
+  /// ops-configured minimum (400, row 117). Details: `minimumAmount`
+  /// ([NitumeApiException.minimumAmount]).
+  static const payoutBelowMinimum = 'payout_below_minimum';
+
+  /// `POST /runners/me/payout-requests`: the amount is above what is
+  /// available (400). Details: `availableAmount`
+  /// ([NitumeApiException.availableAmount]).
+  static const payoutExceedsAvailable = 'payout_exceeds_available';
+
+  /// `POST /runners/me/payout-requests`: a request is already open (409,
+  /// one at a time, row 117). Details: `requestId`.
+  static const payoutRequestOpen = 'payout_request_open';
+
+  /// `POST /runners/me/payout-requests`: the account has no sign-in phone
+  /// to pay to (409, row 118). Send the runner to Support.
+  static const payoutDestinationMissing = 'payout_destination_missing';
+
+  /// `POST /runners/me/verifications/documents`: the type is not
+  /// `government_id` or `selfie` (400).
+  static const verificationTypeNotUploadable =
+      'verification_type_not_uploadable';
+
+  /// `POST /runners/me/verifications/documents`: not a JPEG, PNG, WebP or
+  /// HEIC image (400). Details: `allowed`.
+  static const verificationDocumentTypeInvalid =
+      'verification_document_type_invalid';
+
+  /// `POST /runners/me/verifications/documents`: no file or an empty file
+  /// (400).
+  static const verificationDocumentEmpty = 'verification_document_empty';
+
+  /// `POST /runners/me/verifications` for an ID or selfie, or with a storage
+  /// key (400, row 154): upload the image with
+  /// `RunnerAccountRepository.uploadVerificationDocument` instead.
+  static const verificationDocumentUploadRequired =
+      'verification_document_upload_required';
+
+  /// `GET /runners/me/earnings`: a bad date, `from` after `to`, or more than
+  /// 366 days (400). Details: `from`, `to`.
+  static const earningsRangeInvalid = 'earnings_range_invalid';
+
+  /// Reimbursement claim on a task that did not end CANCELLED or FAILED
+  /// (409, row 106). Details: `status`.
+  static const reimbursementClaimNotAllowed = 'reimbursement_claim_not_allowed';
+
+  /// Reimbursement claim: no item amount was paid to Nitume on the task
+  /// (409).
+  static const noItemAmountPaid = 'no_item_amount_paid';
+
+  /// Reimbursement claim: an item reimbursement line already exists for the
+  /// task (409). Details: `lineId`. Reload and show the existing line.
+  static const reimbursementAlreadyRecorded = 'reimbursement_already_recorded';
+
+  /// Reimbursement claim without the runner's own `receipt` evidence on the
+  /// task (400).
+  static const receiptRequired = 'receipt_required';
+
+  /// Reimbursement claim above the cap (400, rows 105, 108, 135). Details:
+  /// `cap`, `itemPaidToNitume`, `maxPurchaseAdvance` (decimal strings; read
+  /// with [NitumeApiException.decimalDetail]).
+  static const reimbursementExceedsCap = 'reimbursement_exceeds_cap';
+
+  /// `POST /runners/me/verifications/documents`: the image is above the
+  /// size limit (413, row 163). Details: `maxBytes`
+  /// ([NitumeApiException.maxBytes]). Older APIs send the 413 without this
+  /// code; [NitumeApiException.isPayloadTooLarge] covers both.
+  static const verificationDocumentTooLarge = 'verification_document_too_large';
 }

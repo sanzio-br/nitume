@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart' show DioMediaType, FormData, MultipartFile;
+
 import '../api/nitume_api_client.dart';
 import '../models/enums.dart';
 import '../models/errand.dart';
@@ -14,8 +16,8 @@ import 'errand_repository.dart';
 /// R-19. The signed-in runner's account (`/runners/me*`), endpoints that
 /// exist on `main`.
 ///
-/// Not here yet: job offers / accept / decline (RA-1, owner row 113) and
-/// the payout ledger (RA-14, in progress on another branch).
+/// Not here yet: job offers / decline (RA-1, owner row 113). The payout
+/// ledger and payout requests are on `RunnerPayoutRepository`.
 class RunnerAccountRepository {
   RunnerAccountRepository(this._api);
 
@@ -41,18 +43,83 @@ class RunnerAccountRepository {
           .map(RunnerVerification.fromJson)
           .toList();
 
-  /// `POST /runners/me/verifications`: creates a `pending` record.
-  /// [documentKey] is the stored document's key (one key only today; the
-  /// document upload itself is RA-7, not built).
-  Future<RunnerVerification> addVerification(
+  /// `POST /runners/me/verifications`: creates a `pending` record without an
+  /// image (e.g. payment identity). ID and selfie images go through
+  /// [uploadVerificationDocument]; the API refuses them here with 400
+  /// `verification_document_upload_required` (row 154).
+  Future<RunnerVerification> addVerification(RunnerVerificationType type) {
+    if (VerificationDocumentRules.uploadableTypes.contains(type)) {
+      throw ArgumentError.value(
+        type,
+        'type',
+        'Upload ID and selfie images with uploadVerificationDocument',
+      );
+    }
+    return _api
+        .postMap(
+          '/runners/me/verifications',
+          data: {'verificationType': type.wire},
+        )
+        .then(RunnerVerification.fromJson);
+  }
+
+  /// `POST /runners/me/verifications/documents` (multipart: `file` +
+  /// `verificationType`): stores one ID side or selfie in restricted storage
+  /// and creates a `pending` record (rows 125, 154). One call per image: ID
+  /// front and back are two calls with
+  /// [RunnerVerificationType.governmentId].
+  ///
+  /// Throws [ArgumentError] before sending when [type] is not uploadable,
+  /// [bytes] is empty or above [VerificationDocumentRules.maxBytes] (row
+  /// 163), or [contentType] is not an accepted image type. API errors
+  /// (`NitumeApiException.code`): `verification_type_not_uploadable`,
+  /// `verification_document_type_invalid`, `verification_document_empty`;
+  /// a 413 above the server limit (`NitumeApiException.isPayloadTooLarge`;
+  /// code `verification_document_too_large` with `maxBytes` when sent).
+  Future<RunnerVerification> uploadVerificationDocument(
     RunnerVerificationType type, {
-    String? documentKey,
-  }) => _api
-      .postMap(
-        '/runners/me/verifications',
-        data: {'verificationType': type.wire, 'documentS3Key': ?documentKey},
-      )
-      .then(RunnerVerification.fromJson);
+    required Uint8List bytes,
+    required String contentType,
+    String? filename,
+  }) {
+    if (!VerificationDocumentRules.uploadableTypes.contains(type)) {
+      throw ArgumentError.value(type, 'type', 'Only ID and selfie images');
+    }
+    if (!VerificationDocumentRules.fitsSizeLimit(bytes.length)) {
+      throw ArgumentError.value(
+        bytes.length,
+        'bytes',
+        'must be 1 byte to ${VerificationDocumentRules.maxBytes} bytes',
+      );
+    }
+    if (!VerificationDocumentRules.isAcceptedContentType(contentType)) {
+      throw ArgumentError.value(
+        contentType,
+        'contentType',
+        'must be a JPEG, PNG, WebP or HEIC image',
+      );
+    }
+    final form = FormData.fromMap({
+      'verificationType': type.wire,
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: filename ?? '${type.wire}${_extensionFor(contentType)}',
+        contentType: DioMediaType.parse(contentType),
+      ),
+    });
+    return _api
+        .postMap('/runners/me/verifications/documents', data: form)
+        .then(RunnerVerification.fromJson);
+  }
+
+  static String _extensionFor(String contentType) =>
+      switch (contentType.split(';').first.trim().toLowerCase()) {
+        'image/png' => '.png',
+        'image/webp' => '.webp',
+        'image/heic' => '.heic',
+        'image/heif' => '.heif',
+        _ => '.jpg',
+      };
 
   /// `PUT /runners/me/skills` (1–20). Returns the saved skills. The skill
   /// vocabulary is RQ-3 (open).

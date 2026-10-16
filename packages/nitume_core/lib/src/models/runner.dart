@@ -92,21 +92,50 @@ class ErrandAssignment {
     required this.id,
     required this.status,
     required this.assignedAt,
+    this.offerExpiresAt,
     this.runner,
   });
 
   final String id;
 
-  /// `assigned` or `accepted`.
-  final AssignmentStatus status;
+  /// `assigned` (open offer) or `accepted`; `expired` once an offer lapsed.
+  /// `null` for a value this build does not know.
+  final AssignmentStatus? status;
   final DateTime? assignedAt;
+
+  /// Acceptance deadline of the offer (rows 114, 141, 150): after it the
+  /// runner can no longer accept (409 `offer_expired`). `null` on offers made
+  /// before deadlines existed (row 156): show no countdown and never remove
+  /// such an offer on the client. Kept for the record once accepted.
+  final DateTime? offerExpiresAt;
   final RunnerSummary? runner;
+
+  /// True when this is an open offer whose deadline has passed at [now]
+  /// (the offer card disappears). Always false without a deadline (row 156)
+  /// or once accepted.
+  bool offerLapsedAt(DateTime now) {
+    final deadline = offerExpiresAt;
+    return (status?.isOpenOffer ?? false) &&
+        deadline != null &&
+        !now.isBefore(deadline);
+  }
+
+  /// Time left to accept an open offer at [now], never negative; `null`
+  /// without a deadline or when the assignment is not an open offer (no
+  /// countdown, row 156).
+  Duration? offerTimeLeftAt(DateTime now) {
+    final deadline = offerExpiresAt;
+    if (deadline == null || !(status?.isOpenOffer ?? false)) return null;
+    final left = deadline.difference(now);
+    return left.isNegative ? Duration.zero : left;
+  }
 
   factory ErrandAssignment.fromJson(Map<String, dynamic> json) =>
       ErrandAssignment(
         id: json['id'] as String,
-        status: AssignmentStatus.fromWire(json['status'] as String),
+        status: AssignmentStatus.tryFromWire(json['status']),
         assignedAt: parseDate(json['assignedAt']),
+        offerExpiresAt: parseDate(json['offerExpiresAt']),
         runner: json['runner'] == null
             ? null
             : RunnerSummary.fromJson(asJsonMap(json['runner'])),

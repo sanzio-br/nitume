@@ -97,6 +97,14 @@ enum ErrandStatus {
   static ErrandStatus fromWire(String value) =>
       ErrandStatus.values.firstWhere((e) => e.wire == value);
 
+  /// `null` for unknown or absent values.
+  static ErrandStatus? tryFromWire(Object? value) {
+    for (final e in values) {
+      if (e.wire == value) return e;
+    }
+    return null;
+  }
+
   bool get isTerminal => this == cancelled || this == failed || this == expired;
 
   bool get isActive => !isTerminal && this != settled;
@@ -150,6 +158,10 @@ enum StatusHistoryActor {
       _fromWire(values, (e) => e.wire, v);
 }
 
+/// `errand_assignments.status`. On the errand, an open offer is
+/// [assigned] (admin offer, task RUNNER_ASSIGNED); the runner's accept
+/// (RUNNER_ASSIGNED → RUNNER_EN_ROUTE) makes it [accepted]; a lapsed offer
+/// is [expired] (rows 113, 141).
 enum AssignmentStatus {
   offered('offered'),
   accepted('accepted'),
@@ -160,8 +172,20 @@ enum AssignmentStatus {
   const AssignmentStatus(this.wire);
   final String wire;
 
+  /// Throws [FormatException] for unknown values; prefer [tryFromWire].
   static AssignmentStatus fromWire(String v) =>
       _fromWire(values, (e) => e.wire, v);
+
+  /// `null` for unknown or absent values (forward compatible).
+  static AssignmentStatus? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+
+  /// True for an offer the runner can still accept or decline.
+  bool get isOpenOffer => this == assigned || this == offered;
 }
 
 /// Runner verification tier. [label] is not defined in the design docs;
@@ -397,6 +421,13 @@ enum NotificationEventType {
 
   const NotificationEventType(this.wire, [this.status]);
   final String wire;
+
+  /// `errand.EXPIRED`: the task expired because no runner accepted in time
+  /// (rows 141, 150). Not an enum value yet: adding one would break the
+  /// apps' exhaustive switches until they gain a wildcard arm, so it parses
+  /// as `null` from [tryFromWire]. Read the state with
+  /// `AppNotification.announcedStatus` (gives [ErrandStatus.expired]).
+  static const errandExpiredWire = 'errand.EXPIRED';
 
   /// The errand state the notification announces; `null` for non-status
   /// events (price change, refund).

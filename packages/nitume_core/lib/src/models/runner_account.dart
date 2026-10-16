@@ -110,11 +110,13 @@ class RunnerMe {
   }
 }
 
-/// One verification record, `GET /runners/me/verifications`.
+/// One verification record, `GET /runners/me/verifications` and the
+/// document upload.
 ///
-/// The reviewer's note and the document key are not modelled: the runner
-/// never sees them (`v-onboard-pending`; RA-7 may add a runner-safe
-/// reason later).
+/// The reviewer's note is not modelled: the runner never sees it
+/// (`v-onboard-pending`). The API never returns the storage key (rows 125,
+/// 154); [hasDocument] says whether an image is still stored and
+/// [purgedAt] when it was deleted at the end of retention (row 144).
 class RunnerVerification {
   const RunnerVerification({
     required this.id,
@@ -122,6 +124,8 @@ class RunnerVerification {
     required this.status,
     this.createdAt,
     this.reviewedAt,
+    this.hasDocument = false,
+    this.purgedAt,
   });
 
   final String id;
@@ -131,6 +135,12 @@ class RunnerVerification {
   final VerificationStatus status;
   final DateTime? createdAt;
   final DateTime? reviewedAt;
+
+  /// True while an ID or selfie image is stored for this record.
+  final bool hasDocument;
+
+  /// When the image was purged (retention, rows 144, 154); `null` otherwise.
+  final DateTime? purgedAt;
 
   factory RunnerVerification.fromJson(Map<String, dynamic> json) =>
       RunnerVerification(
@@ -143,6 +153,8 @@ class RunnerVerification {
             VerificationStatus.pending,
         createdAt: parseDate(json['createdAt']),
         reviewedAt: parseDate(json['reviewedAt']),
+        hasDocument: json['hasDocument'] == true,
+        purgedAt: parseDate(json['purgedAt']),
       );
 
   /// Newest record per type (the list is newest first, so the first one
@@ -162,4 +174,42 @@ class RunnerVerification {
     }
     return out;
   }
+}
+
+/// Client-side rules for ID and selfie images sent with
+/// `RunnerAccountRepository.uploadVerificationDocument` (rows 154, 163).
+/// The API enforces the same rules; checking first saves the runner a
+/// failed upload.
+abstract final class VerificationDocumentRules {
+  /// Largest image accepted: 10 MB (row 163, `RUNNER_ID_MAX_UPLOAD_BYTES`).
+  /// Larger files get a 413.
+  static const maxBytes = 10 * 1024 * 1024;
+
+  /// Image types the API accepts (`verification_document_type_invalid`
+  /// otherwise).
+  static const contentTypes = {
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  };
+
+  /// Verification types that are uploaded as an image
+  /// (`verification_type_not_uploadable` otherwise). ID front and back are
+  /// two uploads of [RunnerVerificationType.governmentId].
+  static const uploadableTypes = {
+    RunnerVerificationType.governmentId,
+    RunnerVerificationType.selfie,
+  };
+
+  /// True when an image of [byteLength] bytes may be uploaded (not empty,
+  /// at most [maxBytes]).
+  static bool fitsSizeLimit(int byteLength) =>
+      byteLength > 0 && byteLength <= maxBytes;
+
+  /// True when [contentType] is one of [contentTypes] (case-insensitive,
+  /// parameters ignored).
+  static bool isAcceptedContentType(String contentType) =>
+      contentTypes.contains(contentType.split(';').first.trim().toLowerCase());
 }

@@ -21,6 +21,19 @@ class AppNotification {
 
   /// Typed [eventType]; `null` for values this client does not know.
   NotificationEventType? get event => NotificationEventType.tryFromWire(eventType);
+
+  /// The errand state an `errand.<STATUS>` notification announces, read
+  /// tolerantly from [eventType]: covers every typed [event] with a status
+  /// and also states without an enum value yet, such as `errand.EXPIRED`
+  /// ([NotificationEventType.errandExpiredWire] → [ErrandStatus.expired]).
+  /// `null` for other events and unknown states.
+  ErrandStatus? get announcedStatus {
+    final typed = event?.status;
+    if (typed != null) return typed;
+    const prefix = 'errand.';
+    if (!eventType.startsWith(prefix)) return null;
+    return ErrandStatus.tryFromWire(eventType.substring(prefix.length));
+  }
   final String title;
   final String? body;
   final String? errandId;
