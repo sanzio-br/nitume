@@ -37,12 +37,19 @@ export class RunnerJobsController {
   /**
    * Accept the offer = RUNNER_ASSIGNED -> RUNNER_EN_ROUTE (row 113), the
    * same transition as `PATCH /errands/:id/status { to: RUNNER_EN_ROUTE }`.
-   * 200 `{ job: RunnerJobView, history }`. Errors: 403 not the offered
-   * runner; 403 runner_not_verified (`verification`); 409 offer_expired
-   * (`offerExpiresAt`; `reason: task_deadline_passed` + `deadlineAt` when
-   * the task's deadline has passed, row 185); 409 runner_offline;
-   * 409 runner_busy; 409 purchase_limit_exceeded (`requiredPurchase`,
-   * `maxPurchaseAdvance`); 409 illegal_transition (not RUNNER_ASSIGNED).
+   * 200 `{ job: RunnerJobView, history }`. Checks, in the order the
+   * transition runs them (the first failing one answers):
+   * 1. 409 illegal_transition (`from`, `to`): the task is not RUNNER_ASSIGNED.
+   * 2. 409 offer_expired (`offerExpiresAt`): the sweep already closed this
+   *    runner's offer.
+   * 3. 403: not the runner of the open offer.
+   * 4. 409 offer_expired (`offerExpiresAt`): the offer deadline has passed.
+   * 5. 409 offer_expired (`reason: 'task_deadline_passed'`, `deadlineAt`,
+   *    `offerExpiresAt`): the task's customer deadline has passed (row 185).
+   * 6. 403 runner_not_verified (`verification`).
+   * 7. 409 runner_busy: already on an active job.
+   * 8. 409 runner_offline.
+   * 9. 409 purchase_limit_exceeded (`requiredPurchase`, `maxPurchaseAdvance`).
    */
   @Post('errands/:id/accept')
   @HttpCode(200)
