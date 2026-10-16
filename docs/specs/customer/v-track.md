@@ -3,13 +3,13 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 257–284 (`#v-track`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-owner-answers`
-- Status: matches-design (re-audit 2026-10-16, `feat/customer-expired-next-action` @ `9978345`: EXPIRED copy and `Start a new task` PASS)
+- Status: partial (row 176, 2026-10-16: RUNNER_ASSIGNED is shown as `Finding a runner` with no runner; see Current vs design. Earlier: re-audit 2026-10-16, `feat/customer-expired-next-action` @ `9978345`, EXPIRED copy and `Start a new task` PASS)
 
 ## Purpose
 Watch the assigned runner on a map, see ETA and runner identity, follow the status timeline, and act on what the task needs (price change, item payment, evidence review).
 
 ## Entry / exit
-- Entry: tab bar "Track"; "Track live →" on Home; after a successful payment (`v-payment`, OA-21); push notifications (runner assigned / en route / arrived); `v-task-detail` "Track live".
+- Entry: tab bar "Track"; "Track live →" on Home; after a successful payment (`v-payment`, OA-21); push notifications (`Runner assigned`, sent once a runner accepts, row 176 / arrived); `v-task-detail` "Track live".
 - Exits:
   - Bell → push `v-notifications`.
   - "Price change" → open the `v-price-auth` modal.
@@ -29,7 +29,7 @@ PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAIT
    - Start pin (blue) = runner start / pickup; end pin (green) = task site / drop-off; runner dot 16px overall (border-box: green fill inside a 3px white ring, mockup `nitume_customer_app.html:18, :98`), animated between pings; dashed blue route.
    - Map body: Google Maps (`google_maps_flutter`, row 30) through `LiveTrackingMap(mapBuilder:)`; map gestures on, no map-type or my-location controls; camera fits the pins and the runner marker with 40 padding and refits when the runner marker leaves the visible area. No extra map buttons (the mockup draws none).
    - Loading, or a build without a maps key: blue-050 `#E9EDF3` fill (replaces mockup `#EAEEF4`, OA-14); no grid, no image asset.
-   - **Runner position window (rows 27, 65; `_shared.md` §10)**: the runner marker and ETA appear only in RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED and IN_PROGRESS, only for the current assignment, and only when the tracking snapshot or `location:update` provides a position. On AWAITING_CUSTOMER or any terminal state, on reassignment, on `errand:access_revoked` for the errand, or on a 403/404 from tracking, remove the marker and ETA immediately; never show a last-known position outside the window. Without a position, show only the task pins and the caption below.
+   - **Runner position window (rows 27, 65; `_shared.md` §10)**: the runner marker and ETA appear only in RUNNER_EN_ROUTE, ARRIVED and IN_PROGRESS (RUNNER_ASSIGNED is excluded since row 176: the offered runner has not accepted; proposed CQ-176b, `_shared.md` §6.1), only for the current assignment, and only when the tracking snapshot or `location:update` provides a position. On AWAITING_CUSTOMER or any terminal state, on reassignment, on `errand:access_revoked` for the errand, or on a 403/404 from tracking, remove the marker and ETA immediately; never show a last-known position outside the window. Without a position, show only the task pins and the caption below.
 4. Runner info card (C-21 inside C-07, padding 15, margin `0 20 14`): avatar 36 (initials from the runner's name), name 13.5/600 = the API short name as returned (`Brian K.`, row 40; `Your runner` when absent), meta Fira Code 11 slate-600 `Verified · 4.9`, trailing status chip (C-05 per `_shared.md` §6: En route = amber).
 5. Item-payment notice (C-40 with a trailing C-03 small button), margin `0 20 14`. Only when an item amount is due: route `send_to_runner` (paid to Nitume by STK, row 42), or route `merchant_direct` with merchant details available (row 43). Includes an outstanding price-change difference (row 44).
 6. Action row (margin `0 20 14`, gap 8): equal-width small outline buttons (C-03 small, pill). Each button is shown only when relevant; with one button it takes the full width; with none the row is hidden:
@@ -57,17 +57,18 @@ PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAIT
 - Status chip: `En route` (amber, OA-13)
 - Actions: `Price change`, `Review evidence` (mockup text without the emoji; leading icons instead, Q3)
 - Section: `Timeline`
+- Timeline titles (row 176, `_shared.md` §6.1, proposed): from `customerTimelineTitle()`: the RUNNER_ASSIGNED history row is not shown; the RUNNER_EN_ROUTE row reads `Runner assigned` (acceptance time); the pending next step after PAYMENT_CONFIRMED / RUNNER_ASSIGNED is `Runner assigned`. Re-offers never add timeline rows.
 - Timeline sample (mockup): `Task accepted` 10:03 AM (done); `Runner en route` 10:12 AM (done); `Arrival at location` `Expected 10:28 AM` (pending); `Evidence upload` `Pending` (pending)
 
 States (proposed):
 - No errand in the Track set: C-33 `No task in progress.` + primary `Start a new task` → `v-new-category`.
-- PAYMENT_CONFIRMED: map shows the task pin only; chip `Finding a runner`; ETA chip hidden; runner card replaced by a C-07 card with 13 slate-600 `We're finding a runner for your task.`
+- PAYMENT_CONFIRMED **and RUNNER_ASSIGNED** (row 176; an offer may be open, declined, lapsed or re-offered, the customer sees none of it): map shows the task pin only; chip `Finding a runner`; ETA chip hidden; no runner marker; runner card replaced by a C-07 card with 13 slate-600 `We're finding a runner for your task.` No runner name anywhere until RUNNER_EN_ROUTE.
 - No runner position yet (inside the window): caption under the map 12 slate-600 `Live location appears when your runner is on the way.`
 - AWAITING_CUSTOMER (window closed): no runner marker, no ETA chip, no caption; the action row shows `Review evidence`.
 - ARRIVED: ETA chip `Arrived`.
 - Socket disconnected: 12 slate-600 line under the map `Reconnecting…`; the map keeps the last position (still inside the window) while polling runs.
 - Item-payment notice: `Pay the item amount: KSh 40,000` (amount in Fira Code) + button `View details` → `x-merchant-payment` (variant A for `merchant_direct`, variant B STK for `send_to_runner`).
-- FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner accepted your task in time.` (EXPIRED; kept as the build default, RQ-29 / BOARD row 174 open), `We're reviewing your report.`) and outline `View task` → `v-task-detail`. EXPIRED adds a C-04 text button `Start a new task` → `v-new-category` under `View task` (the next action, owner 2026-10-16). No refund wording on this card: the refund review (paid tasks, row 102) is shown on `v-task-detail` only.
+- FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner accepted your task in time.` (EXPIRED; row 174, decided: built copy kept), `We're reviewing your report.`) and outline `View task` → `v-task-detail`. EXPIRED adds a C-04 text button `Start a new task` → `v-new-category` under `View task` (the next action, owner 2026-10-16). No refund wording on this card: the refund review (paid tasks, row 102) is shown on `v-task-detail` only.
 - Load error: C-33 `Couldn't load your task.` + `Try again`.
 
 ## Numeric fields (Fira Code)
@@ -94,13 +95,20 @@ States (proposed):
 - Off-palette map colours and shadows: OA-14.
 
 ## Open questions (non-blocking; build default given)
-- RQ-29 (BOARD row 174, row 158 follow-up): the owner set the `errand.EXPIRED` notification body word for word (`v-notifications.md`). Build default (design-auditor proposal, not an owner answer): the EXPIRED line `No runner accepted your task in time.` and the action `Start a new task` stay as built (same meaning as the owner's sentence, short enough for a status line; `Start a new task` is the app's wizard wording, "submit a new request" is notification prose). Alternative if the owner wants the screens to echo the notification: `No runner was available to accept your task in time.` (button unchanged). No rebuild unless the owner picks the alternative.
+- None for the EXPIRED copy (row 174 decided 2026-10-16).
+- CQ-176a (row 176): the RUNNER_EN_ROUTE chip stays `En route` (amber), with `Runner assigned` as the acceptance step and notification (proposed); alternative: chip `Runner assigned`.
+- CQ-176b (row 176): no runner card, marker or ETA during RUNNER_ASSIGNED (proposed; narrows row 27's window in practice).
 - Q1: Timeline mixes states and events ("Task accepted", "Evidence upload"). Default: status history rows with §6 labels plus evidence events, next expected state as pending.
 - Q2: Multiple active errands. Default: chip selector above the map.
 - Q3: Emoji in buttons vs icons. Default: icons.
 - Q4: Show the action buttons only when relevant (default) or always (mockup).
 
 ## Current vs design
+Spec update 2026-10-16 (round 10, row 176), `main`:
+1. blocker (core-ui CC-176): chip and runner-card chip read `Runner assigned` in RUNNER_ASSIGNED (`status_presentation.dart:25-26`); must be `Finding a runner`.
+2. blocker (flutter-customer): `track_tab.dart:454` treats only PAYMENT_CONFIRMED as finding (`finding = status == ErrandStatus.paymentConfirmed`) and `runnerWindow` (`:23-28`) includes RUNNER_ASSIGNED, so the offered runner's card, marker and ETA show before acceptance. Treat RUNNER_ASSIGNED as finding and drop it from `runnerWindow`.
+3. minor (flutter-customer, after CC-176): timeline titles (`:677`, `:703`) use `statusPresentation(...).label`, which would show `Finding a runner` twice; use `customerTimelineTitle()` and skip RUNNER_ASSIGNED history rows and the `_happyPath` step (`:31-39`).
+
 Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. `errand:access_revoked` stops the watch and clears marker and ETA; schematic fallback dot 16 px overall (earlier minor closed). Minor: no test for the access-revoked path.
 
 Re-audit round 2, 2026-10-09, `feat/customer-integrations` @ `7192a77`: Runner marker confirmed: 16 px overall including the 3 px ring (the mockup sets `box-sizing: border-box`, `nitume_customer_app.html:18, :98`); the round-1 minor is withdrawn. Minor: the app's no-key fallback `SchematicMap` draws the dot at 22 px overall (`widgets/schematic_map.dart`, dev builds only).
