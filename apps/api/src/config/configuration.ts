@@ -59,6 +59,10 @@ export interface AppConfig {
     scheduledAfterHours: number;
     disputeWindowHours: number;
   };
+  runnerPayouts: {
+    /** Smallest payout a runner may request, KES (row 117: configurable; value not set by the owner yet). */
+    minimumRequestAmount: number;
+  };
   matching: {
     /** Acceptance window of an admin-made offer (rows 114, 141). */
     adminOfferWindowSeconds: number;
@@ -228,6 +232,11 @@ export const configuration = (): AppConfig => ({
     // TODO(owner): dispute window length is not defined anywhere. After it,
     // the system moves COMPLETED -> CONFIRMED (payout eligibility).
     disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
+  },
+  // Row 117: runners request payouts above a configurable minimum. TODO(owner):
+  // no amount is set in the documents; 0 means no minimum beyond KSh 0.01.
+  runnerPayouts: {
+    minimumRequestAmount: Number.parseFloat(process.env.RUNNER_PAYOUT_REQUEST_MINIMUM_KES ?? '0') || 0,
   },
   // Row 114 (owner, 2026-10-13): admin-created offers stay open 10 minutes.
   // Row 141: an offer not accepted by then expires and the task goes EXPIRED.

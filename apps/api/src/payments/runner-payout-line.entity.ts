@@ -171,6 +171,13 @@ export class RunnerPayoutLine {
   @JoinColumn({ name: 'receiptEvidenceId', foreignKeyConstraintName: 'FK_runner_payout_lines_receipt' })
   receiptEvidence?: Evidence;
 
+  /**
+   * Obligations paid on a runner payout request (rows 117, 153): the
+   * request; set only when the line is marked paid. Null otherwise.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  payoutRequestId: string | null;
+
   /** Adjustments: the obligation they change. Null on obligations. */
   @Column({ type: 'uuid', nullable: true })
   relatedLineId: string | null;

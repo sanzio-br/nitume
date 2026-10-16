@@ -238,3 +238,52 @@ export class CreateRunnerPayoutCorrectionDto {
   @IsUUID()
   expectedLatestCorrectionId: string | null;
 }
+
+/** POST /runners/me/payout-requests (rows 117, 153). The destination is set by the server (row 118). */
+export class CreatePayoutRequestDto {
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount: number;
+}
+
+export class ListMyPayoutRequestsQueryDto {
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+const REQUEST_STATUSES = ['requested', 'paid', 'rejected'] as const;
+
+export class ListPayoutRequestsQueryDto extends ListMyPayoutRequestsQueryDto {
+  @IsOptional()
+  @IsIn(REQUEST_STATUSES)
+  status?: (typeof REQUEST_STATUSES)[number];
+
+  @IsOptional()
+  @IsUUID()
+  runnerProfileId?: string;
+}
+
+export class CountPayoutRequestsQueryDto {
+  @IsOptional()
+  @IsIn(REQUEST_STATUSES)
+  status?: (typeof REQUEST_STATUSES)[number];
+}
+
+/** POST /runner-payout-requests/:id/pay: whole payable lines of the runner, total at most the request. */
+export class PayPayoutRequestDto extends MarkRunnerPayoutsPaidDto {}
+
+/** POST /runner-payout-requests/:id/reject: reason shown to the runner (5-300, checked by the service). */
+export class RejectPayoutRequestDto {
+  @IsString()
+  @MaxLength(1000)
+  note: string;
+}

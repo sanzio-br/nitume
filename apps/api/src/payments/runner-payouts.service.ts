@@ -32,6 +32,7 @@ import {
 } from './payout-references';
 import { RefundTrigger } from './refund-review.entity';
 import { RefundsService } from './refunds.service';
+import { RunnerPayoutRequest } from './runner-payout-request.entity';
 import { TaskExposureOverride, TaskExposureOverrideSource } from './task-exposure-override.entity';
 import {
   TaskExposure,
@@ -417,21 +418,32 @@ export interface PayoutFeedItem {
   payableAt: Date | null;
   /** payout / resent_payout: when it was sent. Job lines: their original payout time. */
   paidAt: Date | null;
+  /**
+   * payout entries and job lines paid on a runner payout request (rows 117,
+   * 153): the request id. Null otherwise.
+   */
+  payoutRequestId: string | null;
+  /** payout entries paid on a request: the amount the runner asked for. Null otherwise. */
+  requestedAmount: string | null;
 }
 
 type FeedErrand = { reference: string; title: string | null };
+type FeedEntry = Omit<PayoutFeedItem, 'payoutRequestId' | 'requestedAmount'> &
+  Partial<Pick<PayoutFeedItem, 'payoutRequestId' | 'requestedAmount'>>;
 
 /** Pure: the runner's payout feed, newest first, from obligations and their adjustments. */
 export const payoutFeedOf = (
   rows: { line: RunnerPayoutLine; adjustments: RunnerPayoutLine[] }[],
   errands: Map<string, FeedErrand>,
+  /** Requested amount per payout request id (rows 117, 153). */
+  requests: Map<string, string> = new Map(),
 ): PayoutFeedItem[] => {
   const base = (errandId: string | null) => ({
     errandId,
     errandTitle: errandId ? (errands.get(errandId)?.title ?? null) : null,
     errandReference: errandId ? (errands.get(errandId)?.reference ?? null) : null,
   });
-  const items: PayoutFeedItem[] = [];
+  const items: FeedEntry[] = [];
   const payouts = new Map<string, RunnerPayoutLine[]>();
   for (const { line, adjustments } of rows) {
     const pos = linePositionOf(line, adjustments);
@@ -446,6 +458,7 @@ export const payoutFeedOf = (
       relatedLineId: null,
       lineIds: [],
       reviewReason: pos.status === S.ON_HOLD ? line.reviewReason : null,
+      payoutRequestId: line.payoutRequestId ?? null,
       createdAt: line.createdAt,
       payableAt: approved && pos.status !== S.REJECTED ? (line.decidedAt ?? line.createdAt) : null,
       paidAt: line.paidAt,
@@ -493,12 +506,16 @@ export const payoutFeedOf = (
       relatedLineId: null,
       lineIds: ids,
       reviewReason: null,
+      payoutRequestId: group[0].payoutRequestId ?? null,
+      requestedAmount: group[0].payoutRequestId ? (requests.get(group[0].payoutRequestId) ?? null) : null,
       createdAt: group[0].paidAt as Date,
       payableAt: null,
       paidAt: group[0].paidAt,
     });
   }
-  return items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
+  return items
+    .map((i): PayoutFeedItem => ({ ...i, payoutRequestId: i.payoutRequestId ?? null, requestedAmount: i.requestedAmount ?? null }))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
 };
 
 /**
@@ -975,9 +992,20 @@ export class RunnerPayoutsService implements OnModuleInit {
       this.adjustmentsOf(obligations.map((l) => l.id)),
       this.errandSummaries(obligations.map((l) => l.errandId)),
     ]);
+    const requestIds = [...new Set(obligations.map((l) => l.payoutRequestId).filter((v): v is string => !!v))];
+    const requests = new Map(
+      requestIds.length === 0
+        ? []
+        : (
+            await this.lines.manager
+              .getRepository(RunnerPayoutRequest)
+              .find({ where: { id: In(requestIds) }, select: { id: true, requestedAmount: true } })
+          ).map((r) => [r.id, money(r.requestedAmount)] as [string, string]),
+    );
     let feed = payoutFeedOf(
       obligations.map((line) => ({ line, adjustments: adjustments.get(line.id) ?? [] })),
       errands,
+      requests,
     );
     if (opts.kinds && opts.kinds.length > 0) {
       const kinds = new Set<string>(opts.kinds);
@@ -999,6 +1027,22 @@ export class RunnerPayoutsService implements OnModuleInit {
           ? Buffer.from(`${last.createdAt.toISOString()}::${last.id}`, 'utf-8').toString('base64')
           : null,
     };
+  }
+
+  /**
+   * The runner's available amount now (payable lines + reversed payouts not
+   * re-sent), as on `GET /runners/me/earnings` (rows 117, 153).
+   */
+  async availableFor(runnerProfileId: string, manager?: EntityManager): Promise<number> {
+    const repo = manager ? manager.getRepository(RunnerPayoutLine) : this.lines;
+    const obligations = await repo.find({ where: { runnerProfileId, kind: In([...OBLIGATION_LINE_TYPES]) } });
+    const adjustments = await this.adjustmentsOf(obligations.map((l) => l.id), manager);
+    return Number(
+      earningsSummaryOf(
+        obligations.map((line) => ({ line, adjustments: adjustments.get(line.id) ?? [] })),
+        earningsRangeOf({}),
+      ).availableAmount,
+    );
   }
 
   /**
@@ -1320,60 +1364,78 @@ export class RunnerPayoutsService implements OnModuleInit {
     adminUserId: string,
   ): Promise<{ items: AdminRunnerPayoutItem[] }> {
     const ids = [...new Set(lineIds)].sort();
-    const reference = normalizeReference(payoutReference);
     await this.lines.manager.transaction(async (manager) => {
-      const repo = manager.getRepository(RunnerPayoutLine);
-      const rows = await repo.find({
-        where: { id: In(ids), kind: In([...OBLIGATION_LINE_TYPES]) },
-        order: { id: 'ASC' },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (rows.length !== ids.length) {
-        throw new NotFoundException('Runner payout line not found');
-      }
-      for (const line of rows) {
-        if (line.status === S.PAID) {
-          throw new ApiError(
-            HttpStatus.CONFLICT,
-            'runner_payout_locked',
-            'This line is already paid; its payout can only change through a correction',
-            { lineId: line.id, payoutReference: line.payoutReference },
-          );
-        }
-        if (line.status !== S.PAYABLE) {
-          throw new ApiError(
-            HttpStatus.CONFLICT,
-            'runner_payout_not_payable',
-            `Only payable lines can be paid (status ${line.status})`,
-            { lineId: line.id, status: line.status },
-          );
-        }
-      }
-      const runnerIds = new Set(rows.map((r) => r.runnerProfileId));
-      if (runnerIds.size !== 1) {
-        throw new ApiError(
-          HttpStatus.BAD_REQUEST,
-          'runner_payout_mixed_runners',
-          'One payout covers lines of one runner only',
-        );
-      }
-      await this.assertRunnerReferenceFree(manager, reference, {
-        runnerProfileId: rows[0].runnerProfileId,
-        obligationIds: ids,
-        isReversal: false,
-      });
-      const paidAt = new Date();
-      for (const line of rows) {
-        await repo.update(line.id, {
-          status: S.PAID,
-          payoutReference: reference,
-          paidAt,
-          paidByUserId: adminUserId,
-        });
-      }
+      await this.markPaidIn(manager, ids, payoutReference, adminUserId, null);
     });
     const saved = await this.lines.find({ where: { id: In(ids) }, order: { createdAt: 'DESC' } });
     return { items: await this.enrich(saved) };
+  }
+
+  /**
+   * `markPaid` inside the caller's transaction (also used to pay a runner
+   * payout request, rows 117, 153: `payoutRequestId` links the lines). Locks
+   * the lines; returns them as they were before the update.
+   */
+  async markPaidIn(
+    manager: EntityManager,
+    lineIds: string[],
+    payoutReference: string,
+    adminUserId: string,
+    payoutRequestId: string | null,
+  ): Promise<RunnerPayoutLine[]> {
+    const ids = [...new Set(lineIds)].sort();
+    const reference = normalizeReference(payoutReference);
+    const repo = manager.getRepository(RunnerPayoutLine);
+    const rows = await repo.find({
+      where: { id: In(ids), kind: In([...OBLIGATION_LINE_TYPES]) },
+      order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (rows.length !== ids.length) {
+      throw new NotFoundException('Runner payout line not found');
+    }
+    for (const line of rows) {
+      if (line.status === S.PAID) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'runner_payout_locked',
+          'This line is already paid; its payout can only change through a correction',
+          { lineId: line.id, payoutReference: line.payoutReference },
+        );
+      }
+      if (line.status !== S.PAYABLE) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'runner_payout_not_payable',
+          `Only payable lines can be paid (status ${line.status})`,
+          { lineId: line.id, status: line.status },
+        );
+      }
+    }
+    const runnerIds = new Set(rows.map((r) => r.runnerProfileId));
+    if (runnerIds.size !== 1) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'runner_payout_mixed_runners',
+        'One payout covers lines of one runner only',
+      );
+    }
+    await this.assertRunnerReferenceFree(manager, reference, {
+      runnerProfileId: rows[0].runnerProfileId,
+      obligationIds: ids,
+      isReversal: false,
+    });
+    const paidAt = new Date();
+    for (const line of rows) {
+      await repo.update(line.id, {
+        status: S.PAID,
+        payoutReference: reference,
+        paidAt,
+        paidByUserId: adminUserId,
+        ...(payoutRequestId ? { payoutRequestId } : {}),
+      });
+    }
+    return rows;
   }
 
   /**

@@ -984,3 +984,21 @@ describe('rows 142, 151 (N-21): purchase-limit exception', () => {
     expect(b.overrides.map((o) => (o as { source: string }).source)).toEqual(['runner_reimbursement', 'purchase_limit']);
   });
 });
+
+describe('rows 117, 153: payout feed entries carry the payout request', () => {
+  it('a payout made on a request shows payoutRequestId and requestedAmount', () => {
+    const paid = line({ status: S.PAID, payoutReference: 'SGH1', paidAt: PAID_AT, payoutRequestId: 'pr-1' });
+    const plain = line({ id: 'l-2', errandId: 'e-2', status: S.PAID, payoutReference: 'SGH2', paidAt: PAID_AT });
+    const feed = payoutFeedOf(
+      [
+        { line: paid, adjustments: [] },
+        { line: plain, adjustments: [] },
+      ],
+      new Map(),
+      new Map([['pr-1', '5000.00']]),
+    );
+    expect(feed.find((i) => i.id === 'payout:l-1')).toMatchObject({ kind: 'payout', payoutRequestId: 'pr-1', requestedAmount: '5000.00' });
+    expect(feed.find((i) => i.id === 'payout:l-2')).toMatchObject({ payoutRequestId: null, requestedAmount: null });
+    expect(feed.find((i) => i.id === 'l-1')).toMatchObject({ payoutRequestId: 'pr-1', requestedAmount: null });
+  });
+});

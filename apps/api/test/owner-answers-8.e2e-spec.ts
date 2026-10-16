@@ -112,6 +112,14 @@ describe('Owner answers 8 (e2e)', () => {
            (SELECT id FROM "customer_profiles" WHERE "userId" = ANY($1))`,
         [userIds],
       );
+      // Payout requests are append-only (row 153): lift the trigger for the cleanup only.
+      await ds.query('ALTER TABLE "runner_payout_requests" DISABLE TRIGGER USER');
+      await ds.query(
+        `DELETE FROM "runner_payout_requests" WHERE "runnerProfileId" IN
+           (SELECT id FROM "runner_profiles" WHERE "userId" = ANY($1))`,
+        [userIds],
+      );
+      await ds.query('ALTER TABLE "runner_payout_requests" ENABLE TRIGGER USER');
       await ds.query('DELETE FROM "runner_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "customer_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "users" WHERE "id" = ANY($1)', [userIds]);
@@ -300,6 +308,121 @@ describe('Owner answers 8 (e2e)', () => {
       await expect(
         db().query(`UPDATE "task_exposure_overrides" SET note = 'changed later' WHERE id = $1`, [row.id]),
       ).rejects.toThrow(/append-only/);
+    });
+  });
+
+  describe('rows 117, 146, 153 (RA-15, N-17): runner payout requests', () => {
+    it('runner requests, ops pay whole lines below the request: PAID with both amounts; the rest stays available', async () => {
+      const first = await paidAndAssigned();
+      await toConfirmed(first);
+      // A second confirmed task for the same runner.
+      const customer2 = await makeUser(UserRole.CUSTOMER);
+      const errand2 = await createErrand(customer2, buyForMe);
+      await submitAndQuote(customer2, first.admin, errand2.id);
+      await setStatus(customer2, errand2.id, 'ACCEPTED');
+      await pay(customer2, errand2.id, { merchantRoute: 'send_to_runner' });
+      await http()
+        .post(`/api/v1/errands/${errand2.id}/assign`)
+        .set(bearer(first.admin.token))
+        .send({ runnerProfileId: first.runner.profileId })
+        .expect(201);
+      await toConfirmed({ customer: customer2, runner: first.runner, errand: errand2 });
+      const { runner, admin } = first;
+
+      const summary = await http().get('/api/v1/runners/me/payout-requests/summary').set(bearer(runner.token)).expect(200);
+      expect(summary.body).toMatchObject({ availableAmount: '1600.00', openRequest: null });
+      expect(summary.body.minimumAmount).toEqual(expect.any(String));
+      const over = await http()
+        .post('/api/v1/runners/me/payout-requests')
+        .set(bearer(runner.token))
+        .send({ amount: 1600.01 })
+        .expect(400);
+      expect(over.body).toMatchObject({ code: 'payout_exceeds_available', availableAmount: '1600.00' });
+      const key = `e2e-${Date.now()}`;
+      const created = await http()
+        .post('/api/v1/runners/me/payout-requests')
+        .set(bearer(runner.token))
+        .set('Idempotency-Key', key)
+        .send({ amount: 1500 })
+        .expect(201);
+      expect(created.body).toMatchObject({ requestedAmount: '1500.00', paidAmount: null, status: 'requested' });
+      const replay = await http()
+        .post('/api/v1/runners/me/payout-requests')
+        .set(bearer(runner.token))
+        .set('Idempotency-Key', key)
+        .send({ amount: 1500 })
+        .expect(201);
+      expect(replay.body.id).toBe(created.body.id);
+      const second = await http()
+        .post('/api/v1/runners/me/payout-requests')
+        .set(bearer(runner.token))
+        .send({ amount: 100 })
+        .expect(409);
+      expect(second.body).toMatchObject({ code: 'payout_request_open', requestId: created.body.id });
+      // Admin only.
+      await http().get('/api/v1/runner-payout-requests').set(bearer(runner.token)).expect(403);
+
+      const list = await http()
+        .get(`/api/v1/runner-payout-requests?status=requested&runnerProfileId=${runner.profileId}`)
+        .set(bearer(admin.token))
+        .expect(200);
+      expect(list.body.items).toEqual([
+        expect.objectContaining({ id: created.body.id, availableAmount: '1600.00', runner: expect.objectContaining({ id: runner.profileId }) }),
+      ]);
+      const lines = await linesOf(first.errand.id);
+      const all = [...lines, ...(await linesOf(errand2.id))];
+      const tooMuch = await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/pay`)
+        .set(bearer(admin.token))
+        .send({ lineIds: all.map((l) => l.id), payoutReference: 'SGH81PRQ01' })
+        .expect(400);
+      expect(tooMuch.body).toMatchObject({ code: 'payout_exceeds_request', requestedAmount: '1500.00', selectedAmount: '1600.00' });
+      // Whole lines: 800 (task 1) + 300 (task 2 fee) = 1100, below the 1500 asked.
+      const payIds = [...lines.map((l) => l.id), (await linesOf(errand2.id)).find((l) => l.kind === 'runner_fee')!.id];
+      const paid = await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/pay`)
+        .set(bearer(admin.token))
+        .send({ lineIds: payIds, payoutReference: 'sgh81prq01' })
+        .expect(200);
+      expect(paid.body).toMatchObject({
+        status: 'paid',
+        requestedAmount: '1500.00',
+        paidAmount: '1100.00',
+        payoutReference: 'SGH81PRQ01',
+        lineIds: [...payIds].sort(),
+        decidedBy: { id: admin.id },
+      });
+      await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/reject`)
+        .set(bearer(admin.token))
+        .send({ note: 'Too late to reject' })
+        .expect(409);
+      const feed = await http().get('/api/v1/runners/me/payout-lines?kind=payout').set(bearer(runner.token)).expect(200);
+      expect(feed.body.items[0]).toMatchObject({
+        kind: 'payout',
+        amount: '-1100.00',
+        payoutRequestId: created.body.id,
+        requestedAmount: '1500.00',
+      });
+      // The remaining 500 is available for a new request.
+      const after = await http().get('/api/v1/runners/me/payout-requests/summary').set(bearer(runner.token)).expect(200);
+      expect(after.body).toMatchObject({ availableAmount: '500.00', openRequest: null });
+      const mine = await http().get('/api/v1/runners/me/payout-requests').set(bearer(runner.token)).expect(200);
+      expect(mine.body.items[0]).toMatchObject({ id: created.body.id, status: 'paid', paidAmount: '1100.00', reference: 'SGH81PRQ01' });
+      const next = await http()
+        .post('/api/v1/runners/me/payout-requests')
+        .set(bearer(runner.token))
+        .send({ amount: 500 })
+        .expect(201);
+      const rejected = await http()
+        .post(`/api/v1/runner-payout-requests/${next.body.id}/reject`)
+        .set(bearer(admin.token))
+        .send({ note: 'Please confirm your M-Pesa name first' })
+        .expect(200);
+      expect(rejected.body).toMatchObject({ status: 'rejected', note: 'Please confirm your M-Pesa name first', paidAmount: null });
+      await expect(
+        db().query('UPDATE "runner_payout_requests" SET "requestedAmount" = 1 WHERE id = $1', [next.body.id]),
+      ).rejects.toThrow(/final/);
     });
   });
 });
