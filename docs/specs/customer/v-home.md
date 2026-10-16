@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 225–253 (`#v-home`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
 - Implementation: `apps/customer_app/lib/src/screens/shell/home_tab.dart` on branch `feat/customer-screens`
-- Status: matches-design
+- Status: partial (row 176, 2026-10-16: RUNNER_ASSIGNED card meta; see Current vs design)
 
 ## Purpose
 Landing screen after sign-in: greet the customer by name, start a new task by category, jump to the active task, and reopen recent tasks.
@@ -70,7 +70,7 @@ If more than one errand is active, a 12.5/700 green-700 link under the card `+N 
 - Section labels: `Categories`, `In progress`, `Recent`.
 - Active card sample: tag `Check It For Me · #NT-10482` (mockup `Inspection · #10482`; OA-1 and OA-15), title `Apartment check — Nyali`, meta `Brian K. is en route · ETA 12 min`, button `Track live →`.
 - Runner name in metas = the API short name (row 40); without one use `Your runner` (`Your runner is on it`).
-- Meta by state (proposed): REQUESTED `Waiting for your quote`; QUOTED `Your quote is ready`; ACCEPTED `Pay to confirm your task`; PAYMENT_CONFIRMED `Finding a runner`; RUNNER_ASSIGNED `Brian K. is assigned`; RUNNER_EN_ROUTE mockup; ARRIVED `Brian K. has arrived`; IN_PROGRESS `Brian K. is on it`; AWAITING_CUSTOMER `Ready for your review`.
+- Meta by state (proposed): REQUESTED `Waiting for your quote`; QUOTED `Your quote is ready`; ACCEPTED `Pay to confirm your task`; PAYMENT_CONFIRMED `Finding a runner`; RUNNER_ASSIGNED `Finding a runner` (row 176: no runner name before acceptance; was `Brian K. is assigned`); RUNNER_EN_ROUTE mockup; ARRIVED `Brian K. has arrived`; IN_PROGRESS `Brian K. is on it`; AWAITING_CUSTOMER `Ready for your review`.
 - Recent sample rows: `Buy shoes — Sarit Centre` / `Yesterday, 4:12 PM` / `Completed`; `Collect documents — CBD` / `Mon, 10:03 AM` / `Completed`.
 
 States (proposed):
@@ -103,6 +103,7 @@ States (proposed):
 - Names: OA-2 (was Q1).
 - Off-palette active-card colours: OA-14 (was Q5).
 - Title and reference: OA-15 (was Q6, Q7).
+- Row 176 (2026-10-16): during RUNNER_ASSIGNED the customer sees `Finding a runner` (card meta and any status chip); the runner's name appears from RUNNER_EN_ROUTE (`Brian K. is en route`).
 
 ## Open questions (non-blocking; build default given)
 - Q2: Search row has no behaviour in the mockup. Default: opens the wizard.
@@ -111,6 +112,8 @@ States (proposed):
 - Q8: Several active errands. Default: one card + `+N more in progress`.
 
 ## Current vs design
+Spec update 2026-10-16 (round 10, row 176), `main`: 1. blocker (flutter-customer): `apps/customer_app/lib/src/util/display.dart:147` shows `'$name is assigned'` for RUNNER_ASSIGNED (the offered runner); must be `Finding a runner`. 2. minor (core-ui CC-176): `Recent` / card chips come from `StatusChip.forStatus` and follow the core label change automatically.
+
 Re-audited 2026-10-07 against `feat/customer-screens` (`docs/audits/customer-reaudit-2026-10-07.md`). PASS. Minor: `+N more in progress` count renders in Fira Sans (core link label is string-only, CC-2); with no name the greeting is shown as the 21/700 title instead of the greeting line only. ETA in the active-card meta waits for rows 29/30.
 
 Spec update 2026-10-08 (rows 23, 27, 29, 40, 41, Needs row 40): no screen-specific rework. Cross-cutting items CC-4 (title fallback), CC-5 (API short name), CC-6 (empty-title top bar) and the socket client apply here; see the 2026-10-08 addendum in `docs/audits/customer-gap-report.md`. Status stays `matches-design` until the next spot-check.
