@@ -41,7 +41,7 @@ None.
 - Each link span announced as a link ("Terms, link"), 48dp hit area.
 
 ## Open questions for the owner
-- Q1 (unresolved since the first audit): the Terms and Privacy Policy URLs, and whether those pages should live on the Nitume website (`apps/website` has no legal page in its mockup).
+- Q1 (unresolved since the first audit): the Terms and Privacy Policy URLs, and whether those pages should live on the Nitume website (`apps/website` has no legal page in its mockup). Row 173 (owner 2026-10-16, runner privacy link, same `NITUME_PRIVACY_URL` key) settles the interim behaviour: no placeholder URL; the link appears once the real published URL is configured. The customer behaviour above (plain text when not configured) already matches; the URLs themselves are still to be published.
 
 ## Current vs design
 Re-audit 2026-10-09 against `feat/customer-integrations` @ `ca6f614` (addendum in `docs/audits/customer-reaudit-2026-10-07.md`): PASS. Configured links are C-04 link buttons (48 dp) opened with `url_launcher` (external application); unconfigured links are plain text.

@@ -108,8 +108,13 @@ All answered. Specs no longer say "pending row N" for these.
 | 101 | Round-4 breaking API changes accepted (dispute `resolvedBy: null` for customers; no `payoutReference` in the customer refund view; price changes outside Buy For Me / Get It For Me answer 400). The app was updated in round 4 | (no change) |
 | 102 | Paid tasks ending CANCELLED, EXPIRED or FAILED open a refund **review** (not an automatic refund) | §11, v-task-detail |
 | owner 2026-10-16 (Needs row, round 7) | EXPIRED customer notification: explain no runner accepted in time, give the next action, no refund promise (a paid task gets a review, not a guaranteed refund). OTP messages say `Your verification code expires in 5 minutes.` (TTL 300 s unchanged) | v-notifications, v-track, v-task-detail, v-auth-otp |
-| 158 (owner 2026-10-16) | Owner wording replaces the proposals: OTP SMS `Your Nitume verification code is {{code}}. It expires in 5 minutes. Do not share this code with anyone.`; `errand.EXPIRED` body `Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.` (no refund sentence unless the refund flow has already determined a refund is due). Track / Task detail keep `No runner accepted your task in time.` + `Start a new task` as the build default (RQ-29, BOARD row 174, open) | v-auth-otp, v-notifications, v-track, v-task-detail |
-| 157 (owner 2026-10-16) | An admin-offer lapse keeps the task RUNNER_ASSIGNED for a re-offer; EXPIRED only when no further runner can be assigned | §6 |
+| 158 (owner 2026-10-16) | Owner wording replaces the proposals: OTP SMS `Your Nitume verification code is {{code}}. It expires in 5 minutes. Do not share this code with anyone.`; `errand.EXPIRED` body `Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.` (no refund sentence unless the refund flow has already determined a refund is due). Track / Task detail keep `No runner accepted your task in time.` + `Start a new task` (row 174, decided 2026-10-16) | v-auth-otp, v-notifications, v-track, v-task-detail |
+| 157 (owner 2026-10-16) | An admin-offer lapse keeps the task RUNNER_ASSIGNED for a re-offer; EXPIRED only when matching is exhausted (row 167) | §6 |
+| 167 (owner 2026-10-16) | RUNNER_ASSIGNED → EXPIRED only when matching is exhausted: every eligible runner in the service-area/category pool has declined, let the offer lapse, or become ineligible/unavailable before accepting. Whether the customer deadline `deadline_at` passing while RUNNER_ASSIGNED also triggers EXPIRED is open (BOARD row 185); nothing builds either path until answered. Customer copy unchanged | §6, v-notifications |
+| 173 (owner 2026-10-16) | Privacy Policy link hidden until `NITUME_PRIVACY_URL` holds the real URL; no placeholder (runner row; same key, customer behaviour already matches) | x-legal |
+| 174 (owner 2026-10-16) | Keep the built EXPIRED copy `No runner accepted your task in time.` and `Start a new task` on Track and Task detail | v-track, v-task-detail |
+| 182–184 (owner 2026-10-16) | RUNNER_EN_ROUTE chip `En route`, timeline step `Runner assigned`, acceptance notification `Runner assigned` / `A runner accepted your task and is on the way.` (182); offered runner's name, marker and ETA never shown before acceptance (183); no notification when an offer is made, UI keeps `Finding a runner` (184) | §6.1, v-track, v-task-detail, v-home, v-notifications |
+| 176 (owner 2026-10-16) | Customer label during RUNNER_ASSIGNED becomes `Finding a runner` (offer open, declined, lapsed or re-offering); `Runner assigned` only once a runner has accepted and the task is RUNNER_EN_ROUTE | §6, §6.1, v-track, v-task-detail, v-home, v-notifications |
 | 104–108 | Runner reimbursement and payout ledger (owner 2026-10-13): reimbursement payable at CONFIRMED; missing/mismatched receipt → ops review, capped at the item amount paid to Nitume; verified item spend reimbursed on CANCELLED/FAILED without a runner fee; runner payout ledger table approved; purchases limited by `max_purchase_advance`. No customer copy changes: the customer never sees the runner's payouts | (none) |
 | 109 | Only a **re-sent** refund payout notifies the customer; payout corrections and reversals do not by default (was AQ-9) | §11, v-notifications |
 | 110 | A payout correction never records an amount above the refund ceiling (admin rule, was AQ-10) | (none) |
@@ -226,7 +231,7 @@ Status: **built** = exists on `feat/core-customer-widgets` (class named); **chan
 | C-03 | Outline button + small variant (12/700, padding 11) | `.btn-outline` | built `NitumeButton.outline` (`NitumeButtonSize.small`) |
 | C-04 | Text button / green-700 link | `.btn-text` | built `NitumeButton.text`, `NitumeButton.link` |
 | C-05 | Status chip (pill, 12/600, 6px dot) | `.chip-*` | built `StatusChip`. En route = pending (amber), Cancelled = danger (red) per OA-13. **change**: high-contrast label text (row 33, §2) |
-| C-06 | Status presentation map (ErrandStatus → label + tone, §6) | — | built `statusPresentation`. **change**: tones per §6 |
+| C-06 | Status presentation map (ErrandStatus → label + tone, §6) | — | built `statusPresentation`. **change**: tones per §6; **NEW change (row 176, CC-176)**: RUNNER_ASSIGNED → `Finding a runner`, plus `customerTimelineTitle()` (§6.1) |
 | C-07 | Card (white, slate-line, r-m 14, padding 16; dashed variant) | `.card-demo` | built `NitumeCard` |
 | C-08 | Section label | — | built `SectionLabel` |
 | C-09 | Root top bar | — | built `NitumeTopBar`. **change** (approved, BOARD Needs row 40): an empty `title` renders no title line and no empty semantics node |
@@ -239,7 +244,7 @@ Status: **built** = exists on `feat/core-customer-widgets` (class named); **chan
 | C-16 | Choice chip (pill; selected = blue fill, white text) + radio-row variant with optional subtitle | extension of `.chip` | built `NitumeChoiceChip`. Radio-row variant **NEW** (used for the payment route) |
 | C-17 | Form field (label + white r-s 8 input, 2px green focus, red inline error; multiline, money, phone variants) and form card | `.field-label` + `.field-input` | built `NitumeField`, `NitumeFormCard` |
 | C-18 | Receipt card + rows (Fira Code amounts; total row with hairline; dashed variant) | — | built `ReceiptCard`, `ReceiptRow`. **change**: needs an "estimate" caption slot and a separate "paid separately" group (§8) |
-| C-19 | Status timeline | — | built `StatusTimeline` |
+| C-19 | Status timeline | — | built `StatusTimeline`; step titles from `customerTimelineTitle()` (§6.1, row 176) |
 | C-20 | Active task hero card | — | built `ActiveTaskCard` (tag = chip-info, meta slate-400, OA-14) |
 | C-21 | Runner summary tile | design-system runner card | built `RunnerSummaryTile`. Name = API short name as returned (§7, row 40) |
 | C-22 | Compact task row | `.list-item` | built `TaskRow` |
@@ -291,7 +296,7 @@ State machine: `docs/design/Nitume_System_Design.md` §3.3, updated 2026-10-08 t
 | QUOTED | Quote ready | pending |
 | ACCEPTED | Awaiting payment | pending |
 | PAYMENT_CONFIRMED | Finding a runner | info |
-| RUNNER_ASSIGNED | Runner assigned | info |
+| RUNNER_ASSIGNED | **Finding a runner** (row 176; was `Runner assigned`) | info |
 | RUNNER_EN_ROUTE | En route | **pending (amber), OA-13** |
 | ARRIVED | Arrived | info |
 | IN_PROGRESS | In progress | info |
@@ -301,8 +306,18 @@ State machine: `docs/design/Nitume_System_Design.md` §3.3, updated 2026-10-08 t
 | SETTLED | Completed | success (system-only, row 35 answered) |
 | CANCELLED | Cancelled | **danger (red), OA-13** |
 | FAILED | Failed | danger |
-| EXPIRED | Expired | info (not drawn). Reached only when no further runner can be assigned or the task deadline is reached (rows 150, 155, 157; an offer lapse alone keeps the task RUNNER_ASSIGNED). Next action `Start a new task` (`v-track`, `v-task-detail`); the customer is told by the `errand.EXPIRED` notification (`v-notifications.md`, owner 2026-10-16) |
+| EXPIRED | Expired | info (not drawn). Reached only when matching is exhausted (row 167; `deadline_at` as a trigger is open, row 185; a decline or an offer lapse alone keeps the task RUNNER_ASSIGNED). Next action `Start a new task` (`v-track`, `v-task-detail`); the customer is told by the `errand.EXPIRED` notification (`v-notifications.md`, owner 2026-10-16) |
 | DISPUTED | Disputed | danger |
+
+### 6.1 Before and after a runner accepts (rows 176, 182–184, decided 2026-10-16)
+Owner: "customer label during RUNNER_ASSIGNED becomes 'Finding a runner' (offer open, declined, lapsed or re-offering); show 'Runner assigned' only once a runner has accepted and the task is RUNNER_EN_ROUTE." In the offer model (row 113) RUNNER_ASSIGNED means a runner has been **offered** the task, not that one accepted; accepting is RUNNER_ASSIGNED → RUNNER_EN_ROUTE.
+
+- **Chip and status label (C-06)**: RUNNER_ASSIGNED → `Finding a runner`, info (row 176). RUNNER_EN_ROUTE → `En route`, amber, unchanged (row 182, decided). "Runner assigned" is the acceptance timeline step and notification title, never a chip.
+- **Runner identity during RUNNER_ASSIGNED (row 183, decided)**: "before acceptance the customer never sees the offered runner's name, map marker or ETA." No runner name, avatar, rating or card, no marker, no ETA; Track and Task detail treat RUNNER_ASSIGNED like PAYMENT_CONFIRMED. The row-27 location window therefore starts at RUNNER_EN_ROUTE in practice.
+- **Timeline titles (C-19)**: the step at acceptance (the RUNNER_EN_ROUTE history row) is titled `Runner assigned` (row 182, decided; acceptance time in Fira Code). Following from rows 176/182 (design-auditor detail): the RUNNER_ASSIGNED history row is not shown (it would repeat `Finding a runner`, and re-offers would add more); the pending "next" step after PAYMENT_CONFIRMED or RUNNER_ASSIGNED is `Runner assigned`; after RUNNER_EN_ROUTE it is `Arrived` (§6 label).
+- **Notifications (rows 182, 184, decided)**: no customer notification when an offer is made (PAYMENT_CONFIRMED → RUNNER_ASSIGNED, re-offers, declines, lapses); the built `Runner assigned` / `A runner has been assigned to your task.` on RUNNER_ASSIGNED (`notifications.service.ts` `statusCopy`) must go. On acceptance (RUNNER_EN_ROUTE): title `Runner assigned`, body `A runner accepted your task and is on the way.` The UI keeps `Finding a runner` during matching.
+- **Core change (core-ui, CC-176)**: `statusPresentation()` is used only by the customer app (the Runner app has its own R-01 labels, admin its own chip map), so change the C-06 mapping in place: `ErrandStatus.runnerAssigned => (label: 'Finding a runner', tone: StatusTone.info)`, and add `customerTimelineTitle(ErrandStatus) → String?` (null for RUNNER_ASSIGNED, `Runner assigned` for RUNNER_EN_ROUTE, else the C-06 label) next to it, with tests. No audience parameter is needed while no other app calls it; the doc comment states it is customer-only. If the Runner app later adopts the helper, add an audience parameter then.
+- **Runner app and admin keep their own labels** (decided scope: the owner's answer is customer-facing only): Runner `New offer` (R-01), admin `Assigned` plus the offer sub-state chips (`drawer-task-offer.md`).
 
 "Active" set (Home "In progress", Track): REQUESTED, QUOTED, ACCEPTED, PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER.
 "Finished" set (Home "Recent", History): COMPLETED, CONFIRMED, SETTLED, CANCELLED, FAILED, EXPIRED, DISPUTED.
