@@ -70,8 +70,6 @@ export type FeedJob =
       kind: 'errand_status';
       errandId: string;
       status: ErrandStatus;
-      /** EXPIRED only: a refund review was opened for the task (owner 2026-10-16). */
-      refundReviewOpened?: boolean;
     }
   | { kind: 'price_change'; errandId: string; requestId: string; fromPrice: string; toPrice: string }
   | { kind: 'refund'; errandId: string; refundId: string; status: string; refundAmount: string | null }
@@ -177,18 +175,14 @@ export class NotificationsService {
   }
 
   /**
-   * RUNNER_ASSIGNED -> EXPIRED (owner decision 2026-10-16): the customer's
-   * feed item + push, queued after the refund review was opened in the same
-   * flow so the copy can mention it.
+   * RUNNER_ASSIGNED -> EXPIRED: the customer's feed item + push, queued once
+   * the payments module has run its refund backstop for the task. The copy
+   * never mentions the refund review (row 158): refund wording is only for a
+   * refund the refund flow has already found due (refund.approved).
    */
   @OnEvent(ERRAND_EXPIRED_EVENT, { async: true })
   async onExpired(event: ErrandExpiredEvent): Promise<void> {
-    await this.enqueue({
-      kind: 'errand_status',
-      errandId: event.errandId,
-      status: ErrandStatus.EXPIRED,
-      refundReviewOpened: event.refundReviewOpened,
-    });
+    await this.enqueue({ kind: 'errand_status', errandId: event.errandId, status: ErrandStatus.EXPIRED });
   }
 
   @OnEvent('price_change.requested', { async: true })
@@ -408,7 +402,7 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
   switch (job.kind) {
     case 'errand_status': {
       const eventType = notificationEventTypeFor(job.status);
-      const copy = statusCopy(job.status, job.refundReviewOpened ?? false);
+      const copy = statusCopy(job.status);
       return eventType && copy
         ? { eventType, title: `${copy.title} · ${humanStatus(job.status)}`, body: copy.body }
         : null;
@@ -499,18 +493,14 @@ const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
   }
 };
 
-const statusCopy = (
-  status: ErrandStatus,
-  refundReviewOpened = false,
-): { title: string; body: string } | null => {
+const statusCopy = (status: ErrandStatus): { title: string; body: string } | null => {
   switch (status) {
     case ErrandStatus.EXPIRED:
-      // Owner decision 2026-10-16: no refund promise unless a review is open.
+      // Owner wording, row 158. No refund sentence: an opened refund review
+      // is not a refund found due. Title kept from the round-8 builder.
       return {
         title: 'No runner available',
-        body: refundReviewOpened
-          ? "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready."
-          : "No runner accepted your task in time, so it has ended. You can start a new task whenever you're ready.",
+        body: 'Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.',
       };
     case ErrandStatus.QUOTED:
       return { title: 'Your task has a quote', body: 'A runner can now accept your task. Review the price to continue.' };

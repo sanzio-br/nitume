@@ -236,7 +236,7 @@ export enum NotificationEventType {
   ERRAND_DISPUTED = 'errand.DISPUTED',
   ERRAND_CANCELLED = 'errand.CANCELLED',
   ERRAND_FAILED = 'errand.FAILED',
-  /** RUNNER_ASSIGNED -> EXPIRED: no runner accepted in time (owner 2026-10-16). */
+  /** RUNNER_ASSIGNED -> EXPIRED: no further runner can be assigned (rows 157, 158). */
   ERRAND_EXPIRED = 'errand.EXPIRED',
   PRICE_CHANGE_REQUESTED = 'price_change.requested',
   REFUND_APPROVED = 'refund.approved',

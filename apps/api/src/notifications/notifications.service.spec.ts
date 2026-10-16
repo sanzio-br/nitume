@@ -117,23 +117,18 @@ describe('NotificationEventType (A-14)', () => {
   });
 });
 
-describe('errand.EXPIRED customer notification (owner 2026-10-16)', () => {
-  it('has the decided copy, with the refund sentence only when a review was opened', () => {
-    expect(
-      copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.EXPIRED, refundReviewOpened: true }),
-    ).toEqual({
+describe('errand.EXPIRED customer notification (row 158)', () => {
+  it('has the owner copy and never mentions a refund review', () => {
+    const copy = copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.EXPIRED });
+    expect(copy).toEqual({
       eventType: 'errand.EXPIRED',
       title: 'No runner available · Expired',
-      body: "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready.",
+      body: 'Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.',
     });
-    expect(
-      copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.EXPIRED, refundReviewOpened: false }),
-    ).toMatchObject({
-      body: "No runner accepted your task in time, so it has ended. You can start a new task whenever you're ready.",
-    });
+    expect(copy?.body).not.toMatch(/refund/i);
   });
 
-  it('is queued from errand.expired (refund known), not from the bare status change', async () => {
+  it('is queued from errand.expired, not from the bare status change, without refund details', async () => {
     const { service, queue } = build();
     await service.onStatusChanged({ errandId: 'e-1', status: ErrandStatus.EXPIRED, actor: 'system' });
     expect(queue.add).not.toHaveBeenCalled();
@@ -142,7 +137,6 @@ describe('errand.EXPIRED customer notification (owner 2026-10-16)', () => {
       kind: 'errand_status',
       errandId: 'e-1',
       status: ErrandStatus.EXPIRED,
-      refundReviewOpened: true,
     });
   });
 });

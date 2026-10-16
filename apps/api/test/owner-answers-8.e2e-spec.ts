@@ -528,7 +528,7 @@ describe('Owner answers 8 (e2e)', () => {
       return [];
     };
 
-    it('a paid task that expires tells the customer (row 157: driven by the system step)', async () => {
+    it('a paid task that expires gets the owner copy, with no refund promise (rows 157, 158)', async () => {
       const { customer, errand } = await paidAndAssigned();
       // Row 157: no automatic trigger exists yet; drive the system step directly.
       await app
@@ -539,10 +539,10 @@ describe('Owner answers 8 (e2e)', () => {
         {
           errandId: errand.id,
           title: 'No runner available · Expired',
-          body: "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready.",
+          body: 'Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.',
         },
       ]);
-      // The refund review still opens for ops (row 102).
+      // The refund review still opens for ops (row 102); the copy does not mention it.
       const reviews = (await db().query('SELECT trigger FROM "refund_reviews" WHERE "errandId" = $1', [errand.id])) as {
         trigger: string;
       }[];
