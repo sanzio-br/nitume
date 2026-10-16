@@ -71,6 +71,16 @@ export interface AppConfig {
     maxUploadBytes: number;
     /** Daily purge schedule (cron, Africa/Nairobi). */
     purgeCron: string;
+    /**
+     * Row 162: the restricted Cloudinary credential used only for ID/selfie
+     * images (CLOUDINARY_ID_*). Outside production it falls back to the
+     * evidence credential; production refuses to start without it.
+     */
+    cloudinary: {
+      cloudName: string | null;
+      apiKey: string | null;
+      apiSecret: string | null;
+    };
   };
   runnerPayouts: {
     /** Smallest payout a runner may request, KES (row 159: KES 500, MIN_RUNNER_PAYOUT_REQUEST). */
@@ -134,6 +144,26 @@ export interface AppConfig {
     senderId: string | null;
   };
 }
+
+/**
+ * Row 162: ID images use their own restricted Cloudinary credential
+ * (CLOUDINARY_ID_API_KEY / CLOUDINARY_ID_API_SECRET; CLOUDINARY_ID_CLOUD_NAME
+ * defaults to CLOUDINARY_CLOUD_NAME). Only outside production does it fall
+ * back to the ordinary media credential, so dev setups keep working; in
+ * production there is no fallback (validateEnv refuses to start).
+ */
+export const resolveIdCloudinary = (
+  env: Record<string, string | undefined>,
+): { cloudName: string | null; apiKey: string | null; apiSecret: string | null } => {
+  const production = (env.NODE_ENV ?? 'development') === 'production';
+  const pick = (own: string | undefined, shared: string | undefined): string | null =>
+    own || (production ? null : shared || null);
+  return {
+    cloudName: env.CLOUDINARY_ID_CLOUD_NAME || env.CLOUDINARY_CLOUD_NAME || null,
+    apiKey: pick(env.CLOUDINARY_ID_API_KEY, env.CLOUDINARY_API_KEY),
+    apiSecret: pick(env.CLOUDINARY_ID_API_SECRET, env.CLOUDINARY_API_SECRET),
+  };
+};
 
 const int = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt(value ?? '', 10);
@@ -257,6 +287,7 @@ export const configuration = (): AppConfig => ({
     retentionDays: int(process.env.RUNNER_ID_RETENTION_DAYS, 365),
     maxUploadBytes: int(process.env.RUNNER_ID_MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
     purgeCron: process.env.RUNNER_ID_PURGE_CRON || '0 3 * * *',
+    cloudinary: resolveIdCloudinary(process.env),
   },
   // Rows 117, 159 (owner, 2026-10-16): runners request payouts of at least
   // KES 500, server-side config, no admin UI. MIN_RUNNER_PAYOUT_REQUEST

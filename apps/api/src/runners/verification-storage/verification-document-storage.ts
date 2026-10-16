@@ -43,27 +43,35 @@ export const decodeDocumentKey = (key: string): { format: string; publicId: stri
  * (`nitume/runner-verification/...`, never the evidence folder), viewed with
  * an expiring signed download URL and removed with `destroy` (invalidating
  * cached copies).
+ *
+ * Row 162: every call passes the ID credential (`runnerVerification.cloudinary`,
+ * CLOUDINARY_ID_*) explicitly; this class never touches the SDK's global
+ * config, which the evidence storage owns, so the two keys never mix.
+ * Uploads ask for `backup: false` (overrides the account's automatic backup
+ * for these assets); `destroy` also deletes any backed-up versions first, so
+ * a purged image cannot be restored from Cloudinary backups.
  */
 @Injectable()
 export class CloudinaryVerificationDocumentStorage extends VerificationDocumentStorage {
   readonly name = 'cloudinary';
   private readonly logger = new Logger(CloudinaryVerificationDocumentStorage.name);
-  private configured = false;
 
   constructor(private readonly config: ConfigService) {
     super();
   }
 
   async upload(input: { data: Buffer; contentType: string; runnerProfileId: string }): Promise<{ key: string }> {
-    this.ensureConfigured();
+    const credentials = this.credentials();
     try {
       const result = await cloudinary.uploader.upload(
         `data:${input.contentType};base64,${input.data.toString('base64')}`,
         {
+          ...credentials,
           folder: `${this.folder()}/${input.runnerProfileId.replace(/[^a-zA-Z0-9]/g, '')}`,
           resource_type: 'image',
           type: 'authenticated',
           public_id: randomKey(),
+          backup: false,
         },
       );
       return { key: encodeDocumentKey(result.format, result.public_id) };
@@ -78,10 +86,11 @@ export class CloudinaryVerificationDocumentStorage extends VerificationDocumentS
     if (!where) {
       return { url: null, expiresAt: null };
     }
-    this.ensureConfigured();
+    const credentials = this.credentials();
     const ttl = Math.min(Math.max(1, ttlSeconds), MAX_DOCUMENT_URL_TTL_SECONDS);
     const expiresAt = new Date(now.getTime() + ttl * 1000);
     const url = cloudinary.utils.private_download_url(where.publicId, where.format, {
+      ...credentials,
       resource_type: 'image',
       type: 'authenticated',
       expires_at: Math.floor(expiresAt.getTime() / 1000),
@@ -94,8 +103,10 @@ export class CloudinaryVerificationDocumentStorage extends VerificationDocumentS
     if (!where) {
       return;
     }
-    this.ensureConfigured();
+    const credentials = this.credentials();
+    await this.deleteBackups(where.publicId, credentials);
     const result = (await cloudinary.uploader.destroy(where.publicId, {
+      ...credentials,
       resource_type: 'image',
       type: 'authenticated',
       invalidate: true,
@@ -106,25 +117,60 @@ export class CloudinaryVerificationDocumentStorage extends VerificationDocumentS
     this.logger.log(`[cloudinary] verification image deleted (${result.result})`);
   }
 
+  /**
+   * Row 162: removes every backed-up version of the asset (Admin API
+   * `DELETE /resources/backup/:asset_id`). An asset uploaded with
+   * `backup: false` normally has none; this covers older uploads and an
+   * account where backup was forced on. Throws on failure, so the purge
+   * keeps the row and retries the next day.
+   */
+  private async deleteBackups(publicId: string, credentials: CloudinaryCredentials): Promise<void> {
+    let resource: { asset_id?: string; versions?: { version_id?: string }[] } | null;
+    try {
+      resource = (await cloudinary.api.resource(publicId, {
+        ...credentials,
+        resource_type: 'image',
+        type: 'authenticated',
+        versions: true,
+      })) as { asset_id?: string; versions?: { version_id?: string }[] };
+    } catch (err) {
+      if ((err as { error?: { http_code?: number } })?.error?.http_code === 404) {
+        return; // Already gone.
+      }
+      throw err;
+    }
+    const versionIds = (resource?.versions ?? []).map((v) => v.version_id).filter((v): v is string => !!v);
+    if (!resource?.asset_id || versionIds.length === 0) {
+      return;
+    }
+    const api = cloudinary.api as unknown as {
+      delete_backed_up_assets: (assetId: string, versionIds: string[], options: object) => Promise<unknown>;
+    };
+    await api.delete_backed_up_assets(resource.asset_id, versionIds, credentials);
+    this.logger.log(`[cloudinary] ${versionIds.length} backed-up version(s) of a verification image deleted`);
+  }
+
   private folder(): string {
     return this.config.get<string>('runnerVerification.cloudinaryFolder', 'nitume/runner-verification');
   }
 
-  private ensureConfigured(): void {
-    if (this.configured) {
-      return;
-    }
-    const cloudName = this.config.get<string | null>('evidence.cloudinary.cloudName');
-    const apiKey = this.config.get<string | null>('evidence.cloudinary.apiKey');
-    const apiSecret = this.config.get<string | null>('evidence.cloudinary.apiSecret');
+  private credentials(): CloudinaryCredentials {
+    const cloudName = this.config.get<string | null>('runnerVerification.cloudinary.cloudName');
+    const apiKey = this.config.get<string | null>('runnerVerification.cloudinary.apiKey');
+    const apiSecret = this.config.get<string | null>('runnerVerification.cloudinary.apiSecret');
     if (!cloudName || !apiKey || !apiSecret) {
       throw new UnprocessableEntityException(
-        'Cloudinary verification storage selected but CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET are not configured',
+        'Cloudinary verification storage selected but CLOUDINARY_ID_API_KEY / CLOUDINARY_ID_API_SECRET (and a cloud name) are not configured',
       );
     }
-    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
-    this.configured = true;
+    return { cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret };
   }
+}
+
+interface CloudinaryCredentials {
+  cloud_name: string;
+  api_key: string;
+  api_secret: string;
 }
 
 /** Dev transport: stores nothing, serves nothing, deletes nothing. */

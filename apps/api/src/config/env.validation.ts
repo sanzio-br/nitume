@@ -29,6 +29,29 @@ export const validateEnv = (env: Record<string, unknown>): Record<string, unknow
   if (minimum !== undefined && !(Number.parseFloat(minimum) >= 0)) {
     throw new Error(`MIN_RUNNER_PAYOUT_REQUEST must be a KES amount of 0 or more (got '${minimum}')`);
   }
+  // Review minor 3, row 162: ID/selfie images need real restricted storage in
+  // production, under their own credential, isolated from ordinary media.
+  if (nodeEnv === 'production') {
+    const driver = str(env.RUNNER_ID_STORAGE_DRIVER) ?? str(env.EVIDENCE_STORAGE_DRIVER) ?? 'console';
+    if (driver !== 'cloudinary') {
+      throw new Error(
+        `RUNNER_ID_STORAGE_DRIVER=${driver} is not allowed when NODE_ENV=production: ID and selfie ` +
+          'images would not be stored. Set RUNNER_ID_STORAGE_DRIVER=cloudinary with CLOUDINARY_ID_API_KEY / CLOUDINARY_ID_API_SECRET.',
+      );
+    }
+    const idKey = str(env.CLOUDINARY_ID_API_KEY);
+    if (!idKey || !str(env.CLOUDINARY_ID_API_SECRET) || !(str(env.CLOUDINARY_ID_CLOUD_NAME) ?? str(env.CLOUDINARY_CLOUD_NAME))) {
+      throw new Error(
+        'CLOUDINARY_ID_API_KEY, CLOUDINARY_ID_API_SECRET and a cloud name (CLOUDINARY_ID_CLOUD_NAME or ' +
+          'CLOUDINARY_CLOUD_NAME) are required when NODE_ENV=production (row 162: a restricted credential for ID images).',
+      );
+    }
+    if (idKey === str(env.CLOUDINARY_API_KEY)) {
+      throw new Error(
+        'CLOUDINARY_ID_API_KEY must differ from CLOUDINARY_API_KEY (row 162: ID images use their own restricted credential).',
+      );
+    }
+  }
   // Row 154: ID/selfie images are never kept indefinitely.
   const retention = str(env.RUNNER_ID_RETENTION_DAYS);
   if (retention !== undefined && !(Number.parseInt(retention, 10) > 0)) {
