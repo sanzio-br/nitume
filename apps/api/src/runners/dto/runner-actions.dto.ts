@@ -43,6 +43,14 @@ export class UploadVerificationDocumentDto {
   verificationType: RunnerVerificationType.GOVERNMENT_ID | RunnerVerificationType.SELFIE;
 }
 
+/** POST /runners/verifications/:id/re-review (row 171): optional note, <= 500 after trim. */
+export class ReReviewVerificationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
 export class ReviewVerificationDto {
   @IsIn(['approved', 'rejected'])
   decision: 'approved' | 'rejected';

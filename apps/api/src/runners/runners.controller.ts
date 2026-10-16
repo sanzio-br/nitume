@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  HttpCode,
   Ip,
   Param,
   ParseUUIDPipe,
@@ -23,6 +22,7 @@ import { UserRole } from '../common/enums';
 import {
   AddVerificationDto,
   ListVerificationsQueryDto,
+  ReReviewVerificationDto,
   ReviewVerificationDto,
   UploadVerificationDocumentDto,
   SetAvailabilityDto,
@@ -103,21 +103,23 @@ export class RunnersController {
 
   /**
    * Row 171: explicit, audited "Re-review evidence" on an already decided
-   * ID/selfie verification (admin only). Logged as `re_review` with the
-   * admin, IP and time; restarts the retention clock (viewing never does).
-   * Errors: 404; 409 verification_not_decided; 410
+   * ID/selfie verification (admin only), `{ note? }` (<= 500, optional).
+   * 201 `{ verificationId, reReview { id, reviewedBy { id, displayName },
+   * createdAt, note } }`. Logged as `re_review` with the admin, IP and time;
+   * restarts the retention clock (viewing never does); never changes the
+   * decision. Errors: 404; 409 verification_not_decided; 410
    * verification_document_purged; 404 verification_document_missing.
    */
   @UseGuards(JwtAuthGuard)
   @Post('verifications/:verificationId/re-review')
   @Roles(UserRole.ADMIN)
-  @HttpCode(200)
   reReviewDocument(
     @Param('verificationId', ParseUUIDPipe) verificationId: string,
+    @Body() dto: ReReviewVerificationDto,
     @CurrentUser() user: AuthContext,
     @Ip() ip: string,
   ) {
-    return this.runners.reReviewDocument(verificationId, user.userId, ip ?? null);
+    return this.runners.reReviewDocument(verificationId, user.userId, ip ?? null, dto.note);
   }
 
   @UseGuards(JwtAuthGuard)

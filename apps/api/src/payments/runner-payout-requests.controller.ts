@@ -78,7 +78,7 @@ export class RunnerPayoutRequestsController {
    * Row 166: ops cancel an open request with a mandatory reason (10-500; not
    * shown to the runner). Final; the runner makes a new request if still
    * owed. Runners cannot call this (admin role). 409 payout_request_not_open;
-   * 400 cancellation_reason_required.
+   * 400 cancellation_reason_invalid.
    */
   @Post(':id/cancel')
   @HttpCode(200)

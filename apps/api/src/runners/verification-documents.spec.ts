@@ -13,7 +13,13 @@ const codeOf = (p: Promise<unknown>) =>
 
 const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
   const rows: RunnerVerification[] = [];
-  const log: { action: VerificationDocumentAction; actorUserId: string | null; ip: string | null; verificationId: string }[] = [];
+  const log: {
+    action: VerificationDocumentAction;
+    actorUserId: string | null;
+    ip: string | null;
+    verificationId: string;
+    note?: string | null;
+  }[] = [];
   const verificationRepo = {
     create: vi.fn((v: Partial<RunnerVerification>) => v),
     save: vi.fn((v: RunnerVerification) => {
@@ -47,8 +53,22 @@ const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
       return Promise.resolve({ ...v, id: `log-${log.length}`, createdAt: new Date() });
     }),
   };
+  const managerQuery = vi.fn((sql: string, params: unknown[]) => {
+    if (sql.includes('SELECT at FROM clock')) {
+      return Promise.resolve([{ at: clockAt }]);
+    }
+    if (sql.includes('SET "note" = NULL')) {
+      for (const l of log) {
+        if (l.verificationId === params[0] && l.action === 're_review') {
+          l.note = null;
+        }
+      }
+    }
+    return Promise.resolve([]);
+  });
   const manager = {
     getRepository: (e: { name: string }) => (e.name === 'VerificationDocumentAccessLog' ? logRepo : verificationRepo),
+    query: managerQuery,
   };
   const verifications = {
     ...verificationRepo,
@@ -66,7 +86,7 @@ const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
     verifications as never,
     {} as never,
     {} as never,
-    {} as never,
+    { displayNames: vi.fn(() => Promise.resolve(new Map([['admin-1', 'Verifier']]))) } as never,
     storage as never,
     config as never,
   );
@@ -136,9 +156,10 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
     expect(sql).toContain(`v.status::text <> 'pending'`);
   });
 
-  it('purges: deletes the object, keeps only minimum metadata (note cleared, row 170), logs it; then 410', async () => {
+  it('purges: deletes the object, keeps only minimum metadata (notes cleared, row 170), logs it; then 410', async () => {
     const b = build([], new Date('2026-01-01T00:00:00Z'));
     await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null);
+    b.log.push({ action: VerificationDocumentAction.RE_REVIEW, actorUserId: 'admin-1', ip: null, verificationId: 'v-1', note: 'kept until purge' });
     Object.assign(b.rows[0], {
       status: VerificationStatus.APPROVED,
       reviewerNote: 'Name matches the M-Pesa record',
@@ -156,7 +177,8 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
       reviewedBy: 'admin-1',
       verificationType: RunnerVerificationType.GOVERNMENT_ID,
     });
-    expect(b.log[1]).toMatchObject({ action: 'purge', actorUserId: null });
+    expect(b.log[1]).toMatchObject({ action: 're_review', note: null });
+    expect(b.log[2]).toMatchObject({ action: 'purge', actorUserId: null });
     expect(await codeOf(b.service.documentLink('v-1', 'admin-1', null))).toBe('verification_document_purged');
     await expect(b.service.purgeDocuments(['v-1'], now)).resolves.toEqual([]);
   });
@@ -187,9 +209,21 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
     const v = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null);
     expect(await codeOf(b.service.reReviewDocument(v.id, 'admin-1', null))).toBe('verification_not_decided');
     b.rows[0].status = VerificationStatus.APPROVED;
-    const out = await b.service.reReviewDocument(v.id, 'admin-1', '41.90.1.2');
-    expect(out).toMatchObject({ verificationId: v.id, eventId: 'log-2', reReviewedAt: expect.any(Date) });
+    const out = await b.service.reReviewDocument(v.id, 'admin-1', '41.90.1.2', '  Second check after a fraud flag  ');
+    expect(out).toEqual({
+      verificationId: v.id,
+      reReview: {
+        id: 'log-2',
+        reviewedBy: { id: 'admin-1', displayName: 'Verifier' },
+        createdAt: expect.any(Date),
+        note: 'Second check after a fraud flag',
+      },
+    });
     expect(b.log.at(-1)).toMatchObject({ action: 're_review', actorUserId: 'admin-1', ip: '41.90.1.2', verificationId: v.id });
+    // Whitespace-only note is no note; the decision is unchanged.
+    const bare = await b.service.reReviewDocument(v.id, 'admin-1', null, '   ');
+    expect(bare.reReview.note).toBeNull();
+    expect(b.rows[0].status).toBe(VerificationStatus.APPROVED);
     b.rows[0].documentS3Key = null;
     expect(await codeOf(b.service.reReviewDocument(v.id, 'admin-1', null))).toBe('verification_document_missing');
     b.rows[0].purgedAt = new Date();

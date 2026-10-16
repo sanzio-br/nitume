@@ -321,8 +321,14 @@ describe('Owner answers 9 (e2e)', () => {
         .set(bearer(admin.token))
         .send({ reason: 'Too short' })
         .expect(400);
-      expect(missing.body).toMatchObject({ code: 'cancellation_reason_required', minLength: 10, maxLength: 500 });
+      expect(missing.body).toMatchObject({ code: 'cancellation_reason_invalid', minLength: 10, maxLength: 500 });
       await http().post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`).set(bearer(admin.token)).send({}).expect(400);
+      const blank = await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`)
+        .set(bearer(admin.token))
+        .send({ reason: '              ' })
+        .expect(400);
+      expect(blank.body).toMatchObject({ code: 'cancellation_reason_invalid' });
       const cancelled = await http()
         .post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`)
         .set(bearer(admin.token))
@@ -522,13 +528,27 @@ describe('Owner answers 9 (e2e)', () => {
         .set(bearer(admin.token))
         .send({ decision: 'approved', ...(reviewerNote ? { reviewerNote } : {}) })
         .expect(200);
-    const backdate = (runner: Actor) =>
-      db().query(
+    const backdate = async (runner: Actor, opts: { reReviews?: boolean } = {}) => {
+      await db().query(
         `UPDATE "runner_verifications" SET "createdAt" = now() - interval '730 days',
                 "reviewedAt" = CASE WHEN "reviewedAt" IS NULL THEN NULL ELSE now() - interval '730 days' END
           WHERE "runnerProfileId" = $1`,
         [runner.profileId],
       );
+      if (opts.reReviews) {
+        // Test only: the log is append-only, so lift its trigger for this one update.
+        await db().query('ALTER TABLE "verification_document_access_log" DISABLE TRIGGER USER');
+        try {
+          await db().query(
+            `UPDATE "verification_document_access_log" SET "createdAt" = now() - interval '730 days'
+              WHERE "runnerProfileId" = $1 AND action::text = 're_review'`,
+            [runner.profileId],
+          );
+        } finally {
+          await db().query('ALTER TABLE "verification_document_access_log" ENABLE TRIGGER USER');
+        }
+      }
+    };
     const dueIds = async (runner: Actor) =>
       (await app.get(Runners).documentsDueForPurge(new Date(), 200, [runner.profileId!])).map((d) => d.id);
     const purge = (runner: Actor) => app.get(IdDocumentRetentionService).purgeExpired(new Date(), 200, [runner.profileId!]);
@@ -544,13 +564,41 @@ describe('Owner answers 9 (e2e)', () => {
       expect(await dueIds(runner)).toEqual([id]);
 
       await http().post(`/api/v1/runners/verifications/${id}/re-review`).set(bearer(runner.token)).expect(403);
-      const rr = await http().post(`/api/v1/runners/verifications/${id}/re-review`).set(bearer(admin.token)).expect(200);
-      expect(rr.body).toMatchObject({ verificationId: id, eventId: expect.any(String), reReviewedAt: expect.any(String) });
+      await http()
+        .post(`/api/v1/runners/verifications/${id}/re-review`)
+        .set(bearer(admin.token))
+        .send({ note: 'x'.repeat(501) })
+        .expect(400);
+      const rr = await http()
+        .post(`/api/v1/runners/verifications/${id}/re-review`)
+        .set(bearer(admin.token))
+        .send({ note: 'Second check after a fraud flag' })
+        .expect(201);
+      expect(rr.body).toEqual({
+        verificationId: id,
+        reReview: {
+          id: expect.any(String),
+          reviewedBy: { id: admin.id, displayName: 'Verifier' },
+          createdAt: expect.any(String),
+          note: 'Second check after a fraud flag',
+        },
+      });
       const [event] = await db().query(
         `SELECT action::text AS action, "actorUserId", ip FROM "verification_document_access_log" WHERE id = $1`,
-        [rr.body.eventId],
+        [rr.body.reReview.id],
       );
       expect(event).toMatchObject({ action: 're_review', actorUserId: admin.id, ip: expect.any(String) });
+      // Append-only: the note cannot be edited while the image is kept.
+      await expect(
+        db().query(`UPDATE "verification_document_access_log" SET note = NULL WHERE id = $1`, [rr.body.reReview.id]),
+      ).rejects.toThrow(/append-only/);
+      const queue = await http().get('/api/v1/runners/verifications?limit=100').set(bearer(admin.token)).expect(200);
+      const listed = queue.body.items.find((v: { id: string }) => v.id === id);
+      expect(listed).toMatchObject({
+        status: 'approved',
+        reviewer: { id: admin.id, displayName: 'Verifier' },
+        reReviews: [expect.objectContaining({ id: rr.body.reReview.id, note: 'Second check after a fraud flag' })],
+      });
       expect(await dueIds(runner)).toEqual([]);
       expect(await purge(runner)).toEqual([]);
 
@@ -567,6 +615,11 @@ describe('Owner answers 9 (e2e)', () => {
       const { runner, admin, customer, errand } = ctx;
       const id = (await uploadDoc(runner, jpeg()).expect(201)).body.id as string;
       await approve(admin, runner, id, 'Name matches the M-Pesa record');
+      const rr = await http()
+        .post(`/api/v1/runners/verifications/${id}/re-review`)
+        .set(bearer(admin.token))
+        .send({ note: 'Checked again for the dispute' })
+        .expect(201);
       for (const to of ['RUNNER_EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']) {
         await setStatus(runner, errand.id, to);
       }
@@ -577,7 +630,7 @@ describe('Owner answers 9 (e2e)', () => {
         .set(bearer(customer.token))
         .send({ errandId: errand.id, reason: 'Wrong item delivered' })
         .expect(201);
-      await backdate(runner);
+      await backdate(runner, { reReviews: true });
       expect(await dueIds(runner)).toEqual([id]);
       expect(await purge(runner)).toEqual([]);
 
@@ -603,8 +656,13 @@ describe('Owner answers 9 (e2e)', () => {
         reviewedAt: expect.any(Date),
         createdAt: expect.any(Date),
       });
-      const rr = await http().post(`/api/v1/runners/verifications/${id}/re-review`).set(bearer(admin.token)).expect(410);
-      expect(rr.body).toMatchObject({ code: 'verification_document_purged' });
+      // Row 170: the re-review note is gone too; the event itself stays.
+      const [event] = await db().query(`SELECT action::text AS action, note FROM "verification_document_access_log" WHERE id = $1`, [
+        rr.body.reReview.id,
+      ]);
+      expect(event).toEqual({ action: 're_review', note: null });
+      const gone = await http().post(`/api/v1/runners/verifications/${id}/re-review`).set(bearer(admin.token)).send({}).expect(410);
+      expect(gone.body).toMatchObject({ code: 'verification_document_purged' });
     });
   });
 

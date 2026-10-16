@@ -407,13 +407,13 @@ export class RunnerPayoutRequestsService {
    * an open (`requested`) request only, mandatory reason (10-500, AQ-14). Final: no reopening; `requestedAmount` unchanged. No lines
    * are linked to an open request, so the runner's available amount is
    * unchanged and a new request can be made at once. Errors: 409
-   * payout_request_not_open (`status`); 400 cancellation_reason_required
+   * payout_request_not_open (`status`); 400 cancellation_reason_invalid
    * (`minLength`, `maxLength`).
    */
   async cancel(id: string, reasonInput: string, adminUserId: string): Promise<AdminRunnerPayoutRequestView> {
     const reason = reasonInput?.trim() ?? '';
     if (reason.length < CANCEL_REASON_MIN || reason.length > CANCEL_REASON_MAX) {
-      throw new ApiError(HttpStatus.BAD_REQUEST, 'cancellation_reason_required', 'Say why the request is cancelled', {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'cancellation_reason_invalid', 'Say why the request is cancelled', {
         minLength: CANCEL_REASON_MIN,
         maxLength: CANCEL_REASON_MAX,
       });

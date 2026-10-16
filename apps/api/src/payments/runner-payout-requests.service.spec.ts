@@ -234,9 +234,9 @@ describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
   it('ops cancel an open request with a mandatory reason; final, amount unchanged (row 166)', async () => {
     const b = build();
     const req = await b.service.create('u-run', 1000);
-    expect(await codeOf(b.service.cancel(req.id, '   ', 'admin-1'))).toBe('cancellation_reason_required');
-    expect(await codeOf(b.service.cancel(req.id, 'Too short', 'admin-1'))).toBe('cancellation_reason_required');
-    expect(await codeOf(b.service.cancel(req.id, 'x'.repeat(501), 'admin-1'))).toBe('cancellation_reason_required');
+    expect(await codeOf(b.service.cancel(req.id, '   ', 'admin-1'))).toBe('cancellation_reason_invalid');
+    expect(await codeOf(b.service.cancel(req.id, 'Too short', 'admin-1'))).toBe('cancellation_reason_invalid');
+    expect(await codeOf(b.service.cancel(req.id, 'x'.repeat(501), 'admin-1'))).toBe('cancellation_reason_invalid');
     const out = await b.service.cancel(req.id, ' Wrong destination number on file ', 'admin-1');
     expect(out.createdBy).toMatchObject({ id: 'u-run' });
     expect(out).toMatchObject({
