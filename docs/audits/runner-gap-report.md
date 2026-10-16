@@ -472,6 +472,7 @@ Spec-only update; no screen was re-audited. System Design edited under row 147 (
 | Runner app | `apps/runner_app` | None (screens not built) | — |
 
 ### New questions for the owner (round 10 follow-ups)
+**All answered 2026-10-16 as BOARD rows 177–184; applied in §13.1.**
 - AQ-17 (row 167): confirm the eligible-pool list; does an offline runner count as "unavailable", so a task can expire at night after one decline when everyone else is offline? Proposed yes (owner wording).
 - AQ-18 (row 167): may an admin re-offer to a runner who already declined or let an offer for the task lapse? Proposed no.
 - AQ-19 (row 167): until RA-10 service areas exist, interim pool without areas, or no automatic expiry? Proposed no automatic expiry.
