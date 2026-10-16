@@ -331,3 +331,13 @@ clean, 220 tests, production build OK. API e2e not re-run on main (65/65 on the 
 check on assign, row-167 matching-exhausted trigger) after round 9; then flutter-runner screen by screen:
 onboarding → profile → jobs → active job → job summary → earnings → notifications.
 
+**Merged (later on 2026-10-16)**
+
+- `docs/owner-answers-10-specs` (d3ee18f): owner answers 167–184 in specs and System Design; row 185
+  (deadline_at as an EXPIRED trigger) and 186 left open.
+- `feat/core-finding-a-runner` (a8fbdba) + `feat/customer-finding-a-runner` (611beac) + audit
+  `docs/customer-finding-a-runner-audit` (54d0fa6): customers see "Finding a runner" during
+  RUNNER_ASSIGNED, "En route" chip with a "Runner assigned" timeline step at acceptance, and no offered
+  runner (name, card, marker, ETA) before acceptance. core 383, customer 131, runner 26 tests.
+  Server-side enforcement of row 183 lands with `feat/api-owner-answers-9` (in review fix).
+
