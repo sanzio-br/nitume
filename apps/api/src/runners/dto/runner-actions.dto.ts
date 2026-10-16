@@ -43,11 +43,15 @@ export class UploadVerificationDocumentDto {
   verificationType: RunnerVerificationType.GOVERNMENT_ID | RunnerVerificationType.SELFIE;
 }
 
-/** POST /runners/verifications/:id/re-review (row 171): optional note, <= 500 after trim. */
+/**
+ * POST /runners/verifications/:id/re-review (rows 171, 180): optional note,
+ * at most 500 characters after trimming (checked by the service:
+ * 400 re_review_note_invalid); a blank note is stored as null.
+ */
 export class ReReviewVerificationDto {
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(2000)
   note?: string;
 }
 

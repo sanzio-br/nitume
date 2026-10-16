@@ -582,7 +582,8 @@ describe('Owner answers 9 (e2e)', () => {
         .post(`/api/v1/runners/verifications/${id}/re-review`)
         .set(bearer(admin.token))
         .send({ note: 'x'.repeat(501) })
-        .expect(400);
+        .expect(400)
+        .expect((r) => expect(r.body).toMatchObject({ code: 're_review_note_invalid', maxLength: 500 }));
       const rr = await http()
         .post(`/api/v1/runners/verifications/${id}/re-review`)
         .set(bearer(admin.token))

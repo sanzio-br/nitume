@@ -62,7 +62,11 @@ export type VerificationView = Omit<RunnerVerification, 'documentS3Key'> & { has
 /** One audited "Re-review evidence" (row 171). `note` is null after the purge (row 170). */
 export interface ReReviewView {
   id: string;
-  reviewedBy: { id: string; displayName: string | null } | null;
+  /**
+   * Never null: CHK_verification_document_access_log_actor requires an actor
+   * on every row except the system purge, so a re_review always has its admin.
+   */
+  reviewedBy: { id: string; displayName: string | null };
   createdAt: Date;
   note: string | null;
 }
@@ -444,7 +448,8 @@ export class RunnersService {
    * decided ID/selfie verification whose image is still stored. In one
    * transaction, with the verification row locked (so it cannot race the
    * purge): writes the `re_review` event (admin, IP, time, verification,
-   * evidence type, optional note <= 500), which restarts the retention clock.
+   * evidence type, optional note: trimmed, blank = none, over 500 -> 400
+   * re_review_note_invalid), which restarts the retention clock.
    * It never changes the decision (owner row 181 open). A pending
    * verification is not re-reviewed: its decision is the initial review.
    * Errors: 404; 409 verification_not_decided; 410
@@ -456,7 +461,14 @@ export class RunnersService {
     ip: string | null,
     noteInput?: string | null,
   ): Promise<{ verificationId: string; reReview: ReReviewView }> {
-    const note = noteInput?.trim() ? noteInput.trim().slice(0, RE_REVIEW_NOTE_MAX) : null;
+    // Trimmed first; blank -> no note; over 500 after trim -> 400.
+    const trimmed = typeof noteInput === 'string' ? noteInput.trim() : '';
+    if (trimmed.length > RE_REVIEW_NOTE_MAX) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 're_review_note_invalid', `Keep the note to ${RE_REVIEW_NOTE_MAX} characters`, {
+        maxLength: RE_REVIEW_NOTE_MAX,
+      });
+    }
+    const note = trimmed || null;
     const event = await this.verifications.manager.transaction(async (manager) => {
       const verification = await manager
         .getRepository(RunnerVerification)
@@ -507,9 +519,10 @@ export class RunnersService {
     const names = await this.users.displayNames(rows.map((r) => r.actorUserId).filter((v): v is string => !!v));
     for (const r of rows) {
       const list = out.get(r.verificationId) ?? [];
+      const actor = r.actorUserId as string; // Required by the DB check (see ReReviewView).
       list.push({
         id: r.id,
-        reviewedBy: r.actorUserId ? { id: r.actorUserId, displayName: names.get(r.actorUserId) ?? null } : null,
+        reviewedBy: { id: actor, displayName: names.get(actor) ?? null },
         createdAt: r.createdAt,
         note: r.note ?? null,
       });

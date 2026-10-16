@@ -220,7 +220,10 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
       },
     });
     expect(b.log.at(-1)).toMatchObject({ action: 're_review', actorUserId: 'admin-1', ip: '41.90.1.2', verificationId: v.id });
-    // Whitespace-only note is no note; the decision is unchanged.
+    // 500 after trim is fine, 501 is not; whitespace-only is no note; the decision is unchanged.
+    const padded = await b.service.reReviewDocument(v.id, 'admin-1', null, `  ${'n'.repeat(500)}  `);
+    expect(padded.reReview.note).toHaveLength(500);
+    expect(await codeOf(b.service.reReviewDocument(v.id, 'admin-1', null, 'n'.repeat(501)))).toBe('re_review_note_invalid');
     const bare = await b.service.reReviewDocument(v.id, 'admin-1', null, '   ');
     expect(bare.reReview.note).toBeNull();
     expect(b.rows[0].status).toBe(VerificationStatus.APPROVED);
