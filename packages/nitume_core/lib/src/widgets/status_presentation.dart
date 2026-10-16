@@ -14,6 +14,14 @@ typedef ErrandStatusPresentation = ({String label, StatusTone tone});
 ///
 /// CONFIRMED and SETTLED are system-only states (owner row 35): the customer
 /// never sees them by name, so both display as `Completed`.
+///
+/// RUNNER_ASSIGNED means a runner has been offered the task, not that one
+/// accepted (owner row 176): the customer keeps seeing `Finding a runner`
+/// through an open offer, a decline, a lapse and a re-offer. Acceptance is
+/// RUNNER_EN_ROUTE, which reads `En route` (row 182).
+///
+/// Customer app only. The Runner app uses `runnerStatusPresentation` (R-01)
+/// and admin has its own chip map.
 ErrandStatusPresentation statusPresentation(ErrandStatus status) {
   return switch (status) {
     ErrandStatus.draft => (label: 'Draft', tone: StatusTone.info),
@@ -23,7 +31,7 @@ ErrandStatusPresentation statusPresentation(ErrandStatus status) {
     ErrandStatus.paymentConfirmed =>
       (label: 'Finding a runner', tone: StatusTone.info),
     ErrandStatus.runnerAssigned =>
-      (label: 'Runner assigned', tone: StatusTone.info),
+      (label: 'Finding a runner', tone: StatusTone.info),
     ErrandStatus.runnerEnRoute =>
       (label: 'En route', tone: NitumeDesignChoices.enRouteTone),
     ErrandStatus.arrived => (label: 'Arrived', tone: StatusTone.info),

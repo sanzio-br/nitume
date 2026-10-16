@@ -74,6 +74,15 @@ void main() {
       expect(statusPresentation(ErrandStatus.inProgress).tone, StatusTone.info);
     });
 
+    test('RUNNER_ASSIGNED reads Finding a runner (row 176)', () {
+      expect(statusPresentation(ErrandStatus.runnerAssigned),
+          (label: 'Finding a runner', tone: StatusTone.info));
+      expect(statusPresentation(ErrandStatus.runnerEnRoute).label, 'En route');
+      for (final s in ErrandStatus.values) {
+        expect(statusPresentation(s).label, isNot('Runner assigned'));
+      }
+    });
+
     test('red and amber accents follow the owner decisions', () {
       expect(NitumeDesignChoices.unreadDot, NitumeColors.red);
       expect(NitumeDesignChoices.destructiveText, NitumeColors.red);
