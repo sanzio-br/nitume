@@ -27,6 +27,7 @@ Any. Primary action button (C-01, full width, margin `0 20 14`, under the summar
 | PAYMENT_CONFIRMED … IN_PROGRESS | `Track live` | `v-track` |
 | AWAITING_CUSTOMER | `Review evidence` | `v-evidence-confirm` |
 | COMPLETED, CONFIRMED or SETTLED (no rating yet) | `Rate this task` | `v-rate` |
+| EXPIRED (owner, 2026-10-16: the EXPIRED notification gives the next action) | `Start a new task` | `v-new-category` |
 | others | none | — |
 
 Report row visible in IN_PROGRESS, AWAITING_CUSTOMER and COMPLETED (§3.3 as updated 2026-10-08). In COMPLETED it shows only while the dispute window is open (24 h placeholder, configurable, restarted after a dispute resolves to COMPLETED; row 50); after that the system moves the errand to CONFIRMED. Hidden in all other states (CONFIRMED/SETTLED are system-only and read `Completed`, row 35). A task with a dispute (DISPUTED, or COMPLETED/CANCELLED after resolution, row 36) shows `View your report`.
@@ -64,6 +65,7 @@ States (proposed):
 - **Expired or failed after payment (row 102)**: an EXPIRED or FAILED task that was paid shows the receipt as paid (not `Not paid yet.`), plus the refund group. While the review is `pending_review` the line under the chip follows the trigger (`_shared.md` §11):
   - EXPIRED (`expired_after_payment`): `We couldn't find a runner for this task in time. We're reviewing a refund and will let you know the outcome.`
   - FAILED (`failed_after_payment`): `This task couldn't be completed. We're reviewing a refund and will let you know the outcome.`
+  - EXPIRED with no refund review (never paid, or before the API opens it): 13 slate-600 line under the chip `No runner accepted your task in time.` (proposed, same wording as the `errand.EXPIRED` notification, `v-notifications.md`).
   - Decided reviews use the common lines (`Refund approved`, `Refunded`, `No refund`). Never write that a refund is automatic or guaranteed: it is a review (row 102). Before the API opens the review (and for an EXPIRED/FAILED task that was never paid), show nothing about refunds.
 - **Corrected payouts (row 100)**: nothing extra. The refund group shows whatever effective status and amount the API returns (a reversed payout reads `Refund approved` until a new payout is sent).
 - Refund status changes live: refresh on `errand:status_changed` and on a refund notification (event type needs api-contract).

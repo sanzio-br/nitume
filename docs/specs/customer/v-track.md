@@ -67,7 +67,7 @@ States (proposed):
 - ARRIVED: ETA chip `Arrived`.
 - Socket disconnected: 12 slate-600 line under the map `Reconnecting…`; the map keeps the last position (still inside the window) while polling runs.
 - Item-payment notice: `Pay the item amount: KSh 40,000` (amount in Fira Code) + button `View details` → `x-merchant-payment` (variant A for `merchant_direct`, variant B STK for `send_to_runner`).
-- FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner was available in time.`, `We're reviewing your report.`) and outline `View task` → `v-task-detail`.
+- FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner accepted your task in time.` (EXPIRED, updated 2026-10-16 to match the `errand.EXPIRED` notification), `We're reviewing your report.`) and outline `View task` → `v-task-detail`. EXPIRED adds a C-04 text button `Start a new task` → `v-new-category` under `View task` (the next action, owner 2026-10-16). No refund wording on this card: the refund review (paid tasks, row 102) is shown on `v-task-detail` only.
 - Load error: C-33 `Couldn't load your task.` + `Try again`.
 
 ## Numeric fields (Fira Code)
