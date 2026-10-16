@@ -169,6 +169,17 @@ export class ReviewRunnerPayoutDto {
   @IsString()
   @MaxLength(500)
   exposureOverrideNote?: string;
+
+  /**
+   * Row 142 / 151 (N-21): reason for approving above the runner's purchase
+   * limit (10-500 characters, checked by the service so the error carries
+   * `purchase_limit_override_note_invalid`). Only used when the amount is
+   * above `approvalCeiling`; ignored otherwise.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  purchaseLimitOverrideNote?: string;
 }
 
 /** POST /runner-payouts/:id/hold (receipt mismatch). */

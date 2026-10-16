@@ -69,9 +69,14 @@ export class RunnerPayoutsController {
 
   /**
    * Approve (with `amount`) or reject (with `note`) an item reimbursement in
-   * review. Errors: 409 runner_payout_not_in_review; 400
-   * reimbursement_exceeds_cap (`cap`, `requestedAmount`, `itemPaidToNitume`),
-   * decision_note_required.
+   * review. Above the line's purchase limit only with
+   * `purchaseLimitOverrideNote` (10-500, rows 142, 151), up to
+   * `overLimitCeiling`, recorded append-only. Errors: 409
+   * runner_payout_not_in_review; 400 reimbursement_exceeds_cap (`cap`,
+   * `approvalCeiling`, `overLimitCeiling`, `requestedAmount`,
+   * `itemPaidToNitume`, `maxPurchaseAdvance` = the line's limit,
+   * `currentPurchaseLimit`); 400 purchase_limit_override_note_invalid;
+   * 409 task_exposure_cap_exceeded; decision_note_required.
    */
   @Post(':id/review')
   @HttpCode(200)

@@ -12,7 +12,6 @@ import { ErrandsService } from '../src/errands/errands.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
-import { PaymentsService } from '../src/payments/payments.service';
 
 /**
  * Contract checks for the owner answers 8 (BOARD rows 151-154 and the OTP
@@ -253,6 +252,54 @@ describe('Owner answers 8 (e2e)', () => {
       await expect(
         db().query('UPDATE "runner_payout_lines" SET "purchaseLimitAtCreation" = 9000 WHERE id = $1', [item.id]),
       ).rejects.toThrow(/immutable/);
+    });
+  });
+
+  describe('rows 142, 151 (N-21): purchase-limit exception', () => {
+    it('approves above the limit only with a reason, recorded append-only with the approval', async () => {
+      const ctx = await paidAndAssigned();
+      await setLimit(ctx.runner, 400);
+      const item = await toConfirmed(ctx);
+      const review = (body: Record<string, unknown>, status: number) =>
+        http()
+          .post(`/api/v1/runner-payouts/${item.id}/review`)
+          .set(bearer(ctx.admin.token))
+          .send({ decision: 'approve', ...body })
+          .expect(status);
+      const before = await http().get(`/api/v1/runner-payouts/${item.id}`).set(bearer(ctx.admin.token)).expect(200);
+      expect(before.body).toMatchObject({ approvalCeiling: '400.00', overLimitCeiling: '500.00', purchaseLimitOverride: null });
+      const plain = await review({ amount: 450 }, 400);
+      expect(plain.body).toMatchObject({ code: 'reimbursement_exceeds_cap', approvalCeiling: '400.00', overLimitCeiling: '500.00' });
+      const short = await review({ amount: 450, purchaseLimitOverrideNote: 'short' }, 400);
+      expect(short.body).toMatchObject({ code: 'purchase_limit_override_note_invalid' });
+      const above = await review({ amount: 500.01, purchaseLimitOverrideNote: 'Approved by ops lead on the phone' }, 400);
+      expect(above.body).toMatchObject({ code: 'reimbursement_exceeds_cap', cap: '500.00' });
+      const ok = await review({ amount: 450, purchaseLimitOverrideNote: 'Approved by ops lead on the phone' }, 200);
+      expect(ok.body).toMatchObject({
+        status: 'payable',
+        amount: '450.00',
+        purchaseLimitOverride: {
+          errandId: ctx.errand.id,
+          runnerProfileId: ctx.runner.profileId,
+          lineId: item.id,
+          limitAtTime: '400.00',
+          requestedAmount: '500.00',
+          approvedAmount: '450.00',
+          amountAbove: '50.00',
+          note: 'Approved by ops lead on the phone',
+          createdBy: { id: ctx.admin.id, displayName: 'Finance Ops' },
+        },
+        exposureOverrides: [],
+      });
+      expect(ok.body.purchaseLimitOverride.assignmentId).toEqual(expect.any(String));
+      const [row] = await db().query(
+        `SELECT id, source::text AS source FROM "task_exposure_overrides" WHERE "runnerPayoutLineId" = $1`,
+        [item.id],
+      );
+      expect(row.source).toBe('purchase_limit');
+      await expect(
+        db().query(`UPDATE "task_exposure_overrides" SET note = 'changed later' WHERE id = $1`, [row.id]),
+      ).rejects.toThrow(/append-only/);
     });
   });
 });
