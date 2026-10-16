@@ -191,7 +191,7 @@ export class RefundsPanelComponent implements OnInit {
                   status: saved.status,
                   refundAmount: saved.refundAmount,
                   // A correction can reverse or re-send the payout (row 100).
-                  ...('effectivePayout' in saved ? { effectivePayout: saved.effectivePayout } : {}),
+                  effectivePayout: saved.effectivePayout,
                 }
               : r,
           ),

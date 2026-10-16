@@ -26,6 +26,7 @@ function item(id: string, patch: Partial<RefundListItem> = {}): RefundListItem {
     errand: null,
     decidedBy: null,
     paidBy: null,
+    effectivePayout: null,
     ...patch,
   };
 }
@@ -42,9 +43,9 @@ describe('refunds panel copy', () => {
   });
 
   it('row actions', () => {
-    expect(refundRowAction({ status: 'pending_review' })).toBe('Review');
-    expect(refundRowAction({ status: 'approved' })).toBe('Record payout');
-    expect(refundRowAction({ status: 'refunded' })).toBe('View');
+    expect(refundRowAction({ status: 'pending_review', effectivePayout: null })).toBe('Review');
+    expect(refundRowAction({ status: 'approved', effectivePayout: null })).toBe('Record payout');
+    expect(refundRowAction({ status: 'refunded', effectivePayout: null })).toBe('View');
     const sent = { state: 'sent' as const, amount: '1200.00', reference: 'X', at: null };
     expect(refundRowAction({ status: 'refunded', effectivePayout: sent })).toBe('View');
     expect(
