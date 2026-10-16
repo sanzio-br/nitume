@@ -77,13 +77,18 @@ export class RunnerPayoutRequest {
   @Column({ type: 'text', nullable: true })
   decisionNote: string | null;
 
-  /** The runner's user id. */
+  /**
+   * The authenticated runner who submitted (row 165): set by the server from
+   * the JWT, never from the body; the DB refuses any other user on insert
+   * and any change afterwards.
+   */
   @Column({ type: 'uuid' })
   createdByUserId: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
+  /** Time of the most recent change (row 165); set by the DB trigger on every status transition. */
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }
