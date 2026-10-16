@@ -10,7 +10,7 @@ const codeOf = (p: Promise<unknown>) =>
     (e: unknown) => (e instanceof ApiError ? e.code : String(e)),
   );
 
-const build = (opts: { available?: number; minimum?: number } = {}) => {
+const build = (opts: { available?: number; requestable?: number; minimum?: number } = {}) => {
   const table: RunnerPayoutRequest[] = [];
   const lines = [
     { id: 'l-1', runnerProfileId: 'rp-1', status: S.PAYABLE, amount: '3000.00', payoutRequestId: null },
@@ -59,6 +59,7 @@ const build = (opts: { available?: number; minimum?: number } = {}) => {
   };
   const ledger = {
     availableFor: vi.fn(() => Promise.resolve(opts.available ?? 5500)),
+    requestableFor: vi.fn(() => Promise.resolve(opts.requestable ?? opts.available ?? 5500)),
     markPaidIn: vi.fn((_m: unknown, ids: string[], _ref: string, _admin: string, requestId: string) => {
       const rows = lines.filter((l) => ids.includes(l.id));
       for (const l of rows) {
@@ -137,6 +138,19 @@ describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
     const again = await b.service.create('u-run', 1000).catch((e: unknown) => e);
     expect((again as ApiError).getResponse()).toMatchObject({ code: 'payout_request_open', requestId: 'pr-1' });
     expect((again as ApiError).getStatus()).toBe(409);
+  });
+
+  it('caps a request by the payable lines, not reversed payouts awaiting a re-send (review minor 2)', async () => {
+    const b = build({ available: 5500, requestable: 4000 });
+    const over = await b.service.create('u-run', 4500).catch((e: unknown) => e);
+    expect((over as ApiError).getResponse()).toMatchObject({
+      code: 'payout_exceeds_available',
+      availableAmount: '5500.00',
+      requestableAmount: '4000.00',
+    });
+    const summary = await b.service.summaryFor('u-run');
+    expect(summary).toMatchObject({ availableAmount: '5500.00', requestableAmount: '4000.00' });
+    await expect(b.service.create('u-run', 4000)).resolves.toMatchObject({ requestedAmount: '4000.00' });
   });
 
   it('reads the KES 500 default when the config has no minimum (row 159)', async () => {

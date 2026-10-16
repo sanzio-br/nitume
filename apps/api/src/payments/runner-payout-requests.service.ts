@@ -74,6 +74,8 @@ export interface AdminRunnerPayoutRequestView {
   destinationPhone: string;
   /** The runner's available amount now (may be below the request). */
   availableAmount: string;
+  /** Payable lines now: what this request can be paid with (review minor 2). */
+  requestableAmount: string;
   createdAt: Date;
   decidedAt: Date | null;
   decidedBy: AdminRef | null;
@@ -97,6 +99,11 @@ export interface RunnerPayoutRequestSummary {
   /** Server-configured minimum (rows 117, 159; KES 500 by default). */
   minimumAmount: string;
   availableAmount: string;
+  /**
+   * Review minor 2: the most a request can ask for (payable lines). Below
+   * `availableAmount` only while a reversed payout awaits its re-send.
+   */
+  requestableAmount: string;
   openRequest: Pick<RunnerPayoutRequestView, 'id' | 'requestedAmount' | 'status' | 'createdAt'> | null;
 }
 
@@ -236,13 +243,18 @@ export class RunnerPayoutRequestsService {
           minimumAmount: money(minimum),
         });
       }
-      const available = await this.ledger.availableFor(runnerProfileId, manager);
-      if (amount > available) {
+      // Review minor 2: capped by the payable lines a request can be paid
+      // with, not by reversed payouts awaiting a re-send.
+      const [available, requestable] = await Promise.all([
+        this.ledger.availableFor(runnerProfileId, manager),
+        this.ledger.requestableFor(runnerProfileId, manager),
+      ]);
+      if (amount > requestable) {
         throw new ApiError(
           HttpStatus.BAD_REQUEST,
           'payout_exceeds_available',
-          `You can request up to KSh ${money(available)}`,
-          { availableAmount: money(available) },
+          `You can request up to KSh ${money(requestable)}`,
+          { availableAmount: money(available), requestableAmount: money(requestable) },
         );
       }
       return repo.save(
@@ -269,13 +281,15 @@ export class RunnerPayoutRequestsService {
   /** GET /runners/me/payout-requests/summary. */
   async summaryFor(runnerUserId: string): Promise<RunnerPayoutRequestSummary> {
     const runner = await this.runners.profileByUserId(runnerUserId);
-    const [open, available] = await Promise.all([
+    const [open, available, requestable] = await Promise.all([
       this.requests.findOne({ where: { runnerProfileId: runner.id, status: R.REQUESTED } }),
       this.ledger.availableFor(runner.id),
+      this.ledger.requestableFor(runner.id),
     ]);
     return {
       minimumAmount: money(this.minimumAmount()),
       availableAmount: money(available),
+      requestableAmount: money(requestable),
       openRequest: open
         ? { id: open.id, requestedAmount: money(open.requestedAmount), status: open.status, createdAt: open.createdAt }
         : null,
@@ -487,11 +501,13 @@ export class RunnerPayoutRequestsService {
     ]);
     const phones = new Map<string, string | null>();
     const available = new Map<string, number>();
+    const requestable = new Map<string, number>();
     for (const runnerId of runnerIds) {
       const profile = await this.runners.profileById(runnerId).catch(() => null);
       const user = profile ? await this.users.findById(profile.userId) : null;
       phones.set(runnerId, user?.phone ?? null);
       available.set(runnerId, await this.ledger.availableFor(runnerId));
+      requestable.set(runnerId, await this.ledger.requestableFor(runnerId));
     }
     return rows.map((r) => {
       const runner = summaries.get(r.runnerProfileId);
@@ -510,6 +526,7 @@ export class RunnerPayoutRequestsService {
         status: r.status,
         destinationPhone: r.destinationPhone,
         availableAmount: money(available.get(r.runnerProfileId)),
+        requestableAmount: money(requestable.get(r.runnerProfileId)),
         createdAt: r.createdAt,
         decidedAt: r.decidedAt,
         decidedBy: r.decidedByUserId ? { id: r.decidedByUserId, displayName: names.get(r.decidedByUserId) ?? null } : null,

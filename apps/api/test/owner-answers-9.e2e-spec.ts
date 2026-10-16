@@ -370,7 +370,7 @@ describe('Owner answers 9 (e2e)', () => {
       expect(typeof mine.body.items[0].cancelledAt).toBe('string');
       expect(JSON.stringify(mine.body)).not.toContain('fraud check');
       const summary = await http().get('/api/v1/runners/me/payout-requests/summary').set(bearer(runner.token)).expect(200);
-      expect(summary.body).toMatchObject({ availableAmount: '800.00', openRequest: null });
+      expect(summary.body).toMatchObject({ availableAmount: '800.00', requestableAmount: '800.00', openRequest: null });
       // A new request can be made at once.
       await requestPayout(runner, 800);
     });
@@ -633,6 +633,30 @@ describe('Owner answers 9 (e2e)', () => {
       expect([other.status, other.body.code, other.body.requestId]).toEqual([409, 'idempotency_key_reused', created[0].body.id]);
       const rows = await db().query('SELECT id FROM "runner_payout_requests" WHERE "runnerProfileId" = $1', [runner.profileId]);
       expect(rows).toHaveLength(1);
+    });
+  });
+
+  describe('review minor 2: a request is capped by what it can be paid with', () => {
+    it('a reversed payout not yet re-sent stays available but is not requestable', async () => {
+      const ctx = await runnerWithAvailable();
+      const { runner, admin } = ctx;
+      const fee = (await linesOf(ctx.errand.id)).find((l) => l.kind === 'runner_fee')!;
+      const code = () => `R${Math.random().toString(36).slice(2, 11).toUpperCase()}`;
+      await http()
+        .post('/api/v1/runner-payouts/mark-paid')
+        .set(bearer(admin.token))
+        .send({ lineIds: [fee.id], payoutReference: code() })
+        .expect((r) => expect([200, 201]).toContain(r.status));
+      await http()
+        .post(`/api/v1/runner-payouts/${fee.id}/corrections`)
+        .set(bearer(admin.token))
+        .send({ kind: 'reversal', newReference: code(), reason: 'Sent to the wrong number', expectedLatestCorrectionId: null })
+        .expect(201);
+      const summary = await http().get('/api/v1/runners/me/payout-requests/summary').set(bearer(runner.token)).expect(200);
+      expect(summary.body).toMatchObject({ availableAmount: '800.00', requestableAmount: '500.00' });
+      const over = await requestPayout(runner, 600, undefined, 400);
+      expect(over.body).toMatchObject({ code: 'payout_exceeds_available', availableAmount: '800.00', requestableAmount: '500.00' });
+      await requestPayout(runner, 500);
     });
   });
 });
