@@ -40,6 +40,10 @@ export class VerificationDocumentAccessLog {
   @Column({ type: 'varchar', length: 64, nullable: true })
   ip: string | null;
 
+  /** Optional admin note on a `re_review` (<= 500); cleared by the purge (row 170). */
+  @Column({ type: 'text', nullable: true })
+  note: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }
