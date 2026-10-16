@@ -23,7 +23,7 @@ None.
    - `Phone number`, `National ID`, `Selfie / liveness check`, `M-Pesa identity match`.
    - Rejected rows add, under the label, a C-04 link `Upload again` (ID) / `Retake selfie` (selfie).
 3. Body 12.5 slate-600, padding 14 20 0 (copy below, changes with the overall state).
-3a. Privacy paragraph (row 158), 11.5 slate-600 Fira Sans, padding 12 20 0: the owner's full sentence (Copy), then on its own line a C-04 link `Privacy Policy` (48 dp hit area) → `AppConfig.privacyLink`, opened externally; the link is hidden when no URL is configured. Shown in every overall state.
+3a. Privacy paragraph (row 158), 11.5 slate-600 Fira Sans, padding 12 20 0: the owner's full sentence (Copy), then on its own line a C-04 link `Privacy Policy` (48 dp hit area) → `AppConfig.privacyLink`, opened externally; the link is hidden until `NITUME_PRIVACY_URL` holds the real published URL (no placeholder; row 173). Shown in every overall state.
 4. Fixed bottom C-03 outline `Back to app` (pill; mockup `.cta-outline` radius 14).
 
 ## Status chips
@@ -70,5 +70,7 @@ Rows read as `National ID, verified`; chips are not colour-only (text label). CT
 
 - Row 158 (owner, 2026-10-16): the full privacy statement appears here (this is the screen behind Profile → `Verification documents`); the capture screens carry the short line.
 
+- Row 172 (owner 2026-10-16): the full wording stays here; capture screens carry the approved short line. Row 173: link hidden until the real URL is configured, no placeholder.
+
 ## Questions
-- Owner: the Privacy Policy URL does not exist yet (`NITUME_PRIVACY_URL` empty; customer `x-legal.md` Q1).
+- None (row 173 decided: the link appears once the URL is configured; the URL itself is still to be published).

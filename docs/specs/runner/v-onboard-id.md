@@ -44,7 +44,7 @@ Proposed:
 - Upload error (tile): `Not uploaded` + `Retry`; screen notice C-40 `Check your connection and try again.`
 - Rejected (from pending): C-40 notice above the tiles with the reviewer's reason only if the API returns a runner-safe reason (RA-7; default: generic `Your ID photos couldn't be verified. Upload clear photos of both sides.`).
 - Image quality hint under the drop zone, 11.5 slate-600: `Make sure all four corners are visible and the text is sharp.`
-- Privacy line (row 158, owner wording shortened; **proposal, flagged for the owner**), 11.5 slate-600 Fira Sans, under the hint: `Your ID and selfie are stored privately and only authorised Nitume personnel can see them.` followed on the same line by a C-04 link `Privacy Policy` (12.5/600 blue, 48 dp hit area) → `AppConfig.privacyLink` opened externally (`url_launcher`, as `x-legal`). No URL configured → the link is hidden, the sentence stays. The full owner sentence is on `v-onboard-pending` (`_shared.md` §9). Never `forever`, `permanently` or a fixed number of months (retention is configuration). Replaces the round-8 proposal `Only our verification team can see these photos. We keep them only as long as needed, then delete them.`
+- Privacy line (row 158 shortened; **approved, row 172**), 11.5 slate-600 Fira Sans, under the hint: `Your ID and selfie are stored privately and only authorised Nitume personnel can see them.` followed on the same line by a C-04 link `Privacy Policy` (12.5/600 blue, 48 dp hit area) → `AppConfig.privacyLink` opened externally (`url_launcher`, as `x-legal`). `NITUME_PRIVACY_URL` empty → the link is hidden, the sentence stays; no placeholder or fallback; the link appears once the real URL is configured (row 173). The full owner sentence is on `v-onboard-pending` (`_shared.md` §9). Never `forever`, `permanently` or a fixed number of months (retention is configuration). Replaces the round-8 proposal `Only our verification team can see these photos. We keep them only as long as needed, then delete them.`
 - **File too large (row 163)**: the app checks each image before upload; above 10 MB (10 × 1024 × 1024 bytes, the API limit) nothing is sent. The tile shows `Too large` with `Retake`, and a C-40 notice (danger accent) above the tiles: `This photo is larger than 10 MB. Take it again or choose a smaller photo.` (proposed; `10 MB` as a Fira Code span). The same copy answers an API 413 (the limit is enforced there too). The app may downscale camera captures so ID text stays sharp and the file fits (builder's choice; never below the legibility needed for review).
 
 ## Numeric fields (Fira Code)
@@ -73,6 +73,7 @@ Proposed:
 
 - Row 158 (owner 2026-10-16): privacy statement wording (full text in `_shared.md` §9); concise in the UI with a link to the full Privacy Policy. Row 161: retention clock events. Row 162: isolated storage, restricted credential. Row 163: 10 MB per image, checked in the app too.
 
+- Row 172 (owner 2026-10-16): the short privacy line + `Privacy Policy` link approved for the capture screens. Row 173: the link stays hidden until `NITUME_PRIVACY_URL` holds the real published URL; no placeholder.
+
 ## Questions
-- Owner: approve the shortened privacy line above (proposal derived from the row-158 wording).
-- Owner: the Privacy Policy URL does not exist yet (`NITUME_PRIVACY_URL` is empty; customer `x-legal.md` Q1). Until it is set the link is hidden.
+- None (rows 172, 173 decided 2026-10-16).
