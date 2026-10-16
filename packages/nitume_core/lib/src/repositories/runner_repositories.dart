@@ -14,8 +14,8 @@ import 'errand_repository.dart';
 /// R-19. The signed-in runner's account (`/runners/me*`), endpoints that
 /// exist on `main`.
 ///
-/// Not here yet: job offers / accept / decline (RA-1, owner row 113) and
-/// the payout ledger (RA-14, in progress on another branch).
+/// Not here yet: job offers / decline (RA-1, owner row 113). The payout
+/// ledger and payout requests are on `RunnerPayoutRepository`.
 class RunnerAccountRepository {
   RunnerAccountRepository(this._api);
 

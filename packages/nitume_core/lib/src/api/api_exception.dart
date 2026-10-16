@@ -55,6 +55,21 @@ class NitumeApiException implements Exception {
     return v is String ? DateTime.tryParse(v) : null;
   }
 
+  /// Decimal-string detail such as `minimumAmount` or `availableAmount`
+  /// (`"500.00"`), when present.
+  String? decimalDetail(String key) {
+    final v = details[key];
+    if (v is num) return v.toStringAsFixed(2);
+    if (v is String && v.trim().isNotEmpty) return v;
+    return null;
+  }
+
+  /// `minimumAmount` of a [ApiErrorCodes.payoutBelowMinimum] error.
+  String? get minimumAmount => decimalDetail('minimumAmount');
+
+  /// `availableAmount` of a [ApiErrorCodes.payoutExceedsAvailable] error.
+  String? get availableAmount => decimalDetail('availableAmount');
+
   /// Session-level 401 (no [code]): the app signs the user out. Coded 401s
   /// such as `otp_incorrect` are not session failures.
   final bool isUnauthorized;
@@ -297,4 +312,22 @@ abstract final class ApiErrorCodes {
   /// Admin side (409, row 82): the payout receipt of a refunded review is
   /// final.
   static const refundPayoutLocked = 'refund_payout_locked';
+
+  /// `POST /runners/me/payout-requests`: the amount is below the
+  /// ops-configured minimum (400, row 117). Details: `minimumAmount`
+  /// ([NitumeApiException.minimumAmount]).
+  static const payoutBelowMinimum = 'payout_below_minimum';
+
+  /// `POST /runners/me/payout-requests`: the amount is above what is
+  /// available (400). Details: `availableAmount`
+  /// ([NitumeApiException.availableAmount]).
+  static const payoutExceedsAvailable = 'payout_exceeds_available';
+
+  /// `POST /runners/me/payout-requests`: a request is already open (409,
+  /// one at a time, row 117). Details: `requestId`.
+  static const payoutRequestOpen = 'payout_request_open';
+
+  /// `POST /runners/me/payout-requests`: the account has no sign-in phone
+  /// to pay to (409, row 118). Send the runner to Support.
+  static const payoutDestinationMissing = 'payout_destination_missing';
 }
