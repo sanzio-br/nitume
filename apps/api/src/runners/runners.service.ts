@@ -80,7 +80,7 @@ export type AdminVerificationView = VerificationView & {
   reReviews: ReReviewView[];
 };
 
-/** Row 171: optional re-review note length (the round-10 spec proposal; owner row 180 open). */
+/** Rows 171, 180 (decided): optional re-review note, at most 500 characters after trim, no minimum. */
 export const RE_REVIEW_NOTE_MAX = 500;
 
 export const toVerificationView = (v: RunnerVerification): VerificationView => {
@@ -450,7 +450,7 @@ export class RunnersService {
    * purge): writes the `re_review` event (admin, IP, time, verification,
    * evidence type, optional note: trimmed, blank = none, over 500 -> 400
    * re_review_note_invalid), which restarts the retention clock.
-   * It never changes the decision (owner row 181 open). A pending
+   * It never changes the decision (row 181, decided). A pending
    * verification is not re-reviewed: its decision is the initial review.
    * Errors: 404; 409 verification_not_decided; 410
    * verification_document_purged; 404 verification_document_missing.

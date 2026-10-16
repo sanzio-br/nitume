@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, Logger } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../common/api-error';
 import { ErrandStatus, StatusHistoryActor, UserRole } from '../common/enums';
@@ -468,6 +468,18 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
       offerExpiresAt: past.toISOString(),
     });
     expect(emit).not.toHaveBeenCalledWith('errand.status_changed', expect.anything());
+  });
+
+  it('one errand failing is logged and skipped; the batch goes on (reviewer minor 1)', async () => {
+    const { service, assignmentRepo } = sweep({
+      status: ErrandStatus.RUNNER_ASSIGNED,
+      offer: { status: 'assigned', offerExpiresAt: past },
+    });
+    assignmentRepo.update.mockRejectedValueOnce(new Error('deadlock detected'));
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    await expect(service.expireLapsedOffers(now)).resolves.toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/e-1: Error \(deadlock detected\)/));
+    warn.mockRestore();
   });
 
   it.each([

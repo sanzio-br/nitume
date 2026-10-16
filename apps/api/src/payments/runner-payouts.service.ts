@@ -1030,10 +1030,6 @@ export class RunnerPayoutsService implements OnModuleInit {
   }
 
   /**
-   * The runner's available amount now (payable lines + reversed payouts not
-   * re-sent), as on `GET /runners/me/earnings` (rows 117, 153).
-   */
-  /**
    * Review minor 2: what a payout request can actually be paid with: the
    * runner's lines stored `payable` (whole lines, as `pay` takes them). Lower
    * than `availableFor` when a reversed payout has not been re-sent (or a
@@ -1049,6 +1045,10 @@ export class RunnerPayoutsService implements OnModuleInit {
     return Math.round(rows.reduce((t, l) => t + Number(l.amount ?? 0), 0) * 100) / 100;
   }
 
+  /**
+   * The runner's available amount now (payable lines + reversed payouts not
+   * re-sent), as on `GET /runners/me/earnings` (rows 117, 153).
+   */
   async availableFor(runnerProfileId: string, manager?: EntityManager): Promise<number> {
     const repo = manager ? manager.getRepository(RunnerPayoutLine) : this.lines;
     const obligations = await repo.find({ where: { runnerProfileId, kind: In([...OBLIGATION_LINE_TYPES]) } });

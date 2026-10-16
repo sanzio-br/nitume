@@ -1375,31 +1375,41 @@ export class ErrandsService {
       .getRawMany<{ id: string }>();
     const expired: string[] = [];
     for (const { id } of due) {
-      const done = await this.inTx(async (manager): Promise<AssignmentExpiredEvent | null> => {
-        const errand = await manager
-          .getRepository(Errand)
-          .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
-        if (errand?.status !== ErrandStatus.RUNNER_ASSIGNED) {
-          return null; // Cancelled meanwhile.
-        }
-        const offer = await this.expireLapsedOfferIn(manager, id, now);
-        return offer
-          ? {
-              errandId: id,
-              reference: errand.reference,
-              assignmentId: offer.id,
-              runnerProfileId: offer.runnerProfileId,
-              offerExpiresAt: (offer.offerExpiresAt as Date).toISOString(),
-            }
-          : null;
-      });
+      let done: AssignmentExpiredEvent | null;
+      try {
+        done = await this.inTx(async (manager): Promise<AssignmentExpiredEvent | null> => {
+          const errand = await manager
+            .getRepository(Errand)
+            .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+          if (errand?.status !== ErrandStatus.RUNNER_ASSIGNED) {
+            return null; // Cancelled meanwhile.
+          }
+          const offer = await this.expireLapsedOfferIn(manager, id, now);
+          return offer
+            ? {
+                errandId: id,
+                reference: errand.reference,
+                assignmentId: offer.id,
+                runnerProfileId: offer.runnerProfileId,
+                offerExpiresAt: (offer.offerExpiresAt as Date).toISOString(),
+              }
+            : null;
+        });
+      } catch (err) {
+        // One errand failing never stops the batch (reviewer minor 1); the
+        // next run re-checks it.
+        const code = err instanceof ApiError ? err.code : err instanceof Error ? err.constructor.name : String(err);
+        this.logger.warn(`Offer expiry skipped errand ${id}: ${code} (${err instanceof Error ? err.message : String(err)})`);
+        continue;
+      }
       if (done) {
+        const event = done;
         expired.push(id);
         setImmediate(() => {
           // The runner loses access: the realtime gateway re-checks the room.
           this.events.emit('errand.access_changed', { errandId: id });
           // Admin feed item (N-20); the customer is not told: the task did not change.
-          this.events.emit(ASSIGNMENT_EXPIRED_EVENT, done);
+          this.events.emit(ASSIGNMENT_EXPIRED_EVENT, event);
         });
       }
     }
