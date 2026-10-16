@@ -655,7 +655,7 @@ AQ-12 … AQ-16 (`_shared.md` §8); RQ-27 … RQ-31 in `runner-gap-report.md` §
 Spec-only update; no screen re-audited. Full list, API items and System Design edits: `docs/audits/runner-gap-report.md` §13.
 
 ### What changed
-- `drawer-task-offer.md` (row 167): EXPIRED only when matching is exhausted over the task's eligible service-area/category pool; whether `deadline_at` passing while RUNNER_ASSIGNED is also a trigger is open (BOARD row 185; the round-10 removal is withdrawn, see the round-10 fix below). New `Eligible runners left {n}` row on Offer ended / Declined, Reassign list = the eligible pool from the API, new read-only **Matching exhausted** state (`No runners left`, `Last offer`, `Expired at`, `Runners tried`, refund-review link), errors `matching_exhausted` / `runner_not_eligible`, feed item `matching_exhausted`.
+- `drawer-task-offer.md` (row 167): EXPIRED only when matching is exhausted over the task's eligible service-area/category pool; whether `deadline_at` passing while RUNNER_ASSIGNED is also a trigger was open (BOARD row 185, answered in round 11; the round-10 removal is withdrawn, see the round-10 fix below). New `Eligible runners left {n}` row on Offer ended / Declined, Reassign list = the eligible pool from the API, new read-only **Matching exhausted** state (`No runners left`, `Last offer`, `Expired at`, `Runners tried`, refund-review link), errors `matching_exhausted` / `runner_not_eligible`, feed item `matching_exhausted`.
 - `p-payout-requests.md` (rows 168, 169): reason never shown to the runner; 10–500 characters after trimming, whitespace-only invalid, inline errors; open questions closed.
 - `p-runners-verification-documents.md` (rows 170, 171, 175): reviewer note deleted at purge (no `Admin note` on purged cards); new **Re-review evidence** action (button, confirm, optional note, `Reviews` activity, errors), proposed `POST /runners/verifications/:id/re-review`; purge guards kept.
 - `_shared.md`: §1 rows 167–171, 175, 176; N-17, N-20, N-23 (e); §8 AQ-12 … AQ-16 closed, new AQ-17 … AQ-21.
@@ -676,10 +676,58 @@ AQ-17 … AQ-21 (`_shared.md` §8); CQ-176a–c in `runner-gap-report.md` §13 (
 ## Round 10 fix (reviewer FAIL 1; owner rows 177–181; correction row 185), applied on `docs/owner-answers-10-specs`
 
 Full list: `docs/audits/runner-gap-report.md` §13.1.
-- **B1**: row 155's deadline clause is no longer "removed"; whether `deadline_at` triggers EXPIRED is open (BOARD row 185) in `_shared.md` rows 155/167, N-20 and `drawer-task-offer.md`.
+- **B1**: row 155's deadline clause is no longer "removed"; whether `deadline_at` triggers EXPIRED was left open (BOARD row 185, answered in round 11) in `_shared.md` rows 155/167, N-20 and `drawer-task-offer.md`.
 - Rows 177–179 (`drawer-task-offer.md`, N-20): pool = online, eligible for the category, in the service area once areas exist, otherwise available; runners who declined or let an offer lapse are excluded from the Reassign list (greyed `Already offered`, not selectable), applied now; no automatic expiry until the full pool exists. Empty Reassign list: `No eligible runners are available right now.`, `Send offer` disabled.
 - M2: exhaustion check points marked proposed (after decline and lapse only); the candidates read never moves a task to EXPIRED.
 - Rows 180, 181 (`p-runners-verification-documents.md`, N-23 (e)): endpoint approved, optional note ≤ 500 with no minimum; never changes the decision. Shape aligned to `feat/api-owner-answers-9` @ `45b516d` (M6).
 - M7: `cancellation_reason_invalid` kept; already on the API branch.
 - Findings 21–23 unchanged. Finding 21 now also covers the row-178 exclusion and the empty-list state.
-- Open: BOARD row 185; low-priority question on the purchase limit in the pool (`_shared.md` §8).
+- Open at the time: BOARD row 185 and the purchase limit in the pool; both answered in round 11 (rows 185, 186; section below).
+
+## Owner answers round 11 (rows 185–200, 2026-10-16; row 201 pending), applied on `docs/owner-answers-11-specs`
+
+Spec-only update; no screen re-audited. Full decision list, API items and System Design edits: `docs/audits/runner-gap-report.md` §14.
+
+### What changed
+- `drawer-task-offer.md`:
+  - Row 185: new `Deadline` row; a **Deadline passed** sub-state for RUNNER_ASSIGNED past `deadlineAt` (read-only, no Reassign, no Expire); EXPIRED variants **Deadline passed**, **Matching exhausted** and **Expired by ops**; queue chip `Deadline passed` with `View`, excluded from `Needs a runner`; 409 `task_deadline_passed`; feed item `deadline_passed`.
+  - Row 186: runners below the purchase limit are greyed in the Reassign list with their limit and the task's purchase; 409 `runner_not_eligible` `over_purchase_limit`.
+  - Row 187: an empty online pool never expires a task; busy runners are ineligible; new **Expire task — no runner available** action (outline button, A-08 confirm with a required reason (proposed), result, activity row `Assigned → Expired` · `Admin · {name} · {time}`, errors), shown only on `canExpireNoRunner`.
+  - Row 201 (pending): PAYMENT_CONFIRMED past its deadline gets the `Deadline passed` (pending) chip and no `Assign`; it stays in `Needs a runner`.
+- `_shared.md`:
+  - §1: rows 185–200 and 201 (open).
+  - N-20: deadline, pool additions, admin expire, row 201.
+  - N-23 (d): `side`, rows 190–193.
+  - §8: questions AQ-22 … AQ-27; the row-185 and purchase-limit questions are closed.
+- `p-runners-verification-documents.md` (rows 190, 191, 192, 193, 195, 200): type labels `National ID · Front` / `· Back`; `side` and the narrowed clock are built on `main`.
+- `p-payout-requests.md` (row 194): the runner's cancel notification copy.
+
+### Findings against `main` (new)
+24. **blocker**: `apps/admin/src/app/features/admin/drawers/task-drawer.ts`, `panels/task-queue.panel.ts`.
+    - Design (row 185): the `Deadline` row, the read-only Deadline passed sub-state, the Expired: deadline passed variant, the queue chip and `View`, and the `task_deadline_passed` notice.
+    - Code: none.
+    - Fix: after api-contract item 1–2 (`runner-gap-report.md` §14), with findings 16 and 21.
+25. **blocker**: same files.
+    - Design (row 186): over-limit runners greyed with their reason in the Reassign list; the `runner_not_eligible` `over_purchase_limit` notice.
+    - Code: the assign dialog lists every runner and does no purchase check.
+    - Fix: after api-contract item 3.
+26. **blocker**: same files.
+    - Design (row 187): `Expire task — no runner available` (button, confirm, required reason, result, errors), the Expired by ops variant, and the admin name in the `Status history` row.
+    - Code: none. `Status history` shows the actor type only (`task-drawer.ts:157-176`).
+    - Fix: after api-contract items 5–6.
+27. **minor**: same files.
+    - Design (row 201, proposed, pending): PAYMENT_CONFIRMED `Deadline passed` chip and flag; no `Assign`.
+    - Code: none.
+    - Fix: hold until row 201 is answered.
+28. **minor**: `apps/admin/src/app/features/admin/panels/verifications.panel.ts` (`typeLabel`, `:194-201`) and `core/api-types.ts`.
+    - Design (rows 195, 200): `National ID · Front` / `· Back` from `side`.
+    - Code: no `side` on the type and no side in the label.
+    - Fix: add `side` and the labels (with finding 4 of the spec's list).
+
+### Handoff
+- api-contract (`feat/api-runner-1`): `runner-gap-report.md` §14 items 1–8.
+- web-parity: findings 24–28, plus the open 16–23.
+
+### Questions for the owner (new)
+- Row 201: open on the BOARD, with its follow-up (which exit ops use).
+- AQ-22 … AQ-27: `_shared.md` §8.

@@ -95,7 +95,7 @@ States (proposed):
 - Off-palette map colours and shadows: OA-14.
 
 ## Open questions (non-blocking; build default given)
-- None for the EXPIRED copy (row 174 decided 2026-10-16).
+- None for the EXPIRED copy (row 174 decided 2026-10-16). Row 185 (deadline passed) and row 187 (admin expire) reach the same EXPIRED state; the same copy applies, nothing new (round 11).
 - None for row 176: rows 182 (chip `En route`, timeline step `Runner assigned`) and 183 (offered runner hidden) decided 2026-10-16.
 - Q1: Timeline mixes states and events ("Task accepted", "Evidence upload"). Default: status history rows with §6 labels plus evidence events, next expected state as pending.
 - Q2: Multiple active errands. Default: chip selector above the map.
