@@ -69,7 +69,7 @@ Proposed: `Deadline`, `Items`, `Item amount`, `How it's paid`, `Pickup`, `Drop-o
 - Row 113 (RQ-1, RQ-1 b): offer model as above; accept above the limit refused; over-limit decline not penalised.
 - Row 114 (RQ-2): 10-minute admin offers.
 - Row 120 (RQ-8): no estimated time.
-- Rows 150, 155, 156 (2026-10-16): auto-offer lapse → next eligible runner; decline → stays RUNNER_ASSIGNED, no deadline change; pre-change offers without a deadline unchanged. Row 157 (2026-10-16): an admin-offer lapse expires the offer and leaves the task RUNNER_ASSIGNED for the admin to offer it to another runner; EXPIRED only when matching is exhausted (row 167, 2026-10-16; no task deadline).
+- Rows 150, 155, 156 (2026-10-16): auto-offer lapse → next eligible runner; decline → stays RUNNER_ASSIGNED, no deadline change; pre-change offers without a deadline unchanged. Row 157 (2026-10-16): an admin-offer lapse expires the offer and leaves the task RUNNER_ASSIGNED for the admin to offer it to another runner; EXPIRED only when matching is exhausted (row 167, 2026-10-16; whether `deadline_at` passing while RUNNER_ASSIGNED also triggers EXPIRED is open, BOARD row 185). Row 178: after declining or letting this offer lapse, the runner is never offered this task again.
 
 ## Questions
 - None open. Rows 157 and 167 (decided 2026-10-16) do not change this screen. RQ-22 (row 141) decided 2026-10-16: at the deadline the offer expires; no acceptance after expiry. When the countdown reaches zero the screen switches to the `This offer is no longer available.` state and hides `Accept` without waiting for the server.
