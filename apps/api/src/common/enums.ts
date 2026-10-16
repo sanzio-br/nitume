@@ -101,14 +101,18 @@ export enum VerificationStatus {
   REJECTED = 'rejected',
 }
 
+/**
+ * Runner skills = the six task categories (owner row 115; migration
+ * 1790103100000 from the old shopping/documents/... vocabulary). Same wire
+ * values as ErrandCategory.
+ */
 export enum RunnerSkill {
-  SHOPPING = 'shopping',
+  BUY_FOR_ME = 'buy_for_me',
   PICKUP_DELIVERY = 'pickup_delivery',
   INSPECTION = 'inspection',
-  DOCUMENTS = 'documents',
-  PROPERTY_VISITS = 'property_visits',
-  QUEUING = 'queuing',
-  BUSINESS_ERRANDS = 'business_errands',
+  REPRESENTATION = 'representation',
+  QUEUE_ADMIN = 'queue_admin',
+  BUSINESS = 'business',
 }
 
 export enum DevicePlatform {
