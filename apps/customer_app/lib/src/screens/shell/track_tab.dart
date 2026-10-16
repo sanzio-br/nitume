@@ -19,12 +19,20 @@ const trackStatuses = {
   ErrandStatus.awaitingCustomer,
 };
 
-/// Runner marker and ETA window (rows 27, 65; `_shared.md` §10).
+/// Runner marker and ETA window (rows 27, 65; `_shared.md` §10). It starts
+/// at RUNNER_EN_ROUTE: before acceptance the customer never sees the offered
+/// runner's name, marker or ETA (row 183, `_shared.md` §6.1).
 const runnerWindow = {
-  ErrandStatus.runnerAssigned,
   ErrandStatus.runnerEnRoute,
   ErrandStatus.arrived,
   ErrandStatus.inProgress,
+};
+
+/// States in which Track shows "finding a runner": no runner card, marker
+/// or ETA, even if the API sends an offered runner (rows 176, 183).
+const findingStatuses = {
+  ErrandStatus.paymentConfirmed,
+  ErrandStatus.runnerAssigned,
 };
 
 /// Happy path used for the "next expected" timeline step (v-track Q1).
@@ -451,10 +459,10 @@ class _TrackBody extends StatelessWidget {
     }
 
     final tracking = detail.tracking;
-    final finding = status == ErrandStatus.paymentConfirmed;
+    final finding = findingStatuses.contains(status);
     final inWindow = runnerWindow.contains(status);
     final allPoints = tracking?.points ?? errand.locations ?? const [];
-    // PAYMENT_CONFIRMED: the task pin only.
+    // PAYMENT_CONFIRMED and RUNNER_ASSIGNED: the task pin only.
     final points = finding
         ? [
             for (final p in allPoints)
@@ -473,7 +481,8 @@ class _TrackBody extends StatelessWidget {
         pointOf(ErrandPointType.dropoff) ?? pointOf(ErrandPointType.taskSite);
     final itemDue = itemAmountDue(detail.payment);
     final due = itemDue ? itemAmountDueValue(detail.payment!) : null;
-    final r = errand.runner ?? tracking?.runner;
+    // No runner before acceptance (row 183), whatever the API sends.
+    final r = finding ? null : errand.runner ?? tracking?.runner;
 
     final actions = <Widget>[
       if (detail.priceChange != null && status == ErrandStatus.inProgress)
@@ -660,8 +669,10 @@ String? itemAmountDueValue(PaymentSummary s) {
   return null;
 }
 
-/// Status history with `_shared.md` §6 labels, evidence uploads, and the
-/// next expected state as pending (v-track Q1 default).
+/// Status history with `customerTimelineTitle` titles (`_shared.md` §6.1),
+/// evidence uploads, and the next expected state as pending (v-track Q1
+/// default). RUNNER_ASSIGNED rows are not shown (re-offers add none); the
+/// RUNNER_EN_ROUTE row reads `Runner assigned`.
 List<TimelineStep> timelineSteps(
   List<StatusHistoryEntry> history,
   List<Evidence> evidence,
@@ -671,14 +682,15 @@ List<TimelineStep> timelineSteps(
       <(DateTime?, TimelineStep)>[
         for (final h in history)
           if (!_hiddenInTimeline.contains(h.toStatus))
-            (
-              h.createdAt,
-              TimelineStep(
-                title: statusPresentation(h.toStatus).label,
-                time: h.createdAt == null ? null : formatClock(h.createdAt!),
-                done: true,
+            if (customerTimelineTitle(h.toStatus) case final title?)
+              (
+                h.createdAt,
+                TimelineStep(
+                  title: title,
+                  time: h.createdAt == null ? null : formatClock(h.createdAt!),
+                  done: true,
+                ),
               ),
-            ),
         for (final e in evidence)
           (
             e.capturedAt ?? e.createdAt,
@@ -696,14 +708,17 @@ List<TimelineStep> timelineSteps(
         return x.compareTo(y);
       });
   final steps = [for (final d in done) d.$2];
+  // The next happy-path state with a customer title: after
+  // PAYMENT_CONFIRMED or RUNNER_ASSIGNED that is `Runner assigned`
+  // (RUNNER_EN_ROUTE), after RUNNER_EN_ROUTE `Arrived`.
   final i = _happyPath.indexOf(current);
-  if (i >= 0 && i + 1 < _happyPath.length) {
-    steps.add(
-      TimelineStep(
-        title: statusPresentation(_happyPath[i + 1]).label,
-        time: 'Pending',
-      ),
-    );
+  if (i >= 0) {
+    for (final next in _happyPath.skip(i + 1)) {
+      final title = customerTimelineTitle(next);
+      if (title == null) continue;
+      steps.add(TimelineStep(title: title, time: 'Pending'));
+      break;
+    }
   }
   return steps;
 }
