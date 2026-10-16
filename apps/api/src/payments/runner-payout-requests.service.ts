@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
@@ -23,6 +23,21 @@ export const CANCEL_REASON_MIN = 10;
 export const CANCEL_REASON_MAX = 500;
 /** How long an Idempotency-Key on a payout request is remembered. */
 export const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
+/** How long a reserved key waits for its first call to finish. */
+export const IDEMPOTENCY_PENDING_TTL_SECONDS = 60;
+
+/** Stored key value: `{ id, amount }` once created, `{ pending, amount }` while running; a bare id from round 8. */
+const parseIdempotencyValue = (raw: string | null): { id: string | null; amount: string | null } | null => {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const value = JSON.parse(raw) as { id?: string; amount?: string };
+    return { id: value.id ?? null, amount: value.amount ?? null };
+  } catch {
+    return { id: raw, amount: null };
+  }
+};
 
 /** A request as the runner sees it (v-payout, v-earnings, x-payout-history). */
 export interface RunnerPayoutRequestView {
@@ -96,6 +111,8 @@ export interface RunnerPayoutRequestSummary {
  */
 @Injectable()
 export class RunnerPayoutRequestsService {
+  private readonly logger = new Logger(RunnerPayoutRequestsService.name);
+
   constructor(
     @InjectRepository(RunnerPayoutRequest)
     private readonly requests: Repository<RunnerPayoutRequest>,
@@ -117,31 +134,97 @@ export class RunnerPayoutRequestsService {
   /**
    * POST /runners/me/payout-requests. Errors: 400 payout_below_minimum
    * (`minimumAmount`), payout_exceeds_available (`availableAmount`); 409
-   * payout_request_open (`requestId`). With an `Idempotency-Key`, a replay
-   * returns the request it created.
+   * payout_request_open (`requestId`).
+   *
+   * `Idempotency-Key` (review minor 1): the key is reserved atomically (SET
+   * NX) before any work and bound to the amount. A replay with the same
+   * amount returns the request it created; with another amount 409
+   * idempotency_key_reused (`requestId` when known); while the first call is
+   * still running 409 idempotency_in_progress (retry shortly). A refused
+   * request releases the key. Redis failures never fail a committed
+   * request: the one-open-request rule still prevents a duplicate.
    */
   async create(runnerUserId: string, amount: number, idempotencyKey?: string): Promise<RunnerPayoutRequestView> {
     const runner = await this.runners.profileByUserId(runnerUserId);
     const key = idempotencyKey?.trim()
       ? `idem:runner-payout-request:${runner.id}:${idempotencyKey.trim().slice(0, 128)}`
       : null;
+    const requested = money(amount);
+    let reserved = false;
     if (key && this.redis) {
-      const existing = await this.redis.get(key);
-      if (existing) {
-        const row = await this.requests.findOne({ where: { id: existing, runnerProfileId: runner.id } });
-        if (row) {
-          return toRunnerView(row);
-        }
+      const replay = await this.reserveKey(key, runner.id, requested);
+      if (replay) {
+        return replay;
       }
+      reserved = true;
     }
+    let saved: RunnerPayoutRequest;
+    try {
+      saved = await this.createLocked(runner.id, runnerUserId, amount);
+    } catch (err) {
+      if (reserved && key) {
+        await this.redis?.del(key).catch(() => undefined);
+      }
+      throw err;
+    }
+    if (reserved && key) {
+      await this.redis
+        ?.set(key, JSON.stringify({ id: saved.id, amount: requested }), IDEMPOTENCY_TTL_SECONDS)
+        .catch((err: unknown) =>
+          this.logger.error(
+            `Payout request ${saved.id} committed but its idempotency key was not stored: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+    }
+    return toRunnerView(saved);
+  }
+
+  /**
+   * Reserves the idempotency key, or returns the request of an earlier call
+   * with the same key and amount. Throws 409 on a different amount or a call
+   * still in flight. Null = reserved, go ahead (also when Redis is down).
+   */
+  private async reserveKey(key: string, runnerProfileId: string, amount: string): Promise<RunnerPayoutRequestView | null> {
+    try {
+      if (await this.redis!.setIfAbsent(key, JSON.stringify({ pending: true, amount }), IDEMPOTENCY_PENDING_TTL_SECONDS)) {
+        return null;
+      }
+      const raw = await this.redis!.get(key);
+      const stored = parseIdempotencyValue(raw);
+      if (!stored) {
+        return null; // Expired between the two calls: proceed (the open-request rule guards).
+      }
+      if (stored.amount !== null && stored.amount !== amount) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'idempotency_key_reused',
+          'This Idempotency-Key was used for a different amount',
+          stored.id ? { requestId: stored.id } : {},
+        );
+      }
+      if (!stored.id) {
+        throw new ApiError(HttpStatus.CONFLICT, 'idempotency_in_progress', 'This request is still being processed. Try again shortly.');
+      }
+      const row = await this.requests.findOne({ where: { id: stored.id, runnerProfileId } });
+      return row ? toRunnerView(row) : null;
+    } catch (err) {
+      if (err instanceof ApiError) {
+        throw err;
+      }
+      this.logger.warn(`Idempotency store unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  private async createLocked(runnerProfileId: string, runnerUserId: string, amount: number): Promise<RunnerPayoutRequest> {
     const user = await this.users.findById(runnerUserId);
     if (!user?.phone) {
       throw new ApiError(HttpStatus.CONFLICT, 'payout_destination_missing', 'Your account has no sign-in phone to pay to');
     }
-    const saved = await this.requests.manager.transaction(async (manager) => {
-      await lockRunner(manager, runner.id);
+    return this.requests.manager.transaction(async (manager) => {
+      await lockRunner(manager, runnerProfileId);
       const repo = manager.getRepository(RunnerPayoutRequest);
-      const open = await repo.findOne({ where: { runnerProfileId: runner.id, status: R.REQUESTED } });
+      const open = await repo.findOne({ where: { runnerProfileId, status: R.REQUESTED } });
       if (open) {
         throw new ApiError(HttpStatus.CONFLICT, 'payout_request_open', 'You already have a payout request open', {
           requestId: open.id,
@@ -153,7 +236,7 @@ export class RunnerPayoutRequestsService {
           minimumAmount: money(minimum),
         });
       }
-      const available = await this.ledger.availableFor(runner.id, manager);
+      const available = await this.ledger.availableFor(runnerProfileId, manager);
       if (amount > available) {
         throw new ApiError(
           HttpStatus.BAD_REQUEST,
@@ -164,7 +247,7 @@ export class RunnerPayoutRequestsService {
       }
       return repo.save(
         repo.create({
-          runnerProfileId: runner.id,
+          runnerProfileId,
           requestedAmount: money(amount),
           paidAmount: null,
           status: R.REQUESTED,
@@ -181,10 +264,6 @@ export class RunnerPayoutRequestsService {
         }),
       );
     });
-    if (key && this.redis) {
-      await this.redis.set(key, saved.id, IDEMPOTENCY_TTL_SECONDS);
-    }
-    return toRunnerView(saved);
   }
 
   /** GET /runners/me/payout-requests/summary. */

@@ -90,6 +90,17 @@ const build = (opts: { available?: number; minimum?: number } = {}) => {
       store.set(k, v);
       return Promise.resolve();
     }),
+    setIfAbsent: vi.fn((k: string, v: string) => {
+      if (store.has(k)) {
+        return Promise.resolve(false);
+      }
+      store.set(k, v);
+      return Promise.resolve(true);
+    }),
+    del: vi.fn((k: string) => {
+      store.delete(k);
+      return Promise.resolve();
+    }),
   };
   const service = new RunnerPayoutRequestsService(
     requests as never,
@@ -99,7 +110,7 @@ const build = (opts: { available?: number; minimum?: number } = {}) => {
     config as never,
     redis as never,
   );
-  return { service, table, lines, ledger, redis };
+  return { service, table, lines, ledger, redis, store };
 };
 
 describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
@@ -141,6 +152,28 @@ describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
     const replay = await b.service.create('u-run', 1000, 'key-1');
     expect(replay.id).toBe(first.id);
     expect(b.table).toHaveLength(1);
+  });
+
+  it('binds the key to the amount, refuses a call in flight, releases it on refusal (review minor 1)', async () => {
+    const b = build({ available: 5500 });
+    const first = await b.service.create('u-run', 1000, 'key-1');
+    const other = await b.service.create('u-run', 2000, 'key-1').catch((e: unknown) => e);
+    expect((other as ApiError).getResponse()).toMatchObject({ code: 'idempotency_key_reused', requestId: first.id });
+    // A call still running with the same key.
+    b.store.set('idem:runner-payout-request:rp-1:key-2', JSON.stringify({ pending: true, amount: '1000.00' }));
+    expect(await codeOf(b.service.create('u-run', 1000, 'key-2'))).toBe('idempotency_in_progress');
+    // A refused request frees its key for the retry.
+    expect(await codeOf(b.service.create('u-run', 9000, 'key-3'))).toBe('payout_request_open');
+    expect(b.store.has('idem:runner-payout-request:rp-1:key-3')).toBe(false);
+  });
+
+  it('a committed request is returned even when the key cannot be stored (review minor 1)', async () => {
+    const b = build();
+    b.redis.set.mockRejectedValueOnce(new Error('redis down'));
+    const view = await b.service.create('u-run', 1000, 'key-9');
+    expect(view.status).toBe(R.REQUESTED);
+    b.redis.setIfAbsent.mockRejectedValueOnce(new Error('redis down'));
+    expect(await codeOf(b.service.create('u-run', 1000, 'key-10'))).toBe('payout_request_open');
   });
 
   it('paid with whole lines below the request: closes PAID, paidAmount = lines total (row 146)', async () => {

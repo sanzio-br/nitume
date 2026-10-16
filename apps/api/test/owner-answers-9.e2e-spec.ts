@@ -14,6 +14,7 @@ import { ErrandsService } from '../src/errands/errands.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
+import { RedisService } from '../src/infra/redis/redis.service';
 import { IdDocumentRetentionService } from '../src/scheduler/id-document-retention.service';
 import { RunnersService as Runners } from '../src/runners/runners.service';
 import {
@@ -34,6 +35,8 @@ describe('Owner answers 9 (e2e)', () => {
   let baseUrl: string;
   const userIds: string[] = [];
   const errandIds: string[] = [];
+  /** Redis keys this file creates (idempotency), removed in afterAll. */
+  const redisKeys: string[] = [];
 
   const randomPhone = (): string => `+2547${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
 
@@ -72,6 +75,7 @@ describe('Owner answers 9 (e2e)', () => {
   });
 
   afterAll(async () => {
+    await app.get(RedisService).del(...redisKeys);
     const ds = app.get(DataSource);
     if (errandIds.length > 0) {
       await ds.query(
@@ -601,6 +605,34 @@ describe('Owner answers 9 (e2e)', () => {
       });
       const rr = await http().post(`/api/v1/runners/verifications/${id}/re-review`).set(bearer(admin.token)).expect(410);
       expect(rr.body).toMatchObject({ code: 'verification_document_purged' });
+    });
+  });
+
+  describe('review minor 1: payout request Idempotency-Key', () => {
+    it('concurrent calls with one key create one request; another amount is refused', async () => {
+      const { runner } = await runnerWithAvailable();
+      const key = `e2e9-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      redisKeys.push(`idem:runner-payout-request:${runner.profileId}:${key}`);
+      const send = (amount: number) =>
+        http()
+          .post('/api/v1/runners/me/payout-requests')
+          .set(bearer(runner.token))
+          .set('Idempotency-Key', key)
+          .send({ amount })
+          .then((r) => r);
+      const results = await Promise.all([send(600), send(600), send(600)]);
+      const created = results.filter((r) => r.status === 201);
+      expect(created.length).toBeGreaterThanOrEqual(1);
+      expect(new Set(created.map((r) => r.body.id)).size).toBe(1);
+      for (const r of results.filter((x) => x.status !== 201)) {
+        expect([r.status, r.body.code]).toEqual([409, 'idempotency_in_progress']);
+      }
+      const replay = await send(600);
+      expect([replay.status, replay.body.id]).toEqual([201, created[0].body.id]);
+      const other = await send(700);
+      expect([other.status, other.body.code, other.body.requestId]).toEqual([409, 'idempotency_key_reused', created[0].body.id]);
+      const rows = await db().query('SELECT id FROM "runner_payout_requests" WHERE "runnerProfileId" = $1', [runner.profileId]);
+      expect(rows).toHaveLength(1);
     });
   });
 });
