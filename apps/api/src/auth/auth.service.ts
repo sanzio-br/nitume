@@ -127,6 +127,10 @@ export class AuthService {
     } else if (user.status !== 'active') {
       throw accountSuspended();
     }
+    if (user.role === UserRole.RUNNER) {
+      // Runner `_shared.md` §9: the OTP sign-in approves the phone check (row 126).
+      await this.runners.ensurePhoneVerified(user.id);
+    }
     const tokens = await this.tokens.issueTokenPair(user);
     return { user: toPublicUser(user), tokens };
   }
