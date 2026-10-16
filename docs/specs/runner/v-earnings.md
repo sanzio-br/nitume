@@ -85,6 +85,8 @@ Built on `feat/api-owner-answers-6` @ `10b6019` (row 107, table `runner_payout_l
 - Row 143: no payout-time promise; status only.
 - Row 146: a request paid below the requested amount closes as `Paid`; requested and paid are shown separately (caption above); the rest stays in `availableAmount` for a new request. Needs the derived `payout` entry to carry `payoutRequestId` and `requestedAmount` when it settled a request (api-contract, RA-15).
 - Row 142: an item line approved above the purchase limit through the ops override shows like any approved line (amount as approved, no extra caption).
+- Row 152 (2026-10-16): the `over_purchase_limit` caption refers to the limit stored on the line when it was created; a later limit change does not move a line out of review. The screen shows no limit figure on ledger rows.
+- Row 153 (2026-10-16): payout request table approved with `requestedAmount` and `paidAmount` separate (no longer pending).
 
 ## Questions
 - None new.

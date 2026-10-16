@@ -17,7 +17,7 @@ Home tab. The runner switches availability on or off and sees the job offers add
 - Verification card (not verified) → `v-onboard-pending`.
 
 ## Task states
-Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it reaches its acceptance deadline unaccepted the offer expires and the task moves to EXPIRED at once (row 141, decided 2026-10-16: no re-offer first, no runner acceptance after expiry) and the card disappears. An accept that arrives after `expiresAt` is refused (`offer_expired`). Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
+Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it reaches its acceptance deadline unaccepted the **offer** expires and the card disappears (no runner acceptance after expiry, row 141). What happens to the task is not this runner's concern and is never shown (runner `_shared.md` §6 "Offer outcomes"): an auto-offer passes to the next eligible runner and the task goes EXPIRED only when none remain (row 150); an admin offer sends the task to EXPIRED at once as built (row 141), pending row 157. Offers made before the deadline change have `offerExpiresAt = null` (row 156): no countdown, and the client never removes the card on its own (only `job:offer_withdrawn`, a refused accept or a refresh that no longer returns it removes it). An accept that arrives after `offerExpiresAt` is refused (`offer_expired`). Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
 
 ## Layout (top to bottom)
 1. C-09 top bar: title `Nearby jobs` (21/700) + C-11 bell (36, white, slate-line; red 7px unread dot from `GET /notifications/unread-count`).
@@ -71,12 +71,12 @@ Proposed:
 ## Data
 - `GET /runners/me` (exists): `availability`, `verificationLevel`, `maxPurchaseAdvance` (exists in the entity, exposed raw). Skills and areas are **not** returned (RA-10).
 - `PATCH /runners/me/availability` `{ availability: 'online' | 'offline' }` (exists; no verification gate, RA-8; `busy` is server-set, proposed).
-- Offers: **missing** (RA-1) `GET /runners/me/offers` → `[{ assignmentId, errandId, expiresAt, category, title, runnerFee, itemAmount, merchantRoute, overPurchaseLimit, firstPoint { lat, lng, addressText } }]`; `POST /errands/:id/accept` (named in system design §3.2, not built) and `POST /errands/:id/decline` `{ reason }`.
+- Offers: **missing** (RA-1) `GET /runners/me/offers` → `[{ assignmentId, errandId, offerExpiresAt, category, title, runnerFee, itemAmount, merchantRoute, overPurchaseLimit, firstPoint { lat, lng, addressText } }]`; `POST /errands/:id/accept` (named in system design §3.2, not built) and `POST /errands/:id/decline` `{ reason }`.
 - Socket: room `runner:{runnerId}` with `job:offered`, `job:offer_withdrawn` (RA-5, missing). Polling fallback 20 s.
 - Location: while online without a job, one ping every 30 s (row 123, R-20); offline, none. The distance on cards uses the device position locally (no API).
 - Notifications unread count: `GET /notifications/unread-count` (exists, any role).
 - Task states shown: RUNNER_ASSIGNED (offered).
-- **Built vs needed** (rows 113, 137): `feat/api-owner-answers-6` has only `GET /errands/:id/purchase-check` and the over-limit decline on an *assigned* job. Row 137 replaces that with the offer model: api-contract builds `GET /runners/me/offers` (each offer: `assignmentId, errandId, expiresAt, category, title, runnerFee, itemAmount, merchantRoute, overPurchaseLimit, maxPurchaseAdvance, firstPoint`), accept (`POST /errands/:id/accept`, → RUNNER_EN_ROUTE, refuses over the limit), decline (`POST /errands/:id/decline` `{ reason?: 'over_purchase_limit' }`, task stays RUNNER_ASSIGNED), expiry → EXPIRED (RA-1, RA-3).
+- **Built vs needed** (rows 113, 137): `feat/api-owner-answers-6` has only `GET /errands/:id/purchase-check` and the over-limit decline on an *assigned* job. Row 137 replaces that with the offer model: api-contract builds `GET /runners/me/offers` (each offer: `assignmentId, errandId, offerExpiresAt, category, title, runnerFee, itemAmount, merchantRoute, overPurchaseLimit, maxPurchaseAdvance, firstPoint`), accept (`POST /errands/:id/accept`, → RUNNER_EN_ROUTE, refuses over the limit), decline (`POST /errands/:id/decline` `{ reason?: 'over_purchase_limit' }`, task stays RUNNER_ASSIGNED), expiry per runner `_shared.md` §6 "Offer outcomes" (RA-1, RA-3, RA-26).
 
 ## Accessibility and mobile
 - Card reads as one item (`Check It For Me, Check apartment — Nyali, 1,750 shillings, 1.2 km away`) with two actions exposed.
@@ -85,12 +85,15 @@ Proposed:
 - Pull-to-refresh.
 
 ## Decisions (owner, 2026-10-13)
-- Row 113 (RQ-1): offers inside RUNNER_ASSIGNED; accept → RUNNER_EN_ROUTE; decline → stays RUNNER_ASSIGNED and is reassigned; lapse → EXPIRED; accept above the limit refused; over-limit decline not penalised.
-- Row 141 (RQ-22, owner 2026-10-16): "at the acceptance deadline with no acceptance the offer expires and the task goes EXPIRED at once; no runner acceptance after expiry." The app removes the card at `expiresAt` (client clock, then confirmed by the server event) and never sends an accept after it.
+- Row 113 (RQ-1): offers inside RUNNER_ASSIGNED; accept → RUNNER_EN_ROUTE; decline → stays RUNNER_ASSIGNED and is reassigned; lapse → the offer expires (task outcome: rows 150, 155, 157); accept above the limit refused; over-limit decline not penalised.
+- Row 141 (RQ-22, owner 2026-10-16): "at the acceptance deadline with no acceptance the offer expires […]; no runner acceptance after expiry." "The task goes EXPIRED at once" now covers admin offers only (as built, pending row 157).
+- Row 150 (owner 2026-10-16): an auto-offer expires at its window end, then the system offers the next eligible runner; EXPIRED only when no eligible runners remain.
+- Row 155 (owner 2026-10-16): a decline starts or changes no deadline; the task stays RUNNER_ASSIGNED while eligible runners remain (matches the decline dialog `We'll offer it to another runner.`).
+- Row 156: offers without a deadline (pre-change) stay as they are: `offerExpiresAt = null` → no countdown and no client-side removal. Otherwise the app removes the card at `offerExpiresAt` (client clock, then confirmed by the server event) and never sends an accept after it.
 - Row 114 (RQ-2): admin offers 10 min, auto-offers 90 s (configurable).
 - Row 116 (RQ-4): service areas from an ops-configured list.
 - Row 120 (RQ-8): no estimated duration on cards; generic evidence line `Photos required`.
 - Row 123 (RQ-11): 30 s pings while online without a job; none offline.
 
 ## Questions
-- New (state machine, row 141 follow-up): System Design §3.4 v1 says an **auto-offer** (90 s) falls through to the next runner, while row 141 says an unaccepted offer expires and the task goes EXPIRED at once. Does row 141 also apply to auto-offers (no fall-through), or only to admin offers? Specced: EXPIRED at once for every offer, as row 141 reads; the runner screens are the same either way (the card disappears at `expiresAt`).
+- Row 150 answered the auto-offer question (fall-through to the next eligible runner). Row 157 (open): admin-offer lapse, EXPIRED at once (as built) or re-offer. No screen change either way: the card disappears at `offerExpiresAt`.

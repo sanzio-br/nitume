@@ -16,7 +16,7 @@ Full details of one offer (map, instructions, distance, time, payout, purchase t
 - Offer expired/withdrawn while open → C-40 notice `This offer is no longer available.`, buttons hidden, C-03 `Back to jobs`.
 
 ## Task states
-Offered: RUNNER_ASSIGNED with this runner's assignment `offered` (row 113); offer window 10 min for admin offers, 90 s for auto-offers (row 114). A small Fira Code line under the header shows the time left (`Offer ends in 7:42`, proposed) and the screen switches to the expired notice at 0. Any other state opened from a stale notification → show the job's R-01 chip and route: held by this runner → `v-active`; otherwise the expired notice.
+Offered: RUNNER_ASSIGNED with this runner's assignment `offered` (row 113); offer window 10 min for admin offers, 90 s for auto-offers (row 114). A small Fira Code line under the header shows the time left (`Offer ends in 7:42`, proposed) and the screen switches to the expired notice at 0. With `offerExpiresAt = null` (offers made before the deadline change, row 156) the line is hidden and the client never switches to the expired notice on its own (only `job:offer_withdrawn` or a refused accept does). The runner is never told what happened to the task after its offer lapsed (runner `_shared.md` §6 "Offer outcomes", rows 150, 155, 157). Any other state opened from a stale notification → show the job's R-01 chip and route: held by this runner → `v-active`; otherwise the expired notice.
 
 ## Layout (top to bottom)
 1. C-10 header `Job offer`.
@@ -69,6 +69,7 @@ Proposed: `Deadline`, `Items`, `Item amount`, `How it's paid`, `Pickup`, `Drop-o
 - Row 113 (RQ-1, RQ-1 b): offer model as above; accept above the limit refused; over-limit decline not penalised.
 - Row 114 (RQ-2): 10-minute admin offers.
 - Row 120 (RQ-8): no estimated time.
+- Rows 150, 155, 156 (2026-10-16): auto-offer lapse → next eligible runner; decline → stays RUNNER_ASSIGNED, no deadline change; pre-change offers without a deadline unchanged. Admin-offer lapse: EXPIRED at once as built (row 141), pending row 157.
 
 ## Questions
-- None open. RQ-22 (row 141) decided 2026-10-16: at the deadline the offer expires and the task goes EXPIRED at once; no acceptance after expiry. When the countdown reaches zero the screen switches to the `This offer is no longer available.` state and hides `Accept` without waiting for the server.
+- Row 157 (open, admin-offer lapse) does not change this screen. RQ-22 (row 141) decided 2026-10-16: at the deadline the offer expires; no acceptance after expiry. When the countdown reaches zero the screen switches to the `This offer is no longer available.` state and hides `Accept` without waiting for the server.
