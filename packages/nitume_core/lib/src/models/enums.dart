@@ -422,6 +422,13 @@ enum NotificationEventType {
   const NotificationEventType(this.wire, [this.status]);
   final String wire;
 
+  /// `errand.EXPIRED`: the task expired because no runner accepted in time
+  /// (rows 141, 150). Not an enum value yet: adding one would break the
+  /// apps' exhaustive switches until they gain a wildcard arm, so it parses
+  /// as `null` from [tryFromWire]. Read the state with
+  /// `AppNotification.announcedStatus` (gives [ErrandStatus.expired]).
+  static const errandExpiredWire = 'errand.EXPIRED';
+
   /// The errand state the notification announces; `null` for non-status
   /// events (price change, refund).
   final ErrandStatus? status;
