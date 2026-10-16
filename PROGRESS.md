@@ -281,18 +281,20 @@ feat/customer-expired-next-action (its specs live on the docs stack).
   (eb86f5c): EXPIRED copy and "Start a new task" on v-track and v-task-detail; design-auditor PASS;
   122 tests. Copy waits on row 158 (recommended before merge).
 
-**In progress**
-
-- `feat/api-owner-answers-8` (api-contract): rows 151–154 (above-limit exception, limit at creation,
-  payout requests, ID/selfie storage + retention), errand.EXPIRED notification, OTP email/SMS copy;
-  merges feat/api-owner-answers-7 before review.
+- `feat/api-owner-answers-8` (8b7bdb1 … ee16a60, merge 9957495): row 152 limit stored per line; rows
+  142/151 above-limit approval with a recorded reason in task_exposure_overrides; row 153 payout
+  requests (paid below request closes PAID); row 154 private Cloudinary ID/selfie storage, signed admin
+  links ≤ 300 s, access log, daily purge (365 days default); errand.EXPIRED customer notification; OTP
+  email + SMS 5-minute copy. 4 migrations (1790102100000–1790102400000). 475 unit, 65 e2e. Merge after
+  feat/api-owner-answers-7. Defaults pending owner rows 158–164.
 
 **Open / deferred**
 
-- Owner rows 85 (PayHero), 145, 147, 148, 157, 158.
+- Owner rows 85 (PayHero), 145, 147, 148, 157, 158–164.
+- API follow-ups from round-8 review (minors 1–6, 9, 10), not dispatched.
 - System Design edits (11, runner-gap-report §11 on docs/owner-answers-8-specs) wait on row 147.
 - Auto-offer fall-through (row 150) needs the RA-1 offer model; not built.
 - Customer: explicit errand.EXPIRED notification route + core-ui enum once the API sends it.
 - Admin: drawer-runner-payout findings 14, 15 and p-payout-requests after the round-8 API.
 - e2e suite flaky in parallel (pre-existing); run with --no-file-parallelism.
-- Shared local DB `nitume` has round-6 migrations applied (ahead of main).
+- Shared local DB `nitume` has round-6 and round-8 migrations applied (ahead of main).
