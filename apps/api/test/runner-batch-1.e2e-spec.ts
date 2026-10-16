@@ -84,13 +84,18 @@ describe('Runner API batch 1 (e2e)', () => {
       // Payments and refund reviews reference price_change_requests.
       await ds.query('DELETE FROM "payments" WHERE "errandId" = ANY($1)', [errandIds]);
       await ds.query('DELETE FROM "refund_reviews" WHERE "errandId" = ANY($1)', [errandIds]);
-      const tables: { table_name: string }[] = await ds.query(
-        `SELECT table_name FROM information_schema.columns
-          WHERE table_schema = 'public' AND column_name = 'errandId'
-            AND table_name <> 'errands'`,
-      );
-      for (const { table_name } of tables) {
-        await ds.query(`DELETE FROM "${table_name}" WHERE "errandId" = ANY($1)`, [errandIds]);
+      // Explicit list (reviewer minor 7): the tables this file writes with an
+      // errandId. It never writes evidence, disputes, chat, ratings, price
+      // changes, runner locations or any append-only table.
+      for (const table of [
+        'errand_assignments',
+        'errand_status_history',
+        'errand_items',
+        'errand_locations',
+        'quotes',
+        'notification_log',
+      ]) {
+        await ds.query(`DELETE FROM "${table}" WHERE "errandId" = ANY($1)`, [errandIds]);
       }
       // A queued feed job may still write a notification for these errands: clear and retry.
       for (let attempt = 0; ; attempt += 1) {
@@ -506,6 +511,12 @@ describe('Runner API batch 1 (e2e)', () => {
       expect(last).toMatchObject({ toStatus: 'EXPIRED', actorType: 'system', actor: null });
       const accepted = history.body.find((h: { toStatus: string }) => h.toStatus === 'ACCEPTED');
       expect(accepted.actor).toMatchObject({ id: customer.id });
+      // Customers and runners get no actor names (reviewer B2).
+      const own = await http().get(`/api/v1/errands/${errand.id}/history`).set(bearer(customer.token)).expect(200);
+      expect(own.body.length).toBe(history.body.length);
+      for (const row of own.body as Record<string, unknown>[]) {
+        expect(row).not.toHaveProperty('actor');
+      }
     });
 
     it('a PAYMENT_CONFIRMED task past its deadline is left as is and can still be assigned (row 201 open)', async () => {

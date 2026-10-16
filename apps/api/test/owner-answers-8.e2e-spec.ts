@@ -229,9 +229,20 @@ describe('Owner answers 8 (e2e)', () => {
     )) as { id: string; kind: string; status: string; amount: string | null; requestedAmount: string; reviewReason: string | null }[];
 
   /** Runs the paid, assigned errand to CONFIRMED with a receipt on file; returns the item line id. */
-  const toConfirmed = async (ctx: { customer: Actor; runner: Actor; errand: { id: string } }) => {
+  /**
+   * `limitAfterAccept`: lower the runner's limit once the job is accepted
+   * (RA-3 refuses the accept itself above the limit), so the over-limit
+   * purchase found at CONFIRMED (row 135) is still exercised.
+   */
+  const toConfirmed = async (
+    ctx: { customer: Actor; runner: Actor; errand: { id: string } },
+    opts: { limitAfterAccept?: number } = {},
+  ) => {
     for (const to of ['RUNNER_EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']) {
       await setStatus(ctx.runner, ctx.errand.id, to);
+      if (to === 'RUNNER_EN_ROUTE' && opts.limitAfterAccept !== undefined) {
+        await setLimit(ctx.runner, opts.limitAfterAccept);
+      }
     }
     await upload(ctx.runner, ctx.errand.id);
     await setStatus(ctx.runner, ctx.errand.id, 'AWAITING_CUSTOMER');
@@ -248,8 +259,7 @@ describe('Owner answers 8 (e2e)', () => {
   describe('row 152: purchase limit stored when the obligation is created', () => {
     it('created at KES 400, limit later 1,000: the review ceiling stays 400', async () => {
       const ctx = await paidAndAssigned();
-      await setLimit(ctx.runner, 400);
-      const item = await toConfirmed(ctx);
+      const item = await toConfirmed(ctx, { limitAfterAccept: 400 });
       expect(item).toMatchObject({ status: 'on_hold', reviewReason: 'over_purchase_limit', purchaseLimitAtCreation: '400.00' });
       await setLimit(ctx.runner, 1000);
       const detail = await http().get(`/api/v1/runner-payouts/${item.id}`).set(bearer(ctx.admin.token)).expect(200);
@@ -285,8 +295,7 @@ describe('Owner answers 8 (e2e)', () => {
   describe('rows 142, 151 (N-21): purchase-limit exception', () => {
     it('approves above the limit only with a reason, recorded append-only with the approval', async () => {
       const ctx = await paidAndAssigned();
-      await setLimit(ctx.runner, 400);
-      const item = await toConfirmed(ctx);
+      const item = await toConfirmed(ctx, { limitAfterAccept: 400 });
       const review = (body: Record<string, unknown>, status: number) =>
         http()
           .post(`/api/v1/runner-payouts/${item.id}/review`)
