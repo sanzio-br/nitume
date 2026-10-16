@@ -82,7 +82,7 @@ const build = (opts: { available?: number; minimum?: number } = {}) => {
     findById: vi.fn(() => Promise.resolve({ id: 'u-run', phone: '+254733111222' })),
     displayNames: vi.fn(() => Promise.resolve(new Map([['admin-1', 'Finance']]))),
   };
-  const config = { get: vi.fn(() => opts.minimum ?? 500) };
+  const config = { get: vi.fn((_key: string, fallback?: number) => opts.minimum ?? fallback) };
   const store = new Map<string, string>();
   const redis = {
     get: vi.fn((k: string) => Promise.resolve(store.get(k) ?? null)),
@@ -126,6 +126,13 @@ describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
     const again = await b.service.create('u-run', 1000).catch((e: unknown) => e);
     expect((again as ApiError).getResponse()).toMatchObject({ code: 'payout_request_open', requestId: 'pr-1' });
     expect((again as ApiError).getStatus()).toBe(409);
+  });
+
+  it('reads the KES 500 default when the config has no minimum (row 159)', async () => {
+    const b = build();
+    expect(b.service.minimumAmount()).toBe(500);
+    const summary = await b.service.summaryFor('u-run');
+    expect(summary.minimumAmount).toBe('500.00');
   });
 
   it('replays with the same Idempotency-Key return the same request', async () => {

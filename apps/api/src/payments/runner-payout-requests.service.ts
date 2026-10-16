@@ -14,6 +14,8 @@ import { RunnerPayoutsService } from './runner-payouts.service';
 const R = RunnerPayoutRequestStatus;
 const money = (v: string | number | null | undefined): string => Number(v ?? 0).toFixed(2);
 
+/** Row 159 (owner, 2026-10-16): smallest payout request, KES. */
+export const DEFAULT_MIN_RUNNER_PAYOUT_REQUEST = 500;
 export const REJECT_NOTE_MIN = 5;
 export const REJECT_NOTE_MAX = 300;
 /** How long an Idempotency-Key on a payout request is remembered. */
@@ -64,7 +66,7 @@ export interface AdminRunnerPayoutRequestView {
 }
 
 export interface RunnerPayoutRequestSummary {
-  /** Ops-configured minimum (row 117), KES. */
+  /** Server-configured minimum (rows 117, 159; KES 500 by default). */
   minimumAmount: string;
   availableAmount: string;
   openRequest: Pick<RunnerPayoutRequestView, 'id' | 'requestedAmount' | 'status' | 'createdAt'> | null;
@@ -91,8 +93,10 @@ export class RunnerPayoutRequestsService {
     @Optional() private readonly redis?: RedisService,
   ) {}
 
+  /** Row 159: KES 500 unless MIN_RUNNER_PAYOUT_REQUEST says otherwise. */
   minimumAmount(): number {
-    return Math.max(0, Number(this.config.get<number>('runnerPayouts.minimumRequestAmount', 0)) || 0);
+    const value = Number(this.config.get<number>('runnerPayouts.minimumRequestAmount', DEFAULT_MIN_RUNNER_PAYOUT_REQUEST));
+    return Number.isFinite(value) ? Math.max(0, value) : DEFAULT_MIN_RUNNER_PAYOUT_REQUEST;
   }
 
   // ---- runner ----------------------------------------------------------------

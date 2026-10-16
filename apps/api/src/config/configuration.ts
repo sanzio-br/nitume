@@ -73,7 +73,7 @@ export interface AppConfig {
     purgeCron: string;
   };
   runnerPayouts: {
-    /** Smallest payout a runner may request, KES (row 117: configurable; value not set by the owner yet). */
+    /** Smallest payout a runner may request, KES (row 159: KES 500, MIN_RUNNER_PAYOUT_REQUEST). */
     minimumRequestAmount: number;
   };
   matching: {
@@ -258,10 +258,11 @@ export const configuration = (): AppConfig => ({
     maxUploadBytes: int(process.env.RUNNER_ID_MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
     purgeCron: process.env.RUNNER_ID_PURGE_CRON || '0 3 * * *',
   },
-  // Row 117: runners request payouts above a configurable minimum. TODO(owner):
-  // no amount is set in the documents; 0 means no minimum beyond KSh 0.01.
+  // Rows 117, 159 (owner, 2026-10-16): runners request payouts of at least
+  // KES 500, server-side config, no admin UI. MIN_RUNNER_PAYOUT_REQUEST
+  // replaces the round-8 RUNNER_PAYOUT_REQUEST_MINIMUM_KES (not read any more).
   runnerPayouts: {
-    minimumRequestAmount: Number.parseFloat(process.env.RUNNER_PAYOUT_REQUEST_MINIMUM_KES ?? '0') || 0,
+    minimumRequestAmount: Number.parseFloat(process.env.MIN_RUNNER_PAYOUT_REQUEST ?? '500'),
   },
   // Row 114 (owner, 2026-10-13): admin-created offers stay open 10 minutes.
   // Row 157: an offer not accepted by then expires; the task stays

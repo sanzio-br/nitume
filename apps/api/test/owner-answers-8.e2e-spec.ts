@@ -348,7 +348,14 @@ describe('Owner answers 8 (e2e)', () => {
 
       const summary = await http().get('/api/v1/runners/me/payout-requests/summary').set(bearer(runner.token)).expect(200);
       expect(summary.body).toMatchObject({ availableAmount: '1600.00', openRequest: null });
-      expect(summary.body.minimumAmount).toEqual(expect.any(String));
+      // Row 159: KES 500 minimum from MIN_RUNNER_PAYOUT_REQUEST (default).
+      expect(summary.body.minimumAmount).toBe('500.00');
+      const low = await http()
+        .post('/api/v1/runners/me/payout-requests')
+        .set(bearer(runner.token))
+        .send({ amount: 499.99 })
+        .expect(400);
+      expect(low.body).toMatchObject({ code: 'payout_below_minimum', minimumAmount: '500.00' });
       const over = await http()
         .post('/api/v1/runners/me/payout-requests')
         .set(bearer(runner.token))

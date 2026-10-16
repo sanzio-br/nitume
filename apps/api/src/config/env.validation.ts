@@ -24,6 +24,11 @@ export const validateEnv = (env: Record<string, unknown>): Record<string, unknow
   if (ttl !== undefined && !(Number.parseFloat(ttl) > 0)) {
     throw new Error(`QUOTES_DEFAULT_TTL_HOURS must be a positive number of hours (got '${ttl}')`);
   }
+  // Row 159: the payout request minimum is a KES amount (default 500).
+  const minimum = str(env.MIN_RUNNER_PAYOUT_REQUEST);
+  if (minimum !== undefined && !(Number.parseFloat(minimum) >= 0)) {
+    throw new Error(`MIN_RUNNER_PAYOUT_REQUEST must be a KES amount of 0 or more (got '${minimum}')`);
+  }
   // Row 154: ID/selfie images are never kept indefinitely.
   const retention = str(env.RUNNER_ID_RETENTION_DAYS);
   if (retention !== undefined && !(Number.parseInt(retention, 10) > 0)) {
