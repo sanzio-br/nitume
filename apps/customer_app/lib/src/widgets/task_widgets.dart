@@ -13,7 +13,12 @@ class TaskSummaryCard extends StatelessWidget {
     this.chip,
     this.titleStyle,
     this.showChip = true,
+    this.note,
   });
+
+  /// Optional 13 slate-600 line under the chip (e.g. Task detail EXPIRED
+  /// with no refund review).
+  final String? note;
 
   /// `false` hides the chip (expired quote: the UI never invents a label).
   final bool showChip;
@@ -35,6 +40,10 @@ class TaskSummaryCard extends StatelessWidget {
           children: [
             if (showChip) ...[
               chip ?? StatusChip.forStatus(errand.status),
+              const SizedBox(height: 10),
+            ],
+            if (note case final note?) ...[
+              Text(note, style: NitumeTextStyles.muted),
               const SizedBox(height: 10),
             ],
             Text(

@@ -107,6 +107,11 @@ All answered. Specs no longer say "pending row N" for these.
 | 100 | Payout corrections/reversals are separate audit records; the original receipt is immutable. The customer sees only the refund status and amount of the latest effective payout, never corrections, reasons or admin notes | §11, v-task-detail |
 | 101 | Round-4 breaking API changes accepted (dispute `resolvedBy: null` for customers; no `payoutReference` in the customer refund view; price changes outside Buy For Me / Get It For Me answer 400). The app was updated in round 4 | (no change) |
 | 102 | Paid tasks ending CANCELLED, EXPIRED or FAILED open a refund **review** (not an automatic refund) | §11, v-task-detail |
+| owner 2026-10-16 (Needs row, round 7) | EXPIRED customer notification: explain no runner accepted in time, give the next action, no refund promise (a paid task gets a review, not a guaranteed refund). OTP messages say `Your verification code expires in 5 minutes.` (TTL 300 s unchanged) | v-notifications, v-track, v-task-detail, v-auth-otp |
+| 104–108 | Runner reimbursement and payout ledger (owner 2026-10-13): reimbursement payable at CONFIRMED; missing/mismatched receipt → ops review, capped at the item amount paid to Nitume; verified item spend reimbursed on CANCELLED/FAILED without a runner fee; runner payout ledger table approved; purchases limited by `max_purchase_advance`. No customer copy changes: the customer never sees the runner's payouts | (none) |
+| 109 | Only a **re-sent** refund payout notifies the customer; payout corrections and reversals do not by default (was AQ-9) | §11, v-notifications |
+| 110 | A payout correction never records an amount above the refund ceiling (admin rule, was AQ-10) | (none) |
+| 111 | A reversed, not-yet-re-sent payout stays committed at the decided amount (shown as `Refund approved`) | §11 |
 | Needs 40 | Empty-title-safe `NitumeTopBar` approved | C-09, v-home |
 | Needs 41 | x-merchant-payment snackbar `Nothing to pay right now.` approved | x-merchant-payment |
 
@@ -294,7 +299,7 @@ State machine: `docs/design/Nitume_System_Design.md` §3.3, updated 2026-10-08 t
 | SETTLED | Completed | success (system-only, row 35 answered) |
 | CANCELLED | Cancelled | **danger (red), OA-13** |
 | FAILED | Failed | danger |
-| EXPIRED | Expired | info (not drawn; nothing for the customer to act on) |
+| EXPIRED | Expired | info (not drawn). Reached when no eligible runner accepted in time (rows 141, 150, 155; row 157 open for admin offers). Next action `Start a new task` (`v-track`, `v-task-detail`); the customer is told by the `errand.EXPIRED` notification (`v-notifications.md`, owner 2026-10-16) |
 | DISPUTED | Disputed | danger |
 
 "Active" set (Home "In progress", Track): REQUESTED, QUOTED, ACCEPTED, PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER.
@@ -403,6 +408,6 @@ The refund amount is decided by an admin. Its ceiling (admin-side, not shown to 
 | `refunded` | `Refunded` | success | `Sent <date, time>` (date/time Fira Code) | `Refund amount` + amount |
 | `no_refund` | `No refund` | info | `After review, no refund is due for this task.` | none |
 
-Never shown: the admin's refund decision note (row 69, decided: internal only), the payout reference, and any wording such as "balance", "wallet", "held" or "release" (OA-6). A sent refund is final on this screen: receipts are never edited after `refunded` (row 82). Ops may add a correction or reversal record (row 100); the customer never sees those records, their reasons or the admin. The API's customer view already reflects the **latest effective payout**: a corrected amount shows as the new `Refund amount`; a reversed payout not yet re-sent comes back as `approved` (`Refund approved` and its line); a new payout comes back as `refunded` with the new sent time. The app just renders `status` / `refundAmount` / `paidAt` as above; it has no correction-specific UI. Notification on a correction: owner question AQ-9 (default: only a new payout notifies, as `Refund sent`).
+Never shown: the admin's refund decision note (row 69, decided: internal only), the payout reference, and any wording such as "balance", "wallet", "held" or "release" (OA-6). A sent refund is final on this screen: receipts are never edited after `refunded` (row 82). Ops may add a correction or reversal record (row 100); the customer never sees those records, their reasons or the admin. The API's customer view already reflects the **latest effective payout**: a corrected amount shows as the new `Refund amount`; a reversed payout not yet re-sent comes back as `approved` (`Refund approved` and its line); a new payout comes back as `refunded` with the new sent time. The app just renders `status` / `refundAmount` / `paidAt` as above; it has no correction-specific UI. Notifications (decided, owner 2026-10-13, row 109): only a re-sent payout notifies, as `Refund sent`; corrections and reversals notify nothing by default. A reversed payout not yet re-sent stays committed at the approved amount (row 111), which is why it shows as `Refund approved` with that amount.
 
 Not to be confused with the **dispute resolution note**, which the customer does see (row 79) on `x-report-problem` read mode (`Outcome`).

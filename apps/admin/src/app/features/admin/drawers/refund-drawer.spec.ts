@@ -63,6 +63,9 @@ function review(patch: Partial<RefundDetail> = {}): RefundDetail {
     otherReviews: [],
     decidedBy: null,
     paidBy: null,
+    effectivePayout: null,
+    corrections: [],
+    correctionCeiling: null,
     ...patch,
   };
 }
@@ -423,6 +426,13 @@ describe('RefundDrawerComponent', () => {
       refundAmount: '1200.00',
       payoutReference: 'SLK4H7XQ2P',
       paidAt: '2026-10-08T09:00:00Z',
+      effectivePayout: {
+        state: 'sent',
+        amount: '1200.00',
+        reference: 'SLK4H7XQ2P',
+        at: '2026-10-08T09:00:00Z',
+      },
+      correctionCeiling: '1200.00',
     });
     await flushAsync();
     http.match(() => true).forEach((r) => r.flush({ count: 0 }));
@@ -437,6 +447,13 @@ describe('RefundDrawerComponent', () => {
         decidedAt: '2026-10-08T07:00:00Z',
         payoutReference: 'SLK4H7XQ2P',
         paidAt: '2026-10-08T09:00:00Z',
+        effectivePayout: {
+          state: 'sent',
+          amount: '1200.00',
+          reference: 'SLK4H7XQ2P',
+          at: '2026-10-08T09:00:00Z',
+        },
+        correctionCeiling: '1200.00',
       }),
     );
     const el = fixture.nativeElement as HTMLElement;
@@ -480,6 +497,13 @@ describe('RefundDrawerComponent', () => {
         refundAmount: '1200.00',
         payoutReference: 'QWE123RTY9',
         paidAt: '2026-10-08T08:00:00Z',
+        effectivePayout: {
+          state: 'sent',
+          amount: '1200.00',
+          reference: 'QWE123RTY9',
+          at: '2026-10-08T08:00:00Z',
+        },
+        correctionCeiling: '1200.00',
       }),
     );
     await flushAsync();

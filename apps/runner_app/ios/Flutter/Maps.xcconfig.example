@@ -1,0 +1,3 @@
+// Copy to Maps.xcconfig (gitignored) and set the iOS-restricted Google
+// Maps SDK key. Leave empty to keep the map placeholder.
+MAPS_API_KEY =

@@ -34,8 +34,16 @@ export class RunnerVerification {
   })
   status: VerificationStatus;
 
+  /**
+   * Storage key of the uploaded image (restricted storage, rows 125, 154).
+   * Never returned to clients; nulled when the image is purged.
+   */
   @Column({ type: 'varchar', length: 255, nullable: true })
   documentS3Key: string | null;
+
+  /** When the retention purge deleted the image (row 154); null while kept. */
+  @Column({ type: 'timestamptz', nullable: true })
+  purgedAt: Date | null;
 
   @Column({ type: 'text', nullable: true })
   reviewerNote: string | null;

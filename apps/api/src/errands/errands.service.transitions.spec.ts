@@ -1,9 +1,10 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, Logger } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../common/api-error';
 import { ErrandStatus, StatusHistoryActor, UserRole } from '../common/enums';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { Errand } from './errand.entity';
+import { ErrandAssignment } from './errand-assignment.entity';
 import { ErrandStatusHistory } from './errand-status-history.entity';
 import { TransitionGuard } from './errand-state-machine';
 import { ErrandsService } from './errands.service';
@@ -302,5 +303,173 @@ describe('ErrandsService termination hooks (row 102)', () => {
     ).rejects.toThrow('refund review failed');
     await new Promise((r) => setImmediate(r));
     expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('ErrandsService confirmation hooks (rows 104, 107)', () => {
+  it('runs inside the COMPLETED -> CONFIRMED transaction, and only there', async () => {
+    const { service, manager } = build(ErrandStatus.COMPLETED);
+    const hook = vi.fn(() => Promise.resolve());
+    service.onConfirmed(hook);
+    await service.transition('e-1', ErrandStatus.CONFIRMED, { type: StatusHistoryActor.SYSTEM });
+    expect(hook).toHaveBeenCalledWith(manager, {
+      errandId: 'e-1',
+      from: ErrandStatus.COMPLETED,
+      actor: StatusHistoryActor.SYSTEM,
+    });
+
+    for (const [from, to] of [
+      [ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.COMPLETED],
+      [ErrandStatus.CONFIRMED, ErrandStatus.SETTLED],
+      [ErrandStatus.RUNNER_EN_ROUTE, ErrandStatus.FAILED],
+    ] as const) {
+      const other = build(from);
+      const h = vi.fn(() => Promise.resolve());
+      other.service.onConfirmed(h);
+      await other.service
+        .transition('e-1', to, { type: StatusHistoryActor.SYSTEM })
+        .catch(() => undefined);
+      expect(h).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rolls CONFIRMED back (no event) when a hook throws', async () => {
+    const { service, emit } = build(ErrandStatus.COMPLETED);
+    service.onConfirmed(() => Promise.reject(new Error('ledger failed')));
+    await expect(
+      service.transition('e-1', ErrandStatus.CONFIRMED, { type: StatusHistoryActor.SYSTEM }),
+    ).rejects.toThrow('ledger failed');
+    await new Promise((r) => setImmediate(r));
+    expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('ErrandsService offer deadline (row 141)', () => {
+  const runner = { type: StatusHistoryActor.RUNNER, id: 'rp-1' };
+
+  const withOffer = (offerExpiresAt: Date | null) => {
+    const built = build(ErrandStatus.RUNNER_ASSIGNED);
+    const offer = { id: 'a-1', errandId: 'e-1', runnerProfileId: 'rp-1', status: 'assigned', offerExpiresAt };
+    const qb = { where: vi.fn(), andWhere: vi.fn(), getOne: vi.fn(() => Promise.resolve(offer)) };
+    qb.where.mockReturnValue(qb);
+    qb.andWhere.mockReturnValue(qb);
+    const repo = {
+      createQueryBuilder: vi.fn(() => qb),
+      findOne: vi.fn(() => Promise.resolve(offer)),
+      update: vi.fn((_id: string, patch: object) => Promise.resolve(Object.assign(offer, patch))),
+    };
+    const original = built.manager.getRepository;
+    built.manager.getRepository = (entity: unknown) =>
+      entity === ErrandAssignment ? repo : original(entity);
+    return { ...built, offer, repo };
+  };
+
+  it('accepts (RUNNER_ASSIGNED -> RUNNER_EN_ROUTE) before the deadline and marks the assignment accepted', async () => {
+    const { service, errand, offer } = withOffer(new Date(Date.now() + 60_000));
+    await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
+    expect(errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
+    expect(offer).toMatchObject({ status: 'accepted', decidedAt: expect.any(Date) });
+  });
+
+  it('reads the errand under a row lock so concurrent transitions serialise (reviewer B1)', async () => {
+    const { service, manager } = withOffer(new Date(Date.now() + 60_000));
+    const errands = manager.getRepository(Errand) as { findOne: ReturnType<typeof vi.fn> };
+    await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
+    expect(errands.findOne).toHaveBeenCalledWith({ where: { id: 'e-1' }, lock: { mode: 'pessimistic_write' } });
+  });
+
+  it('refuses the accept after the deadline with 409 offer_expired', async () => {
+    const deadline = new Date(Date.now() - 1_000);
+    const { service, errand } = withOffer(deadline);
+    const err = await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, code: 'offer_expired' });
+    expect((err as ApiError).getResponse()).toMatchObject({ offerExpiresAt: deadline.toISOString() });
+    expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+  });
+
+  it('an assignment without a deadline (made before row 141) never lapses', async () => {
+    const { service, errand } = withOffer(null);
+    await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
+    expect(errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
+  });
+});
+
+describe('ErrandsService.expireLapsedOffers re-checks under the lock (row 141)', () => {
+  const now = new Date('2026-10-16T10:00:00Z');
+  const past = new Date('2026-10-16T09:59:00Z');
+
+  const sweep = (state: { status: ErrandStatus; offer: { status: string; offerExpiresAt: Date | null } | null }) => {
+    const errand = { id: 'e-1', status: state.status } as Errand;
+    const offer = state.offer ? { id: 'a-1', errandId: 'e-1', ...state.offer } : null;
+    const assignmentRepo = {
+      findOne: vi.fn(() => Promise.resolve(offer)),
+      update: vi.fn(() => Promise.resolve()),
+    };
+    const history = { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) };
+    const errandRepo = {
+      findOne: vi.fn(() => Promise.resolve(errand)),
+      save: vi.fn((e: Errand) => Promise.resolve(e)),
+    };
+    const manager = {
+      getRepository: (entity: unknown) =>
+        entity === Errand ? errandRepo : entity === ErrandAssignment ? assignmentRepo : history,
+    };
+    const qb: Record<string, ReturnType<typeof vi.fn>> = {};
+    for (const m of ['select', 'innerJoin', 'where', 'andWhere', 'orderBy', 'limit']) {
+      qb[m] = vi.fn(() => qb);
+    }
+    qb.getRawMany = vi.fn(() => Promise.resolve([{ id: 'e-1' }]));
+    const service = new ErrandsService(
+      { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
+      { createQueryBuilder: vi.fn(() => qb) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, errand, assignmentRepo, errandRepo };
+  };
+
+  it('logs a skipped errand with its error code instead of failing the job', async () => {
+    const { service, errandRepo } = sweep({
+      status: ErrandStatus.RUNNER_ASSIGNED,
+      offer: { status: 'assigned', offerExpiresAt: past },
+    });
+    errandRepo.save.mockRejectedValueOnce(new Error('row changed'));
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    expect(await service.expireLapsedOffers(now)).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/e-1: concurrent_modification/));
+    warn.mockRestore();
+  });
+
+  it('expires a lapsed open offer: assignment expired, task EXPIRED', async () => {
+    const { service, errand, assignmentRepo } = sweep({
+      status: ErrandStatus.RUNNER_ASSIGNED,
+      offer: { status: 'assigned', offerExpiresAt: past },
+    });
+    expect(await service.expireLapsedOffers(now)).toEqual(['e-1']);
+    expect(assignmentRepo.update).toHaveBeenCalledWith('a-1', { status: 'expired', decidedAt: now });
+    expect(errand.status).toBe(ErrandStatus.EXPIRED);
+  });
+
+  it.each([
+    ['the task moved on (accepted)', ErrandStatus.RUNNER_EN_ROUTE, { status: 'accepted', offerExpiresAt: past }],
+    ['the offer was declined (no open assignment)', ErrandStatus.RUNNER_ASSIGNED, null],
+    ['the offer was accepted but the status not yet read', ErrandStatus.RUNNER_ASSIGNED, { status: 'accepted', offerExpiresAt: past }],
+    ['the deadline was pushed out (reassigned)', ErrandStatus.RUNNER_ASSIGNED, {
+      status: 'assigned',
+      offerExpiresAt: new Date('2026-10-16T10:10:00Z'),
+    }],
+    ['the offer has no deadline', ErrandStatus.RUNNER_ASSIGNED, { status: 'assigned', offerExpiresAt: null }],
+  ])('skips when %s', async (_label, status, offer) => {
+    const { service, errand, assignmentRepo } = sweep({ status, offer });
+    expect(await service.expireLapsedOffers(now)).toEqual([]);
+    expect(assignmentRepo.update).not.toHaveBeenCalled();
+    expect(errand.status).toBe(status);
   });
 });

@@ -16,6 +16,8 @@ import { NOTIFICATIONS_QUEUE } from '../infra/queue/queues';
 import { DevicesService } from '../users/devices.service';
 import { UsersService } from '../users/users.service';
 import {
+  ASSIGNMENT_DECLINED_EVENT,
+  AssignmentDeclinedEvent,
   MERCHANT_DETAILS_UPDATED_EVENT,
   MerchantDetailsUpdatedEvent,
   QUOTE_REISSUED_EVENT,
@@ -24,6 +26,8 @@ import {
   QuoteRequestedEvent,
 } from '../errands/errands.service';
 import {
+  ERRAND_EXPIRED_EVENT,
+  ErrandExpiredEvent,
   MERCHANT_DETAILS_CHANGED_EVENT,
   MerchantDetailsChangedEvent,
 } from '../payments/payment-events';
@@ -62,7 +66,13 @@ interface PriceChangeRequested {
 
 /** Payload of a `feed` job: one customer-facing feed item to write. */
 export type FeedJob =
-  | { kind: 'errand_status'; errandId: string; status: ErrandStatus }
+  | {
+      kind: 'errand_status';
+      errandId: string;
+      status: ErrandStatus;
+      /** EXPIRED only: a refund review was opened for the task (owner 2026-10-16). */
+      refundReviewOpened?: boolean;
+    }
   | { kind: 'price_change'; errandId: string; requestId: string; fromPrice: string; toPrice: string }
   | { kind: 'refund'; errandId: string; refundId: string; status: string; refundAmount: string | null }
   | {
@@ -76,10 +86,12 @@ export type FeedJob =
   | { kind: 'merchant_details'; errandId: string; merchantName: string | null }
   | { kind: 'merchant_details_changed'; errandId: string; merchantName: string | null }
   /** Admin-facing (row 68): written to every active admin's feed. */
-  | { kind: 'quote_requested'; errandId: string; reference: string };
+  | { kind: 'quote_requested'; errandId: string; reference: string }
+  /** Admin-facing (row 108): the runner declined; the task needs another runner. */
+  | { kind: 'assignment_declined'; errandId: string; reference: string };
 
 /** Feed jobs whose recipients are the admins, not the errand's customer. */
-const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested']);
+const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested', 'assignment_declined']);
 
 export const FEED_JOB = 'feed';
 export const PUSH_JOB = 'push';
@@ -157,10 +169,26 @@ export class NotificationsService {
   /** Errand status change -> queued feed item (published statuses only). */
   @OnEvent(ERrandStatusChangedEvent, { async: true })
   async onStatusChanged(event: StatusChangedEvent): Promise<void> {
-    if (!notificationEventTypeFor(event.status)) {
+    // EXPIRED is queued from `errand.expired`, once the refund review is known.
+    if (!notificationEventTypeFor(event.status) || event.status === ErrandStatus.EXPIRED) {
       return;
     }
     await this.enqueue({ kind: 'errand_status', errandId: event.errandId, status: event.status });
+  }
+
+  /**
+   * RUNNER_ASSIGNED -> EXPIRED (owner decision 2026-10-16): the customer's
+   * feed item + push, queued after the refund review was opened in the same
+   * flow so the copy can mention it.
+   */
+  @OnEvent(ERRAND_EXPIRED_EVENT, { async: true })
+  async onExpired(event: ErrandExpiredEvent): Promise<void> {
+    await this.enqueue({
+      kind: 'errand_status',
+      errandId: event.errandId,
+      status: ErrandStatus.EXPIRED,
+      refundReviewOpened: event.refundReviewOpened,
+    });
   }
 
   @OnEvent('price_change.requested', { async: true })
@@ -234,6 +262,12 @@ export class NotificationsService {
       errandId: event.errandId,
       reference: event.reference,
     });
+  }
+
+  /** Runner declined over their purchase limit -> admin feed (row 108). */
+  @OnEvent(ASSIGNMENT_DECLINED_EVENT, { async: true })
+  async onAssignmentDeclined(event: AssignmentDeclinedEvent): Promise<void> {
+    await this.enqueue({ kind: 'assignment_declined', errandId: event.errandId, reference: event.reference });
   }
 
   private async enqueue(job: FeedJob): Promise<void> {
@@ -374,7 +408,7 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
   switch (job.kind) {
     case 'errand_status': {
       const eventType = notificationEventTypeFor(job.status);
-      const copy = statusCopy(job.status);
+      const copy = statusCopy(job.status, job.refundReviewOpened ?? false);
       return eventType && copy
         ? { eventType, title: `${copy.title} · ${humanStatus(job.status)}`, body: copy.body }
         : null;
@@ -408,6 +442,12 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.QUOTE_REQUESTED,
         title: 'New quote requested',
         body: `The customer asked for a new quote on ${job.reference} after their quote expired.`,
+      };
+    case 'assignment_declined':
+      return {
+        eventType: NotificationEventType.ASSIGNMENT_DECLINED,
+        title: 'Runner declined a task',
+        body: `The runner declined ${job.reference}: the purchase is above their limit. Assign another runner.`,
       };
     case 'merchant_details':
       return {
@@ -459,8 +499,19 @@ const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
   }
 };
 
-const statusCopy = (status: ErrandStatus): { title: string; body: string } | null => {
+const statusCopy = (
+  status: ErrandStatus,
+  refundReviewOpened = false,
+): { title: string; body: string } | null => {
   switch (status) {
+    case ErrandStatus.EXPIRED:
+      // Owner decision 2026-10-16: no refund promise unless a review is open.
+      return {
+        title: 'No runner available',
+        body: refundReviewOpened
+          ? "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready."
+          : "No runner accepted your task in time, so it has ended. You can start a new task whenever you're ready.",
+      };
     case ErrandStatus.QUOTED:
       return { title: 'Your task has a quote', body: 'A runner can now accept your task. Review the price to continue.' };
     case ErrandStatus.RUNNER_ASSIGNED:

@@ -27,10 +27,20 @@ export class AddVerificationDto {
   @Type(() => String)
   verificationType: RunnerVerificationType;
 
+  /**
+   * No longer accepted (row 154: keys are server-side only); sending it is
+   * 400 verification_document_upload_required. Kept so the error is coded.
+   */
   @IsOptional()
   @IsString()
   @MaxLength(255)
   documentS3Key?: string;
+}
+
+/** Multipart field next to `file` on POST /runners/me/verifications/documents (RA-7). */
+export class UploadVerificationDocumentDto {
+  @IsIn([RunnerVerificationType.GOVERNMENT_ID, RunnerVerificationType.SELFIE])
+  verificationType: RunnerVerificationType.GOVERNMENT_ID | RunnerVerificationType.SELFIE;
 }
 
 export class ReviewVerificationDto {

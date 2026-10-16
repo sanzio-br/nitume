@@ -5,16 +5,24 @@ import '../theme/nitume_typography.dart';
 
 /// Wordmark (auth screens): 9px green dot + "Nitume" 22/700, gap 9.
 /// Whether the green dot counts as a brand mark is v-auth-phone Q1.
+///
+/// R-17: an optional [suffix] (the runner app passes `Runner`) follows the
+/// name in 12/600 slate-600 on the same baseline (`.auth-logo` in
+/// `nitume_runner_app.html`). Without it the wordmark is unchanged.
 class NitumeWordmark extends StatelessWidget {
-  const NitumeWordmark({super.key});
+  const NitumeWordmark({super.key, this.suffix});
+
+  /// Product suffix such as `Runner`; `null` shows the plain wordmark.
+  final String? suffix;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Nitume',
+      label: suffix == null ? 'Nitume' : 'Nitume $suffix',
       excludeSemantics: true,
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 9,
@@ -25,7 +33,25 @@ class NitumeWordmark extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 9),
-          Text('Nitume', style: NitumeTextStyles.authHeading),
+          if (suffix == null)
+            Text('Nitume', style: NitumeTextStyles.authHeading)
+          else
+            Text.rich(
+              TextSpan(
+                text: 'Nitume ',
+                style: NitumeTextStyles.authHeading,
+                children: [
+                  TextSpan(
+                    text: suffix,
+                    style: NitumeTextStyles.authHeading.copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: NitumeColors.slate600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

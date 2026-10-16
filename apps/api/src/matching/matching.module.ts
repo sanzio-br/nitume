@@ -9,11 +9,14 @@ import { MatchingController } from './matching.controller';
 import { PriceChangeController } from './price-change.controller';
 import { PriceChangeRequest } from './price-change-request.entity';
 import { PriceChangeService } from './price-change.service';
+import { PurchaseLimitService } from './purchase-limit.service';
+import { RunnersModule } from '../runners/runners.module';
 
 @Module({
   imports: [
     ErrandsModule,
     PaymentsModule,
+    RunnersModule,
     TypeOrmModule.forFeature([
       PriceChangeRequest,
       Errand,
@@ -22,7 +25,7 @@ import { PriceChangeService } from './price-change.service';
     ]),
   ],
   controllers: [MatchingController, PriceChangeController],
-  providers: [PriceChangeService],
+  providers: [PriceChangeService, PurchaseLimitService],
   exports: [PriceChangeService],
 })
 export class MatchingModule {}

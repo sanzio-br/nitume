@@ -21,13 +21,7 @@ import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
 import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
-import {
-  adminLabel,
-  effectivePayout,
-  refundChipStatus,
-  refundTriggerLabel,
-  reviewCeiling,
-} from '../refund-labels';
+import { adminLabel, refundChipStatus, refundTriggerLabel, reviewCeiling } from '../refund-labels';
 import { PayoutCorrectionCardComponent } from '../payouts/payout-correction-card';
 import { CurrentPayoutCardComponent } from '../payouts/current-payout-card';
 import {
@@ -608,20 +602,14 @@ export class RefundDrawerComponent implements OnInit {
   });
 
   // --- Payout corrections (row 100) ---
-  /** Correction records, oldest first. TODO(owner-answers-5): optional until N-15 is on main. */
+  /** Correction records, oldest first. */
   readonly corrections = computed(() => this.review()?.corrections ?? []);
   /** The payout as it stands after the corrections. */
-  readonly effective = computed(() => {
-    const r = this.review();
-    return r ? effectivePayout(r) : null;
-  });
+  readonly effective = computed(() => this.review()?.effectivePayout ?? null);
   /** The latest correction is a reversal: the refund is owed again. */
   readonly reversed = computed(() => this.effective()?.state === 'reversed');
-  /** Cap for a corrected or re-sent amount (row 87). TODO(owner-answers-5): API field. */
-  readonly correctionCeiling = computed(() => {
-    const r = this.review();
-    return r ? (r.correctionCeiling ?? r.amountPaid) : '0';
-  });
+  /** Cap for a corrected or re-sent amount (row 87); null unless refunded. */
+  readonly correctionCeiling = computed(() => this.review()?.correctionCeiling ?? '0');
   /** The shared correction form (`app-payout-correction-form`). */
   readonly correction = new CorrectionFormState(
     {
@@ -907,9 +895,7 @@ export class RefundDrawerComponent implements OnInit {
         return this.reloadWith({ tone: 'info', text: 'This payout changed. Showing the latest.' });
       case 'refund_exceeds_amount_paid': {
         const ceiling =
-          (err.extra['correctionCeiling'] as string | undefined) ??
-          (err.extra['amountPaid'] as string | undefined) ??
-          this.correctionCeiling();
+          (err.extra['correctionCeiling'] as string | undefined) ?? this.correctionCeiling();
         await this.load();
         this.restoreCorrection(form, 'all');
         return this.correction.setServerError('amount', correctionCeilingError(ceiling));

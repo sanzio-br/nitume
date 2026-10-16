@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import { AssignmentStatus } from '../common/enums';
+import { AssignmentDeclineReason, AssignmentStatus } from '../common/enums';
 
 @Entity('errand_assignments')
 export class ErrandAssignment {
@@ -27,6 +27,15 @@ export class ErrandAssignment {
 
   @Column({ type: 'timestamptz', nullable: true })
   decidedAt: Date | null;
+
+  /** Why the runner declined (row 108); null unless `declined`. */
+  @Column({
+    type: 'enum',
+    enum: AssignmentDeclineReason,
+    enumName: 'errand_assignment_decline_reason_enum',
+    nullable: true,
+  })
+  declineReason: AssignmentDeclineReason | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

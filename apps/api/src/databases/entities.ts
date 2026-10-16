@@ -20,12 +20,16 @@ import { PaymentType } from '../payments/payment-type.entity';
 import { Payment } from '../payments/payment.entity';
 import { RefundPayoutCorrection } from '../payments/refund-payout-correction.entity';
 import { RefundReview } from '../payments/refund-review.entity';
+import { RunnerPayoutLine } from '../payments/runner-payout-line.entity';
+import { RunnerPayoutRequest } from '../payments/runner-payout-request.entity';
+import { TaskExposureOverride } from '../payments/task-exposure-override.entity';
 import { Rating } from '../ratings/rating.entity';
 import { RunnerLocation } from '../runners/runner-location.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from '../runners/runner-skill.entity';
 import { RunnerTrustScore } from '../runners/runner-trust-score.entity';
 import { RunnerVerification } from '../runners/runner-verification.entity';
+import { VerificationDocumentAccessLog } from '../runners/verification-document-access-log.entity';
 import { Device } from '../users/device.entity';
 import { User } from '../users/user.entity';
 
@@ -37,6 +41,7 @@ export const ENTITY_LIST = [
   PaymentMethod,
   RunnerProfile,
   RunnerVerification,
+  VerificationDocumentAccessLog,
   RunnerSkillEntity,
   RunnerServiceArea,
   RunnerLocation,
@@ -53,6 +58,9 @@ export const ENTITY_LIST = [
   PaymentTransaction,
   RefundReview,
   RefundPayoutCorrection,
+  RunnerPayoutLine,
+  RunnerPayoutRequest,
+  TaskExposureOverride,
   Evidence,
   Dispute,
   DisputeEvent,

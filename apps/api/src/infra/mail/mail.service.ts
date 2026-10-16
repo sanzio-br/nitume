@@ -2,6 +2,7 @@ import { Logger, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import { DEFAULT_OTP_TTL_SECONDS, otpExpiryPhrase } from '../../common/otp-expiry';
 
 /**
  * SMTP mailer for transactional email. Reads `mail.*` from env; when
@@ -20,7 +21,7 @@ export class MailService {
       this.config.get<string | null>('mail.fromAddress') ?? 'no-reply@nitume';
     const fromName = this.config.get<string>('mail.fromName', 'Nitume');
     const subject = 'Nitume verification code';
-    const text = `Your Nitume verification code is ${code}. It expires in 10 minutes. Do not share it.`;
+    const text = MailService.otpText(code, this.config.get<number>('otp.ttlSeconds', DEFAULT_OTP_TTL_SECONDS));
 
     const client = this.client();
     if (!client) {
@@ -34,6 +35,14 @@ export class MailService {
       text,
     });
     this.logger.log(`OTP emailed to ${email}`);
+  }
+
+  /**
+   * OTP email body. Owner decision 2026-10-16: "Your verification code
+   * expires in 5 minutes."; the minutes come from `otp.ttlSeconds` (300 s).
+   */
+  static otpText(code: string, ttlSeconds: number): string {
+    return `Your Nitume verification code is ${code}. Your verification code expires in ${otpExpiryPhrase(ttlSeconds)}. Do not share it.`;
   }
 
   private client(): Transporter | null {

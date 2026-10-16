@@ -321,10 +321,9 @@ export interface RefundReview {
   /**
    * The payout as it stands after corrections (row 100, N-15); null unless
    * `refunded`. The review's own `payoutReference` / `paidAt` stay the
-   * original, immutable payout. TODO(owner-answers-5): optional until
-   * feat/api-owner-answers-5 is on main.
+   * original, immutable payout.
    */
-  effectivePayout?: EffectivePayout | null;
+  effectivePayout: EffectivePayout | null;
 }
 
 /** Effective payout of a refunded review (row 100): `reference` null and `amount` 0 while reversed. */
@@ -411,11 +410,11 @@ export interface RefundDetail extends RefundListItem, TaskExposureFields {
   } | null;
   paid: PaidBreakdown;
   otherReviews: Pick<RefundReview, 'id' | 'trigger' | 'status' | 'amountPaid' | 'refundAmount'>[];
-  // Row 100 (N-15). TODO(owner-answers-5): optional until feat/api-owner-answers-5 is on main.
+  // Row 100 (N-15).
   /** Payout corrections, oldest first; empty unless refunded. */
-  corrections?: RefundPayoutCorrection[];
+  corrections: RefundPayoutCorrection[];
   /** Highest `newAmount` a correction or new payout may carry; null unless refunded. */
-  correctionCeiling?: string | null;
+  correctionCeiling: string | null;
 }
 
 export interface ListRefundsResult {

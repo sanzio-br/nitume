@@ -8,8 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { UserRole, GeoPoint } from '../common/enums';
+import { EntityManager, Repository } from 'typeorm';
+import { EvidenceType, UserRole, GeoPoint } from '../common/enums';
 import { Errand } from '../errands/errand.entity';
 import { ErrandsService } from '../errands/errands.service';
 import { Evidence } from './evidence.entity';
@@ -131,6 +131,23 @@ export class EvidenceService {
       order: { createdAt: 'DESC' },
     });
     return rows.map((row) => this.toView(row));
+  }
+
+  /**
+   * Receipt evidence (`type = receipt`) of an errand uploaded by one user,
+   * newest first (no access check; payout ledger, rows 104-106).
+   */
+  receiptsFor(errandId: string, uploadedBy: string, manager?: EntityManager): Promise<Evidence[]> {
+    const repo = manager ? manager.getRepository(Evidence) : this.evidence;
+    return repo.find({
+      where: { errandId, type: EvidenceType.RECEIPT, uploadedBy },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /** One evidence row by id, or null (no access check). */
+  findById(id: string): Promise<Evidence | null> {
+    return this.evidence.findOne({ where: { id } });
   }
 
   /** Customer (owner), the runner on the current assignment, or admin may view/attach. */

@@ -18,6 +18,7 @@ class NitumeCheckbox extends StatelessWidget {
     required this.onChanged,
     this.label,
     this.semanticLabel,
+    this.compact = false,
   });
 
   final bool value;
@@ -28,6 +29,11 @@ class NitumeCheckbox extends StatelessWidget {
 
   /// Announced label when there is no visible [label].
   final String? semanticLabel;
+
+  /// Draws only the 22px box, without the 48dp hit padding. For display-only
+  /// checks inside a larger tappable row (R-07 checklist step cards); keep
+  /// [onChanged] `null` then.
+  final bool compact;
 
   /// Box size (`.check`).
   static const double size = 22;
@@ -55,7 +61,9 @@ class NitumeCheckbox extends StatelessWidget {
       ),
     );
 
-    final content = label == null
+    final content = compact && label == null
+        ? box
+        : label == null
         ? SizedBox.square(
             dimension: NitumeSpacing.minTapTarget,
             child: Center(child: box),

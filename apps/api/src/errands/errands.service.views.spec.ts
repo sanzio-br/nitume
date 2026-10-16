@@ -23,6 +23,7 @@ const assignment = (over: Partial<ErrandAssignment>): ErrandAssignment =>
     runnerProfileId: 'runner-1',
     status: AssignmentStatus.ASSIGNED,
     decidedAt: new Date('2026-10-01T11:00:00Z'),
+    offerExpiresAt: new Date('2026-10-01T11:10:00Z'),
     createdAt: new Date('2026-10-01T10:30:00Z'),
     ...over,
   }) as ErrandAssignment;
@@ -95,6 +96,7 @@ describe('ErrandsService errand views (A-4)', () => {
       id: 'asg-1',
       status: AssignmentStatus.ASSIGNED,
       assignedAt: new Date('2026-10-01T11:00:00Z'),
+      offerExpiresAt: new Date('2026-10-01T11:10:00Z'),
       runner: {
         id: 'runner-1',
         verificationLevel: VerificationLevel.TWO_ID_VERIFIED,

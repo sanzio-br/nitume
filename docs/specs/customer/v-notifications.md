@@ -19,6 +19,7 @@ In-app feed of task events (quote ready, runner en route, price change, completi
 | `errand.RUNNER_ASSIGNED`, `errand.RUNNER_EN_ROUTE`, `errand.ARRIVED`, `errand.IN_PROGRESS` | `v-track` for the errand |
 | `errand.AWAITING_CUSTOMER` | `v-evidence-confirm` if still AWAITING_CUSTOMER, else `v-task-detail` |
 | `errand.COMPLETED`, `errand.CONFIRMED`, `errand.SETTLED`, `errand.CANCELLED`, `errand.FAILED`, `errand.DISPUTED` | `v-task-detail` |
+| `errand.EXPIRED` (new, owner 2026-10-16; needs api-contract) | `v-task-detail` (which shows `Start a new task`) |
 | price change requested (type missing) | Track + `v-price-auth` modal if still pending |
 | payment confirmed / failed (types missing) | `v-task-detail` / `v-payment` |
 | item payment confirmed / failed, `send_to_runner` (types missing, row 42) | `x-merchant-payment` |
@@ -54,6 +55,15 @@ C-10, C-28 (unread change), C-04, C-33. Built except the unread styling change.
 
 Title and body come from the API (`title`, `body`); the app does not compose them.
 
+**EXPIRED notification** (owner decision 2026-10-16; BOARD Needs row "api-contract (round 7) | design-auditor"). Today the API sends nothing when a task expires (`NotificationEventType` has no `errand.EXPIRED`; `statusCopy` returns null for EXPIRED). New feed item + push to the errand's customer on every RUNNER_ASSIGNED → EXPIRED transition (admin-offer lapse as built, row 141 / row 157 pending; no eligible runner left, row 150; task deadline reached, row 155):
+- `eventType`: `errand.EXPIRED` (enum `NotificationEventType.ERRAND_EXPIRED`).
+- Title (API, via the existing status builder `{title} · {status}`): `No runner available · Expired`.
+- Body when a refund review was opened for the task (paid task, `expired_after_payment`, row 102): `No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready.`
+- Body otherwise: `No runner accepted your task in time, so it has ended. You can start a new task whenever you're ready.`
+- Never `refund` as a promise (`you will be refunded`, `your money is on its way`, `automatic refund`): the review may end in `No refund` (row 102). The review's outcome arrives later as `refund.approved` / `refund.no_refund` / `refund.refunded`.
+- Feed row as every item: `{ id, eventType: 'errand.EXPIRED', title, body, errandId, createdAt, readAt }`; push data `{ eventType: 'errand.EXPIRED', errandId }`. The internal job carries `{ kind: 'errand_status', errandId, status: 'EXPIRED', refundReviewOpened: boolean }`; it is queued after the N-16 refund review is opened in the same flow so `refundReviewOpened` is known.
+- Icon: info/clock glyph (no amber/red fill; Expired is an info-tone state, `_shared.md` §6). Deep link above.
+
 States (proposed):
 - Empty: `You're all caught up.`
 - Loading: skeleton rows. Error: `Couldn't load notifications.` + `Try again`.
@@ -67,7 +77,7 @@ States (proposed):
 - `GET /api/v1/notifications?limit=` → `{ items, unread }`; `PATCH /notifications/:id/read`; `PATCH /notifications/read-all`; `GET /notifications/unread-count` (exist). Core `AppNotification`.
 - **Money in notification text (row 82)**: `KSh`, formatted like the app (`KSh 40,000`, `KSh 1,250.50`; no `.00` on whole amounts). The bodies come from the API: needs: api-contract — `notifications.service.ts` writes `KES ${amount}` with raw decimals (`:331`, `:340-341`, `:360`, `:372`); change to the `KSh` format. The client renders the body as returned and never rewrites it.
 - Details-changed warning (row 80): the new `merchant_details.changed` type deep-links to `x-merchant-payment`.
-- `NotificationEventType` has only `errand.*` status types (CONFIRMED/SETTLED removed). needs: api-contract — add price change requested, payment confirmed / failed, item payment confirmed / failed, merchant details added, refund status changed, dispute resolved, rating reminder (and optionally quote expired).
+- `NotificationEventType` has only `errand.*` status types (CONFIRMED/SETTLED removed; EXPIRED missing). needs: api-contract — add `errand.EXPIRED` (above), and price change requested, payment confirmed / failed, item payment confirmed / failed, merchant details added, refund status changed, dispute resolved, rating reminder (and optionally quote expired).
 - Push (row 31): FCM through `firebase_messaging`; the same deep-link table applies to push taps, cold start included. Registration `POST /users/me/devices` exists. Delivery through BullMQ (row 26, no UI change).
 
 ## Accessibility and mobile

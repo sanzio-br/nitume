@@ -42,7 +42,7 @@ None (pre-auth).
 - Button: `Verify & continue`
 - Resend (mockup): `Didn't get it?` + green-700 link `Resend code`
 
-OTP policy (OA-17): code valid 5 minutes; 5 verification attempts per code; 60 s resend cooldown; 5 requests per hour per phone/account; a new code invalidates the previous one.
+OTP policy (OA-17): code valid 5 minutes (TTL 300 s); 5 verification attempts per code; 60 s resend cooldown; 5 requests per hour per phone/account; a new code invalidates the previous one.
 
 States (proposed copy):
 - Cooldown running (first 60 s after any send): resend line reads `Didn't get it? Resend code in 0:59` with the time in Fira Code counting down each second (C-38); the link is not tappable. At 0:00 it becomes the mockup line with the green-700 `Resend code` link.
@@ -64,6 +64,7 @@ States (proposed copy):
 ## Data
 - `POST /api/v1/auth/otp/verify` `{ phone, code, role: 'customer' }` → `{ user, tokens }` via `AuthRepository.verifyOtp` (persists tokens).
 - `POST /api/v1/auth/otp/request` for resend.
+- OTP message copy (owner, 2026-10-16): any OTP message that states a validity period must say 5 minutes, matching the 300 s TTL. Email (`mail.service.ts:23`, used by `POST /auth/otp/email/request`) becomes `Your Nitume verification code is {code}. Your verification code expires in 5 minutes. Do not share it.` (owner wording for the duration sentence). The SMS (`africas-talking-otp-sender.ts:33`, `Valid 10 minutes`) has the same mismatch; proposed `Nitume verification code: {code}. Your verification code expires in 5 minutes. Do not share it.` (needs api-contract; SMS wording beyond the duration sentence is not owner-confirmed). The screen itself states no duration.
 - After success: `GET /users/me` (`displayName`, `phone`, `createdAt`) and `GET /customers/me`.
 - After success register the FCM token with `POST /users/me/devices` (row 31, `_shared.md` §10); ask for push permission once. Failure to register never blocks sign-in.
 - App launch calls `AuthRepository.restoreSession()` and skips auth when a valid session exists; a restored user with an empty `displayName` also lands on `x-name-capture`.

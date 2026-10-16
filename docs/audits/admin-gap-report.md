@@ -528,3 +528,99 @@ m-1, m-2, m-3, m-4, m-5 (first re-audit) are closed at `053fbc6`: tests for m-1 
 2. m-11 receipts as explicit Fira Code parts in the correction dialog and hint.
 3. m-12 plain-text hint opt-out for the dispute note.
 4. Remove `TODO(owner-answers-5)` and make the N-15 fields required once `feat/api-owner-answers-5` is on `main`.
+
+## Owner answers round 6 (rows 104–111, applied 2026-10-13 on `docs/owner-answers-6-runner-specs`)
+
+- Rows 104–108 (SQ-12 … SQ-16): runner reimbursement at CONFIRMED; missing/mismatched receipt → ops review, capped at the item amount paid to Nitume; verified item spend reimbursed on CANCELLED/FAILED with no runner fee; runner payout ledger table approved (`runner_payout_lines`, system design §2.2, being built by api-contract on `feat/api-owner-answers-6`); purchases limited by `max_purchase_advance` with the right to decline. System design §2.2/§6 updated. No admin screen is specced for the ledger yet: an ops view of `on_hold` reimbursement lines (rows 105, 106) will need a spec once the API exists (listed as RQ in `docs/audits/runner-gap-report.md`).
+- Row 109 (AQ-9) and row 110 (AQ-10): decided as the defaults already built (API `refunds.service.ts:917` notifies only on `resent`; `correctionCeiling` refuses higher amounts). `drawer-refund.md` and `_shared.md` updated; no builder work.
+- Row 111: a reversed, not-yet-re-sent payout counts at its decided `refundAmount` in the cumulative cap; already built (`committedAmountOf`, `refunds.service.ts:120`). No builder work.
+
+No admin status changes.
+
+## Re-audit round 6 (2026-10-13): `fix/angular-admin-owner-answers-6`, round-5 item 4
+
+Audited `fix/angular-admin-owner-answers-6` @ `817d5fc` (1 commit on `main` @ `95e9d6c`), read-only, against round-5 builder list item 4 ("Remove `TODO(owner-answers-5)` and make the N-15 fields required once `feat/api-owner-answers-5` is on `main`"). From a `git archive` of `apps/admin`: `ng test` **182 tests pass** (21 files), `ng build` clean, Prettier clean on the 6 changed files, **no `TODO(` markers left** in `apps/admin/src`. The commit touches only `apps/admin` (no docs).
+
+| View | Verdict | Findings |
+|---|---|---|
+| p-refunds | **PASS** | none |
+| drawer-refund | **PASS** | none new (m-10, m-11 still open) |
+
+- `core/api-types.ts:326`, `:413-415`: `RefundReview.effectivePayout: EffectivePayout | null`, `RefundDetail.corrections: RefundPayoutCorrection[]`, `correctionCeiling: string | null` are required. Checked against `main`'s API: `AdminRefundReview` carries `effectivePayout` on list, detail, decision, mark-paid (`refunds.service.ts:220`, `:532`, `:735`, `:773`) and `AdminRefundDetail` carries `corrections` and `correctionCeiling` (`:262-268`, `:497-500`). Types match.
+- The pre-N-15 fallbacks are gone: the derived `effectivePayout()` helper (`refund-labels.ts`), the `amountPaid` ceiling fallback in the drawer and in the `refund_exceeds_amount_paid` handler. The drawer now reads `review().effectivePayout` and `review().correctionCeiling ?? '0'`; `'0'` is only reached when the review is not refunded, where the correction form is not shown. The 400 handler still prefers the API's `correctionCeiling` extra. `refunds.panel.ts:194` patches `effectivePayout` unconditionally after a drawer save (every save response carries it).
+- `refundChipStatus` / `refundRowAction` / `payoutReversed` take the required field; fixtures give the API shapes (`effectivePayout: null` for unrefunded, a `sent` payout for refunded). Row-100 behaviour (`Payout reversed` chip, `Record payout` action) unchanged and still tested.
+
+Round-5 builder list: item 4 **closed**. Items 1–3 (m-10, m-11, m-12) remain open minors; none blocks a merge.
+
+## Audit round 6: runner payouts (2026-10-14), `feat/admin-runner-payouts`
+
+Audited `feat/admin-runner-payouts` @ `04837b4` (8 commits on `main` @ `cd22e4d`: `73034bf`, `dc44a7b`, `5f1f75d`, `12aef17`, `dd0ee44`, `60d8442`, `acce986`, `04837b4`), read-only. Specs: `docs/owner-answers-6-runner-specs` @ `915f920`. The commits touch only `apps/admin`. From a `git archive` of `apps/admin`: `ng test` **220 tests pass** (25 files), `ng build` clean, Prettier clean on every changed file. Searches: no hex outside `_tokens.scss`, no `font-family` outside the token variables (`inherit` only), and none of the `_shared.md` §3 banned words in user-facing copy (`on_hold` and `/hold` appear only as API values).
+
+| View | Verdict | Findings |
+|---|---|---|
+| p-runner-payouts | **PASS** | m-13 (minor) |
+| drawer-runner-payout (+ SA-3 task drawer section, `View payouts` on the runner drawer) | **PASS** | none |
+| drawer-refund, row-136 amendment (task exposure card, override form with scope labels, override history) | **PASS** | none new (m-10, m-11 still open) |
+
+### p-runner-payouts: PASS
+- `Payments` nav item `Runner payouts` with the `on_hold` count badge (`99+`); three filters (runner, type, status, default `Needs review`), `↻ Refresh`, columns, chip and reason caption, row actions `Review` / `View` / `Re-send`, `requested` caption, load more, empty / loading / error copy, sub-line counts and `Payable` total all match the spec. `Created` and `Type` hide at 1100 / 900 px.
+- A-16 (`shared/batch-bar.component.ts`): checkboxes only in `Payable` with one runner chosen; a reversed (stored `paid`) line can't be selected; 50-line limit notice; polite live total. The record payout dialog fetches the runner's phone, validates the receipt, maps `payout_reference_reused`, `runner_payout_not_payable` / `runner_payout_locked` / 404 (reload + notice), `runner_payout_mixed_runners`, 403; rows patch in place and the badge refreshes.
+13. m-13 (minor) `panels/runner-payouts.panel.ts:367-372`. Spec: searchable runner filter. Code: plain `select`; runners with no loaded line show `Runner …abcd` because `GET /runners` returns no names. Fix: a typeahead, or names on `GET /runners` (needs api-contract), then label every option.
+
+### drawer-runner-payout: PASS
+- Sections 1–10 as specced: summary with `Why it needs review`; amounts with `Most you can approve` (`approvalCeiling`); task exposure on item lines; receipt thumbnail with the runner's or the system note; review form with the approve/reject toggle, `Full amount`, the `reimbursement_exceeds_cap` caption from `itemPaidToNitume` / `maxPurchaseAdvance`, and the reject reason; the `price_decrease_pending` notice with `Open refund review`; the payout form; `Send back for review` with focus return; read-only decision and payout; current / original payout; corrections through the **shared** form and cards (refund-correction code moved to `features/admin/payouts/`, no copy); activity.
+- Row 136: `app-task-exposure-card` (figures + `Cap overrides`) and `app-exposure-override-field` (409 figures labelled by scope, required note 10–500, `exposure_override_note_invalid`, label `Approve over the cap`, confirm line). Task and item scope are both tested.
+- SA-3: `payouts/runner-payouts-link.section.ts` in the task drawer for CONFIRMED, SETTLED, CANCELLED and FAILED tasks, hidden without lines; `View payouts` on the runner drawer opens the panel filtered to that runner.
+
+### drawer-refund row-136 amendment: PASS
+- Task exposure card (reimbursement row only when > 0) and override history after `What the customer paid`; override field in the decision form and in the correction form (`over the cap` labels, confirm line, hint `… Not shown to the customer.`). The one-note design matches the API (one `exposureOverrideNote` per request applied to every binding scope); the spec's "its own note" wording was wrong and is corrected.
+
+### Decisions on the builder's additions
+- (a) Accepted and written into `drawer-runner-payout.md`: `Enter an amount in KSh, up to 2 decimal places.`, `Say why in 5 to 500 characters.`, `Reimbursement approved: KSh x. Record the payout once you have sent it.`, `Reimbursement rejected.`, `Sent back for review.`, and the single-line `Mark as paid` confirm (`Mark KSh x as paid?` / `M-Pesa receipt R. This can't be undone; a later change is recorded as a correction.`), which matches the batch and refund payout flows. The panel's two fallback error strings are accepted in `p-runner-payouts.md`.
+- (b) `GET /runner-payouts/summary` does **not** go on p-runner-payouts (it already shows the loaded `Payable` total and the batch total; a second set of all-rows totals next to a filtered list would confuse). It is specced as a `Payouts` section of the runner drawer in `drawer-runner-purchase-limit.md` (`Owed now`, `In review`, `Waiting for confirmation`, `Paid so far`), not built yet.
+- (c) Runner Android foreground notification: title `Nitume Runner`, text `Sharing your location for your active job.` confirmed as final in `docs/specs/runner/_shared.md` §10 and `x-location-disclosure.md`. It is valid because background collection runs only during a job; the online-only 30 s pings are foreground and show no notification.
+
+### Builder list (web-parity, next touch; none blocks the merge)
+1. m-13 runner filter names / search.
+2. Runner drawer `Payouts` summary section (new, `drawer-runner-purchase-limit.md`), together with the purchase-limit section once N-19 exists.
+3. Carried: m-10, m-11, m-12.
+
+## Owner answers round 7 (rows 140–144, 146, 2026-10-16), applied on `docs/owner-answers-7-specs`
+
+Spec-only update; no admin code read beyond `feat/admin-runner-payouts` @ `04837b4` (read-only) for the conflict check. Full list and the System Design edits waiting on row 147: `docs/audits/runner-gap-report.md` §10.
+
+### What changed in the admin specs
+- `drawer-runner-payout.md`: row 142 purchase-limit exception (§5 2b: `Approve above the purchase limit`, required `Why pay above the purchase limit?` 10–500, `Approve above the limit · KSh {amount}`, confirm line; read-only exception rows in §7; activity entry); `With a purchase-limit exception` amount row; `Change` link next to the purchase limit dropped (raising the limit is not the mechanism). Status `matches-design` → `partial`.
+- `drawer-runner-purchase-limit.md`: confirm body `It applies to new offers and new purchases. To pay one purchase above the limit, use the exception on that reimbursement.`; no entry from the payout drawer.
+- `p-payout-requests.md`: row 146 decided: `requestedAmount` and `paidAmount` stored and shown separately (table `Paid` column, read-only rows, activity), below-request caption and confirm, request closes `paid`; AQ-11 closed. Row 143: no payout time anywhere.
+- `p-runner-payouts.md`, `drawer-dispute-outcome.md`: notes only (rows 146, 140).
+- `_shared.md`: decision rows 140–144, 146; N-17 (two amounts), N-20 (offer expiry; round 8: admin-offer lapse EXPIRED at once only as built, pending row 157; auto-offers fall through, row 150), new N-21 (purchase-limit exception API); §8 AQ table.
+
+### drawer-runner-payout: conflict with the build (`feat/admin-runner-payouts`)
+14. **blocker (when N-21 lands)** — `runner-payout-drawer.ts:219-222`, `:300-335`, `:1124-1132`. Design (row 142): an ordinary approval up to `approvalCeiling`, plus an explicit, recorded exception up to `overLimitCeiling` with a required reason (§5 2b, §7, §10). Code: only the ordinary path. Fix: add the exception action, the note field (reuse the `app-exposure-override-field` pattern as a shared component, no copy-paste), the label/confirm changes and the read-only rows once the API exposes `overLimitCeiling`, `purchaseLimitOverride` and `purchaseLimitOverrideNote`.
+
+### Builder lists
+- api-contract: N-21 / RA-25 (purchase-limit exception, storage per the owner's answer); N-17 / RA-15 with `requestedAmount` + `paidAmount`; N-20 / RA-26 (offer expiry as amended in round 8 below).
+- web-parity: item 14 after N-21; `p-payout-requests` after N-17.
+
+### Questions for the owner (new)
+- Row 142 follow-ups → answered 2026-10-16 by rows 151 (storage in `task_exposure_overrides`) and 152 (no: the limit stored at creation applies).
+- Row 141 follow-up → answered 2026-10-16 by row 150 (auto-offers keep the fall-through); admin-offer lapse is row 157, open.
+
+## Owner answers round 8 (rows 150–156, 2026-10-16), applied on `docs/owner-answers-8-specs`
+
+Spec-only update. Row 157 open. Full list, API items and the System Design edits (replacing the round-7 list): `docs/audits/runner-gap-report.md` §11.
+
+### What changed in the admin specs
+- `_shared.md`: decision rows 150–157; N-20 rewritten (admin-offer lapse held as built pending row 157; auto-offer fall-through row 150; decline row 155; null deadline row 156; `errand.EXPIRED` customer notification); N-21 now carries the row-151 storage and record fields (`errandId`, `assignmentId`, `runnerProfileId`, `limitAtTime`, `requestedAmount`, `approvedAmount`, `amountAbove`, `note`, `createdBy`, `createdAt`) and the row-152 stored limit (`purchaseLimitAtCreation`, `currentPurchaseLimit`); N-17 notes row 153; new N-22 (OTP email says 5 minutes); §8 open list reduced to rows 145/157.
+- `drawer-runner-payout.md`: Amounts show `Purchase limit for this line` (stored limit) and, when different, `Runner's current limit` with a caption; 2b A-11 and confirm use the stored limit, Fira Code spans stated; §7 read-only exception rows add `Requested`, `Approved`, `Recorded`; Data and open questions updated (rows 151/152 answered).
+- `drawer-runner-purchase-limit.md`: A-08 body `It applies to new offers and to reimbursements created from now on.`; open question closed (row 152).
+- `p-payout-requests.md`: row 153 noted; Fira Code spans stated in the §2 and §4 captions; §4 caption templated `KSh {requestedAmount − paidAmount}`.
+
+### drawer-runner-payout: conflict with the build (`feat/admin-runner-payouts`)
+15. **blocker (when N-21 lands)** — `runner-payout-drawer.ts:213-218`. Design (row 152): the purchase limit shown and used is the line's stored `purchaseLimitAtCreation` (plus `Runner's current limit` when different). Code: `runner.maxPurchaseAdvance` (current limit) labelled `Runner's purchase limit`. Fix: read the line's stored limit once the API exposes it; rename the label; add the second row and caption.
+Item 14 stands, with the §7 rows extended by `Requested`, `Approved`, `Recorded`.
+
+### Builder lists
+- api-contract: N-20 / RA-26 as amended; N-21 / RA-25 with the row-151 record and the row-152 column; N-17 / RA-15 (table approved); N-22 OTP copy; customer `errand.EXPIRED`.
+- web-parity: items 14 and 15 after N-21.

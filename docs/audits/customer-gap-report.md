@@ -745,3 +745,68 @@ No other customer code reads `RefundTrigger` (`rg` over `apps/customer_app/lib`)
 ### Questions for the owner
 
 - None new. AQ-9 (customer notification on a correction/reversal) remains open; it affects API push text only, not this screen.
+
+## Owner answers round 6 (rows 104–111, applied 2026-10-13 on `docs/owner-answers-6-runner-specs`)
+
+| Row | Was | Decision | Customer impact |
+|---|---|---|---|
+| 104 | SQ-12 | Runner item reimbursement is payable when the task reaches CONFIRMED (receipt uploaded, customer confirmed, dispute window closed, no dispute) | none (system design §6) |
+| 105 | SQ-13 | Missing/mismatched receipt → not auto-payable, ops review; any approved reimbursement capped at the item amount paid to Nitume | none |
+| 106 | SQ-14 | Runner already bought the item, task ends CANCELLED/FAILED → reimburse verified eligible item spend (caps/evidence apply); no runner fee | none (the customer's refund review is unchanged, row 81) |
+| 107 | SQ-15 | Runner payout ledger table approved (`runner_payout_lines`, system design §2.2): distinct lines for runner fee, item reimbursement, corrections, reversals, re-sent payouts | none |
+| 108 | SQ-16 | Out-of-pocket purchases limited by `max_purchase_advance`; a runner may decline a task over their limit | none (runner app `v-job-detail`, `v-jobs`) |
+| 109 | AQ-9 | Only a re-sent refund payout notifies the customer; corrections/reversals don't by default | `_shared.md` §11 wording only. Already built that way in the API (`refunds.service.ts:917`) |
+| 110 | AQ-10 | A correction never records an amount above the refund ceiling | none (admin) |
+| 111 | api-contract | A reversed, not-yet-re-sent payout stays committed at the decided amount against the cumulative cap | none; matches the `approved` customer view already built (`committedAmountOf`, `refunds.service.ts:120`) |
+
+No customer screen changes status. No builder work. SQ-12 … SQ-16, AQ-9 and AQ-10 above are closed.
+
+## Owner answers round 8 (2026-10-16): EXPIRED notification and OTP copy, applied on `docs/owner-answers-8-specs`
+
+Spec-only update. Source: BOARD Needs row "api-contract (round 7) | design-auditor" (owner decided 2026-10-16) and rows 150, 155, 157 (when a task expires).
+
+### What changed
+- `v-notifications.md`: new `errand.EXPIRED` event (title `No runner available · Expired`; body with/without refund review; no refund promise; payload and deep link to `v-task-detail`).
+- `v-track.md`: EXPIRED card text `No runner accepted your task in time.` plus C-04 `Start a new task` → `v-new-category`.
+- `v-task-detail.md`: EXPIRED primary action `Start a new task`; summary line `No runner accepted your task in time.` when there is no refund review.
+- `_shared.md`: §0 decision row; §6 EXPIRED row (when it happens, next action, notification).
+- `v-auth-otp.md` (and runner `v-auth-otp.md`): OTP messages say `Your verification code expires in 5 minutes.`; TTL 300 s unchanged.
+
+### Conflicts with built code (v-track and v-task-detail set to `partial`; minors for flutter-customer)
+1. **minor** — Track EXPIRED card copy: design `No runner accepted your task in time.` + `Start a new task`; code (`track_tab.dart:410` on `main`) shows the round-4 text `No runner was available in time.` with `View task` only. Fix in the status card.
+2. **minor** — Task detail EXPIRED: design primary `Start a new task` and the no-review line; code shows no action for EXPIRED. Fix in the action table.
+3. Notifications: `errand.EXPIRED` routes to Task detail already through the unknown-type fallback (`Nav.openNotification`); add an explicit route and a test once the API sends it.
+
+### api-contract
+- `errand.EXPIRED` customer notification (contract in `v-notifications.md`).
+- OTP copy: `mail.service.ts:23` and `africas-talking-otp-sender.ts:33` say 10 minutes; change to 5 minutes (email wording fixed by the owner; SMS wording proposed).
+
+## Re-audit 2026-10-16: customer round 8 (EXPIRED next action)
+
+Build: `feat/customer-expired-next-action` — `b624803` (`feat(customer): EXPIRED copy and Start a new task on v-track`), `eb50eaf` (`feat(customer): EXPIRED Start a new task action on v-task-detail`), `9978345` (`test(customer): cover EXPIRED copy and next action on v-task-detail`). Branch diff: `track_tab.dart`, `task_detail_screen.dart`, `widgets/task_widgets.dart` (optional `note` on the app-level `TaskSummaryCard`), `test/expired_test.dart`. No out-of-area edits. Closes round-8 conflicts 1 and 2 above.
+
+### v-track (EXPIRED) — PASS
+
+1. **Structure and flow.** The terminal status card (`track_tab.dart:407-450`) shows the `Expired` chip, the 13 slate-600 line, outline `View task` → `v-task-detail`, then (EXPIRED only, `:441-446`) the C-04 `NitumeButton.text` `Start a new task` → `Nav.toNewTask` (`v-new-category`). FAILED, CANCELLED and DISPUTED cards are unchanged and have no extra action (tested).
+2. **Copy.** `No runner accepted your task in time.` (`:411`), exact spec wording and same as the `errand.EXPIRED` notification. The old `No runner was available in time.` is gone (tested). No refund wording anywhere on the card (tested for `refund` / `Refund`).
+3. **Tokens / typography / contrast.** `NitumeTextStyles.muted` (Fira Sans 13/400 slate-600), `NitumeButton.outline` / `NitumeButton.text` from nitume_core; no new hex, `Color(0x…)`, `fontFamily` or `GoogleFonts` in the diff. The new action is a text button, not a green fill, so green stays on primary actions.
+4. **Build health.** `flutter analyze` clean; `flutter test` 122/122 pass (new `expired_test.dart`: copy, both actions, navigation to `CategoryScreen`, FAILED without the action).
+
+### v-task-detail (EXPIRED) — PASS
+
+1. **Structure and flow.** The action table (`task_detail_screen.dart:199-203`) maps EXPIRED → `Start a new task` → `Nav.toNewTask`, rendered by the existing full-width `NitumeButton.primary` (C-01, margin `0 20 14`) under the summary card, as the spec table says. Other terminal states keep no action (tested with FAILED).
+2. **No-review line.** `TaskSummaryCard(note: …)` (`:225-229`, widget `task_widgets.dart:19-21, 45-48`) shows `No runner accepted your task in time.` in `NitumeTextStyles.muted` (13 slate-600) only when the task is EXPIRED and `data.refunds` is empty. Exact spec copy.
+3. **Row 102 unchanged.** `RefundGroup` and its trigger lines are untouched by the diff. Paid EXPIRED with a `pending_review` / `expired_after_payment` review still shows `Refund under review` and `We couldn't find a runner for this task in time. We're reviewing a refund and will let you know the outcome.`, without the duplicate no-review line (tested). An unpaid EXPIRED task shows `Not paid yet.` and no refund wording (tested). No copy says automatic or guaranteed.
+4. **Tokens / typography / contrast / reuse.** Only nitume_core widgets and text styles; the note is an optional parameter on the shared app-level card, not inline markup. Primary green fill with white label per C-01. No new hex or font calls.
+5. **Build health.** As above.
+
+### Builder questions, decided
+
+1. **Line position** (directly under the status chip, before the title): matches the spec. `v-task-detail.md` says "13 slate-600 line under the chip" for EXPIRED with no review, and the only chip on the screen without a review is the summary status chip. Spacing 10 under the chip and 10 under the line follows the card's existing rhythm.
+2. **Hidden when any refund review exists**: matches the spec's wording, "EXPIRED with no refund review (never paid, or before the API opens it)". A paid EXPIRED task can only carry the `expired_after_payment` review (EXPIRED is reached from RUNNER_ASSIGNED, before any price change or dispute could open another one), so in practice "any review" equals "the EXPIRED review". When that review is decided, the group shows the common decided line (`Refund approved` / `Refunded` / `No refund`) and the chip still reads `Expired`; that is also the spec. Not a finding.
+3. **No category preselected**: correct. The spec target is `v-new-category` with no preselection; the expired task's category is not carried over. Same call as Track's empty state and History.
+
+### Notification route
+`errand.EXPIRED` is not in core `NotificationEventType` yet, so `tryFromWire` returns null and `Nav.openNotification` (`nav.dart:143-186`) falls through to `toTaskDetail` — the target `v-notifications.md` specifies. Acceptable until the API sends the event; then add the explicit case and a test (round-8 item 3 stays open, not blocking).
+
+No findings. v-track and v-task-detail → `matches-design` (on `feat/customer-expired-next-action`).

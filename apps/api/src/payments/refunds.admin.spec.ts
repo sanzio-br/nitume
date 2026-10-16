@@ -50,6 +50,11 @@ const build = () => {
       ]),
     ),
     count: vi.fn(() => Promise.resolve(3)),
+    // Row 136 reads: runner item reimbursement committed, overrides.
+    manager: {
+      query: vi.fn(() => Promise.resolve([{ total: '200.00' }])),
+      getRepository: () => ({ find: vi.fn(() => Promise.resolve([])) }),
+    },
   };
   const payments = { createQueryBuilder: vi.fn(() => qb({ total: '0' })) };
   const transactions = {
@@ -113,6 +118,9 @@ describe('RefundsService admin views (N-1, N-2, N-7)', () => {
     });
     expect(out.decidedBy).toEqual({ id: 'admin-1', displayName: 'Ops Lead' });
     expect(out.paidBy).toEqual({ id: 'admin-2', displayName: null });
+    // Row 136: combined position with the runner's item reimbursement.
+    expect(out.taskExposure).toMatchObject({ totalPaidToNitume: '1650.00', committedReimbursements: '200.00' });
+    expect(out.exposureOverrides).toEqual([]);
     expect(out.customer).toEqual({
       userId: 'u-9',
       displayName: 'Amina Wanjiru',

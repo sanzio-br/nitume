@@ -196,6 +196,11 @@ class _Body extends StatelessWidget {
       ErrandStatus.completed || ErrandStatus.confirmed || ErrandStatus.settled
           when !data.rated =>
         (label: 'Rate this task', action: () => Nav.toRate(context, e.id)),
+      // Owner 2026-10-16: the next action after no runner accepted.
+      ErrandStatus.expired => (
+        label: 'Start a new task',
+        action: () => Nav.toNewTask(context),
+      ),
       _ => null,
     };
   }
@@ -217,6 +222,11 @@ class _Body extends StatelessWidget {
       children: [
         TaskSummaryCard(
           errand: e,
+          // EXPIRED with no refund review (never paid, or before the API
+          // opens it); a review shows its own line in the refund group.
+          note: e.status == ErrandStatus.expired && data.refunds.isEmpty
+              ? 'No runner accepted your task in time.'
+              : null,
           titleStyle: NitumeTextStyles.cardTitle.copyWith(
             fontSize: 16,
             fontWeight: FontWeight.w700,

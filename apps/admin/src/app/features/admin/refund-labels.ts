@@ -1,4 +1,4 @@
-import type { AdminRef, EffectivePayout, RefundReview } from '../../core/api-types';
+import type { AdminRef, RefundReview } from '../../core/api-types';
 import { maskedId } from './admin-data.service';
 
 /** Refund trigger → `Reason` label (`_shared.md` §6, rows 71, 102). */
@@ -33,30 +33,8 @@ export function reviewCeiling(
   return r.status === 'pending_review' && r.refundCeiling !== null ? r.refundCeiling : r.amountPaid;
 }
 
-/**
- * The effective payout of a review (row 100): the API's `effectivePayout`,
- * else (API before N-15) the original payout of a `refunded` review.
- */
-export function effectivePayout(
-  r: Pick<RefundReview, 'status' | 'refundAmount' | 'payoutReference' | 'paidAt'> & {
-    effectivePayout?: EffectivePayout | null;
-  },
-): EffectivePayout | null {
-  // TODO(owner-answers-5): `effectivePayout` is optional until N-15 is on main.
-  if (r.effectivePayout !== undefined) return r.effectivePayout;
-  if (r.status !== 'refunded') return null;
-  return {
-    state: 'sent',
-    amount: r.refundAmount ?? '0',
-    reference: r.payoutReference ?? null,
-    at: r.paidAt ?? null,
-  };
-}
-
 /** A `refunded` review whose latest correction is a reversal: the refund is owed again. */
-export function payoutReversed(
-  r: Pick<RefundReview, 'status'> & { effectivePayout?: EffectivePayout | null },
-): boolean {
+export function payoutReversed(r: Pick<RefundReview, 'status' | 'effectivePayout'>): boolean {
   return r.status === 'refunded' && r.effectivePayout?.state === 'reversed';
 }
 
@@ -65,16 +43,12 @@ export function payoutReversed(
  * (`Payout reversed`, amber) instead of `Refunded` while the effective
  * payout is reversed (`_shared.md` §6, row 100). Panel and drawer.
  */
-export function refundChipStatus(
-  r: Pick<RefundReview, 'status'> & { effectivePayout?: EffectivePayout | null },
-): string {
+export function refundChipStatus(r: Pick<RefundReview, 'status' | 'effectivePayout'>): string {
   return payoutReversed(r) ? 'payout_reversed' : r.status;
 }
 
 /** p-refunds row button: `Record payout` for approved and reversed payouts (row 100). */
-export function refundRowAction(
-  r: Pick<RefundReview, 'status'> & { effectivePayout?: EffectivePayout | null },
-): string {
+export function refundRowAction(r: Pick<RefundReview, 'status' | 'effectivePayout'>): string {
   if (r.status === 'pending_review') return 'Review';
   if (r.status === 'approved' || payoutReversed(r)) return 'Record payout';
   return 'View';

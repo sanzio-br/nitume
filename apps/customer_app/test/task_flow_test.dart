@@ -36,7 +36,7 @@ Evidence photo(String id) => Evidence(
   id: id,
   errandId: 'e1',
   type: EvidenceType.photo,
-  capturedAt: DateTime(2026, 10, 7, 10, 41),
+  capturedAt: fixtureAt(10, 41),
 );
 
 void main() {
@@ -210,14 +210,14 @@ void main() {
           errandId: 'e1',
           toStatus: ErrandStatus.runnerAssigned,
           actorType: StatusHistoryActor.system,
-          createdAt: DateTime(2026, 10, 7, 10, 3),
+          createdAt: fixtureAt(10, 3),
         ),
         StatusHistoryEntry(
           id: 'h2',
           errandId: 'e1',
           toStatus: ErrandStatus.runnerEnRoute,
           actorType: StatusHistoryActor.runner,
-          createdAt: DateTime(2026, 10, 7, 10, 12),
+          createdAt: fixtureAt(10, 12),
         ),
       ];
       // The resume check would open the modal for IN_PROGRESS; en route
@@ -328,7 +328,16 @@ void main() {
       await b.pumpScreen(t, const TaskDetailScreen(errandId: 'e1'));
 
       expect(find.text('Completed'), findsOneWidget);
-      expect(find.text('#NT-10482 · 7 Oct, 10:03 AM'), findsNothing);
+      // Created three days ago: weekday form, never the absolute date.
+      const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      final day = weekdays[fixtureDay.weekday - 1];
+      expect(find.text('#NT-10482 · $day, 10:03 AM'), findsOneWidget);
+      expect(
+        find.text(
+          '#NT-10482 · ${fixtureDay.day} ${_month(fixtureDay)}, 10:03 AM',
+        ),
+        findsNothing,
+      );
       expect(find.text('Rate this task'), findsOneWidget);
       expect(find.text('Verified · 4.9 · 137 tasks'), findsOneWidget);
       // Row 34: one fee total row, no Service fee / Runner fee lines.
@@ -358,7 +367,7 @@ void main() {
       CustomerRefund(
         status: RefundStatus.refunded,
         refundAmount: '2200.00',
-        paidAt: DateTime(2026, 10, 7, 15, 30),
+        paidAt: fixtureAt(15, 30),
       ),
     ];
     await b.pumpScreen(t, const TaskDetailScreen(errandId: 'e1'));
@@ -472,7 +481,7 @@ void main() {
         openedBy: 'u1',
         reason: 'Wrong item delivered',
         status: DisputeStatus.underReview,
-        createdAt: DateTime(2026, 10, 7, 10, 41),
+        createdAt: fixtureAt(10, 41),
       );
       await b.pumpScreen(
         t,
@@ -507,5 +516,20 @@ StatusHistoryEntry _h(String id, ErrandStatus to, int minute) =>
       errandId: 'e1',
       toStatus: to,
       actorType: StatusHistoryActor.system,
-      createdAt: DateTime(2026, 10, 7, 10, minute),
+      createdAt: fixtureAt(10, minute),
     );
+
+String _month(DateTime d) => const [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+][d.month - 1];

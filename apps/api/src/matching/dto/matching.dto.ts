@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
+import { AssignmentDeclineReason } from '../../common/enums';
 import {
+  IsEnum,
   IsISO8601,
   IsNumber,
   IsOptional,
@@ -87,4 +89,15 @@ export class ListRunnersQueryDto {
   @IsOptional()
   @IsString()
   cursor?: string;
+}
+/** POST /errands/:id/assignment/decline (row 108). Only `over_purchase_limit` today. */
+export class DeclineAssignmentDto {
+  @IsEnum(AssignmentDeclineReason)
+  reason: AssignmentDeclineReason;
+}
+
+export class PurchaseCheckQueryDto {
+  @IsOptional()
+  @IsUUID()
+  runnerProfileId?: string;
 }

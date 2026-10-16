@@ -3,6 +3,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification } from './runner-verification.entity';
+import { VerificationDocumentAccessLog } from './verification-document-access-log.entity';
+import {
+  CloudinaryVerificationDocumentStorage,
+  ConsoleVerificationDocumentStorage,
+  verificationDocumentStorageProvider,
+} from './verification-storage/verification-document-storage';
 import { RunnersController } from './runners.controller';
 import { RunnersService } from './runners.service';
 import { UsersModule } from '../users/users.module';
@@ -13,12 +19,18 @@ import { UsersModule } from '../users/users.module';
     TypeOrmModule.forFeature([
       RunnerProfile,
       RunnerVerification,
+      VerificationDocumentAccessLog,
       RunnerSkillEntity,
       RunnerServiceArea,
     ]),
   ],
   controllers: [RunnersController],
-  providers: [RunnersService],
+  providers: [
+    RunnersService,
+    CloudinaryVerificationDocumentStorage,
+    ConsoleVerificationDocumentStorage,
+    verificationDocumentStorageProvider,
+  ],
   exports: [RunnersService],
 })
 export class RunnersModule {}
