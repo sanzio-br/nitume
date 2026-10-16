@@ -47,7 +47,13 @@ export class MatchingController {
 
   /** Mobile-money payment must be in place before a runner is assigned: the
    * state machine only allows PAYMENT_CONFIRMED -> RUNNER_ASSIGNED. After a
-   * decline (row 108) it reassigns a RUNNER_ASSIGNED task (`history: null`). */
+   * decline (row 108) it reassigns a RUNNER_ASSIGNED task (`history: null`).
+   * The new assignment is an offer open for 10 minutes
+   * (`assignment.offerExpiresAt`, MATCHING_ADMIN_OFFER_WINDOW_SECONDS, rows
+   * 114, 141). Unaccepted by then, the assignment becomes `expired` and the
+   * task RUNNER_ASSIGNED -> EXPIRED at once (system, offer-expiry job). The
+   * deadline only matters while the task is RUNNER_ASSIGNED and the
+   * assignment `assigned`; once accepted it is kept for the record. */
   @Post(':id/assign')
   @Roles(UserRole.ADMIN)
   assign(

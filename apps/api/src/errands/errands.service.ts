@@ -100,6 +100,8 @@ export interface ErrandAssignmentView {
   /**
    * Acceptance deadline of the offer (rows 114, 141): after it the runner can
    * no longer accept and the task goes EXPIRED. Null on older assignments.
+   * Only an open offer (`status: assigned`, task RUNNER_ASSIGNED) can lapse;
+   * on an `accepted` assignment it is kept for the record.
    */
   offerExpiresAt: Date | null;
   runner: RunnerPublicSummary | null;
