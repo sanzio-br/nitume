@@ -17,6 +17,9 @@ import { RefundReview } from './refund-review.entity';
 import { RefundsController } from './refunds.controller';
 import { RefundsService } from './refunds.service';
 import { RunnerPayoutLine } from './runner-payout-line.entity';
+import { RunnerPayoutRequest } from './runner-payout-request.entity';
+import { RunnerPayoutRequestsController } from './runner-payout-requests.controller';
+import { RunnerPayoutRequestsService } from './runner-payout-requests.service';
 import { TaskExposureOverride } from './task-exposure-override.entity';
 import { RunnerPayoutsService } from './runner-payouts.service';
 import { RunnerPayoutsController } from './runner-payouts.controller';
@@ -43,6 +46,7 @@ import { mpesaProviderFactory } from './providers/mpesa-provider.factory';
       RefundReview,
       RefundPayoutCorrection,
       RunnerPayoutLine,
+      RunnerPayoutRequest,
       TaskExposureOverride,
     ]),
   ],
@@ -51,12 +55,14 @@ import { mpesaProviderFactory } from './providers/mpesa-provider.factory';
     RefundsController,
     ErrandRefundController,
     RunnerPayoutsController,
+    RunnerPayoutRequestsController,
     RunnerEarningsController,
   ],
   providers: [
     PaymentsService,
     RefundsService,
     RunnerPayoutsService,
+    RunnerPayoutRequestsService,
     MerchantDetailsWatcher,
     ConsoleMpesaProvider,
     mpesaProviderFactory,

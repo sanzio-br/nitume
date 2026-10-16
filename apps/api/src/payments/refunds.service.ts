@@ -33,6 +33,7 @@ import {
 } from './task-exposure';
 import { Payment } from './payment.entity';
 import { RefundPayoutCorrection, RefundPayoutCorrectionKind } from './refund-payout-correction.entity';
+import { ERRAND_EXPIRED_EVENT, ErrandExpiredEvent } from './payment-events';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
 
 /** What the customer sees of a refund review (no admin notes or user ids). */
@@ -363,12 +364,23 @@ export class RefundsService implements OnModuleInit {
     if (!REFUNDABLE_TERMINAL_STATUSES.includes(event.status)) {
       return;
     }
+    let review: RefundReview | null = null;
     try {
-      await this.openIfPaid(event.errandId, triggerFor(event.from ?? null, undefined, event.status));
+      review = await this.openIfPaid(event.errandId, triggerFor(event.from ?? null, undefined, event.status));
     } catch (err) {
       this.logger.error(
         `Could not refresh refund review for ${event.errandId}: ${err instanceof Error ? err.message : String(err)}`,
       );
+      // The review normally commits with the transition; read it back.
+      review = await this.reviews
+        .findOne({ where: { errandId: event.errandId, priceChangeRequestId: IsNull() } })
+        .catch(() => null);
+    }
+    if (event.status === ErrandStatus.EXPIRED) {
+      // Owner decision 2026-10-16: the customer's EXPIRED notification says
+      // whether a refund is being reviewed, so it is queued after this.
+      const payload: ErrandExpiredEvent = { errandId: event.errandId, refundReviewOpened: !!review };
+      this.events?.emit(ERRAND_EXPIRED_EVENT, payload);
     }
   }
 

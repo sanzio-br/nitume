@@ -555,6 +555,19 @@ export class ErrandsService {
     });
   }
 
+  /**
+   * The runner's latest assignment on an errand, whatever its status (audit
+   * records, row 151). Null when the runner was never assigned.
+   */
+  async latestAssignmentOf(
+    errandId: string,
+    runnerProfileId: string,
+    manager?: EntityManager,
+  ): Promise<ErrandAssignment | null> {
+    const repo = manager ? manager.getRepository(ErrandAssignment) : this.assignments;
+    return repo.findOne({ where: { errandId, runnerProfileId }, order: { createdAt: 'DESC' } });
+  }
+
   private derivedFields(
     errand: Errand,
     quote: Pick<Quote, 'expiresAt' | 'acceptedAt'> | null,

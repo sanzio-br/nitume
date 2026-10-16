@@ -32,7 +32,8 @@ import {
 } from './payout-references';
 import { RefundTrigger } from './refund-review.entity';
 import { RefundsService } from './refunds.service';
-import { TaskExposureOverrideSource } from './task-exposure-override.entity';
+import { RunnerPayoutRequest } from './runner-payout-request.entity';
+import { TaskExposureOverride, TaskExposureOverrideSource } from './task-exposure-override.entity';
 import {
   TaskExposure,
   TaskExposureOverrideView,
@@ -41,6 +42,7 @@ import {
   exposureOf,
   lockTaskExposure,
   overridesFor,
+  purchaseLimitOverrideFor,
 } from './task-exposure';
 import {
   OBLIGATION_LINE_TYPES,
@@ -416,21 +418,32 @@ export interface PayoutFeedItem {
   payableAt: Date | null;
   /** payout / resent_payout: when it was sent. Job lines: their original payout time. */
   paidAt: Date | null;
+  /**
+   * payout entries and job lines paid on a runner payout request (rows 117,
+   * 153): the request id. Null otherwise.
+   */
+  payoutRequestId: string | null;
+  /** payout entries paid on a request: the amount the runner asked for. Null otherwise. */
+  requestedAmount: string | null;
 }
 
 type FeedErrand = { reference: string; title: string | null };
+type FeedEntry = Omit<PayoutFeedItem, 'payoutRequestId' | 'requestedAmount'> &
+  Partial<Pick<PayoutFeedItem, 'payoutRequestId' | 'requestedAmount'>>;
 
 /** Pure: the runner's payout feed, newest first, from obligations and their adjustments. */
 export const payoutFeedOf = (
   rows: { line: RunnerPayoutLine; adjustments: RunnerPayoutLine[] }[],
   errands: Map<string, FeedErrand>,
+  /** Requested amount per payout request id (rows 117, 153). */
+  requests: Map<string, string> = new Map(),
 ): PayoutFeedItem[] => {
   const base = (errandId: string | null) => ({
     errandId,
     errandTitle: errandId ? (errands.get(errandId)?.title ?? null) : null,
     errandReference: errandId ? (errands.get(errandId)?.reference ?? null) : null,
   });
-  const items: PayoutFeedItem[] = [];
+  const items: FeedEntry[] = [];
   const payouts = new Map<string, RunnerPayoutLine[]>();
   for (const { line, adjustments } of rows) {
     const pos = linePositionOf(line, adjustments);
@@ -445,6 +458,7 @@ export const payoutFeedOf = (
       relatedLineId: null,
       lineIds: [],
       reviewReason: pos.status === S.ON_HOLD ? line.reviewReason : null,
+      payoutRequestId: line.payoutRequestId ?? null,
       createdAt: line.createdAt,
       payableAt: approved && pos.status !== S.REJECTED ? (line.decidedAt ?? line.createdAt) : null,
       paidAt: line.paidAt,
@@ -492,29 +506,61 @@ export const payoutFeedOf = (
       relatedLineId: null,
       lineIds: ids,
       reviewReason: null,
+      payoutRequestId: group[0].payoutRequestId ?? null,
+      requestedAmount: group[0].payoutRequestId ? (requests.get(group[0].payoutRequestId) ?? null) : null,
       createdAt: group[0].paidAt as Date,
       payableAt: null,
       paidAt: group[0].paidAt,
     });
   }
-  return items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
+  return items
+    .map((i): PayoutFeedItem => ({ ...i, payoutRequestId: i.payoutRequestId ?? null, requestedAmount: i.requestedAmount ?? null }))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
 };
 
 /**
- * Pure: highest amount an ops approval may carry on an item line (rows 105,
- * 135): the lowest of the requested amount, the item amount paid to Nitume
- * now, the cap stored on the line when it was created (`capAmount`) and the
- * runner's max_purchase_advance; never below 0.
+ * Pure: the purchase limit that applies to an item line's review (row 152):
+ * the runner's max_purchase_advance stored on the line when it was created;
+ * lines created before row 152 (null) use the runner's current limit.
+ */
+export const purchaseLimitOf = (
+  line: Partial<Pick<RunnerPayoutLine, 'purchaseLimitAtCreation'>>,
+  currentLimit?: string | number | null,
+): number | null => {
+  if (line.purchaseLimitAtCreation !== null && line.purchaseLimitAtCreation !== undefined) {
+    return Number(line.purchaseLimitAtCreation);
+  }
+  return currentLimit === null || currentLimit === undefined ? null : Number(currentLimit);
+};
+
+/**
+ * Pure: highest amount an ops approval may carry on an item line without an
+ * exception (rows 105, 135, 142, 152): the lowest of the requested amount,
+ * the item amount paid to Nitume now, the cap stored on the line when it was
+ * created (`capAmount`) and the purchase limit of the line
+ * (`purchaseLimitOf`); never below 0.
  */
 export const approvalCeilingOf = (
+  line: Pick<RunnerPayoutLine, 'requestedAmount' | 'capAmount'> &
+    Partial<Pick<RunnerPayoutLine, 'purchaseLimitAtCreation'>>,
+  itemPaid: number,
+  currentLimit?: string | number | null,
+): number => {
+  const limit = purchaseLimitOf(line, currentLimit);
+  const ceiling = overLimitCeilingOf(line, itemPaid);
+  return limit === null ? ceiling : Math.max(0, Math.min(ceiling, limit));
+};
+
+/**
+ * Pure: highest amount an approval may carry with a recorded purchase-limit
+ * exception (rows 142, 151): the same terms as `approvalCeilingOf` without
+ * the purchase limit, so never above the item amount paid to Nitume.
+ */
+export const overLimitCeilingOf = (
   line: Pick<RunnerPayoutLine, 'requestedAmount' | 'capAmount'>,
   itemPaid: number,
-  maxPurchaseAdvance?: string | number | null,
 ): number => {
   const caps = [Number(line.requestedAmount), itemPaid];
-  if (maxPurchaseAdvance !== null && maxPurchaseAdvance !== undefined) {
-    caps.push(Number(maxPurchaseAdvance));
-  }
   if (line.capAmount !== null && line.capAmount !== undefined) {
     caps.push(Number(line.capAmount));
   }
@@ -559,6 +605,27 @@ export interface RunnerPayoutCorrectionView {
   createdAt: Date;
 }
 
+/** Admin view of a purchase-limit exception (rows 142, 151, N-21). */
+export interface PurchaseLimitOverrideView {
+  id: string;
+  errandId: string;
+  /** The runner's assignment on the task (null only if none was found). */
+  assignmentId: string | null;
+  runnerProfileId: string;
+  lineId: string;
+  /** The runner's purchase limit that applied (row 152). */
+  limitAtTime: string;
+  requestedAmount: string;
+  approvedAmount: string;
+  /** approvedAmount - limitAtTime. */
+  amountAbove: string;
+  /** The reason (admin only; never shown to the runner). */
+  note: string;
+  createdByUserId: string;
+  createdBy: AdminRef;
+  createdAt: Date;
+}
+
 /** Admin detail: item + runner payout contact, caps and adjustments. */
 export type AdminRunnerPayoutDetail = AdminRunnerPayoutItem & {
   runner: {
@@ -572,8 +639,31 @@ export type AdminRunnerPayoutDetail = AdminRunnerPayoutItem & {
   } | null;
   /** Item lines: the item amount actually paid to Nitume now (cap, rows 105-106). */
   itemPaidToNitume: string | null;
-  /** Item lines in review: highest amount an approval may carry (requested, item paid, capAmount, max_purchase_advance). */
+  /**
+   * Item lines in review: highest amount an ordinary approval may carry
+   * (requested, item paid, capAmount, `purchaseLimit`).
+   */
   approvalCeiling: string | null;
+  /**
+   * Item lines: the purchase limit that applies to the review (row 152): the
+   * runner's max_purchase_advance stored at creation, else (older lines) the
+   * current one. `runner.maxPurchaseAdvance` is always the current limit.
+   */
+  purchaseLimit: string | null;
+  /**
+   * Item lines: the runner's limit now (N-21). Differs from
+   * `purchaseLimitAtCreation` when the limit changed after the line was
+   * created; it never changes this line's ceiling (row 152).
+   */
+  currentPurchaseLimit: string | null;
+  /**
+   * On-hold item lines: the most an approval may carry with a recorded
+   * purchase-limit exception (rows 142, 151): min(requested, item paid to
+   * Nitume, capAmount), without the purchase limit.
+   */
+  overLimitCeiling: string | null;
+  /** The purchase-limit exception the approval used (rows 142, 151), else null. */
+  purchaseLimitOverride: PurchaseLimitOverrideView | null;
   /** Adjustments, oldest first; empty unless paid. */
   corrections: RunnerPayoutCorrectionView[];
   /** Paid lines: highest `newAmount` a correction or re-sent payout may carry (the line amount). */
@@ -606,6 +696,8 @@ export interface ReviewInput {
   note?: string;
   /** Row 136: admin override of the task's combined cap, with the reason (10-500). */
   exposureOverrideNote?: string;
+  /** Rows 142, 151: approval above the runner's purchase limit, with the reason (10-500). */
+  purchaseLimitOverrideNote?: string;
 }
 
 export interface RunnerPayoutCorrectionInput {
@@ -616,6 +708,10 @@ export interface RunnerPayoutCorrectionInput {
   /** Latest adjustment id the admin saw (null: none); stale -> 409 payout_correction_conflict. */
   expectedLatestCorrectionId: string | null;
 }
+
+/** Rows 142, 151: length of the purchase-limit exception reason. */
+export const PURCHASE_LIMIT_NOTE_MIN = 10;
+export const PURCHASE_LIMIT_NOTE_MAX = 500;
 
 export const NOTE_MIN_LENGTH = 5;
 export const NOTE_MAX_LENGTH = 500;
@@ -703,6 +799,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         requestedAmount: fee,
         amount: fee,
         capAmount: null,
+        purchaseLimitAtCreation: null,
         reviewReason: null,
         receiptEvidenceId: null,
         note: 'Task confirmed: runner fee',
@@ -730,6 +827,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         requestedAmount: item,
         amount: reason ? null : item,
         capAmount: item,
+        purchaseLimitAtCreation: runner.maxPurchaseAdvance,
         reviewReason: reason,
         receiptEvidenceId: receipt?.id ?? null,
         note: 'Task confirmed: item reimbursement',
@@ -809,6 +907,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         requestedAmount: input.amount,
         amount: null,
         capAmount: cap,
+        purchaseLimitAtCreation: runner.maxPurchaseAdvance,
         reviewReason: RunnerPayoutReviewReason.OUT_OF_POCKET_CLAIM,
         receiptEvidenceId: receipt.id,
         note,
@@ -893,9 +992,20 @@ export class RunnerPayoutsService implements OnModuleInit {
       this.adjustmentsOf(obligations.map((l) => l.id)),
       this.errandSummaries(obligations.map((l) => l.errandId)),
     ]);
+    const requestIds = [...new Set(obligations.map((l) => l.payoutRequestId).filter((v): v is string => !!v))];
+    const requests = new Map(
+      requestIds.length === 0
+        ? []
+        : (
+            await this.lines.manager
+              .getRepository(RunnerPayoutRequest)
+              .find({ where: { id: In(requestIds) }, select: { id: true, requestedAmount: true } })
+          ).map((r) => [r.id, money(r.requestedAmount)] as [string, string]),
+    );
     let feed = payoutFeedOf(
       obligations.map((line) => ({ line, adjustments: adjustments.get(line.id) ?? [] })),
       errands,
+      requests,
     );
     if (opts.kinds && opts.kinds.length > 0) {
       const kinds = new Set<string>(opts.kinds);
@@ -917,6 +1027,22 @@ export class RunnerPayoutsService implements OnModuleInit {
           ? Buffer.from(`${last.createdAt.toISOString()}::${last.id}`, 'utf-8').toString('base64')
           : null,
     };
+  }
+
+  /**
+   * The runner's available amount now (payable lines + reversed payouts not
+   * re-sent), as on `GET /runners/me/earnings` (rows 117, 153).
+   */
+  async availableFor(runnerProfileId: string, manager?: EntityManager): Promise<number> {
+    const repo = manager ? manager.getRepository(RunnerPayoutLine) : this.lines;
+    const obligations = await repo.find({ where: { runnerProfileId, kind: In([...OBLIGATION_LINE_TYPES]) } });
+    const adjustments = await this.adjustmentsOf(obligations.map((l) => l.id), manager);
+    return Number(
+      earningsSummaryOf(
+        obligations.map((line) => ({ line, adjustments: adjustments.get(line.id) ?? [] })),
+        earningsRangeOf({}),
+      ).availableAmount,
+    );
   }
 
   /**
@@ -1002,12 +1128,18 @@ export class RunnerPayoutsService implements OnModuleInit {
     ]);
     const itemPaid =
       line.kind === T.ITEM_REIMBURSEMENT ? await this.itemPaidToNitume(line.errandId) : null;
-    const [totalPaid, refunded, reimbursed, overrides] = await Promise.all([
+    const [totalPaid, refunded, reimbursed, overrides, exception] = await Promise.all([
       this.refunds.totalPaidToNitume(line.errandId),
       this.refunds.committedRefundTotal(line.errandId),
       committedReimbursements(this.lines.manager, line.errandId),
       overridesFor(this.lines.manager, line.errandId),
+      line.kind === T.ITEM_REIMBURSEMENT
+        ? purchaseLimitOverrideFor(this.lines.manager, line.id)
+        : Promise.resolve(null),
     ]);
+    const exceptionBy = exception
+      ? ((await this.users.displayNames([exception.createdByUserId])).get(exception.createdByUserId) ?? null)
+      : null;
     const displayName = user?.displayName ?? null;
     return Object.assign(item, {
       runner: profile
@@ -1025,6 +1157,31 @@ export class RunnerPayoutsService implements OnModuleInit {
         itemPaid !== null && line.status === S.ON_HOLD
           ? money(approvalCeilingOf(line, itemPaid, profile?.maxPurchaseAdvance))
           : null,
+      purchaseLimit:
+        line.kind === T.ITEM_REIMBURSEMENT
+          ? ((v) => (v === null ? null : money(v)))(purchaseLimitOf(line, profile?.maxPurchaseAdvance))
+          : null,
+      currentPurchaseLimit:
+        line.kind === T.ITEM_REIMBURSEMENT && profile ? money(profile.maxPurchaseAdvance) : null,
+      overLimitCeiling:
+        itemPaid !== null && line.status === S.ON_HOLD ? money(overLimitCeilingOf(line, itemPaid)) : null,
+      purchaseLimitOverride: exception
+        ? {
+            id: exception.id,
+            errandId: exception.errandId,
+            assignmentId: exception.assignmentId,
+            runnerProfileId: exception.runnerProfileId as string,
+            lineId: line.id,
+            limitAtTime: money(exception.limitAtTime),
+            requestedAmount: money(exception.requestedAmount),
+            approvedAmount: money(exception.amount),
+            amountAbove: money(Number(exception.amount) - Number(exception.limitAtTime)),
+            note: exception.note,
+            createdByUserId: exception.createdByUserId,
+            createdBy: { id: exception.createdByUserId, displayName: exceptionBy },
+            createdAt: exception.createdAt,
+          }
+        : null,
       corrections: own.map((a) => toCorrectionView(a, names)),
       correctionCeiling: line.status === S.PAID ? money(line.amount) : null,
       taskExposure: exposureOf(totalPaid, refunded, reimbursed),
@@ -1068,38 +1225,89 @@ export class RunnerPayoutsService implements OnModuleInit {
         this.itemPaidToNitume(line.errandId, manager),
         this.runners.profileById(line.runnerProfileId, manager),
       ]);
-      // Row 135: min(item amount paid to Nitume, the runner's max_purchase_advance).
+      // Row 135: min(item amount paid to Nitume, the runner's purchase limit);
+      // row 152: the limit stored on the line at creation, not a later one.
       const ceiling = approvalCeilingOf(line, itemPaid, runner.maxPurchaseAdvance);
+      const limit = purchaseLimitOf(line, runner.maxPurchaseAdvance);
+      // Rows 142, 151: above the limit only as a recorded exception, and never
+      // above the item amount paid to Nitume.
+      const overLimitCeiling = overLimitCeilingOf(line, itemPaid);
       const amount = input.amount ?? 0;
+      const exceptionNote = input.purchaseLimitOverrideNote?.trim() ?? '';
+      const aboveLimit = amount > ceiling && limit !== null && amount > limit && amount <= overLimitCeiling;
       if (amount <= 0 || amount > ceiling) {
-        throw new ApiError(
-          HttpStatus.BAD_REQUEST,
-          'reimbursement_exceeds_cap',
-          `The reimbursement can't be more than KSh ${money(ceiling)} (the amount requested, at most the item amount paid to Nitume and the runner's purchase limit)`,
-          {
-            cap: money(ceiling),
-            approvalCeiling: money(ceiling),
-            requestedAmount: money(line.requestedAmount),
-            itemPaidToNitume: money(itemPaid),
-            capAmount: line.capAmount === null ? null : money(line.capAmount),
-            maxPurchaseAdvance: money(runner.maxPurchaseAdvance),
-          },
-        );
+        if (aboveLimit && exceptionNote) {
+          if (exceptionNote.length < PURCHASE_LIMIT_NOTE_MIN || exceptionNote.length > PURCHASE_LIMIT_NOTE_MAX) {
+            throw new ApiError(
+              HttpStatus.BAD_REQUEST,
+              'purchase_limit_override_note_invalid',
+              `Explain the exception in ${PURCHASE_LIMIT_NOTE_MIN} to ${PURCHASE_LIMIT_NOTE_MAX} characters`,
+              { minLength: PURCHASE_LIMIT_NOTE_MIN, maxLength: PURCHASE_LIMIT_NOTE_MAX },
+            );
+          }
+        } else {
+          // With an exception note the most allowed is overLimitCeiling.
+          const cap = exceptionNote && overLimitCeiling > ceiling ? overLimitCeiling : ceiling;
+          throw new ApiError(
+            HttpStatus.BAD_REQUEST,
+            'reimbursement_exceeds_cap',
+            `The reimbursement can't be more than KSh ${money(cap)} (the amount requested, at most the item amount paid to Nitume and the runner's purchase limit)`,
+            {
+              cap: money(cap),
+              approvalCeiling: money(ceiling),
+              overLimitCeiling: money(overLimitCeiling),
+              requestedAmount: money(line.requestedAmount),
+              itemPaidToNitume: money(itemPaid),
+              capAmount: line.capAmount === null ? null : money(line.capAmount),
+              // Row 152 / N-21: the line's stored limit (current limit on older lines).
+              maxPurchaseAdvance: limit === null ? null : money(limit),
+              purchaseLimit: limit === null ? null : money(limit),
+              purchaseLimitAtCreation:
+                line.purchaseLimitAtCreation === null ? null : money(line.purchaseLimitAtCreation),
+              currentPurchaseLimit: money(runner.maxPurchaseAdvance),
+            },
+          );
+        }
       }
       const [totalPaid, refunded, reimbursed] = await Promise.all([
         this.refunds.totalPaidToNitume(line.errandId, manager),
         this.refunds.committedRefundTotal(line.errandId, manager),
         committedReimbursements(manager, line.errandId, line.id),
       ]);
+      const exposure = exposureOf(totalPaid, refunded, reimbursed);
       await assertWithinExposure(manager, {
         errandId: line.errandId,
         amount,
-        exposure: exposureOf(totalPaid, refunded, reimbursed),
+        exposure,
         overrideNote: input.exposureOverrideNote,
         adminUserId,
         source: TaskExposureOverrideSource.RUNNER_REIMBURSEMENT,
         runnerPayoutLineId: line.id,
       });
+      if (amount > ceiling) {
+        // Row 151: append-only record in the same transaction as the approval.
+        const overrides = manager.getRepository(TaskExposureOverride);
+        const assignment = await this.errands.latestAssignmentOf(line.errandId, line.runnerProfileId, manager);
+        await overrides.save(
+          overrides.create({
+            errandId: line.errandId,
+            source: TaskExposureOverrideSource.PURCHASE_LIMIT,
+            refundReviewId: null,
+            runnerPayoutLineId: line.id,
+            runnerProfileId: line.runnerProfileId,
+            assignmentId: assignment?.id ?? null,
+            limitAtTime: money(limit),
+            requestedAmount: money(line.requestedAmount),
+            amount: money(amount),
+            normalCap: money(ceiling),
+            totalPaidToNitume: exposure.totalPaidToNitume,
+            committedRefunds: exposure.committedRefunds,
+            committedReimbursements: exposure.committedReimbursements,
+            note: exceptionNote,
+            createdByUserId: adminUserId,
+          }),
+        );
+      }
       await repo.update(line.id, {
         status: S.PAYABLE,
         amount: money(amount),
@@ -1156,60 +1364,78 @@ export class RunnerPayoutsService implements OnModuleInit {
     adminUserId: string,
   ): Promise<{ items: AdminRunnerPayoutItem[] }> {
     const ids = [...new Set(lineIds)].sort();
-    const reference = normalizeReference(payoutReference);
     await this.lines.manager.transaction(async (manager) => {
-      const repo = manager.getRepository(RunnerPayoutLine);
-      const rows = await repo.find({
-        where: { id: In(ids), kind: In([...OBLIGATION_LINE_TYPES]) },
-        order: { id: 'ASC' },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (rows.length !== ids.length) {
-        throw new NotFoundException('Runner payout line not found');
-      }
-      for (const line of rows) {
-        if (line.status === S.PAID) {
-          throw new ApiError(
-            HttpStatus.CONFLICT,
-            'runner_payout_locked',
-            'This line is already paid; its payout can only change through a correction',
-            { lineId: line.id, payoutReference: line.payoutReference },
-          );
-        }
-        if (line.status !== S.PAYABLE) {
-          throw new ApiError(
-            HttpStatus.CONFLICT,
-            'runner_payout_not_payable',
-            `Only payable lines can be paid (status ${line.status})`,
-            { lineId: line.id, status: line.status },
-          );
-        }
-      }
-      const runnerIds = new Set(rows.map((r) => r.runnerProfileId));
-      if (runnerIds.size !== 1) {
-        throw new ApiError(
-          HttpStatus.BAD_REQUEST,
-          'runner_payout_mixed_runners',
-          'One payout covers lines of one runner only',
-        );
-      }
-      await this.assertRunnerReferenceFree(manager, reference, {
-        runnerProfileId: rows[0].runnerProfileId,
-        obligationIds: ids,
-        isReversal: false,
-      });
-      const paidAt = new Date();
-      for (const line of rows) {
-        await repo.update(line.id, {
-          status: S.PAID,
-          payoutReference: reference,
-          paidAt,
-          paidByUserId: adminUserId,
-        });
-      }
+      await this.markPaidIn(manager, ids, payoutReference, adminUserId, null);
     });
     const saved = await this.lines.find({ where: { id: In(ids) }, order: { createdAt: 'DESC' } });
     return { items: await this.enrich(saved) };
+  }
+
+  /**
+   * `markPaid` inside the caller's transaction (also used to pay a runner
+   * payout request, rows 117, 153: `payoutRequestId` links the lines). Locks
+   * the lines; returns them as they were before the update.
+   */
+  async markPaidIn(
+    manager: EntityManager,
+    lineIds: string[],
+    payoutReference: string,
+    adminUserId: string,
+    payoutRequestId: string | null,
+  ): Promise<RunnerPayoutLine[]> {
+    const ids = [...new Set(lineIds)].sort();
+    const reference = normalizeReference(payoutReference);
+    const repo = manager.getRepository(RunnerPayoutLine);
+    const rows = await repo.find({
+      where: { id: In(ids), kind: In([...OBLIGATION_LINE_TYPES]) },
+      order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (rows.length !== ids.length) {
+      throw new NotFoundException('Runner payout line not found');
+    }
+    for (const line of rows) {
+      if (line.status === S.PAID) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'runner_payout_locked',
+          'This line is already paid; its payout can only change through a correction',
+          { lineId: line.id, payoutReference: line.payoutReference },
+        );
+      }
+      if (line.status !== S.PAYABLE) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'runner_payout_not_payable',
+          `Only payable lines can be paid (status ${line.status})`,
+          { lineId: line.id, status: line.status },
+        );
+      }
+    }
+    const runnerIds = new Set(rows.map((r) => r.runnerProfileId));
+    if (runnerIds.size !== 1) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'runner_payout_mixed_runners',
+        'One payout covers lines of one runner only',
+      );
+    }
+    await this.assertRunnerReferenceFree(manager, reference, {
+      runnerProfileId: rows[0].runnerProfileId,
+      obligationIds: ids,
+      isReversal: false,
+    });
+    const paidAt = new Date();
+    for (const line of rows) {
+      await repo.update(line.id, {
+        status: S.PAID,
+        payoutReference: reference,
+        paidAt,
+        paidByUserId: adminUserId,
+        ...(payoutRequestId ? { payoutRequestId } : {}),
+      });
+    }
+    return rows;
   }
 
   /**
@@ -1376,6 +1602,8 @@ export class RunnerPayoutsService implements OnModuleInit {
       requestedAmount: number;
       amount: number | null;
       capAmount: number | null;
+      /** Row 152: the runner's limit at creation (item lines only). */
+      purchaseLimitAtCreation: string | number | null;
       reviewReason: RunnerPayoutReviewReason | null;
       receiptEvidenceId: string | null;
       note: string | null;
@@ -1385,8 +1613,9 @@ export class RunnerPayoutsService implements OnModuleInit {
     const rows: { id: string }[] = await manager.query(
       `INSERT INTO "runner_payout_lines"
          ("runnerProfileId", "errandId", "kind", "status", "requestedAmount", "amount",
-          "capAmount", "reviewReason", "receiptEvidenceId", "note", "createdByUserId")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          "capAmount", "reviewReason", "receiptEvidenceId", "note", "createdByUserId",
+          "purchaseLimitAtCreation")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT ("errandId", "kind") WHERE "kind" IN ('runner_fee', 'item_reimbursement')
        DO NOTHING
        RETURNING "id"`,
@@ -1402,6 +1631,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         v.receiptEvidenceId,
         v.note,
         v.createdByUserId,
+        v.purchaseLimitAtCreation === null ? null : money(v.purchaseLimitAtCreation),
       ],
     );
     return rows[0]?.id ?? null;

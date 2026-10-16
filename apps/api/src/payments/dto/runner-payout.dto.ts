@@ -169,6 +169,17 @@ export class ReviewRunnerPayoutDto {
   @IsString()
   @MaxLength(500)
   exposureOverrideNote?: string;
+
+  /**
+   * Row 142 / 151 (N-21): reason for approving above the runner's purchase
+   * limit (10-500 characters, checked by the service so the error carries
+   * `purchase_limit_override_note_invalid`). Only used when the amount is
+   * above `approvalCeiling`; ignored otherwise.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  purchaseLimitOverrideNote?: string;
 }
 
 /** POST /runner-payouts/:id/hold (receipt mismatch). */
@@ -226,4 +237,53 @@ export class CreateRunnerPayoutCorrectionDto {
   @ValidateIf((o: CreateRunnerPayoutCorrectionDto) => o.expectedLatestCorrectionId !== null)
   @IsUUID()
   expectedLatestCorrectionId: string | null;
+}
+
+/** POST /runners/me/payout-requests (rows 117, 153). The destination is set by the server (row 118). */
+export class CreatePayoutRequestDto {
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount: number;
+}
+
+export class ListMyPayoutRequestsQueryDto {
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+const REQUEST_STATUSES = ['requested', 'paid', 'rejected'] as const;
+
+export class ListPayoutRequestsQueryDto extends ListMyPayoutRequestsQueryDto {
+  @IsOptional()
+  @IsIn(REQUEST_STATUSES)
+  status?: (typeof REQUEST_STATUSES)[number];
+
+  @IsOptional()
+  @IsUUID()
+  runnerProfileId?: string;
+}
+
+export class CountPayoutRequestsQueryDto {
+  @IsOptional()
+  @IsIn(REQUEST_STATUSES)
+  status?: (typeof REQUEST_STATUSES)[number];
+}
+
+/** POST /runner-payout-requests/:id/pay: whole payable lines of the runner, total at most the request. */
+export class PayPayoutRequestDto extends MarkRunnerPayoutsPaidDto {}
+
+/** POST /runner-payout-requests/:id/reject: reason shown to the runner (5-300, checked by the service). */
+export class RejectPayoutRequestDto {
+  @IsString()
+  @MaxLength(1000)
+  note: string;
 }

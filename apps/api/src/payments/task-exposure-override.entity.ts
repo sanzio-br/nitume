@@ -5,6 +5,13 @@ export enum TaskExposureOverrideSource {
   REFUND_DECISION = 'refund_decision',
   REFUND_CORRECTION = 'refund_correction',
   RUNNER_REIMBURSEMENT = 'runner_reimbursement',
+  /**
+   * Not a combined-cap override: an approval of a runner item reimbursement
+   * above the runner's purchase limit (rows 142, 151). `runnerProfileId`,
+   * `assignmentId`, `limitAtTime` and `requestedAmount` are set; `normalCap` is the
+   * ordinary approval ceiling.
+   */
+  PURCHASE_LIMIT = 'purchase_limit',
 }
 
 /**
@@ -30,6 +37,22 @@ export class TaskExposureOverride {
 
   @Column({ type: 'uuid', nullable: true })
   runnerPayoutLineId: string | null;
+
+  /** `purchase_limit` rows: the runner whose limit was exceeded (row 151). */
+  @Column({ type: 'uuid', nullable: true })
+  runnerProfileId: string | null;
+
+  /** `purchase_limit` rows: the runner's assignment on the task (row 151). */
+  @Column({ type: 'uuid', nullable: true })
+  assignmentId: string | null;
+
+  /** `purchase_limit` rows: the runner's limit that applied, the line's stored limit (rows 151, 152). */
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  limitAtTime: string | null;
+
+  /** `purchase_limit` rows: the amount the line asked for. */
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  requestedAmount: string | null;
 
   /** The amount approved by the override (KES). */
   @Column({ type: 'numeric', precision: 12, scale: 2 })

@@ -145,6 +145,16 @@ export class RunnerPayoutLine {
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
   capAmount: string | null;
 
+  /**
+   * Item reimbursements: the runner's max_purchase_advance in force when the
+   * obligation was created (CONFIRMED or claim; owner answer row 152). The
+   * ordinary approval ceiling uses it, never a later limit. Null on lines
+   * created before row 152 (the runner's current limit applies) and on
+   * other kinds.
+   */
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  purchaseLimitAtCreation: string | null;
+
   @Column({
     type: 'enum',
     enum: RunnerPayoutReviewReason,
@@ -160,6 +170,13 @@ export class RunnerPayoutLine {
   @ManyToOne(() => Evidence, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'receiptEvidenceId', foreignKeyConstraintName: 'FK_runner_payout_lines_receipt' })
   receiptEvidence?: Evidence;
+
+  /**
+   * Obligations paid on a runner payout request (rows 117, 153): the
+   * request; set only when the line is marked paid. Null otherwise.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  payoutRequestId: string | null;
 
   /** Adjustments: the obligation they change. Null on obligations. */
   @Column({ type: 'uuid', nullable: true })

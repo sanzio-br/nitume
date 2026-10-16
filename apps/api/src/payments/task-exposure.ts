@@ -1,5 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
-import { EntityManager } from 'typeorm';
+import { EntityManager, Not } from 'typeorm';
 import { ApiError } from '../common/api-error';
 import { TaskExposureOverride, TaskExposureOverrideSource } from './task-exposure-override.entity';
 
@@ -167,6 +167,23 @@ export type TaskExposureOverrideView = Pick<
   | 'createdAt'
 >;
 
-/** Overrides recorded on a task, oldest first. */
+/**
+ * Combined-cap overrides recorded on a task, oldest first. Purchase-limit
+ * exceptions (rows 142, 151) share the table but are not cap overrides; they
+ * are read with `purchaseLimitOverrideFor`.
+ */
 export const overridesFor = async (manager: EntityManager, errandId: string): Promise<TaskExposureOverrideView[]> =>
-  manager.getRepository(TaskExposureOverride).find({ where: { errandId }, order: { createdAt: 'ASC' } });
+  manager.getRepository(TaskExposureOverride).find({
+    where: { errandId, source: Not(TaskExposureOverrideSource.PURCHASE_LIMIT) },
+    order: { createdAt: 'ASC' },
+  });
+
+/** The purchase-limit exception recorded on a runner payout line, if any (row 151). */
+export const purchaseLimitOverrideFor = async (
+  manager: EntityManager,
+  runnerPayoutLineId: string,
+): Promise<TaskExposureOverride | null> =>
+  manager.getRepository(TaskExposureOverride).findOne({
+    where: { runnerPayoutLineId, source: TaskExposureOverrideSource.PURCHASE_LIMIT },
+    order: { createdAt: 'DESC' },
+  });

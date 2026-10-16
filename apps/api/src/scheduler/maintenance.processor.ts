@@ -4,10 +4,13 @@ import type { Job } from 'bullmq';
 import { ErrandsService } from '../errands/errands.service';
 import { MAINTENANCE_QUEUE, PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
 import { PaymentsService } from '../payments/payments.service';
+import { RunnersService } from '../runners/runners.service';
 
 export const DISPUTE_WINDOW_JOB = 'dispute-window';
 export const STK_RECONCILE_JOB = 'stk-reconcile';
 export const OFFER_EXPIRY_JOB = 'offer-expiry';
+/** Daily deletion of runner ID/selfie images past retention (row 154). */
+export const ID_DOCUMENT_PURGE_JOB = 'id-document-purge';
 
 /**
  * Scheduled system jobs (rows 26, 50, 52). Every write goes through the
@@ -20,6 +23,7 @@ export class MaintenanceProcessor extends WorkerHost {
   constructor(
     private readonly errands: ErrandsService,
     private readonly payments: PaymentsService,
+    private readonly runners: RunnersService,
   ) {
     super();
   }
@@ -30,6 +34,8 @@ export class MaintenanceProcessor extends WorkerHost {
         return this.disputeWindow();
       case OFFER_EXPIRY_JOB:
         return this.offerExpiry();
+      case ID_DOCUMENT_PURGE_JOB:
+        return this.idDocumentPurge();
       case STK_RECONCILE_JOB:
         return { resolved: await this.payments.resolveTimedOut() };
       case PAYMENT_VERIFY_JOB:
@@ -60,6 +66,15 @@ export class MaintenanceProcessor extends WorkerHost {
       this.logger.log(`Offer expiry: expired ${expired.length}`);
     }
     return { expired };
+  }
+
+  /** Row 154: securely delete ID/selfie images past their retention period. */
+  async idDocumentPurge(): Promise<{ purged: string[] }> {
+    const purged = await this.runners.purgeExpiredDocuments();
+    if (purged.length > 0) {
+      this.logger.log(`ID document purge: deleted ${purged.length}`);
+    }
+    return { purged };
   }
 
   /** COMPLETED past the dispute window -> CONFIRMED, then CONFIRMED -> SETTLED. */
