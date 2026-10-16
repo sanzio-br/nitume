@@ -98,7 +98,7 @@ States (proposed):
 - Row 101 (2026-10-12): no `payoutReference` in the customer refund view (already handled).
 
 ## Open questions (non-blocking; build default given)
-- None for the EXPIRED copy: row 174 (2026-10-16) keeps `No runner accepted your task in time.` and `Start a new task`.
+- None for the EXPIRED copy: row 174 (2026-10-16) keeps `No runner accepted your task in time.` and `Start a new task`. Row 185 (deadline passed) and row 187 (admin expire) reach the same EXPIRED state; the same copy applies, nothing new (round 11).
 - None for row 176: row 183 (offered runner never shown) decided 2026-10-16.
 - Q2: Active tasks open this screen with a `Track live` button (default, as the table above).
 - Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
