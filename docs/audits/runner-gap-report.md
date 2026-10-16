@@ -7,7 +7,7 @@
 
 ## 1. Verdict
 
-**Partly built (updated 2026-10-13).** `apps/runner_app` is scaffolded on `feat/runner-scaffold`: shell, v-auth-phone, v-auth-otp and x-name-capture audited PASS (§7). Every other view is `missing`. All RQ-1 … RQ-21 are decided (rows 113–133, §9); blockers below are API (RA-n) and shared widgets (R-n). Rows 140–144 and 146 were answered 2026-10-16 (§10), rows 150–156 in §11, and rows 145, 147–149, 157–166 in §12 (round 9). Open: the EXPIRED trigger after an admin-offer lapse or a decline (api-contract proposal to come), plus the round-9 owner questions in §12.
+**Partly built (updated 2026-10-13).** `apps/runner_app` is scaffolded on `feat/runner-scaffold`: shell, v-auth-phone, v-auth-otp and x-name-capture audited PASS (§7). Every other view is `missing`. All RQ-1 … RQ-21 are decided (rows 113–133, §9); blockers below are API (RA-n) and shared widgets (R-n). Rows 140–144 and 146 were answered 2026-10-16 (§10), rows 150–156 in §11, rows 145, 147–149, 157–166 in §12 (round 9), and rows 167–176 in §13 (round 10: matching exhausted, no task deadline). Open: the round-10 follow-up questions in §13.
 
 | View | Spec | Status | Blocked by |
 |---|---|---|---|
@@ -237,7 +237,7 @@ Read from `BOARD.md` on `main` @ `a99175d`. Specs updated in `f0ea925` (runner) 
 | RA-23 | Approval cap on an `on_hold` item line = min(item paid to Nitume, `max_purchase_advance`) (row 135) | satisfied: `approvalCeilingOf` (`runner-payouts.service.ts`) already takes min(requested, item paid, `capAmount`, `max_purchase_advance`) and `review` refuses above it (`reimbursement_exceeds_cap`). Row 142 (2026-10-16) keeps this as the ordinary cap but adds an explicit, audited exception above the limit: see RA-25 |
 | RA-24 | Admin maintenance of the service-area list (row 116) | missing (no admin spec yet) |
 | RA-25 | Purchase-limit exception (rows 142, 151, 152): `purchaseLimitOverrideNote` on `POST /runner-payouts/:id/review`; ceiling with it = min(requested, item amount paid to Nitume, line cap without the limit). Stored as one append-only row in `task_exposure_overrides` (row 151; source/scope `purchase_limit`) with errand id, assignment id, runner profile id, line id, `limitAtTime` (= previous limit, the line's stored limit), `requestedAmount`, `approvedAmount`, `amountAbove`, `note`, `createdBy`, `createdAt`; one admin, no second approver. New column on `runner_payout_lines` storing `max_purchase_advance` when the obligation is created (row 152, option b); the ordinary ceiling uses it, never the current limit. Admin detail: `purchaseLimitAtCreation`, `currentPurchaseLimit`, `overLimitCeiling`, `purchaseLimitOverride { errandId, assignmentId, runnerProfileId, limitAtTime, requestedAmount, approvedAmount, amountAbove, note, createdBy, createdAt }` (admin N-21) | missing |
-| RA-26 | Offer expiry (rows 141, 150, 155, 156, 157): at `offerExpiresAt` with no acceptance the assignment goes `expired`; accept at or after `offerExpiresAt` refused with 409 `offer_expired` even if the expiry job has not run yet. **Auto-offer** (90 s): the system then offers the next eligible runner; RUNNER_ASSIGNED → EXPIRED only when no eligible runner remains or the task deadline is reached (row 150). **Decline**: no deadline starts or changes; task stays RUNNER_ASSIGNED and the system keeps offering (row 155). **Admin offer** (10 min): row 157 (decided 2026-10-16): the assignment becomes `expired` and the task stays RUNNER_ASSIGNED for the admin to re-offer; the built sweep (RUNNER_ASSIGNED → EXPIRED at once) must change (§12). Offers with `offerExpiresAt = null` (pre-change) never expire (row 156). Every RUNNER_ASSIGNED → EXPIRED sends the customer `errand.EXPIRED` | sweep built (on `main`) but wrong since row 157 (sends admin-offer lapses to EXPIRED); auto-offer fall-through and the EXPIRED trigger missing; `errand.EXPIRED` notification built with the round-8 copy, owner copy (row 158) needed (§12) |
+| RA-26 | Offer expiry (rows 141, 150, 155, 156, 157): at `offerExpiresAt` with no acceptance the assignment goes `expired`; accept at or after `offerExpiresAt` refused with 409 `offer_expired` even if the expiry job has not run yet. **Auto-offer** (90 s): the system then offers the next eligible runner; RUNNER_ASSIGNED → EXPIRED only when matching is exhausted (rows 150, 167; the task-deadline path is removed by row 167). **Decline**: no deadline starts or changes; task stays RUNNER_ASSIGNED and the system keeps offering (row 155). **Admin offer** (10 min): row 157 (decided 2026-10-16): the assignment becomes `expired` and the task stays RUNNER_ASSIGNED for the admin to re-offer; the built sweep (RUNNER_ASSIGNED → EXPIRED at once) must change (§12). Offers with `offerExpiresAt = null` (pre-change) never expire (row 156). **Matching exhausted (row 167)**: EXPIRED only when the task has no open offer and no runner is left in its eligible service-area/category pool who has not declined or lapsed and is currently eligible and available (§13). Every RUNNER_ASSIGNED → EXPIRED sends the customer `errand.EXPIRED` | sweep built (on `main`) but wrong since row 157 (sends admin-offer lapses to EXPIRED); auto-offer fall-through and the exhaustion check missing (needs RA-10, RA-1); `errand.EXPIRED` notification built with the round-8 copy, owner copy (row 158) needed (§12) |
 
 ### New questions for the owner (answered 2026-10-16 except RQ-26; see §10)
 
@@ -409,7 +409,7 @@ Also §7.2: `path_provider` for offline photos (row 149) and a pointer to the 10
 | Runner app | `main` `apps/runner_app` | None: onboarding and payout screens not built | — |
 
 ### New questions for the owner
-BOARD rows 167–176 now carry AQ-12 … AQ-16 and RQ-27 … RQ-31.
+BOARD rows 167–176 now carry AQ-12 … AQ-16 and RQ-27 … RQ-31. **All answered 2026-10-16, applied in §13.**
 - AQ-12 (row 157 follow-up): what makes a RUNNER_ASSIGNED task EXPIRED after an admin-offer lapse or a decline? Wait for api-contract's proposal.
 - AQ-13 (row 166): is the ops cancellation reason shown to the runner? Proposed no.
 - AQ-14 (row 166): length rule for the reason. Proposed 10–500.
@@ -420,3 +420,63 @@ BOARD rows 167–176 now carry AQ-12 … AQ-16 and RQ-27 … RQ-31.
 - RQ-29 (row 158): keep `No runner accepted your task in time.` + `Start a new task` on Track / Task detail (chosen), or echo the notification wording?
 - RQ-30 (row 161, from the build): keep "never purged while pending" and "never purged while an open dispute exists"?
 - RQ-31 (row 157, customer label): during RUNNER_ASSIGNED the customer sees `Runner assigned` even while the offer is open, declined or lapsed. Change the label (e.g. `Finding a runner`) until a runner accepts? No recommendation.
+
+## 13. Owner answers rows 167–176 (2026-10-16), applied on `docs/owner-answers-10-specs`
+
+Spec-only update; no screen was re-audited. System Design edited under row 147 (§3.3, §3.4, §4.4, §6, §10 and the changelog).
+
+### Decisions applied
+| Row (label) | Decision | Files |
+|---|---|---|
+| 167 (AQ-12) | RUNNER_ASSIGNED → EXPIRED only when matching is exhausted: every eligible runner in the configured service-area/category pool has declined, let the offer lapse, or become ineligible/unavailable before accepting. A decline or lapse never expires the task. **No task deadline: row 155's "task deadline reached" path is removed (flagged change)** | System Design §3.3 table and "Offer lapse" (new "Matching exhausted" bullet replaces the Open bullet), §3.4; runner `_shared.md` §0/§6, `v-jobs.md`, `v-job-detail.md`; admin `_shared.md` N-20, `drawer-task-offer.md` (Matching exhausted state, `Eligible runners left`); customer `_shared.md` §6, `v-notifications.md` |
+| 168 (AQ-13) | Runner never sees the ops cancellation reason; generic `Payout request cancelled` | runner `v-payout.md`, `x-payout-history.md`, `v-notifications.md`; admin `p-payout-requests.md`, N-17; System Design §6 |
+| 169 (AQ-14) | Reason 10–500 characters, mandatory, whitespace-only invalid | admin `p-payout-requests.md`, N-17; System Design §6 |
+| 170 (AQ-15) | Reviewer note deleted at purge | admin `p-runners-verification-documents.md`, N-23; runner `_shared.md` §9; System Design §10 |
+| 171 (AQ-16) | Audited `Re-review evidence` on a decided verification restarts the clock; viewing never does | admin `p-runners-verification-documents.md` (button, confirm, `Reviews` activity, errors), N-23 (e); System Design §10 |
+| 172 (RQ-27) | Short privacy line + Privacy Policy link approved on the capture screens | runner `_shared.md` §9, `v-onboard-id.md`, `v-onboard-selfie.md`, `v-onboard-pending.md`; System Design §10 |
+| 173 (RQ-28) | Link hidden until `NITUME_PRIVACY_URL` holds the real URL; no placeholder | same, plus customer `x-legal.md` Q1 note |
+| 174 (RQ-29) | Customer EXPIRED copy stays as built | customer `v-track.md`, `v-task-detail.md`, `_shared.md` |
+| 175 (RQ-30) | Both purge guards stay (pending verification, open dispute) | admin N-23, `p-runners-verification-documents.md`; runner `_shared.md` §9; System Design §10 |
+| 176 (RQ-31) | Customer label during RUNNER_ASSIGNED is `Finding a runner`; `Runner assigned` only once accepted (RUNNER_EN_ROUTE) | customer `_shared.md` §6 and new §6.1, `v-track.md`, `v-task-detail.md`, `v-home.md`, `v-notifications.md`; System Design §4.4. Runner (`New offer`) and admin (`Assigned`) labels unchanged |
+
+### Matching exhausted: what the specs now define (row 167)
+- Pool (proposed list, AQ-17): approved verification, active account, task category in `skills`, task location in a `service_areas` entry, purchase limit or approved exception at or above the required purchase. Available = online and no other active job.
+- Exhausted = no open offer and no pool runner left who has not declined/lapsed for this task and is currently eligible and available. Checked after every decline, every lapse (expiry sweep) and on the admin candidates read.
+- Admin sees `Eligible runners left {n}` on Offer ended / Declined, and a read-only **Matching exhausted** state on the EXPIRED task (`No runners left` chip, last offer, `Expired at`, `Runners tried`, refund-review link for a paid task); admin feed item `matching_exhausted`.
+- Runner screens: no change (a runner never learns what happened after their offer ended).
+
+### API items for api-contract (`feat/api-owner-answers-9`)
+1. **Row 167**: pool computation and exhaustion check (above); proposed `GET /errands/:id/candidates` → `{ items: [{ runnerProfileId, displayName, rating, tasksCompleted, distanceKm, score, tried }], eligibleRemaining, triedCount }`; 409 `matching_exhausted` and `runner_not_eligible` on `POST /errands/:id/assign`; admin feed item `matching_exhausted`; the expiry sweep (`expireLapsedOffers`) runs the check instead of expiring at once; build **no** task deadline. Depends on RA-10 (category skills, service-area list, placing the task location in an area) and RA-1 (per-task declined/expired history). Until the pool is computable in full: no automatic expiry (AQ-19).
+2. **Row 168/169**: cancel route validates 10–500 characters after trim, whitespace-only rejected (400 `cancellation_reason_invalid`); reason absent from every runner view and the `payout_request.cancelled` notification.
+3. **Row 170**: purge clears `reviewerNote` (and re-review notes).
+4. **Row 171**: proposed `POST /runners/verifications/:id/re-review` `{ note? ≤ 500 }` (admin only; decided verification with a stored image) → 201 `{ verificationId, reReview { id, reviewedBy { id, displayName }, createdAt, note } }`; writes the audit/review event and restarts the clock in one transaction; 409 `verification_not_decided`, 410 `verification_document_purged`, 404 `verification_document_missing`; `reReviews[]` on list/detail. The built decision route is `PATCH /runners/:runnerId/verifications/:verificationId`; if api-contract prefers the runner-scoped path for consistency, the admin spec follows (flagged).
+5. **Row 175**: keep both guards in `purgeExpiredDocuments`.
+6. **Row 176** (proposed, CQ-176c): `notifications.service.ts` `statusCopy`: send nothing on RUNNER_ASSIGNED (today `Runner assigned` / `A runner has been assigned to your task.`); RUNNER_EN_ROUTE becomes `Runner assigned` / `A runner accepted your task and is on the way.` Hold until the owner answers CQ-176c, or ship the RUNNER_ASSIGNED removal alone (it is the misleading one).
+
+### core-ui and flutter-customer items (row 176)
+- core-ui CC-176: `packages/nitume_core/lib/src/widgets/status_presentation.dart:25-26` `runnerAssigned` → `(label: 'Finding a runner', tone: StatusTone.info)`; new `customerTimelineTitle(ErrandStatus) → String?` (null for RUNNER_ASSIGNED, `Runner assigned` for RUNNER_EN_ROUTE, else the C-06 label); doc comment: customer-only; tests. No audience parameter (no other app calls it).
+- flutter-customer: `track_tab.dart:454` treat RUNNER_ASSIGNED as finding; drop RUNNER_ASSIGNED from `runnerWindow` (`:23-28`); timeline via `customerTimelineTitle()` (`:677`, `:703`, `_happyPath` `:31-39`); `task_detail_screen.dart` hide the `Runner` section in PAYMENT_CONFIRMED and RUNNER_ASSIGNED; `util/display.dart:147` RUNNER_ASSIGNED meta `Finding a runner`.
+
+### Built screens that now conflict
+| Area | File | Conflict | Fix owner |
+|---|---|---|---|
+| Customer Track | `apps/customer_app/lib/src/screens/shell/track_tab.dart:23-28, 454, 677, 703` | Offered runner's card, marker and ETA shown in RUNNER_ASSIGNED; label `Runner assigned` | core-ui CC-176, then flutter-customer |
+| Customer Task detail | `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` (Runner section), chip via core | Same | core-ui, flutter-customer |
+| Customer Home | `apps/customer_app/lib/src/util/display.dart:147` | `{name} is assigned` before acceptance | flutter-customer |
+| Customer History / chips | `StatusChip.forStatus` (core) | `Runner assigned` label | core-ui (automatic in the app) |
+| API notifications | `apps/api/src/notifications/notifications.service.ts` `statusCopy` RUNNER_ASSIGNED | Misleading `Runner assigned` on offer | api-contract (after CQ-176c) |
+| API offer expiry | `errands.service.ts` `expireLapsedOffers` | Expires at once; no exhaustion check | api-contract |
+| API purge | `runners.service.ts` `purgeExpiredDocuments` | Keeps `reviewerNote` (row 170); no re-review event in the clock (row 171) | api-contract |
+| Admin verifications | `apps/admin/src/app/features/admin/panels/verifications.panel.ts:71-75` | `Admin note` rendered on purged cards; no re-review action | web-parity |
+| Admin task drawer | `task-drawer.ts`, `task-queue.panel.ts` | No offer state, eligible count or Matching exhausted state | web-parity, after api-contract |
+| Runner app | `apps/runner_app` | None (screens not built) | — |
+
+### New questions for the owner (round 10 follow-ups)
+- AQ-17 (row 167): confirm the eligible-pool list; does an offline runner count as "unavailable", so a task can expire at night after one decline when everyone else is offline? Proposed yes (owner wording).
+- AQ-18 (row 167): may an admin re-offer to a runner who already declined or let an offer for the task lapse? Proposed no.
+- AQ-19 (row 167): until RA-10 service areas exist, interim pool without areas, or no automatic expiry? Proposed no automatic expiry.
+- AQ-20 (row 171): reason required on `Re-review evidence`? Proposed optional note. Endpoint name `POST /runners/verifications/:id/re-review` OK?
+- AQ-21 (row 171): can a re-review change the decision? Proposed no.
+- CQ-176a (row 176): customer chip for RUNNER_EN_ROUTE: keep `En route` (amber; proposed) with `Runner assigned` as the acceptance timeline step and notification title, or show `Runner assigned` as the chip?
+- CQ-176b (row 176): hide the offered runner's identity, marker and ETA during RUNNER_ASSIGNED (proposed; narrows row 27's window in practice)?
+- CQ-176c (row 176): no customer notification on RUNNER_ASSIGNED and `Runner assigned` / `A runner accepted your task and is on the way.` on RUNNER_EN_ROUTE (proposed), or a `Finding a runner` message on RUNNER_ASSIGNED?
