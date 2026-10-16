@@ -377,30 +377,37 @@ export class RunnersService {
    * Runner `_shared.md` §9: the phone check is approved by the OTP sign-in.
    * Called after a successful runner OTP verification; records one approved
    * `phone` verification when none is approved yet (no reviewer).
+   * Idempotent under concurrent sign-ins: the check and the insert run under
+   * the runner profile's row lock, so a second sign-in waits and then sees
+   * the first one's row (no schema change, reviewer minor 8).
    */
   async ensurePhoneVerified(userId: string): Promise<void> {
     const profile = await this.profiles.findOne({ where: { userId } });
     if (!profile) {
       return;
     }
-    const approved = await this.verifications.count({
-      where: {
-        runnerProfileId: profile.id,
-        verificationType: RunnerVerificationType.PHONE,
-        status: VerificationStatus.APPROVED,
-      },
-    });
-    if (approved === 0) {
-      await this.verifications.save(
-        this.verifications.create({
+    await this.profiles.manager.transaction(async (manager) => {
+      await this.lockProfile(manager, profile.id);
+      const repo = manager.getRepository(RunnerVerification);
+      const approved = await repo.count({
+        where: {
           runnerProfileId: profile.id,
           verificationType: RunnerVerificationType.PHONE,
           status: VerificationStatus.APPROVED,
-          documentS3Key: null,
-          reviewedAt: new Date(),
-        }),
-      );
-    }
+        },
+      });
+      if (approved === 0) {
+        await repo.save(
+          repo.create({
+            runnerProfileId: profile.id,
+            verificationType: RunnerVerificationType.PHONE,
+            status: VerificationStatus.APPROVED,
+            documentS3Key: null,
+            reviewedAt: new Date(),
+          }),
+        );
+      }
+    });
   }
 
   /** RA-18: `GET /runners/me`. */

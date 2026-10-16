@@ -220,3 +220,40 @@ describe('skills (row 115)', () => {
     expect(await codeOf(service.setSkills('u-1', [RunnerSkill.BUSINESS]))).toBe('skill_not_offered');
   });
 });
+
+describe('ensurePhoneVerified (runner _shared.md §9)', () => {
+  it('checks and inserts under the profile row lock, once', async () => {
+    const rows: object[] = [];
+    const lock = vi.fn();
+    const verificationRepo = {
+      count: vi.fn(() => Promise.resolve(rows.length)),
+      create: vi.fn((r: object) => r),
+      save: vi.fn((r: object) => {
+        rows.push(r);
+        return Promise.resolve(r);
+      }),
+    };
+    const profileRepo = {
+      findOne: vi.fn((opts: { lock?: unknown }) => {
+        if (opts.lock) {
+          lock();
+        }
+        return Promise.resolve({ id: 'rp-1', userId: 'u-1' });
+      }),
+    };
+    const manager = {
+      getRepository: (e: { name: string }) => (e.name === 'RunnerProfile' ? profileRepo : verificationRepo),
+    };
+    const service = new RunnersService(
+      { ...profileRepo, manager: { transaction: (fn: (m: unknown) => unknown) => fn(manager) } } as never,
+      verificationRepo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await service.ensurePhoneVerified('u-1');
+    await service.ensurePhoneVerified('u-1');
+    expect(rows).toEqual([expect.objectContaining({ verificationType: 'phone', status: 'approved' })]);
+    expect(lock).toHaveBeenCalledTimes(2);
+  });
+});
