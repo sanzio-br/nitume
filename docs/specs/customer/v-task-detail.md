@@ -65,7 +65,7 @@ States (proposed):
 - **Expired or failed after payment (row 102)**: an EXPIRED or FAILED task that was paid shows the receipt as paid (not `Not paid yet.`), plus the refund group. While the review is `pending_review` the line under the chip follows the trigger (`_shared.md` §11):
   - EXPIRED (`expired_after_payment`): `We couldn't find a runner for this task in time. We're reviewing a refund and will let you know the outcome.`
   - FAILED (`failed_after_payment`): `This task couldn't be completed. We're reviewing a refund and will let you know the outcome.`
-  - EXPIRED with no refund review (never paid, or before the API opens it): 13 slate-600 line under the chip `No runner accepted your task in time.` (proposed, same wording as the `errand.EXPIRED` notification, `v-notifications.md`).
+  - EXPIRED with no refund review (never paid, or before the API opens it): 13 slate-600 line under the chip `No runner accepted your task in time.` (kept 2026-10-16 after row 158; the notification now carries the owner's longer sentence, see Resolved).
   - Decided reviews use the common lines (`Refund approved`, `Refunded`, `No refund`). Never write that a refund is automatic or guaranteed: it is a review (row 102). Before the API opens the review (and for an EXPIRED/FAILED task that was never paid), show nothing about refunds.
 - **Corrected payouts (row 100)**: nothing extra. The refund group shows whatever effective status and amount the API returns (a reversed payout reads `Refund approved` until a new payout is sent).
 - Refund status changes live: refresh on `errand:status_changed` and on a refund notification (event type needs api-contract).
@@ -86,6 +86,7 @@ States (proposed):
 - Report row 48dp; red text on white (`#C1433C` ≈ 4.4:1) is just under AA for 13.5px (row 33 covers chip text only; noted, no change).
 
 ## Resolved by owner answers
+- Row 158 (owner, 2026-10-16) set the `errand.EXPIRED` notification body word for word (`v-notifications.md`). Design-auditor decision for this screen: the EXPIRED line `No runner accepted your task in time.` and the action `Start a new task` stay as built (same meaning as the owner's sentence, short enough for a status line; `Start a new task` matches the app's own wizard wording, and the owner's "submit a new request" is notification prose, not a button label). No rebuild needed. Flagged for the owner: if the screens must echo the notification, the replacement line would be `No runner was available to accept your task in time.` (button unchanged).
 - Names, red destructive row, title and reference: OA-2, OA-13, OA-15 (was Q1).
 - Report states: AWAITING_CUSTOMER added by OA-9 (was Q5); dispute screens specced in `x-report-problem` (was Q3).
 - Refund status visible to the customer (row 54); refund amount set by an admin (row 37); decrease refunds (row 48).

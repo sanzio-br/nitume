@@ -67,7 +67,7 @@ States (proposed):
 - ARRIVED: ETA chip `Arrived`.
 - Socket disconnected: 12 slate-600 line under the map `Reconnecting…`; the map keeps the last position (still inside the window) while polling runs.
 - Item-payment notice: `Pay the item amount: KSh 40,000` (amount in Fira Code) + button `View details` → `x-merchant-payment` (variant A for `merchant_direct`, variant B STK for `send_to_runner`).
-- FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner accepted your task in time.` (EXPIRED, updated 2026-10-16 to match the `errand.EXPIRED` notification), `We're reviewing your report.`) and outline `View task` → `v-task-detail`. EXPIRED adds a C-04 text button `Start a new task` → `v-new-category` under `View task` (the next action, owner 2026-10-16). No refund wording on this card: the refund review (paid tasks, row 102) is shown on `v-task-detail` only.
+- FAILED / EXPIRED / CANCELLED / DISPUTED: chip per §6 + C-07 card with 13 slate-600 text (`This task was cancelled.`, `This task couldn't be completed.`, `No runner accepted your task in time.` (EXPIRED; kept 2026-10-16 after row 158, see Resolved), `We're reviewing your report.`) and outline `View task` → `v-task-detail`. EXPIRED adds a C-04 text button `Start a new task` → `v-new-category` under `View task` (the next action, owner 2026-10-16). No refund wording on this card: the refund review (paid tasks, row 102) is shown on `v-task-detail` only.
 - Load error: C-33 `Couldn't load your task.` + `Try again`.
 
 ## Numeric fields (Fira Code)
@@ -89,6 +89,7 @@ States (proposed):
 - Action buttons ≥ 48dp tall.
 
 ## Resolved by owner answers
+- Row 158 (owner, 2026-10-16) set the `errand.EXPIRED` notification body word for word (`v-notifications.md`). Design-auditor decision for this screen: the EXPIRED line `No runner accepted your task in time.` and the action `Start a new task` stay as built (same meaning as the owner's sentence, short enough for a status line; `Start a new task` matches the app's own wizard wording, and the owner's "submit a new request" is notification prose, not a button label). No rebuild needed. Flagged for the owner: if the screens must echo the notification, the replacement line would be `No runner was available to accept your task in time.` (button unchanged).
 - In-task chat: out of MVP (OA-18, was Q5).
 - En route chip amber: OA-13 (was Q-ENROUTE).
 - Off-palette map colours and shadows: OA-14.
