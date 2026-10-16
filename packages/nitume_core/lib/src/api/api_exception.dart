@@ -70,6 +70,10 @@ class NitumeApiException implements Exception {
   /// `availableAmount` of a [ApiErrorCodes.payoutExceedsAvailable] error.
   String? get availableAmount => decimalDetail('availableAmount');
 
+  /// HTTP 413: the upload is above the server's size limit (e.g. an ID image
+  /// over 10 MB, row 163). Sent without a [code].
+  bool get isPayloadTooLarge => statusCode == 413;
+
   /// Session-level 401 (no [code]): the app signs the user out. Coded 401s
   /// such as `otp_incorrect` are not session failures.
   final bool isUnauthorized;
@@ -330,4 +334,24 @@ abstract final class ApiErrorCodes {
   /// `POST /runners/me/payout-requests`: the account has no sign-in phone
   /// to pay to (409, row 118). Send the runner to Support.
   static const payoutDestinationMissing = 'payout_destination_missing';
+
+  /// `POST /runners/me/verifications/documents`: the type is not
+  /// `government_id` or `selfie` (400).
+  static const verificationTypeNotUploadable =
+      'verification_type_not_uploadable';
+
+  /// `POST /runners/me/verifications/documents`: not a JPEG, PNG, WebP or
+  /// HEIC image (400). Details: `allowed`.
+  static const verificationDocumentTypeInvalid =
+      'verification_document_type_invalid';
+
+  /// `POST /runners/me/verifications/documents`: no file or an empty file
+  /// (400).
+  static const verificationDocumentEmpty = 'verification_document_empty';
+
+  /// `POST /runners/me/verifications` for an ID or selfie, or with a storage
+  /// key (400, row 154): upload the image with
+  /// `RunnerAccountRepository.uploadVerificationDocument` instead.
+  static const verificationDocumentUploadRequired =
+      'verification_document_upload_required';
 }

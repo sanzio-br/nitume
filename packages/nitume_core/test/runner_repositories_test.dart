@@ -137,7 +137,11 @@ void main() {
         ),
         'POST /runners/me/verifications': (
           201,
-          {'id': 'v4', 'verificationType': 'selfie', 'status': 'pending'},
+          {
+            'id': 'v4',
+            'verificationType': 'payment_identity',
+            'status': 'pending',
+          },
         ),
       });
       final repo = RunnerAccountRepository(_client(a));
@@ -152,14 +156,15 @@ void main() {
       expect(latest.containsKey(RunnerVerificationType.phone), isFalse);
 
       final v = await repo.addVerification(
-        RunnerVerificationType.selfie,
-        documentKey: 'k1',
+        RunnerVerificationType.paymentIdentity,
       );
       expect(v.status, VerificationStatus.pending);
-      expect(a.bodies.last, {
-        'verificationType': 'selfie',
-        'documentS3Key': 'k1',
-      });
+      expect(a.bodies.last, {'verificationType': 'payment_identity'});
+      // ID and selfie images go through the document upload (row 154).
+      expect(
+        () => repo.addVerification(RunnerVerificationType.selfie),
+        throwsArgumentError,
+      );
     });
 
     test('skills and areas use PUT', () async {
