@@ -230,7 +230,7 @@ Status: **built** = exists on `feat/core-customer-widgets` (class named); **chan
 | C-03 | Outline button + small variant (12/700, padding 11) | `.btn-outline` | built `NitumeButton.outline` (`NitumeButtonSize.small`) |
 | C-04 | Text button / green-700 link | `.btn-text` | built `NitumeButton.text`, `NitumeButton.link` |
 | C-05 | Status chip (pill, 12/600, 6px dot) | `.chip-*` | built `StatusChip`. En route = pending (amber), Cancelled = danger (red) per OA-13. **change**: high-contrast label text (row 33, §2) |
-| C-06 | Status presentation map (ErrandStatus → label + tone, §6) | — | built `statusPresentation`. **change**: tones per §6 |
+| C-06 | Status presentation map (ErrandStatus → label + tone, §6) | — | built `statusPresentation`. **change**: tones per §6; **NEW change (row 176, CC-176)**: RUNNER_ASSIGNED → `Finding a runner`, plus `customerTimelineTitle()` (§6.1) |
 | C-07 | Card (white, slate-line, r-m 14, padding 16; dashed variant) | `.card-demo` | built `NitumeCard` |
 | C-08 | Section label | — | built `SectionLabel` |
 | C-09 | Root top bar | — | built `NitumeTopBar`. **change** (approved, BOARD Needs row 40): an empty `title` renders no title line and no empty semantics node |
@@ -243,7 +243,7 @@ Status: **built** = exists on `feat/core-customer-widgets` (class named); **chan
 | C-16 | Choice chip (pill; selected = blue fill, white text) + radio-row variant with optional subtitle | extension of `.chip` | built `NitumeChoiceChip`. Radio-row variant **NEW** (used for the payment route) |
 | C-17 | Form field (label + white r-s 8 input, 2px green focus, red inline error; multiline, money, phone variants) and form card | `.field-label` + `.field-input` | built `NitumeField`, `NitumeFormCard` |
 | C-18 | Receipt card + rows (Fira Code amounts; total row with hairline; dashed variant) | — | built `ReceiptCard`, `ReceiptRow`. **change**: needs an "estimate" caption slot and a separate "paid separately" group (§8) |
-| C-19 | Status timeline | — | built `StatusTimeline` |
+| C-19 | Status timeline | — | built `StatusTimeline`; step titles from `customerTimelineTitle()` (§6.1, row 176) |
 | C-20 | Active task hero card | — | built `ActiveTaskCard` (tag = chip-info, meta slate-400, OA-14) |
 | C-21 | Runner summary tile | design-system runner card | built `RunnerSummaryTile`. Name = API short name as returned (§7, row 40) |
 | C-22 | Compact task row | `.list-item` | built `TaskRow` |
