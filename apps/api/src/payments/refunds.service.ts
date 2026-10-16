@@ -19,6 +19,18 @@ import { ErrandsService, REFUNDABLE_TERMINAL_STATUSES } from '../errands/errands
 import { UsersService } from '../users/users.service';
 import { PaymentTransaction } from './payment-transaction.entity';
 import { PaymentType } from './payment-type.entity';
+import { lockPayoutReference, normalizeReference, payoutReferenceUsed } from './payout-references';
+import { TaskExposureOverrideSource } from './task-exposure-override.entity';
+import {
+  TaskExposure,
+  TaskExposureOverrideView,
+  assertWithinExposure,
+  committedReimbursements,
+  exposureOf,
+  itemPaidGross,
+  lockTaskExposure,
+  overridesFor,
+} from './task-exposure';
 import { Payment } from './payment.entity';
 import { RefundPayoutCorrection, RefundPayoutCorrectionKind } from './refund-payout-correction.entity';
 import { RefundReview, RefundStatus, RefundTrigger } from './refund-review.entity';
@@ -148,6 +160,8 @@ export interface PayoutCorrectionInput {
   reason: string;
   /** Latest correction id the admin saw (null: none); stale → 409 payout_correction_conflict. */
   expectedLatestCorrectionId: string | null;
+  /** Row 136: admin override of the task's combined cap, with the reason (10-500). */
+  exposureOverrideNote?: string;
 }
 
 /** Reason length after trimming (spec drawer-refund "Corrections"). */
@@ -266,6 +280,10 @@ export type AdminRefundDetail = AdminRefundItem & {
    * amounts of the task's other approved/refunded reviews, never below 0.
    */
   correctionCeiling: string | null;
+  /** Row 136: the task's combined refunds + runner item reimbursement position. */
+  taskExposure: TaskExposure;
+  /** Row 136: admin overrides of the combined cap on this task, oldest first. */
+  exposureOverrides: TaskExposureOverrideView[];
 };
 
 interface StatusChanged {
@@ -491,7 +509,18 @@ export class RefundsService implements OnModuleInit {
       this.users && own.length > 0
         ? await this.users.displayNames([...new Set(own.map((c) => c.createdByUserId))])
         : new Map<string, string>();
+    const manager = this.reviews.manager;
+    const [reimbursed, overrides] = await Promise.all([
+      committedReimbursements(manager, row.errandId),
+      overridesFor(manager, row.errandId),
+    ]);
+    const refunded = withCommitted(siblings, corrections).reduce(
+      (sum, r) => (COMMITTED.has(r.status) ? sum + Number(r.refundAmount ?? 0) : sum),
+      0,
+    );
     return Object.assign(item, {
+      taskExposure: exposureOf(Number(paid.totalPaidToNitume), refunded, reimbursed),
+      exposureOverrides: overrides,
       customer,
       paid,
       corrections: own.map((c) => toCorrectionView(c, names)),
@@ -682,9 +711,12 @@ export class RefundsService implements OnModuleInit {
     refundAmount: number,
     note: string | undefined,
     adminUserId: string,
+    exposureOverrideNote?: string,
   ): Promise<AdminRefundReview> {
     const target = await this.get(id);
     const { saved, position } = await this.reviews.manager.transaction(async (manager) => {
+      // Row 136: one task-level lock for refunds and runner reimbursements.
+      await lockTaskExposure(manager, target.errandId);
       const repo = manager.getRepository(RefundReview);
       const siblings = await repo.find({
         where: { errandId: target.errandId },
@@ -723,6 +755,31 @@ export class RefundsService implements OnModuleInit {
           },
         );
       }
+      if (refundAmount > 0 && row.trigger === RefundTrigger.PRICE_CHANGE_DECREASE) {
+        await this.assertItemExposure(
+          manager,
+          row,
+          refundAmount,
+          adminUserId,
+          exposureOverrideNote,
+          TaskExposureOverrideSource.REFUND_DECISION,
+        );
+      }
+      if (refundAmount > 0) {
+        await assertWithinExposure(manager, {
+          errandId: row.errandId,
+          amount: refundAmount,
+          exposure: exposureOf(
+            totalPaid,
+            Number(before.alreadyRefunded),
+            await committedReimbursements(manager, row.errandId),
+          ),
+          overrideNote: exposureOverrideNote,
+          adminUserId,
+          source: TaskExposureOverrideSource.REFUND_DECISION,
+          refundReviewId: row.id,
+        });
+      }
       row.refundAmount = refundAmount.toFixed(2);
       row.status = refundAmount > 0 ? RefundStatus.APPROVED : RefundStatus.NO_REFUND;
       row.decisionNote = note?.trim() || null;
@@ -738,35 +795,46 @@ export class RefundsService implements OnModuleInit {
   /**
    * Admin records the manual M-Pesa payout of an approved refund. Once
    * `refunded`, the receipt is locked (409 `refund_payout_locked`, row 82).
+   * The review row and the receipt are locked for the transaction, so two
+   * concurrent calls cannot both record a payout, and a receipt already used
+   * on another payout is refused (409 `payout_reference_reused`).
    */
   async markPaid(
     id: string,
     payoutReference: string,
     adminUserId: string,
   ): Promise<AdminRefundReview> {
-    const row = await this.get(id);
-    // Row 82: the payout receipt is final once recorded. Changes go through
-    // POST /refunds/:id/corrections as separate audit records (row 100).
-    if (row.status === RefundStatus.REFUNDED) {
-      throw new ApiError(
-        HttpStatus.CONFLICT,
-        'refund_payout_locked',
-        'The payout receipt of a refunded review cannot be changed; record a correction instead',
-        { payoutReference: row.payoutReference, paidAt: row.paidAt?.toISOString() ?? null },
-      );
-    }
-    if (row.status !== RefundStatus.APPROVED) {
-      throw new ApiError(
-        HttpStatus.CONFLICT,
-        'refund_not_approved',
-        `Only approved refunds can be marked paid (status ${row.status})`,
-      );
-    }
-    row.status = RefundStatus.REFUNDED;
-    row.payoutReference = payoutReference;
-    row.paidByUserId = adminUserId;
-    row.paidAt = new Date();
-    const saved = await this.reviews.save(row);
+    const saved = await this.reviews.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(RefundReview);
+      const row = await repo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!row) {
+        throw new NotFoundException('Refund review not found');
+      }
+      // Row 82: the payout receipt is final once recorded. Changes go through
+      // POST /refunds/:id/corrections as separate audit records (row 100).
+      if (row.status === RefundStatus.REFUNDED) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'refund_payout_locked',
+          'The payout receipt of a refunded review cannot be changed; record a correction instead',
+          { payoutReference: row.payoutReference, paidAt: row.paidAt?.toISOString() ?? null },
+        );
+      }
+      if (row.status !== RefundStatus.APPROVED) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'refund_not_approved',
+          `Only approved refunds can be marked paid (status ${row.status})`,
+        );
+      }
+      await this.assertReferenceFree(manager, payoutReference);
+      row.status = RefundStatus.REFUNDED;
+      // Stored upper-case, like corrections and runner payout lines.
+      row.payoutReference = normalizeReference(payoutReference);
+      row.paidByUserId = adminUserId;
+      row.paidAt = new Date();
+      return repo.save(row);
+    });
     this.announce(saved);
     const positions = await this.positions([saved]);
     return Object.assign(saved, positions.get(saved.id), {
@@ -801,9 +869,19 @@ export class RefundsService implements OnModuleInit {
     }
     const newReference = input.newReference?.trim().toUpperCase() || null;
     const newAmount = input.newAmount ?? null;
+    const target = await this.get(id);
     const saved = await this.reviews.manager.transaction(async (manager) => {
+      await lockTaskExposure(manager, target.errandId);
       const repo = manager.getRepository(RefundReview);
-      const row = await repo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      // Every review of the task is row-locked, in the same order as
+      // `decide`, so a correction and a decision on a sibling review
+      // serialise and cannot both use the same headroom under the cap.
+      const siblings = await repo.find({
+        where: { errandId: target.errandId },
+        order: { createdAt: 'ASC' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const row = siblings.find((r) => r.id === id);
       if (!row) {
         throw new NotFoundException('Refund review not found');
       }
@@ -815,7 +893,6 @@ export class RefundsService implements OnModuleInit {
           { status: row.status },
         );
       }
-      const siblings = await repo.find({ where: { errandId: row.errandId } });
       const corrections = await this.correctionsOf(siblings.map((r) => r.id), manager);
       const prior = corrections.get(row.id) ?? [];
       const latestId = prior[prior.length - 1]?.id ?? null;
@@ -888,14 +965,32 @@ export class RefundsService implements OnModuleInit {
             { correctionCeiling: ceiling, amountPaid: ceiling },
           );
         }
+        if (row.trigger === RefundTrigger.PRICE_CHANGE_DECREASE) {
+          await this.assertItemExposure(
+            manager,
+            row,
+            amount,
+            adminUserId,
+            input.exposureOverrideNote,
+            TaskExposureOverrideSource.REFUND_CORRECTION,
+          );
+        }
+        const others = withCommitted(
+          siblings.filter((r) => r.id !== row.id),
+          corrections,
+        ).reduce((sum, r) => (COMMITTED.has(r.status) ? sum + Number(r.refundAmount ?? 0) : sum), 0);
+        await assertWithinExposure(manager, {
+          errandId: row.errandId,
+          amount,
+          exposure: exposureOf(totalPaid, others, await committedReimbursements(manager, row.errandId)),
+          overrideNote: input.exposureOverrideNote,
+          adminUserId,
+          source: TaskExposureOverrideSource.REFUND_CORRECTION,
+          refundReviewId: row.id,
+        });
       }
-      if (reference && (await this.referenceUsed(manager, reference))) {
-        throw new ApiError(
-          HttpStatus.CONFLICT,
-          'payout_reference_reused',
-          'This M-Pesa code is already recorded on a payout.',
-          { reference },
-        );
+      if (reference) {
+        await this.assertReferenceFree(manager, reference);
       }
       const correctionRepo = manager.getRepository(RefundPayoutCorrection);
       await correctionRepo.save(
@@ -922,16 +1017,46 @@ export class RefundsService implements OnModuleInit {
     return detail;
   }
 
-  /** True when the receipt is already on any refund payout or correction. */
-  private async referenceUsed(manager: EntityManager, reference: string): Promise<boolean> {
-    const rows: unknown[] = await manager.query(
-      `SELECT 1 FROM "refund_reviews" WHERE UPPER("payoutReference") = $1
-       UNION ALL
-       SELECT 1 FROM "refund_payout_corrections" WHERE UPPER("newReference") = $1
-       LIMIT 1`,
-      [reference],
+  /**
+   * Locks the receipt for the transaction (advisory lock, no unique index)
+   * and refuses it when it is already on a payout or correction: 409
+   * `payout_reference_reused`.
+   */
+  private async assertReferenceFree(manager: EntityManager, reference: string): Promise<void> {
+    await lockPayoutReference(manager, reference);
+    if (await payoutReferenceUsed(manager, reference)) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'payout_reference_reused',
+        'This M-Pesa code is already recorded on a payout.',
+        { reference: normalizeReference(reference) },
+      );
+    }
+  }
+
+  /**
+   * What the task's approved/refunded reviews commit to refunds (row 87,
+   * effective payouts per row 100), optionally only reviews with one of
+   * `triggers`. Used by the runner payout ledger: the item amount paid to
+   * Nitume is net of approved or sent price-decrease refunds (§6).
+   */
+  async committedRefundTotal(
+    errandId: string,
+    manager?: EntityManager,
+    triggers?: RefundTrigger[],
+    excludeReviewId?: string,
+  ): Promise<number> {
+    const repo = manager ? manager.getRepository(RefundReview) : this.reviews;
+    const rows = (
+      await repo.find({
+        where: { errandId, ...(triggers ? { trigger: In(triggers) } : {}) },
+      })
+    ).filter((r) => r.id !== excludeReviewId);
+    const committed = withCommitted(rows, await this.correctionsOf(rows.map((r) => r.id), manager));
+    return committed.reduce(
+      (sum, r) => (COMMITTED.has(r.status) ? sum + Number(r.refundAmount ?? 0) : sum),
+      0,
     );
-    return rows.length > 0;
   }
 
   /** Corrections per review id, oldest first (batched). */
@@ -989,6 +1114,54 @@ export class RefundsService implements OnModuleInit {
       .groupBy('p."errandId"')
       .getRawMany<{ errandId: string; total: string }>();
     return new Map(raw.map((r) => [r.errandId, Number(r.total)]));
+  }
+
+  /** True when the task has a price-decrease refund review still pending. */
+  async hasPendingDecrease(errandId: string, manager?: EntityManager): Promise<boolean> {
+    const repo = manager ? manager.getRepository(RefundReview) : this.reviews;
+    const pending = await repo.count({
+      where: { errandId, trigger: RefundTrigger.PRICE_CHANGE_DECREASE, status: RefundStatus.PENDING_REVIEW },
+    });
+    return pending > 0;
+  }
+
+  /**
+   * A price-decrease refund and the runner's item reimbursement come out of
+   * the same money: the item amount paid to Nitume. Committed decrease
+   * refunds (other than `row`) + committed item reimbursement + `amount`
+   * must stay <= the item amount paid (gross), else 409
+   * task_exposure_cap_exceeded (`scope: item`) unless overridden. Without
+   * this, a decrease decided after the runner's line was approved would be
+   * paid out of Nitume's fees.
+   */
+  private async assertItemExposure(
+    manager: EntityManager,
+    row: RefundReview,
+    amount: number,
+    adminUserId: string,
+    overrideNote: string | undefined,
+    source: TaskExposureOverrideSource,
+  ): Promise<void> {
+    const [gross, decreases, reimbursed] = await Promise.all([
+      itemPaidGross(manager, row.errandId),
+      this.committedRefundTotal(row.errandId, manager, [RefundTrigger.PRICE_CHANGE_DECREASE], row.id),
+      committedReimbursements(manager, row.errandId),
+    ]);
+    await assertWithinExposure(manager, {
+      errandId: row.errandId,
+      amount,
+      exposure: exposureOf(gross, decreases, reimbursed),
+      overrideNote,
+      adminUserId,
+      source,
+      refundReviewId: row.id,
+      scope: 'item',
+    });
+  }
+
+  /** Everything the customer paid to Nitume for the task (completed STK legs). */
+  totalPaidToNitume(errandId: string, manager?: EntityManager): Promise<number> {
+    return this.amountPaid(errandId, manager);
   }
 
   /** Everything the customer paid through STK for this errand (completed legs). */

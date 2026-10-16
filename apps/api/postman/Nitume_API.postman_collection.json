@@ -45,6 +45,21 @@
       "key": "price_change_request_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "payout_line_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "receipt_evidence_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refund_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -1388,6 +1403,558 @@
                 "errands",
                 "{{errand_id}}",
                 "tracking"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "10_Runner_Payout_Ledger_2026_10_13",
+      "item": [
+        {
+          "name": "Runner earnings (available / pending / on hold / paid, EAT week)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/earnings?groupBy=day",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "earnings?groupBy=day"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner payout feed (signed lines, derived payouts)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/payout-lines?limit=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "payout-lines?limit=25"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner payout feed for one task (RA-16)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/payout-lines?errandId={{errand_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "payout-lines?errandId={{errand_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner item claim after CANCELLED/FAILED (row 106)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"errandId\": \"{{errand_id}}\",\n  \"amount\": 400,\n  \"receiptEvidenceId\": \"{{receipt_evidence_id}}\",\n  \"note\": \"Bought before the cancel\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/reimbursement-claims",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "reimbursement-claims"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Purchase check vs max_purchase_advance (row 108)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/purchase-check",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "purchase-check"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Decline over purchase limit (row 108)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"over_purchase_limit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/assignment/decline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "assignment",
+                "decline"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin ledger list (status=on_hold|payable|paid|rejected)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts?status=on_hold",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts?status=on_hold"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin ledger count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/count?status=on_hold",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "count?status=on_hold"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin runner summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/summary?runnerProfileId={{runner_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "summary?runnerProfileId={{runner_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin line detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/{{payout_line_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "{{payout_line_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin review item line (approve, capped)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\",\n  \"amount\": 450,\n  \"note\": \"Receipt checked\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/{{payout_line_id}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "{{payout_line_id}}",
+                "review"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin review above the combined cap (row 136 override, audited)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\",\n  \"amount\": 400,\n  \"exposureOverrideNote\": \"Refund went out before the receipt came in\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/{{payout_line_id}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "{{payout_line_id}}",
+                "review"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin refund decision above the combined cap (row 136 override)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refundAmount\": 700,\n  \"exposureOverrideNote\": \"Runner reimbursement approved earlier by ops\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/refunds/{{refund_id}}/decision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refunds",
+                "{{refund_id}}",
+                "decision"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin hold item line (receipt mismatch)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Receipt total does not match\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/{{payout_line_id}}/hold",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "{{payout_line_id}}",
+                "hold"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin mark paid (one M-Pesa payout, one runner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lineIds\": [\"{{payout_line_id}}\"],\n  \"payoutReference\": \"SLK4H7XQ2P\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/mark-paid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "mark-paid"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin correction / reversal / resent_payout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"reversal\",\n  \"newReference\": \"RVS1234567\",\n  \"reason\": \"Sent to the wrong number\",\n  \"expectedLatestCorrectionId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/{{payout_line_id}}/corrections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "{{payout_line_id}}",
+                "corrections"
               ]
             }
           },

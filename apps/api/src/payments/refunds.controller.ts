@@ -44,7 +44,7 @@ export class RefundsController {
     @Body() dto: DecideRefundDto,
     @CurrentUser() user: AuthContext,
   ): Promise<AdminRefundReview> {
-    return this.refunds.decide(id, dto.refundAmount, dto.note, user.userId);
+    return this.refunds.decide(id, dto.refundAmount, dto.note, user.userId, dto.exposureOverrideNote);
   }
 
   @Post(':id/mark-paid')

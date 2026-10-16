@@ -304,3 +304,41 @@ describe('ErrandsService termination hooks (row 102)', () => {
     expect(emit).not.toHaveBeenCalled();
   });
 });
+
+describe('ErrandsService confirmation hooks (rows 104, 107)', () => {
+  it('runs inside the COMPLETED -> CONFIRMED transaction, and only there', async () => {
+    const { service, manager } = build(ErrandStatus.COMPLETED);
+    const hook = vi.fn(() => Promise.resolve());
+    service.onConfirmed(hook);
+    await service.transition('e-1', ErrandStatus.CONFIRMED, { type: StatusHistoryActor.SYSTEM });
+    expect(hook).toHaveBeenCalledWith(manager, {
+      errandId: 'e-1',
+      from: ErrandStatus.COMPLETED,
+      actor: StatusHistoryActor.SYSTEM,
+    });
+
+    for (const [from, to] of [
+      [ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.COMPLETED],
+      [ErrandStatus.CONFIRMED, ErrandStatus.SETTLED],
+      [ErrandStatus.RUNNER_EN_ROUTE, ErrandStatus.FAILED],
+    ] as const) {
+      const other = build(from);
+      const h = vi.fn(() => Promise.resolve());
+      other.service.onConfirmed(h);
+      await other.service
+        .transition('e-1', to, { type: StatusHistoryActor.SYSTEM })
+        .catch(() => undefined);
+      expect(h).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rolls CONFIRMED back (no event) when a hook throws', async () => {
+    const { service, emit } = build(ErrandStatus.COMPLETED);
+    service.onConfirmed(() => Promise.reject(new Error('ledger failed')));
+    await expect(
+      service.transition('e-1', ErrandStatus.CONFIRMED, { type: StatusHistoryActor.SYSTEM }),
+    ).rejects.toThrow('ledger failed');
+    await new Promise((r) => setImmediate(r));
+    expect(emit).not.toHaveBeenCalled();
+  });
+});

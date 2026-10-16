@@ -16,6 +16,8 @@ import { NOTIFICATIONS_QUEUE } from '../infra/queue/queues';
 import { DevicesService } from '../users/devices.service';
 import { UsersService } from '../users/users.service';
 import {
+  ASSIGNMENT_DECLINED_EVENT,
+  AssignmentDeclinedEvent,
   MERCHANT_DETAILS_UPDATED_EVENT,
   MerchantDetailsUpdatedEvent,
   QUOTE_REISSUED_EVENT,
@@ -76,10 +78,12 @@ export type FeedJob =
   | { kind: 'merchant_details'; errandId: string; merchantName: string | null }
   | { kind: 'merchant_details_changed'; errandId: string; merchantName: string | null }
   /** Admin-facing (row 68): written to every active admin's feed. */
-  | { kind: 'quote_requested'; errandId: string; reference: string };
+  | { kind: 'quote_requested'; errandId: string; reference: string }
+  /** Admin-facing (row 108): the runner declined; the task needs another runner. */
+  | { kind: 'assignment_declined'; errandId: string; reference: string };
 
 /** Feed jobs whose recipients are the admins, not the errand's customer. */
-const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested']);
+const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested', 'assignment_declined']);
 
 export const FEED_JOB = 'feed';
 export const PUSH_JOB = 'push';
@@ -234,6 +238,12 @@ export class NotificationsService {
       errandId: event.errandId,
       reference: event.reference,
     });
+  }
+
+  /** Runner declined over their purchase limit -> admin feed (row 108). */
+  @OnEvent(ASSIGNMENT_DECLINED_EVENT, { async: true })
+  async onAssignmentDeclined(event: AssignmentDeclinedEvent): Promise<void> {
+    await this.enqueue({ kind: 'assignment_declined', errandId: event.errandId, reference: event.reference });
   }
 
   private async enqueue(job: FeedJob): Promise<void> {
@@ -408,6 +418,12 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.QUOTE_REQUESTED,
         title: 'New quote requested',
         body: `The customer asked for a new quote on ${job.reference} after their quote expired.`,
+      };
+    case 'assignment_declined':
+      return {
+        eventType: NotificationEventType.ASSIGNMENT_DECLINED,
+        title: 'Runner declined a task',
+        body: `The runner declined ${job.reference}: the purchase is above their limit. Assign another runner.`,
       };
     case 'merchant_details':
       return {

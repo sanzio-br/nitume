@@ -50,6 +50,16 @@ export class DecideRefundDto {
   @IsString()
   @MaxLength(1000)
   note?: string;
+
+  /**
+   * Row 136: override the task's combined cap (refunds + runner item
+   * reimbursement <= paid to Nitume) with the reason, 10-500 characters.
+   * Audited; only needed after 409 task_exposure_cap_exceeded.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  exposureOverrideNote?: string;
 }
 
 export class MarkRefundPaidDto {
@@ -101,4 +111,10 @@ export class CreateRefundPayoutCorrectionDto {
   @ValidateIf((o: CreateRefundPayoutCorrectionDto) => o.expectedLatestCorrectionId !== null)
   @IsUUID()
   expectedLatestCorrectionId: string | null;
+
+  /** Row 136: override of the task's combined cap, with the reason (10-500). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  exposureOverrideNote?: string;
 }

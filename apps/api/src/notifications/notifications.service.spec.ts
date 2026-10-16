@@ -350,3 +350,14 @@ describe('Merchant details changed after a merchant-direct payment (row 80)', ()
     });
   });
 });
+
+describe('assignment_declined admin feed (row 108)', () => {
+  it('has admin copy with the task reference', async () => {
+    const { copyFor } = await import('./notifications.service');
+    expect(copyFor({ kind: 'assignment_declined', errandId: 'e-1', reference: 'NT-7' })).toEqual({
+      eventType: 'assignment.declined',
+      title: 'Runner declined a task',
+      body: 'The runner declined NT-7: the purchase is above their limit. Assign another runner.',
+    });
+  });
+});
