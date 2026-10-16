@@ -772,7 +772,7 @@ Spec-only update. Source: BOARD Needs row "api-contract (round 7) | design-audit
 - `_shared.md`: §0 decision row; §6 EXPIRED row (when it happens, next action, notification).
 - `v-auth-otp.md` (and runner `v-auth-otp.md`): OTP messages say `Your verification code expires in 5 minutes.`; TTL 300 s unchanged.
 
-### Conflicts with built code (status stays `matches-design` until re-audit; minors for flutter-customer)
+### Conflicts with built code (v-track and v-task-detail set to `partial`; minors for flutter-customer)
 1. **minor** — Track EXPIRED card copy: design `No runner accepted your task in time.` + `Start a new task`; code shows the round-4 text `No runner was available in time.` with `View task` only. Fix in the shared status card.
 2. **minor** — Task detail EXPIRED: design primary `Start a new task` and the no-review line; code shows no action for EXPIRED. Fix in the action table.
 3. Notifications: `errand.EXPIRED` routes to Task detail already through the unknown-type fallback (`Nav.openNotification`); add an explicit route and a test once the API sends it.
