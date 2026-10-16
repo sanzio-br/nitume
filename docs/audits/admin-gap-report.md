@@ -649,3 +649,26 @@ Spec-only update. Full list, API items, conflicts and the System Design edits (r
 
 ### Questions for the owner (new)
 AQ-12 … AQ-16 (`_shared.md` §8); RQ-27 … RQ-31 in `runner-gap-report.md` §12.
+
+## Owner answers round 10 (rows 167–171, 175, 176, 2026-10-16), applied on `docs/owner-answers-10-specs`
+
+Spec-only update; no screen re-audited. Full list, API items and System Design edits: `docs/audits/runner-gap-report.md` §13.
+
+### What changed
+- `drawer-task-offer.md` (row 167): EXPIRED only when matching is exhausted over the task's eligible service-area/category pool; **row 155's task-deadline path removed** (no task deadline). New `Eligible runners left {n}` row on Offer ended / Declined, Reassign list = the eligible pool from the API, new read-only **Matching exhausted** state (`No runners left`, `Last offer`, `Expired at`, `Runners tried`, refund-review link), errors `matching_exhausted` / `runner_not_eligible`, feed item `matching_exhausted`.
+- `p-payout-requests.md` (rows 168, 169): reason never shown to the runner; 10–500 characters after trimming, whitespace-only invalid, inline errors; open questions closed.
+- `p-runners-verification-documents.md` (rows 170, 171, 175): reviewer note deleted at purge (no `Admin note` on purged cards); new **Re-review evidence** action (button, confirm, optional note, `Reviews` activity, errors), proposed `POST /runners/verifications/:id/re-review`; purge guards kept.
+- `_shared.md`: §1 rows 167–171, 175, 176; N-17, N-20, N-23 (e); §8 AQ-12 … AQ-16 closed, new AQ-17 … AQ-21.
+- Row 176 is customer-facing only: the admin keeps `Assigned` plus the offer chips.
+
+### Findings against `main` (new)
+21. **blocker** — `apps/admin/src/app/features/admin/drawers/task-drawer.ts`, `panels/task-queue.panel.ts`. Design (`drawer-task-offer.md`, row 167): `Eligible runners left`, eligible-pool Reassign list, Matching exhausted state. Code: none (no offer section at all, finding 16). Fix: with finding 16, after api-contract N-20 (candidates + exhaustion check).
+22. **blocker** — `apps/admin/src/app/features/admin/panels/verifications.panel.ts` (card actions). Design (row 171): `Re-review evidence` on decided verifications with a stored image, confirm, `Reviews` activity. Code: no such action. Fix: after api-contract builds the re-review endpoint.
+23. **minor** — `verifications.panel.ts:71-75`. Design (row 170): no `Admin note` on purged cards. Code: renders the note whenever present. Fix: hide when `purgedAt` is set (the API clears it at purge).
+
+### Handoff
+- api-contract: `runner-gap-report.md` §13 API items 1–5.
+- web-parity: findings 21–23 plus the open 16–20.
+
+### Questions for the owner (new)
+AQ-17 … AQ-21 (`_shared.md` §8); CQ-176a–c in `runner-gap-report.md` §13 (customer).
