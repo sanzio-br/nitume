@@ -6,7 +6,12 @@ import {
 } from '../common/enums';
 import { PurchaseLimitService } from './purchase-limit.service';
 
-const build = (required: number, limit = '3000.00', verified = true) => {
+const build = (
+  required: number,
+  limit = '3000.00',
+  verified = true,
+  availability = 'online',
+) => {
   const errands = {
     getById: vi.fn(() => Promise.resolve({ id: 'e-1' })),
     activeAssignmentFor: vi.fn(() =>
@@ -39,7 +44,7 @@ const build = (required: number, limit = '3000.00', verified = true) => {
   const runners = {
     verificationSummary: vi.fn(() => Promise.resolve({ verified, checks: [] })),
     profileById: vi.fn((id: string) =>
-      Promise.resolve({ id, maxPurchaseAdvance: limit }),
+      Promise.resolve({ id, maxPurchaseAdvance: limit, availability }),
     ),
     profileByUserId: vi.fn(() =>
       Promise.resolve({ id: 'rp-1', maxPurchaseAdvance: limit }),
@@ -128,6 +133,15 @@ describe('purchase limit on accept and assign (rows 113, 186), verification on a
       (unverified as { getResponse: () => object }).getResponse(),
     ).toMatchObject({ code: 'runner_not_eligible', reason: 'not_verified' });
     await expect(build(100).guards.assign?.({}, ctx)).resolves.toBeUndefined();
+  });
+
+  it('refuses to assign a runner on another job (row 187 c: runner_not_eligible, reason runner_busy)', async () => {
+    const busy = await build(0, '3000.00', true, 'busy')
+      .guards.assign?.({}, ctx)
+      .catch((e: { getResponse: () => object }) => e);
+    expect((busy as { getResponse: () => object }).getResponse()).toMatchObject(
+      { code: 'runner_not_eligible', reason: 'runner_busy' },
+    );
   });
 
   it('a decline without a reason is not checked against the limit', async () => {

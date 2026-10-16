@@ -1,7 +1,7 @@
 import { ForbiddenException, HttpStatus, Injectable, OnModuleInit } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { ApiError } from '../common/api-error';
-import { AssignmentDeclineReason, UserRole } from '../common/enums';
+import { AssignmentDeclineReason, RunnerAvailability, UserRole } from '../common/enums';
 import { ErrandAssignment } from '../errands/errand-assignment.entity';
 import { ErrandsService, ViewerContext } from '../errands/errands.service';
 import { RunnerPayoutsService } from '../payments/runner-payouts.service';
@@ -58,6 +58,14 @@ export class PurchaseLimitService implements OnModuleInit {
       if (!summary.verified) {
         throw new ApiError(HttpStatus.CONFLICT, 'runner_not_eligible', 'This runner is not verified yet', {
           reason: 'not_verified',
+          runnerProfileId,
+        });
+      }
+      // Row 187 (c): a runner on another accepted/active task is not eligible.
+      const runner = await this.runners.profileById(runnerProfileId, manager);
+      if (runner.availability === RunnerAvailability.BUSY) {
+        throw new ApiError(HttpStatus.CONFLICT, 'runner_not_eligible', 'This runner is on another job', {
+          reason: 'runner_busy',
           runnerProfileId,
         });
       }
