@@ -70,7 +70,7 @@ If more than one errand is active, a 12.5/700 green-700 link under the card `+N 
 - Section labels: `Categories`, `In progress`, `Recent`.
 - Active card sample: tag `Check It For Me · #NT-10482` (mockup `Inspection · #10482`; OA-1 and OA-15), title `Apartment check — Nyali`, meta `Brian K. is en route · ETA 12 min`, button `Track live →`.
 - Runner name in metas = the API short name (row 40); without one use `Your runner` (`Your runner is on it`).
-- Meta by state (proposed): REQUESTED `Waiting for your quote`; QUOTED `Your quote is ready`; ACCEPTED `Pay to confirm your task`; PAYMENT_CONFIRMED `Finding a runner`; RUNNER_ASSIGNED `Finding a runner` (row 176: no runner name before acceptance; was `Brian K. is assigned`); RUNNER_EN_ROUTE mockup; ARRIVED `Brian K. has arrived`; IN_PROGRESS `Brian K. is on it`; AWAITING_CUSTOMER `Ready for your review`.
+- Meta by state (proposed): REQUESTED `Waiting for your quote`; QUOTED `Your quote is ready`; ACCEPTED `Pay to confirm your task`; PAYMENT_CONFIRMED `Finding a runner`; RUNNER_ASSIGNED `Finding a runner` (rows 176, 183: no runner name before acceptance; was `Brian K. is assigned`); RUNNER_EN_ROUTE mockup; ARRIVED `Brian K. has arrived`; IN_PROGRESS `Brian K. is on it`; AWAITING_CUSTOMER `Ready for your review`.
 - Recent sample rows: `Buy shoes — Sarit Centre` / `Yesterday, 4:12 PM` / `Completed`; `Collect documents — CBD` / `Mon, 10:03 AM` / `Completed`.
 
 States (proposed):
