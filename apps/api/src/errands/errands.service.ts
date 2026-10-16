@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -360,6 +361,8 @@ export class ErrandsService {
   private readonly confirmationHooks: ConfirmationHook[] = [];
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
   private readonly requoteGuards: RequoteGuard[] = [];
+
+  private readonly logger = new Logger(ErrandsService.name);
 
   constructor(
     private readonly dataSource: DataSource,
@@ -962,10 +965,13 @@ export class ErrandsService {
 
   /**
    * Transitions an errand to a target status, validating against the strict
-   * state machine and recording a history row (append-only). Uses the entity
-   * version column for optimistic concurrency: concurrent transitions from
-   * the same version surface as a retryable conflict. `guard` must be passed
-   * by the one flow allowed to perform a guarded transition.
+   * state machine and recording a history row (append-only). The errand row
+   * is read under SELECT ... FOR UPDATE, so concurrent transitions on one
+   * errand (a runner accept vs the offer-expiry sweep, an admin cancel vs an
+   * accept) run one after the other: the later one re-reads the committed
+   * status and gets 409 `illegal_transition` when it no longer applies.
+   * `guard` must be passed by the one flow allowed to perform a guarded
+   * transition.
    */
   async transition(
     errandId: string,
@@ -1019,8 +1025,12 @@ export class ErrandsService {
     subject?: ViewerContext,
     guard?: TransitionGuard,
   ): Promise<ErrandResult> {
+    // Row lock first: every transition on this errand queues behind any
+    // other in flight (reviewer B1, round 7). Re-locking a row the caller
+    // already locked in the same transaction is a no-op.
     const errand = await manager.getRepository(Errand).findOne({
       where: { id: errandId },
+      lock: { mode: 'pessimistic_write' },
     });
     if (!errand) {
       throw new NotFoundException('Errand not found');
@@ -1047,7 +1057,7 @@ export class ErrandsService {
     }
     await this.enforceSubject(manager, errand, actor, subject);
     if (fromStatus === ErrandStatus.RUNNER_ASSIGNED && to === ErrandStatus.RUNNER_EN_ROUTE) {
-      await this.assertOfferOpen(manager, errandId);
+      await this.acceptOffer(manager, errandId);
     }
     let acceptedQuote: Quote | null = null;
     if (fromStatus === ErrandStatus.QUOTED && to === ErrandStatus.ACCEPTED) {
@@ -1176,8 +1186,10 @@ export class ErrandsService {
    * refused once the current offer's deadline has passed, even before the
    * sweep has expired the task. 409 `offer_expired` with `offerExpiresAt`.
    * Assignments without a deadline (made before row 141) never lapse.
+   * Accepted in time, the assignment becomes `accepted` (decidedAt = now),
+   * so its offerExpiresAt no longer reads as an open offer.
    */
-  private async assertOfferOpen(manager: EntityManager, errandId: string, now = new Date()): Promise<void> {
+  private async acceptOffer(manager: EntityManager, errandId: string, now = new Date()): Promise<void> {
     const current = await this.activeAssignmentFor(errandId, manager);
     if (current?.offerExpiresAt && current.offerExpiresAt.getTime() <= now.getTime()) {
       throw new ApiError(
@@ -1186,6 +1198,12 @@ export class ErrandsService {
         'This offer has expired and can no longer be accepted',
         { offerExpiresAt: current.offerExpiresAt.toISOString() },
       );
+    }
+    if (current?.status === AssignmentStatus.ASSIGNED) {
+      await manager.getRepository(ErrandAssignment).update(current.id, {
+        status: AssignmentStatus.ACCEPTED,
+        decidedAt: now,
+      });
     }
   }
 
@@ -1253,6 +1271,8 @@ export class ErrandsService {
         if (!(err instanceof ConflictException) && !(err instanceof ApiError)) {
           throw err;
         }
+        const code = err instanceof ApiError ? err.code : err.constructor.name;
+        this.logger.warn(`Offer expiry skipped errand ${id}: ${code} (${err.message})`);
       }
     }
     return expired;
