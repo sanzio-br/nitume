@@ -17,9 +17,10 @@ enum RunnerPayoutRequestStatus {
   /// Closed by ops with a runner-visible `decisionNote`.
   rejected('rejected'),
 
-  /// Closed by ops without a payout, with a mandatory reason (row 166). The
-  /// runner cannot cancel; the screen offers no cancel action. See
-  /// `cancelledAt` and `cancellationReason`.
+  /// Closed by ops without a payout (row 166). The runner cannot cancel; the
+  /// screen offers no cancel action. The ops reason is never sent to the
+  /// runner: show generic text such as `Payout request cancelled` (row 168).
+  /// See `cancelledAt`.
   cancelled('cancelled');
 
   const RunnerPayoutRequestStatus(this.wire);
@@ -54,7 +55,6 @@ class RunnerPayoutRequest {
     this.reference,
     this.decisionNote,
     this.cancelledAt,
-    this.cancellationReason,
   });
 
   final String id;
@@ -86,12 +86,9 @@ class RunnerPayoutRequest {
   final String? decisionNote;
 
   /// When the request was cancelled (row 166); `null` otherwise or until the
-  /// API sends it.
+  /// API sends it. There is deliberately no cancellation reason: the runner
+  /// never sees the ops reason and the screen shows generic text (row 168).
   final DateTime? cancelledAt;
-
-  /// Why it was cancelled (row 166); `null` otherwise or until the API sends
-  /// it.
-  final String? cancellationReason;
 
   /// True while the request waits for ops.
   bool get isOpen => status == RunnerPayoutRequestStatus.requested;
@@ -111,7 +108,6 @@ class RunnerPayoutRequest {
       reference: parseOptionalString(json['reference']),
       decisionNote: parseOptionalString(json['decisionNote']),
       cancelledAt: parseDate(json['cancelledAt']),
-      cancellationReason: parseOptionalString(json['cancellationReason']),
     );
   }
 }

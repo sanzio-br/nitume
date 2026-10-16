@@ -81,7 +81,6 @@ void main() {
       expect(r.destinationPhone, '+254733111222');
       expect(r.createdAt, DateTime.utc(2026, 10, 16, 7));
       expect(r.cancelledAt, isNull);
-      expect(r.cancellationReason, isNull);
     });
 
     test('paid below the request keeps both amounts (row 146)', () {
@@ -111,28 +110,25 @@ void main() {
       expect(r.decisionNote, 'Receipt pending');
     });
 
-    test('cancelled (row 166) with its optional fields', () {
+    test('cancelled (row 166) with cancelledAt only (row 168)', () {
       final r = RunnerPayoutRequest.fromJson({
         ..._request,
         'status': 'cancelled',
         'cancelledAt': '2026-10-17T06:00:00.000Z',
-        'cancellationReason': 'Phone changed',
       });
       expect(r.status, RunnerPayoutRequestStatus.cancelled);
       expect(r.cancelledAt, DateTime.utc(2026, 10, 17, 6));
-      expect(r.cancellationReason, 'Phone changed');
+      expect(r.isOpen, isFalse);
     });
 
     test('unknown status parses as null and keeps the wire value', () {
       final r = RunnerPayoutRequest.fromJson({
         ..._request,
         'status': 'on_review',
-        'cancellationReason': '  ',
       });
       expect(r.status, isNull);
       expect(r.statusWire, 'on_review');
       expect(r.isOpen, isFalse);
-      expect(r.cancellationReason, isNull);
     });
   });
 
