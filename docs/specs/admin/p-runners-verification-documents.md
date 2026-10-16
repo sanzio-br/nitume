@@ -40,7 +40,7 @@ When shown: verification status `approved` or `rejected`, type `government_id` o
 2. Confirm (A-08 dialog):
    - Title `Re-review this evidence?`
    - Body 13 slate-600: `This records that you are reviewing the stored {type label} for {runner} again. The review is logged with your name and the time, and the image is kept for a new retention period from today. Opening the image alone never does this.`
-   - Optional A-06 textarea `Note (optional)`, max 500, counter `{n}/500` (Fira Code), hint 11.5 slate-600 `Kept in the audit trail until the image is deleted.` (AQ-20: whether a reason should be required).
+   - Optional A-06 textarea `Note (optional)`, max 500, counter `{n}/500` (Fira Code), hint 11.5 slate-600 `Kept in the audit trail until the image is deleted.` Optional, no minimum (row 180); whitespace-only is sent as empty and stored as no note.
    - Buttons outline `Back`, primary `Record re-review` (disabled and `Recording…` while the call runs; one call per click, no auto-retry).
 3. On success: A-11 success `Re-review recorded.`; the card's activity list gains the new row; `View image` stays where it is (opening the image is a separate, logged step, as always). The client never shows a new retention date (rule above).
 4. Activity (new `.drawer-row`-style list under the card body, label `Reviews`, oldest first; each time 12-hour EAT, Fira Code):
@@ -75,18 +75,16 @@ Exact, from the mockup: `Runner verification` (panel title; built as `Verificati
 - Built on `main`: `GET /runners/verifications?status=&cursor=&limit=` → `{ items: [{ id, runnerProfileId, verificationType, status, reviewerNote, reviewedBy, reviewedAt, createdAt, purgedAt, hasDocument, runnerProfile { id, userId }, user { id, phone } }], nextCursor }` (no storage key, row 154); `GET /runners/verifications/:verificationId/document` → `{ verificationId, url, expiresAt }` (≤ 5 min, logged); `PATCH /runners/:runnerId/verifications/:verificationId` `{ decision, reviewerNote? }`.
 - **Must change (api-contract, N-23)**: the purge clock (row 161: upload of a new/replacement ID or selfie, verification or re-verification started, an admin review that needs the evidence; not task assignments/offers or disputes, which the built `purgeExpiredDocuments` counts); clear `reviewerNote` (and re-review notes) at purge (row 170, decided); keep the row-175 guards (pending, open dispute); separate restricted credential for ID media and backups that cannot keep a purged image (row 162).
 - **Missing (recommended)**: `side` (`front | back`) on ID images; the reviewer's display name on the item (today an id only).
-- **To build (api-contract, row 171; in progress)**: proposed `POST /runners/verifications/:id/re-review` (admin only) `{ note?: string ≤ 500 }` → 201 `{ verificationId, reReview { id, reviewedBy { id, displayName }, createdAt, note } }`. Server: allowed only on a decided verification with a stored image; writes an audit/review event (admin id, time, verification id, evidence type/ids, event id) and restarts the retention clock in the same transaction; a view (`GET …/document`) never does. List/detail items add `reReviews[]` (oldest first) and the reviewer's display name. Errors as above. If api-contract prefers another path (for example `POST /runners/:runnerId/verifications/:verificationId/re-review`, matching the built `PATCH`), the client follows it; flagged.
+- **Re-review endpoint (rows 171, 180, 181)**: `POST /runners/verifications/:id/re-review` (approved, row 180; admin only) `{ note?: string }` (optional, ≤ 500 after trim, no minimum; blank → null) → 201 `{ verificationId, reReview { id, reviewedBy { id, displayName }, createdAt, note } }`. Allowed only on a decided ID/selfie verification with a stored image; logged as `re_review` (admin, IP, time, verification id) and restarts the retention clock; a view (`GET …/document`) never does. It never changes the decision (row 181). Admin list items carry `reReviews[]` (oldest first, `note` null after the purge) and `reviewer { id, displayName }`. **Built on `feat/api-owner-answers-9` @ `45b516d` with this shape** (the earlier `0fb54ad` returned 200 `{ verificationId, eventId, reReviewedAt }` with no note and no `reReviews[]`; superseded on that branch, so the spec keeps the note and the `Reviews` list). Not on `main` yet.
 
 ## Accessibility
 `View image` opens a new tab: its accessible name is `View {type} image for {runner}, opens in a new tab`. The Deleted state is text, not colour only.
 
 ## Owner decisions applied
-Rows 125, 126, 144, 154, 161, 162, 170, 171, 175 (`_shared.md` §1). Row 163 (10 MB per image) is enforced at upload; nothing to show here.
+Rows 125, 126, 144, 154, 161, 162, 170, 171, 175, 180, 181 (`_shared.md` §1). Row 181: the confirm and the activity say nothing about changing the decision; there is no decision control on a decided card. Row 163 (10 MB per image) is enforced at upload; nothing to show here.
 
 ## Open questions for the owner
-Decided: AQ-15 (row 170, note deleted at purge), AQ-16 (row 171, `Re-review evidence`), RQ-30 (row 175, guards kept).
-- AQ-20: should `Re-review evidence` require a reason (proposed optional note)? Endpoint name `POST /runners/verifications/:id/re-review` OK?
-- AQ-21: can a re-review change the decision (for example revoke an approval)? Proposed no; it only records the review.
+None. Decided: AQ-15 (row 170, note deleted at purge), AQ-16 (row 171, `Re-review evidence`), RQ-30 (row 175, guards kept), AQ-20 (row 180, endpoint approved, optional note ≤ 500, no minimum, logged), AQ-21 (row 181, never changes the decision).
 
 ## Current vs design
 `main`, `verifications.panel.ts`:
