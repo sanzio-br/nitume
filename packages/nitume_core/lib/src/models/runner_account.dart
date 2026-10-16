@@ -207,6 +207,80 @@ class RunnerVerification {
   }
 }
 
+/// The newest ID and selfie records, grouped as the capture and status
+/// screens show them (`v-onboard-id`, `v-onboard-pending`, Profile ->
+/// `Verification documents`; rows 195, 200).
+///
+/// ID front and back are separate [RunnerVerificationType.governmentId]
+/// records told apart by [RunnerVerification.side]. A legacy ID record
+/// without a side never fills the Front or Back tile; the newest one is kept
+/// in [idUnknownSide] so a screen can still show it as "side unknown".
+class RunnerVerificationDocuments {
+  const RunnerVerificationDocuments({
+    this.idFront,
+    this.idBack,
+    this.idUnknownSide,
+    this.selfie,
+  });
+
+  /// Groups [records] (any order): for each slot the record with the latest
+  /// `createdAt` wins; on a tie, or with no dates, the earlier record in
+  /// [records] wins (the API lists newest first). Other types are ignored.
+  factory RunnerVerificationDocuments.fromRecords(
+    Iterable<RunnerVerification> records,
+  ) {
+    RunnerVerification? front, back, unknown, selfie;
+    RunnerVerification? newer(RunnerVerification? kept, RunnerVerification r) {
+      if (kept == null) return r;
+      final a = kept.createdAt ?? DateTime(0);
+      final b = r.createdAt ?? DateTime(0);
+      return b.isAfter(a) ? r : kept;
+    }
+
+    for (final r in records) {
+      switch (r.type) {
+        case RunnerVerificationType.governmentId:
+          switch (r.side) {
+            case VerificationDocumentSide.front:
+              front = newer(front, r);
+            case VerificationDocumentSide.back:
+              back = newer(back, r);
+            case null:
+              unknown = newer(unknown, r);
+          }
+        case RunnerVerificationType.selfie:
+          selfie = newer(selfie, r);
+        default:
+          break;
+      }
+    }
+    return RunnerVerificationDocuments(
+      idFront: front,
+      idBack: back,
+      idUnknownSide: unknown,
+      selfie: selfie,
+    );
+  }
+
+  /// Newest ID record with side `front`; `null` when none.
+  final RunnerVerification? idFront;
+
+  /// Newest ID record with side `back`; `null` when none.
+  final RunnerVerification? idBack;
+
+  /// Newest legacy ID record stored without a side; it fills no tile.
+  final RunnerVerification? idUnknownSide;
+
+  /// Newest selfie record; `null` when none.
+  final RunnerVerification? selfie;
+
+  /// The ID record for [side] (the Front or Back tile).
+  RunnerVerification? idFor(VerificationDocumentSide side) => switch (side) {
+    VerificationDocumentSide.front => idFront,
+    VerificationDocumentSide.back => idBack,
+  };
+}
+
 /// Client-side rules for ID and selfie images sent with
 /// `RunnerAccountRepository.uploadVerificationDocument` (rows 154, 163).
 /// The API enforces the same rules; checking first saves the runner a

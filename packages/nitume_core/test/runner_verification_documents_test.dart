@@ -127,6 +127,75 @@ void main() {
     });
   });
 
+  group('RunnerVerificationDocuments', () {
+    RunnerVerification rec(
+      String id,
+      String type, {
+      String? side,
+      String? at,
+      String status = 'pending',
+    }) => RunnerVerification.fromJson({
+      'id': id,
+      'verificationType': type,
+      'side': side,
+      'status': status,
+      'createdAt': at,
+    });
+
+    test('newest record per ID side and selfie; front before back', () {
+      final docs = RunnerVerificationDocuments.fromRecords([
+        rec('b1', 'government_id', side: 'back', at: '2026-10-14T08:00:00Z'),
+        rec(
+          'f1',
+          'government_id',
+          side: 'front',
+          at: '2026-10-14T08:00:00Z',
+          status: 'rejected',
+        ),
+        rec('f2', 'government_id', side: 'front', at: '2026-10-16T08:00:00Z'),
+        rec('s1', 'selfie', at: '2026-10-15T08:00:00Z'),
+        rec('s2', 'selfie', at: '2026-10-16T09:00:00Z'),
+        rec('p1', 'payment_identity', at: '2026-10-16T10:00:00Z'),
+      ]);
+      expect(docs.idFront!.id, 'f2');
+      expect(docs.idBack!.id, 'b1');
+      expect(docs.selfie!.id, 's2');
+      expect(docs.idUnknownSide, isNull);
+      expect(docs.idFor(VerificationDocumentSide.front)!.id, 'f2');
+      expect(docs.idFor(VerificationDocumentSide.back)!.id, 'b1');
+    });
+
+    test('legacy ID without a side fills no tile but stays visible', () {
+      final docs = RunnerVerificationDocuments.fromRecords([
+        rec('old1', 'government_id', at: '2026-09-01T08:00:00Z'),
+        rec('old2', 'government_id', at: '2026-09-02T08:00:00Z'),
+        rec('f1', 'government_id', side: 'front', at: '2026-10-16T08:00:00Z'),
+      ]);
+      expect(docs.idFront!.id, 'f1');
+      expect(docs.idBack, isNull);
+      expect(docs.idUnknownSide!.id, 'old2');
+    });
+
+    test('ties and missing dates keep the first record (newest first)', () {
+      final docs = RunnerVerificationDocuments.fromRecords([
+        rec('f-new', 'government_id', side: 'front'),
+        rec('f-old', 'government_id', side: 'front'),
+        rec('b-new', 'government_id', side: 'back', at: '2026-10-16T08:00:00Z'),
+        rec('b-old', 'government_id', side: 'back', at: '2026-10-16T08:00:00Z'),
+      ]);
+      expect(docs.idFront!.id, 'f-new');
+      expect(docs.idBack!.id, 'b-new');
+    });
+
+    test('empty list', () {
+      final docs = RunnerVerificationDocuments.fromRecords(const []);
+      expect(docs.idFront, isNull);
+      expect(docs.idBack, isNull);
+      expect(docs.idUnknownSide, isNull);
+      expect(docs.selfie, isNull);
+    });
+  });
+
   group('VerificationDocumentRules', () {
     test('10 MB limit (row 163)', () {
       expect(VerificationDocumentRules.maxBytes, 10 * 1024 * 1024);
