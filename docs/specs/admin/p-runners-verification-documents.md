@@ -14,7 +14,9 @@ Let an admin open a runner's ID or selfie image for review through the logged, s
 - **Viewing never restarts the retention clock** (row 161). The UI must not imply that opening an image keeps it longer.
 - The retention clock restarts only on a new/replacement ID or selfie, a verification or re-verification started, or an admin verification review that needs the evidence (row 161). That review is either the approve/reject decision on a pending verification (the initial review) or, on an already-decided verification, the explicit, audited **Re-review evidence** action below (row 171). This screen never shows a retention date or a countdown (the clock is computed server-side and may restart).
 - After the purge, only minimum audit metadata is kept (row 161): status, outcome, timestamps, reviewer/admin id, purge time, evidence type, audit/event ids. The image is gone for good; there is no restore. The reviewer's note is deleted with it (row 170).
-- Never purged (row 175, kept as built): a PENDING verification's evidence, and evidence tied to an open dispute. These guards win over the retention purge; the screen shows such images as Stored.
+- Never purged (row 175, kept as built): a PENDING verification's evidence, and evidence tied to an open dispute. These guards win over the retention purge; the screen shows such images as Stored. Row 190 (decided 2026-10-16): the open-dispute hold is intended, a legal/audit hold; images may stay past the retention period while the dispute is open; normal rules resume when it closes. No UI change.
+- Row 191 (decided 2026-10-16): only verification activity that creates or replaces stored ID/selfie evidence restarts the clock (payment identity only if it reuses the retained images); only reviews of the stored ID/selfie count as evidence reviews; views and unrelated admin actions never do. Built on `main` (`RETENTION_CLOCK_SQL`). No UI change.
+- Rows 192, 193 (decided): Cloudinary's internal disaster-recovery copies are an external dependency (System Design §10); the owner's console checklist is a production-readiness owner action. No UI change; no copy may claim deletion beyond what Nitume controls.
 
 ## Layout: document row in each verification card
 In the card body (`.vc-body`), after `Type` and `Submitted`:
@@ -57,7 +59,7 @@ Errors:
 ## Purged verification (what an admin sees)
 A purged card keeps: the runner header (short id / name, phone), the status chip (`Approved`, `Rejected` …, unchanged), `Type` (label below), `Submitted` (`createdAt`), `Decided` (`reviewedAt`) and `By` (`reviewedBy`, admin name or short id), `Image` → `Deleted {date}`, and the `Reviews` rows without notes. **No `Admin note` row**: the reviewer's note is deleted at purge (row 170, decided). No `View image`, no `Re-review evidence`, no actions. Cards are never hidden because they were purged; the status filter works as for any card.
 
-Type labels (mockup rows): `government_id` → `National ID` (when the API adds `side`: `National ID · front` / `· back`), `selfie` → `Selfie / liveness check`, `phone` → `Phone number`, `payment_identity` → `M-Pesa identity match`.
+Type labels (mockup rows): `government_id` → `National ID · Front` / `National ID · Back` from `side` (`front | back`, lowercase on the wire; UI shows `Front` / `Back`; rows 195, 200, decided; built on `main`, the admin view spreads `side`); a legacy ID image with `side = null` (uploaded before row 195) reads `National ID`, `selfie` → `Selfie / liveness check`, `phone` → `Phone number`, `payment_identity` → `M-Pesa identity match`.
 
 ## Errors on `View image`
 - 410 `verification_document_purged` (extra `purgedAt`): switch the row to Deleted with that date; A-11 info `This image was deleted at the end of the retention period.`
@@ -73,15 +75,15 @@ Exact, from the mockup: `Runner verification` (panel title; built as `Verificati
 
 ## Data
 - Built on `main`: `GET /runners/verifications?status=&cursor=&limit=` → `{ items: [{ id, runnerProfileId, verificationType, status, reviewerNote, reviewedBy, reviewedAt, createdAt, purgedAt, hasDocument, runnerProfile { id, userId }, user { id, phone } }], nextCursor }` (no storage key, row 154); `GET /runners/verifications/:verificationId/document` → `{ verificationId, url, expiresAt }` (≤ 5 min, logged); `PATCH /runners/:runnerId/verifications/:verificationId` `{ decision, reviewerNote? }`.
-- **Must change (api-contract, N-23)**: the purge clock (row 161: upload of a new/replacement ID or selfie, verification or re-verification started, an admin review that needs the evidence; not task assignments/offers or disputes, which the built `purgeExpiredDocuments` counts); clear `reviewerNote` (and re-review notes) at purge (row 170, decided); keep the row-175 guards (pending, open dispute); separate restricted credential for ID media and backups that cannot keep a purged image (row 162).
-- **Missing (recommended)**: `side` (`front | back`) on ID images; the reviewer's display name on the item (today an id only).
+- **Built on `main` since the round-9 merge (`0e12564`; was "Must change", N-23)**: the purge clock (row 161: upload of a new/replacement ID or selfie, verification or re-verification started, an admin review that needs the evidence; not task assignments/offers or disputes, which the built `purgeExpiredDocuments` counts); clear `reviewerNote` (and re-review notes) at purge (row 170, decided); keep the row-175 guards (pending, open dispute); separate restricted credential for ID media and backups that cannot keep a purged image (row 162).
+- **Built on `main` (rows 195, 200)**: `side` (`front | back`, lowercase; null on legacy rows and on every non-ID type) on each verification item. **Missing (recommended)**: the reviewer's display name on the item (today an id only).
 - **Re-review endpoint (rows 171, 180, 181)**: `POST /runners/verifications/:id/re-review` (approved, row 180; admin only) `{ note?: string }` (optional, ≤ 500 after trim, no minimum; blank → null) → 201 `{ verificationId, reReview { id, reviewedBy { id, displayName }, createdAt, note } }`. Allowed only on a decided ID/selfie verification with a stored image; logged as `re_review` (admin, IP, time, verification id) and restarts the retention clock; a view (`GET …/document`) never does. It never changes the decision (row 181). Admin list items carry `reReviews[]` (oldest first, `note` null after the purge) and `reviewer { id, displayName }`. **Built on `feat/api-owner-answers-9` @ `45b516d` with this shape** (the earlier `0fb54ad` returned 200 `{ verificationId, eventId, reReviewedAt }` with no note and no `reReviews[]`; superseded on that branch, so the spec keeps the note and the `Reviews` list). Not on `main` yet.
 
 ## Accessibility
 `View image` opens a new tab: its accessible name is `View {type} image for {runner}, opens in a new tab`. The Deleted state is text, not colour only.
 
 ## Owner decisions applied
-Rows 125, 126, 144, 154, 161, 162, 170, 171, 175, 180, 181 (`_shared.md` §1). Row 181: the confirm and the activity say nothing about changing the decision; there is no decision control on a decided card. Row 163 (10 MB per image) is enforced at upload; nothing to show here.
+Rows 125, 126, 144, 154, 161, 162, 170, 171, 175, 180, 181, 190, 191, 192, 193, 195, 200 (`_shared.md` §1). Row 181: the confirm and the activity say nothing about changing the decision; there is no decision control on a decided card. Row 163 (10 MB per image) is enforced at upload; nothing to show here.
 
 ## Open questions for the owner
 None. Decided: AQ-15 (row 170, note deleted at purge), AQ-16 (row 171, `Re-review evidence`), RQ-30 (row 175, guards kept), AQ-20 (row 180, endpoint approved, optional note ≤ 500, no minimum, logged), AQ-21 (row 181, never changes the decision).
@@ -94,3 +96,4 @@ None. Decided: AQ-15 (row 170, note deleted at purge), AQ-16 (row 171, `Re-revie
 4. minor: type labels (`typeLabel`, `:194-201`) use `Government ID`, `Driving License`; the mockup labels are above. Selfie, phone and M-Pesa identity fall back to the raw value.
 5. minor: the reviewer note row `Admin note` (`:71-75`) must not render on purged cards (row 170: the API clears it; hide the row when `purgedAt` is set even if a stale note arrives).
 6. blocker (row 171, after api-contract): no `Re-review evidence` action, confirm, `Reviews` activity or errors.
+7. minor (rows 195, 200): ID images show no side. Fix: `National ID · Front` / `National ID · Back` from `side` (lowercase on the wire), `National ID` when null; add `side` to the type in `core/api-types.ts`.
