@@ -4,6 +4,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { API, flushAsync, setupHttp } from '../../testing/admin-test-utils';
 import { AdminDataService } from './admin-data.service';
 import { AdminDashboardComponent } from './admin-dashboard.component';
+import { DrawerNavService } from './drawer-nav.service';
 
 describe('AdminDashboardComponent sidebar (row 77)', () => {
   let http: HttpTestingController;
@@ -23,6 +24,7 @@ describe('AdminDashboardComponent sidebar (row 77)', () => {
     http.expectOne(`${API}/users/me`).flush({ id: 'admin-1', firstName: 'Wanjiru' });
     await flushAsync();
     http.expectOne(`${API}/refunds/count?status=pending_review`).flush({ count: 120 });
+    http.expectOne(`${API}/runner-payouts/count?status=on_hold`).flush({ count: 4 });
     http
       .expectOne(`${API}/errands?status=QUOTED,ACCEPTED&quoteRequested=true&limit=100`)
       .flush({ items: [], nextCursor: null });
@@ -49,7 +51,28 @@ describe('AdminDashboardComponent sidebar (row 77)', () => {
     const g = groups(el);
     expect(g.map((x) => x.label)).toEqual(['Monitor', 'Network', 'Payments', 'Insights']);
     expect(g[1].items.some((i) => i.startsWith('Refunds'))).toBe(false);
-    expect(g[2].items).toEqual(['Refunds 99+']);
+    // Row 112: Runner payouts under Refunds, with the on_hold badge.
+    expect(g[2].items).toEqual(['Refunds 99+', 'Runner payouts 4']);
     expect(TestBed.inject(AdminDataService).refundBadge()).toEqual({ count: 99, more: true });
+  });
+
+  it('View payouts on a runner opens Runner payouts filtered to that runner', async () => {
+    const fixture = await render();
+    const nav = TestBed.inject(DrawerNavService);
+    nav.open('runner', 'rrrrrrrr-0000-0000-0000-00000000ab12');
+    nav.runnerPayoutsFor.set('rrrrrrrr-0000-0000-0000-00000000ab12');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await flushAsync();
+    fixture.detectChanges();
+    expect(nav.current()).toBeNull();
+    http.match(`${API}/runner-payouts/count?status=on_hold`).forEach((r) => r.flush({ count: 4 }));
+    const req = http.expectOne((r) => r.url === `${API}/runner-payouts`);
+    expect(req.request.params.get('runnerProfileId')).toBe('rrrrrrrr-0000-0000-0000-00000000ab12');
+    req.flush({ items: [], nextCursor: null });
+    await flushAsync();
+    fixture.detectChanges();
+    const active = (fixture.nativeElement as HTMLElement).querySelector('.ops-nav-item.active');
+    expect(active?.textContent).toContain('Runner payouts');
   });
 });

@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal, OnInit } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked, OnInit } from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
 import { AdminDataService, maskedId, shortId } from './admin-data.service';
 import { DrawerNavService } from './drawer-nav.service';
@@ -12,11 +12,21 @@ import { TaskDrawerComponent } from './drawers/task-drawer';
 import { RunnerDrawerComponent } from './drawers/runner-drawer';
 import { DisputeDrawerComponent } from './drawers/dispute-drawer';
 import { RefundDrawerComponent } from './drawers/refund-drawer';
+import { RunnerPayoutDrawerComponent } from './drawers/runner-payout-drawer';
 import { RefundsPanelComponent } from './panels/refunds.panel';
+import { RunnerPayoutsPanelComponent } from './panels/runner-payouts.panel';
 import { OpsDrawerComponent } from '../../shared/ops-drawer.component';
 import { InlineNoticeComponent } from '../../shared/inline-notice.component';
 
-type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'refunds' | 'reports';
+type Panel =
+  | 'map'
+  | 'queue'
+  | 'runners'
+  | 'verifications'
+  | 'disputes'
+  | 'refunds'
+  | 'runner-payouts'
+  | 'reports';
 
 /**
  * Ops shell (design `nitume_admin_dashboard.html` → `.app`): Deep Trust Blue
@@ -37,7 +47,9 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'refun
     RunnerDrawerComponent,
     DisputeDrawerComponent,
     RefundDrawerComponent,
+    RunnerPayoutDrawerComponent,
     RefundsPanelComponent,
+    RunnerPayoutsPanelComponent,
     OpsDrawerComponent,
     InlineNoticeComponent,
   ],
@@ -132,6 +144,24 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'refun
               }}</span>
             }
           </button>
+          <!-- Row 112: the runner payout ledger (p-runner-payouts). -->
+          <button
+            class="ops-nav-item"
+            [class.active]="panel() === 'runner-payouts'"
+            (click)="select('runner-payouts')"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="6" width="18" height="12" rx="2"></rect>
+              <circle cx="12" cy="12" r="2.5"></circle>
+              <path d="M6 9.5v5M18 9.5v5"></path>
+            </svg>
+            Runner payouts
+            @if (s.runnerPayoutBadge().count > 0) {
+              <span class="badge-count">{{
+                s.runnerPayoutBadge().more ? '99+' : s.runnerPayoutBadge().count
+              }}</span>
+            }
+          </button>
         </div>
 
         <div class="ops-nav-group">
@@ -190,6 +220,14 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'refun
             @case ('refunds') {
               <app-refunds-panel />
             }
+            @case ('runner-payouts') {
+              <!-- Lazy chunk: keeps the initial bundle within budget. -->
+              @defer (on immediate) {
+                <app-runner-payouts-panel />
+              } @loading {
+                <div class="ops-loading">Loading runner payouts…</div>
+              }
+            }
             @case ('reports') {
               <app-reports-panel />
             }
@@ -223,6 +261,13 @@ type Panel = 'map' | 'queue' | 'runners' | 'verifications' | 'disputes' | 'refun
           @case ('refund') {
             <app-refund-drawer [reviewId]="t.id" />
           }
+          @case ('runner_payout') {
+            @defer (on immediate) {
+              <app-runner-payout-drawer [lineId]="t.id" />
+            } @loading {
+              <div class="ops-loading">Loading runner payout…</div>
+            }
+          }
         }
       }
     </app-ops-drawer>
@@ -240,6 +285,14 @@ export class AdminDashboardComponent implements OnInit {
     const t = this.nav.current();
     return t ? [t] : [];
   });
+
+  constructor() {
+    // `View payouts` on a runner's profile: show their lines (p-runner-payouts Entry).
+    effect(() => {
+      if (!this.nav.runnerPayoutsFor()) return;
+      untracked(() => this.select('runner-payouts'));
+    });
+  }
 
   ngOnInit(): void {
     void this.s.refresh();
@@ -277,6 +330,8 @@ export class AdminDashboardComponent implements OnInit {
         return `Dispute ${shortId(t.id)}`;
       case 'refund':
         return 'Refund review';
+      case 'runner_payout':
+        return 'Runner payout';
       default:
         return '';
     }

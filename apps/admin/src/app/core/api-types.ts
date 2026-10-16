@@ -363,6 +363,8 @@ export interface CreateRefundCorrectionDto {
   reason: string;
   /** Latest correction id this drawer saw, or null when there was none (required key). */
   expectedLatestCorrectionId: string | null;
+  /** Row 136: required to go over the task cap (10-500 characters). */
+  exposureOverrideNote?: string;
 }
 
 /** An admin who decided / paid a refund (N-2). */
@@ -398,7 +400,7 @@ export interface PaidBreakdown {
 }
 
 /** `GET /refunds/:id`: list item + customer contact, paid breakdown, sibling reviews. */
-export interface RefundDetail extends RefundListItem {
+export interface RefundDetail extends RefundListItem, TaskExposureFields {
   customer: {
     userId: string;
     displayName: string | null;
@@ -433,6 +435,170 @@ export interface ErrandRefundView {
   createdAt: string;
   decidedAt?: string | null;
   paidAt?: string | null;
+}
+
+// --- Runner payout ledger (rows 104-108, 135, 136; drawer-runner-payout) ---
+/** Obligation kinds: what Nitume owes a runner (row 107). */
+export type RunnerPayoutKind = 'runner_fee' | 'item_reimbursement';
+/** Stored status of an obligation line. */
+export type RunnerPayoutStatus = 'on_hold' | 'payable' | 'paid' | 'rejected';
+/** Adjustment kinds on a paid line (same rules as refund corrections). */
+export type RunnerPayoutAdjustmentKind = 'correction' | 'reversal' | 'resent_payout';
+/** Why an item reimbursement waits for ops review (rows 105, 106, 108). */
+export type RunnerPayoutReviewReason =
+  | 'receipt_missing'
+  | 'receipt_mismatch'
+  | 'out_of_pocket_claim'
+  | 'over_purchase_limit'
+  // The item line waits at CONFIRMED while a price-decrease refund review is undecided.
+  | 'price_decrease_pending';
+
+/** Admin list item (`GET /runner-payouts`): the stored line plus effective status and summaries. */
+export interface RunnerPayoutItem {
+  id: string;
+  runnerProfileId: string;
+  errandId: string;
+  kind: RunnerPayoutKind | string;
+  status: RunnerPayoutStatus | string;
+  /** What the system computed at CONFIRMED or the runner claimed. */
+  requestedAmount: string | null;
+  /** The payable amount; null while in review or after a rejection. */
+  amount: string | null;
+  capAmount: string | null;
+  reviewReason: RunnerPayoutReviewReason | string | null;
+  receiptEvidenceId: string | null;
+  payoutReference: string | null;
+  paidAt: string | null;
+  paidByUserId: string | null;
+  note: string | null;
+  decisionNote: string | null;
+  decidedByUserId: string | null;
+  decidedAt: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  /** The stored status, except a paid line whose payout was reversed is `payable` again. */
+  effectiveStatus: RunnerPayoutStatus | string;
+  /** The payout after its adjustments; null unless the stored status is `paid`. */
+  effectivePayout: EffectivePayout | null;
+  errand: {
+    id: string;
+    reference: string;
+    title: string | null;
+    category: string;
+    status: ErrandStatusString;
+  } | null;
+  runner: { id: string; displayName: string | null; shortName: string | null } | null;
+  decidedBy: AdminRef | null;
+  paidBy: AdminRef | null;
+}
+
+/** One adjustment on a paid line, oldest first. */
+export interface RunnerPayoutCorrection {
+  id: string;
+  kind: RunnerPayoutAdjustmentKind | string;
+  previousReference: string | null;
+  previousAmount: string | null;
+  newReference: string | null;
+  newAmount: string | null;
+  reason: string;
+  createdByUserId: string | null;
+  createdBy: AdminRef | null;
+  createdAt: string;
+}
+
+/**
+ * Row 136 (N-18): the task's combined figure for customer refunds and the
+ * runner's item reimbursement. Also the extras of a 409
+ * `task_exposure_cap_exceeded` (plus `requested`).
+ */
+export interface TaskExposure {
+  totalPaidToNitume: string;
+  committedRefunds: string;
+  committedReimbursements: string;
+  /** What can still be committed without an ops override. */
+  remaining: string;
+}
+
+/** One recorded override of the task cap (row 136), oldest first. Read-only. */
+export interface TaskExposureOverride {
+  id: string;
+  source: 'refund_decision' | 'refund_correction' | 'runner_reimbursement' | string;
+  refundReviewId: string | null;
+  runnerPayoutLineId: string | null;
+  amount: string;
+  /** What the task cap allowed when the override was recorded. */
+  normalCap: string;
+  totalPaidToNitume: string;
+  committedRefunds: string;
+  committedReimbursements: string;
+  note: string;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+/** Row 136 fields on admin refund and runner payout details (optional until the API branch merges). */
+export interface TaskExposureFields {
+  taskExposure?: TaskExposure | null;
+  exposureOverrides?: TaskExposureOverride[];
+}
+
+/** `GET /runner-payouts/:id`. */
+export interface RunnerPayoutDetail extends Omit<RunnerPayoutItem, 'runner'>, TaskExposureFields {
+  runner: {
+    id: string;
+    userId: string;
+    displayName: string | null;
+    shortName: string | null;
+    /** Sign-in phone: where the manual M-Pesa payout goes (row 118). */
+    phone: string | null;
+    maxPurchaseAdvance: string;
+  } | null;
+  /** Item lines: the item amount paid to Nitume now. */
+  itemPaidToNitume: string | null;
+  /** Item lines in review: the highest amount an approval may carry (rows 105, 135). */
+  approvalCeiling: string | null;
+  corrections: RunnerPayoutCorrection[];
+  /** Paid lines: the highest amount a correction or re-sent payout may carry. */
+  correctionCeiling: string | null;
+}
+
+export interface ListRunnerPayoutsResult {
+  items: RunnerPayoutItem[];
+  nextCursor: string | null;
+}
+
+/** `GET /runner-payouts` filters (`status` is the effective status). */
+export interface RunnerPayoutQuery {
+  status?: RunnerPayoutStatus | null;
+  kind?: RunnerPayoutKind | null;
+  runnerProfileId?: string | null;
+  errandId?: string | null;
+}
+
+/** `POST /runner-payouts/:id/review`. */
+export type ReviewRunnerPayoutDto =
+  | { decision: 'approve'; amount: number; note?: string; exposureOverrideNote?: string }
+  | { decision: 'reject'; note: string };
+
+/** `POST /runner-payouts/:id/corrections`. Amounts are JSON numbers. */
+export interface CreateRunnerPayoutCorrectionDto {
+  kind: RunnerPayoutAdjustmentKind;
+  newReference?: string;
+  newAmount?: number;
+  reason: string;
+  expectedLatestCorrectionId: string | null;
+}
+
+/** `GET /errands/:errandId/evidence` item: `url` is a short-lived signed URL. */
+export interface EvidenceView {
+  id: string;
+  errandId: string;
+  type: string;
+  url: string | null;
+  urlExpiresAt: string | null;
+  capturedAt: string;
+  createdAt: string;
 }
 
 // --- Runners ---

@@ -11,7 +11,8 @@ import {
   correctionDialogParts,
   correctionDialogTitle,
   validateCorrection,
-} from './refund-correction';
+  RUNNER_PAYOUT_CORRECTION_COPY,
+} from './payout-correction';
 
 const ctx = { reference: 'SLK4H7XQ2P', amount: '1200.00', ceiling: '1200.00' };
 const form = (patch: Partial<CorrectionForm> = {}): CorrectionForm => ({
@@ -119,5 +120,18 @@ describe('payout correction rules (row 100)', () => {
     expect(correctionDialogBody(resent)).toBe(
       "M-Pesa receipt NEW8P3Q2RS. The customer will be told the refund has been sent. This can't be edited or deleted.",
     );
+  });
+
+  it('words the runner payout ceiling and dialogs (row 107)', () => {
+    const copy = RUNNER_PAYOUT_CORRECTION_COPY;
+    expect(validateCorrection(form({ amount: '1300' }), ctx, copy).amount).toBe(
+      "The amount can't be more than KSh 1,200 for this line.",
+    );
+    expect(correctionDialogBody(form({ kind: 'reversed', reference: 'RVS9K2L1MX' }), copy)).toBe(
+      "Reversal code RVS9K2L1MX. The payout will show as not sent until you record a new payout. This can't be edited or deleted.",
+    );
+    expect(
+      correctionDialogBody(form({ kind: 'resent', reference: 'NEW8P3Q2RS', amount: '1' }), copy),
+    ).toBe("M-Pesa receipt NEW8P3Q2RS. This can't be edited or deleted.");
   });
 });

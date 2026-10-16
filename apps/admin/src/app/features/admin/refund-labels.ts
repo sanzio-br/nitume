@@ -33,17 +33,6 @@ export function reviewCeiling(
   return r.status === 'pending_review' && r.refundCeiling !== null ? r.refundCeiling : r.amountPaid;
 }
 
-const CORRECTION_KIND_LABELS: Record<string, string> = {
-  corrected: 'Payout corrected',
-  reversed: 'Payout reversed',
-  resent: 'New payout sent',
-};
-
-/** Payout correction kind → card / form label (drawer-refund "Kinds", row 100). */
-export function correctionKindLabel(kind: string): string {
-  return CORRECTION_KIND_LABELS[kind] ?? refundTriggerLabel(kind);
-}
-
 /** A `refunded` review whose latest correction is a reversal: the refund is owed again. */
 export function payoutReversed(r: Pick<RefundReview, 'status' | 'effectivePayout'>): boolean {
   return r.status === 'refunded' && r.effectivePayout?.state === 'reversed';

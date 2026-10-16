@@ -154,3 +154,15 @@ export function eatLocalInputToIso(value: string): string | null {
   const date = new Date(`${value}:00+03:00`);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
+
+/** A decimal string as a money input value: `1200.00` → `1200`, `1200.5` → `1200.50`. */
+export function plainAmount(value: string | number): string {
+  const n = Number(value);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+/** `+254712345678` → `+254 712 345 678`; anything else unchanged. */
+export function formatPhone(phone: string): string {
+  const m = /^\+?254(\d{3})(\d{3})(\d{3})$/.exec(phone.replace(/\s/g, ''));
+  return m ? `+254 ${m[1]} ${m[2]} ${m[3]}` : phone;
+}

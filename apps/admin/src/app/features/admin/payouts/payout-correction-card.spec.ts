@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import type { RefundPayoutCorrection } from '../../../core/api-types';
-import { RefundCorrectionCardComponent } from './refund-correction-card';
+import { PayoutCorrectionCardComponent } from './payout-correction-card';
+import { RUNNER_PAYOUT_CORRECTION_COPY } from './payout-correction';
 
 function correction(patch: Partial<RefundPayoutCorrection> = {}): RefundPayoutCorrection {
   return {
@@ -19,7 +20,7 @@ function correction(patch: Partial<RefundPayoutCorrection> = {}): RefundPayoutCo
 }
 
 function render(c: RefundPayoutCorrection, meId: string | null = null) {
-  const fixture = TestBed.createComponent(RefundCorrectionCardComponent);
+  const fixture = TestBed.createComponent(PayoutCorrectionCardComponent);
   fixture.componentRef.setInput('correction', c);
   fixture.componentRef.setInput('meId', meId);
   fixture.detectChanges();
@@ -31,7 +32,7 @@ function render(c: RefundPayoutCorrection, meId: string | null = null) {
   return { el, rows };
 }
 
-describe('RefundCorrectionCardComponent (row 100)', () => {
+describe('PayoutCorrectionCardComponent (row 100)', () => {
   it('corrected: receipt and amount as old → new, reason, recorded by', () => {
     const { el, rows } = render(correction({ newAmount: '1100.00' }));
     expect(el.querySelector('.correction-kind')?.textContent?.trim()).toBe('Payout corrected');
@@ -87,5 +88,17 @@ describe('RefundCorrectionCardComponent (row 100)', () => {
     );
     expect(rows.at(-1)).toBe('Recorded by …beef');
     expect(el.querySelector('button, input, textarea, a')).toBeNull();
+  });
+
+  it('takes the runner payout labels (row 107, `_shared.md` §6.1)', () => {
+    const fixture = TestBed.createComponent(PayoutCorrectionCardComponent);
+    fixture.componentRef.setInput(
+      'correction',
+      correction({ kind: 'resent', newAmount: '900.00' }),
+    );
+    fixture.componentRef.setInput('copy', RUNNER_PAYOUT_CORRECTION_COPY);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.correction-kind')?.textContent?.trim()).toBe('Payout sent again');
   });
 });
