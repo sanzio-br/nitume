@@ -16,7 +16,7 @@ In-app feed of task events (quote ready, runner en route, price change, completi
 | eventType | Target |
 |---|---|
 | `errand.QUOTED` | `x-awaiting-quote` |
-| `errand.RUNNER_ASSIGNED`, `errand.RUNNER_EN_ROUTE`, `errand.ARRIVED`, `errand.IN_PROGRESS` | `v-track` for the errand |
+| `errand.RUNNER_ASSIGNED` (no longer sent, proposed row 176; old feed items still route here), `errand.RUNNER_EN_ROUTE`, `errand.ARRIVED`, `errand.IN_PROGRESS` | `v-track` for the errand |
 | `errand.AWAITING_CUSTOMER` | `v-evidence-confirm` if still AWAITING_CUSTOMER, else `v-task-detail` |
 | `errand.COMPLETED`, `errand.CONFIRMED`, `errand.SETTLED`, `errand.CANCELLED`, `errand.FAILED`, `errand.DISPUTED` | `v-task-detail` |
 | `errand.EXPIRED` (new, owner 2026-10-16; needs api-contract) | `v-task-detail` (which shows `Start a new task`) |
@@ -55,7 +55,7 @@ C-10, C-28 (unread change), C-04, C-33. Built except the unread styling change.
 
 Title and body come from the API (`title`, `body`); the app does not compose them.
 
-**EXPIRED notification** (owner decision 2026-10-16; BOARD Needs row "api-contract (round 7) | design-auditor"). Today the API sends nothing when a task expires (`NotificationEventType` has no `errand.EXPIRED`; `statusCopy` returns null for EXPIRED). New feed item + push to the errand's customer on every RUNNER_ASSIGNED → EXPIRED transition (only when no further runner can be assigned, rows 150, 157, or the task deadline is reached, row 155; an offer lapse alone sends nothing because the task does not change state):
+**EXPIRED notification** (owner decision 2026-10-16; BOARD Needs row "api-contract (round 7) | design-auditor"). Today the API sends nothing when a task expires (`NotificationEventType` has no `errand.EXPIRED`; `statusCopy` returns null for EXPIRED). New feed item + push to the errand's customer on every RUNNER_ASSIGNED → EXPIRED transition (only when matching is exhausted, row 167; there is no task deadline, row 155's deadline path is removed; a decline or an offer lapse alone sends nothing because the task does not change state):
 - `eventType`: `errand.EXPIRED` (enum `NotificationEventType.ERRAND_EXPIRED`).
 - Title (API, via the existing status builder `{title} · {status}`): `No runner available · Expired`.
 - Body, owner wording word for word (row 158, 2026-10-16), for every expired task, paid or not: `Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.`
@@ -63,6 +63,12 @@ Title and body come from the API (`title`, `body`); the app does not compose the
 - Never `refund` as a promise (`you will be refunded`, `your money is on its way`, `automatic refund`).
 - Feed row as every item: `{ id, eventType: 'errand.EXPIRED', title, body, errandId, createdAt, readAt }`; push data `{ eventType: 'errand.EXPIRED', errandId }`. The internal job carries `{ kind: 'errand_status', errandId, status: 'EXPIRED' }`; the body no longer depends on whether a refund review was opened, so `refundReviewOpened` is not needed for the copy.
 - Icon: info/clock glyph (no amber/red fill; Expired is an info-tone state, `_shared.md` §6). Deep link above.
+
+**Runner assigned / accepted (row 176, decided label; notification copy proposed, CQ-176c)**. In the offer model RUNNER_ASSIGNED means a runner was offered the task; the built API sends `Runner assigned` / `A runner has been assigned to your task.` on it (`apps/api/src/notifications/notifications.service.ts` `statusCopy`, `case ErrandStatus.RUNNER_ASSIGNED`), which is now misleading. Proposed (needs api-contract):
+- PAYMENT_CONFIRMED → RUNNER_ASSIGNED: **no** customer notification (nothing changed for the customer; they see `Finding a runner`). Re-offers, declines and lapses send nothing either.
+- RUNNER_ASSIGNED → RUNNER_EN_ROUTE (the runner accepted): `eventType` `errand.RUNNER_EN_ROUTE` (unchanged), title `Runner assigned`, body `A runner accepted your task and is on the way.` (replaces `Runner en route` / `Your runner is on the way to complete the task.`). Push channel as System Design §4.4 (`Runner assigned`: push + WhatsApp).
+- Alternative if the owner wants a message at RUNNER_ASSIGNED: title `Finding a runner`, body `We're offering your task to runners nearby. We'll tell you when one accepts.` (no time promise).
+- The app renders `title` / `body` as returned; no client change. Old `errand.RUNNER_ASSIGNED` feed items keep routing to `v-track`.
 
 States (proposed):
 - Empty: `You're all caught up.`
@@ -87,10 +93,12 @@ States (proposed):
 ## Resolved by owner answers
 - Unread styling: red dot allowed (OA-13, was Q2).
 - `errand.EXPIRED` body (row 158, 2026-10-16): owner wording, no refund sentence. The screen renders the API's `title` / `body`, so this is an API change only; the built screen stays `matches-design`.
+- Row 176 (2026-10-16): `Runner assigned` only once a runner accepted; notification changes above are API-only, the built screen stays `matches-design`.
 
 ## Open questions (non-blocking; build default given)
 - Q1: Rows tappable? Default: yes, table above.
 - Q3: Fira Code inside sentence subtitles. Default: no (whole subtitle Fira Sans).
+- CQ-176c (row 176): no notification on RUNNER_ASSIGNED and `Runner assigned` / `A runner accepted your task and is on the way.` on RUNNER_EN_ROUTE (proposed), or the `Finding a runner` alternative above?
 
 ## Current vs design
 Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. `Mark all read` in the header (core trailing slot; earlier minor closed); `merchant_details.changed` → `x-merchant-payment`; `quote.requested` is admin-only and ignored. Minor: no test for the `merchant_details.changed` deep link.
