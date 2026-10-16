@@ -306,3 +306,28 @@ clean, 220 tests, production build OK. API e2e not re-run on main (65/65 on the 
 - Admin: N-21 exception UI, stored-limit display (findings 14, 15), payout requests page, verifications
   panel. Runner: payout and onboarding screens. Customer: explicit errand.EXPIRED route.
 - e2e suite flaky in parallel (pre-existing); run with --no-file-parallelism.
+
+## Round 9–10 and runner groundwork (2026-10-16, local main, not pushed)
+
+**Merged**
+
+- `docs/owner-answers-9-specs` (5b46583): owner answers 145, 147–149, 157–166 in specs and System Design
+  (row 147 approval); new admin specs drawer-task-offer and p-runners-verification-documents.
+- `feat/core-runner-models` (da6ed47): nitume_core models/repos for runner payout requests (incl.
+  cancelled, no reason shown to the runner — row 168), payout feed, earnings summary, reimbursement
+  claims, ID/selfie upload with the 10 MB check, offer deadline / `offer_expired`, tolerant
+  `errand.EXPIRED`. Amount checks in whole cents from strings. core 379, customer 122, runner 26 tests.
+
+**In progress**
+
+- `feat/api-owner-answers-9` (api-contract): rows 157 (lapse keeps task open, latest assignment on admin
+  views), 158 copy, 159 KES 500, 161/170/171/175 retention + re-review, 162 restricted Cloudinary key,
+  163 413 code, 165, 166 ops cancel, round-8 review minors.
+- `docs/owner-answers-10-specs` (design-auditor): owner answers 167–176 ("Finding a runner", EXPIRED when
+  matching exhausted, re-review action).
+
+**Runner app plan** (owner request: build remaining screens one by one from the mockup): runner API gaps
+(RA-1/26 offers, RA-2, RA-4, RA-5, RA-6, RA-8, RA-10, RA-11, RA-12, RA-17, RA-18, RA-20, purchase-limit
+check on assign, row-167 matching-exhausted trigger) after round 9; then flutter-runner screen by screen:
+onboarding → profile → jobs → active job → job summary → earnings → notifications.
+
