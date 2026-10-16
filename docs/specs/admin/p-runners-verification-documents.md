@@ -36,7 +36,7 @@ Owner: "the decision on a pending verification is the initial review; a later re
 
 When shown: verification status `approved` or `rejected`, type `government_id` or `selfie`, `hasDocument: true`, `purgedAt: null`. Never on a pending verification (its decision is the initial review; use `Approve` / `Reject`), on a purged or missing image, or on `phone` / `payment_identity` checks.
 
-1. Button: A-07 `.btn .btn-outline` small `Re-review evidence`, in the card actions row, left of nothing else (decided cards have no `Approve` / `Reject`). Not green: it is not the primary action of the panel and it changes no decision. 40 px target.
+1. Button: A-07 `.btn .btn-outline` small `Re-review evidence`, in the card actions row (decided cards have no `Approve` / `Reject`). Not green: it is not the primary action of the panel and it changes no decision. 40 px target.
 2. Confirm (A-08 dialog):
    - Title `Re-review this evidence?`
    - Body 13 slate-600: `This records that you are reviewing the stored {type label} for {runner} again. The review is logged with your name and the time, and the image is kept for a new retention period from today. Opening the image alone never does this.`

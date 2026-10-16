@@ -16,9 +16,9 @@ The owner names the lifecycle PENDING → PAID | REJECTED | CANCELLED. The built
 |---|---|---|---|---|
 | Pay (whole lines) | any admin | optional note | `Payout sent` | `paid` |
 | Reject | any admin | required, written for the runner (5–300) | the reason (`Payout request not approved`) | `rejected` |
-| Cancel (row 166) | ops only (any admin; the runner cannot) | required free text, internal (proposed 10–500, AQ-14) | a fixed line, not the reason (proposed, AQ-13) | `cancelled` |
+| Cancel (row 166) | ops only (any admin; the runner cannot) | required free text, internal, 10–500 characters, whitespace-only invalid (row 169) | a generic `Payout request cancelled`, never the reason (row 168) | `cancelled` |
 
-Reject is a decision on the runner's request ("we won't pay this"). Cancel withdraws a request that should not stay open (for example created by mistake, a destination problem, a duplicate, or a hold for checks); if money is still owed it stays in the runner's available amount and the runner makes a new request (row 166).
+Reject is a decision on the runner's request ("we won't pay this"). Cancel withdraws a request that should not stay open (for example created by mistake, a destination problem, a duplicate, or a pending check); if money is still owed it stays in the runner's available amount and the runner makes a new request (row 166).
 
 ## Entry / exit
 - Entry: sidebar `Payments` → `Payout requests` (badge = open requests, `GET /runner-payout-requests/count?status=requested`).
@@ -36,8 +36,8 @@ Reject is a decision on the runner's request ("we won't pay this"). Cancel withd
    - Primary `Record payout · KSh {x}` → the `p-runner-payouts` dialog (receipt) → `POST /runner-payout-requests/:id/pay` `{ lineIds, payoutReference }` (marks the lines paid exactly like `mark-paid`, links them to the request, closes it `paid`, storing `paidAmount` = the total of the lines paid next to the unchanged `requestedAmount`, row 146). Confirm A-08 when the total is below the request: title `Pay KSh {x} of KSh {requested}?`; body `The request closes as paid with KSh {x}. The other KSh {requested − x} is not carried on this request; it stays owed to the runner for a new request.` (amounts Fira Code); buttons `Back` / `Record payout`.
    - Outline `Reject request` → inline A-06 `Reason the runner will see` (required, 5–300; shown to the runner in the `Payout request not approved` notification) → A-08 `Reject this request?` / `The runner can make a new request.` → `POST /runner-payout-requests/:id/reject` `{ note }`.
    - **Cancel (row 166)**: A-07 `.btn .btn-text` `Cancel request` (exists; below the two buttons, left-aligned; not red, red is a chip accent only; not green, it is not a primary action). Opens an inline section:
-     - A-06 textarea, label `Reason for cancelling`, required, counter `{n}/500` (Fira Code), hint 11.5 slate-600 `Kept in the audit trail. The runner is told the request was cancelled, not this reason.` (the second sentence depends on AQ-13; if the owner wants the reason shown, it becomes `The runner will see this reason.`).
-     - Buttons outline `Back` and primary `Continue` (enabled at 10+ characters, AQ-14) → A-08 confirm: title `Cancel this payout request?`; body `The request for KSh {requested} closes as cancelled and can't be reopened. Nothing is paid and the runner's available amount doesn't change; they can make a new request.` (amount Fira Code); buttons `Back` / `Cancel request`.
+     - A-06 textarea, label `Reason for cancelling`, required, counter `{n}/500` (Fira Code), hint 11.5 slate-600 `Kept in the audit trail. The runner is told the request was cancelled, not this reason.` (row 168, decided). Length counted after trimming; whitespace-only counts as 0 (row 169). Under 10 characters: inline error A-06 `Enter at least 10 characters.` on blur or `Continue`; the field stops at 500.
+     - Buttons outline `Back` and primary `Continue` (enabled at 10+ characters after trimming, row 169) → A-08 confirm: title `Cancel this payout request?`; body `The request for KSh {requested} closes as cancelled and can't be reopened. Nothing is paid and the runner's available amount doesn't change; they can make a new request.` (amount Fira Code); buttons `Back` / `Cancel request`.
      - → `POST /runner-payout-requests/:id/cancel` `{ reason }` → the updated view; success notice A-11 `Request cancelled.`; the runner gets `Payout request cancelled` (runner `v-notifications.md`).
 4. Read-only (closed):
    - `paid`: rows `Requested` → `requestedAmount`; `Paid` → `paidAmount` (600); chip `Paid`; `M-Pesa receipt`, `Paid at`, `Recorded by`; when `paidAmount` < `requestedAmount` a caption 12 slate-600 `KSh {requestedAmount − paidAmount} was not paid on this request.` (amount Fira Code span); `Lines` list (links to `drawer-runner-payout`).
@@ -64,15 +64,14 @@ Built on `main` (`feb1dcc`):
 - Reused: `GET /runner-payouts?status=payable&runnerProfileId=`.
 
 Missing (N-17, api-contract):
-- Row 166: `POST /runner-payout-requests/:id/cancel` `{ reason }`; status `cancelled` accepted by the `status` filter and `count`; view fields `cancelledAt`, `cancelledBy { id, displayName }` (from `cancelledByUserId`), `cancellationReason`. The runner view carries `status: 'cancelled'` and `cancelledAt`, not the reason (AQ-13 pending).
+- Row 166: `POST /runner-payout-requests/:id/cancel` `{ reason }`; status `cancelled` accepted by the `status` filter and `count`; view fields `cancelledAt`, `cancelledBy { id, displayName }` (from `cancelledByUserId`), `cancellationReason`. The runner view carries `status: 'cancelled'` and `cancelledAt`, never the reason (row 168, decided). 400 `cancellation_reason_invalid` (fewer than 10 or more than 500 characters after trimming, or whitespace only, row 169) → inline error `Enter 10 to 500 characters.`
 - Row 165: `createdBy` (from `createdByUserId`) and `updatedAt` on the admin view (both stored already).
 
 ## Owner decisions applied
-Rows 117, 118, 112. Row 146 (AQ-11): "a request paid below the requested amount closes as PAID; store requested and actual paid amounts separately (e.g. requested KES 5,000, paid KES 4,000, PAID). The remainder is not carried in the same request; it stays in available balance for a new payout request." Row 143: no payout time is shown or promised anywhere in this panel or in what it sends to the runner. Row 153: table approved. Row 159: KES 500 minimum, server config, no admin UI. Row 165: `createdByUserId` (server-side, immutable) and `updatedAt`. Row 166: ops-only cancel with a mandatory free-text reason; PENDING → PAID | REJECTED | CANCELLED, all terminal; `requested_amount` unchanged; `cancelledByUserId`, `cancelledAt`, `cancellationReason`; no reopening.
+Rows 117, 118, 112. Row 146 (AQ-11): "a request paid below the requested amount closes as PAID; store requested and actual paid amounts separately (e.g. requested KES 5,000, paid KES 4,000, PAID). The remainder is not carried in the same request; it stays in available balance for a new payout request." Row 143: no payout time is shown or promised anywhere in this panel or in what it sends to the runner. Row 153: table approved. Row 159: KES 500 minimum, server config, no admin UI. Row 165: `createdByUserId` (server-side, immutable) and `updatedAt`. Row 166: ops-only cancel with a mandatory free-text reason; PENDING → PAID | REJECTED | CANCELLED, all terminal; `requested_amount` unchanged; `cancelledByUserId`, `cancelledAt`, `cancellationReason`; no reopening. Row 168: the runner never sees the reason; authorised ops/admin see it for audit. Row 169: 10–500 characters, mandatory, whitespace-only invalid.
 
 ## Open questions for the owner
-- AQ-13: is the cancellation reason shown to the runner? Proposed no.
-- AQ-14: length rule for the reason. Proposed 10–500 characters.
+- None. AQ-13 (row 168) and AQ-14 (row 169) decided 2026-10-16.
 
 ## Current vs design
 Not built in `apps/admin` (no `payout-request` code). The API side is on `main` except cancel and the row-165 fields.
