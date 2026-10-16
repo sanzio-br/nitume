@@ -97,4 +97,75 @@ class RunnerPayoutRepository {
         },
       )
       .then(PayoutFeedPage.fromJson);
+
+  static final _day = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+  /// `GET /runners/me/earnings`: balance by kind, this EAT week by day and
+  /// a period breakdown. [from] / [to] are `YYYY-MM-DD` EAT days (use
+  /// `EarningsSummary.eatDay`); the API defaults to the last 7 days by day
+  /// and allows at most 366 days. Error: 400 `earnings_range_invalid`.
+  Future<EarningsSummary> earnings({
+    String? from,
+    String? to,
+    EarningsGroupBy? groupBy,
+  }) {
+    for (final (name, v) in [('from', from), ('to', to)]) {
+      if (v != null && !_day.hasMatch(v)) {
+        throw ArgumentError.value(v, name, 'must be YYYY-MM-DD');
+      }
+    }
+    return _api
+        .getMap(
+          '/runners/me/earnings',
+          query: {'from': ?from, 'to': ?to, 'groupBy': ?groupBy?.wire},
+        )
+        .then(EarningsSummary.fromJson);
+  }
+
+  /// Longest claim note the API accepts.
+  static const claimNoteMaxLength = 500;
+
+  /// `POST /runners/me/reimbursement-claims` (row 106): claims verified
+  /// out-of-pocket item spend on a task that ended CANCELLED or FAILED, with
+  /// the `receipt` evidence the runner uploaded on it. Returns the new feed
+  /// line (`item_reimbursement`, `on_hold`, `out_of_pocket_claim`); it
+  /// always goes to ops review. The cap is min(item amount paid to Nitume,
+  /// the runner's `max_purchase_advance`) (rows 105, 108, 135).
+  ///
+  /// Throws [ArgumentError] before sending for a non-positive [amount] or a
+  /// [note] over [claimNoteMaxLength]. API errors (`NitumeApiException.code`):
+  /// 409 `reimbursement_claim_not_allowed` (`status`), `no_item_amount_paid`,
+  /// `reimbursement_already_recorded` (`lineId`); 400 `receipt_required`,
+  /// `reimbursement_exceeds_cap` (`cap`, `itemPaidToNitume`,
+  /// `maxPurchaseAdvance`; read with `decimalDetail`); 403 not the task's
+  /// runner.
+  Future<PayoutFeedItem> claimReimbursement({
+    required String errandId,
+    required num amount,
+    required String receiptEvidenceId,
+    String? note,
+  }) {
+    if (amount <= 0) {
+      throw ArgumentError.value(amount, 'amount', 'must be above zero');
+    }
+    final trimmed = note?.trim();
+    if (trimmed != null && trimmed.length > claimNoteMaxLength) {
+      throw ArgumentError.value(
+        note,
+        'note',
+        'must be at most $claimNoteMaxLength characters',
+      );
+    }
+    return _api
+        .postMap(
+          '/runners/me/reimbursement-claims',
+          data: {
+            'errandId': errandId,
+            'amount': num.parse(amount.toStringAsFixed(2)),
+            'receiptEvidenceId': receiptEvidenceId,
+            if (trimmed != null && trimmed.isNotEmpty) 'note': trimmed,
+          },
+        )
+        .then(PayoutFeedItem.fromJson);
+  }
 }

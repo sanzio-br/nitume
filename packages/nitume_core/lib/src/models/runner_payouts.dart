@@ -403,3 +403,192 @@ class PayoutFeedPage {
     nextCursor: parseOptionalString(json['nextCursor']),
   );
 }
+
+/// Grouping of [EarningsPeriod.buckets] (`groupBy`).
+enum EarningsGroupBy {
+  day('day'),
+  week('week'),
+  month('month');
+
+  const EarningsGroupBy(this.wire);
+  final String wire;
+
+  /// `null` for unknown or absent values.
+  static EarningsGroupBy? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
+/// Balance figures of one kind of ledger line (decimal strings).
+class EarningsKindTotals {
+  const EarningsKindTotals({
+    required this.availableAmount,
+    required this.onHoldAmount,
+    required this.paidAmount,
+  });
+
+  final String availableAmount;
+  final String onHoldAmount;
+  final String paidAmount;
+
+  factory EarningsKindTotals.fromJson(Object? json) {
+    final m = json is Map ? asJsonMap(json) : const <String, dynamic>{};
+    return EarningsKindTotals(
+      availableAmount: parseDecimalOrZero(m['availableAmount']),
+      onHoldAmount: parseDecimalOrZero(m['onHoldAmount']),
+      paidAmount: parseDecimalOrZero(m['paidAmount']),
+    );
+  }
+}
+
+/// One day of the current EAT week (Monday first) for the weekly chart.
+class EarningsWeekDay {
+  const EarningsWeekDay({required this.day, required this.runnerFeeAmount});
+
+  /// `YYYY-MM-DD`, an East Africa Time calendar day (row 122).
+  final String day;
+
+  /// Runner fees earned that day, decimal string (the bar height, R-11).
+  final String runnerFeeAmount;
+
+  factory EarningsWeekDay.fromJson(Map<String, dynamic> json) =>
+      EarningsWeekDay(
+        day: '${json['day'] ?? ''}',
+        runnerFeeAmount: parseDecimalOrZero(json['runnerFeeAmount']),
+      );
+}
+
+/// One bucket (or the totals) of [EarningsPeriod]. Item reimbursements are
+/// not income: show them apart from runner fees.
+class EarningsBucket {
+  const EarningsBucket({
+    this.start,
+    required this.runnerFeeAmount,
+    required this.itemReimbursementAmount,
+    required this.paidOutAmount,
+  });
+
+  /// First day of the bucket, `YYYY-MM-DD` in EAT; `null` on the totals.
+  final String? start;
+  final String runnerFeeAmount;
+  final String itemReimbursementAmount;
+  final String paidOutAmount;
+
+  factory EarningsBucket.fromJson(Object? json) {
+    final m = json is Map ? asJsonMap(json) : const <String, dynamic>{};
+    return EarningsBucket(
+      start: parseOptionalString(m['start']),
+      runnerFeeAmount: parseDecimalOrZero(m['runnerFeeAmount']),
+      itemReimbursementAmount: parseDecimalOrZero(m['itemReimbursementAmount']),
+      paidOutAmount: parseDecimalOrZero(m['paidOutAmount']),
+    );
+  }
+}
+
+/// The breakdown for the requested range of `GET /runners/me/earnings`.
+class EarningsPeriod {
+  const EarningsPeriod({
+    required this.from,
+    required this.to,
+    required this.groupBy,
+    required this.totals,
+    required this.buckets,
+  });
+
+  /// `YYYY-MM-DD` in EAT, both included.
+  final String from;
+  final String to;
+
+  /// `null` for an unknown value.
+  final EarningsGroupBy? groupBy;
+  final EarningsBucket totals;
+  final List<EarningsBucket> buckets;
+
+  factory EarningsPeriod.fromJson(Object? json) {
+    final m = json is Map ? asJsonMap(json) : const <String, dynamic>{};
+    return EarningsPeriod(
+      from: '${m['from'] ?? ''}',
+      to: '${m['to'] ?? ''}',
+      groupBy: EarningsGroupBy.tryFromWire(m['groupBy']),
+      totals: EarningsBucket.fromJson(m['totals']),
+      buckets: [
+        for (final b in (m['buckets'] as List? ?? const []))
+          EarningsBucket.fromJson(b),
+      ],
+    );
+  }
+}
+
+/// `GET /runners/me/earnings` (`v-earnings`, RA-14): derived from the
+/// payout ledger, nothing stored (row 107, OA-6). [availableAmount] is the
+/// "Available balance": a ledger view, never a wallet. Decimal strings.
+class EarningsSummary {
+  const EarningsSummary({
+    required this.availableAmount,
+    required this.pendingAmount,
+    required this.onHoldAmount,
+    required this.paidAmount,
+    required this.runnerFee,
+    required this.itemReimbursement,
+    required this.week,
+    required this.weekTotal,
+    required this.period,
+  });
+
+  /// Payable lines plus reversed payouts not yet re-sent.
+  final String availableAmount;
+
+  /// Runner fee + item amount of tasks waiting for confirmation (not on the
+  /// ledger yet), e.g. `KSh 1,200 waiting for confirmation` on R-08.
+  final String pendingAmount;
+
+  /// Item reimbursements on hold for ops review (requested amounts).
+  final String onHoldAmount;
+
+  /// Effective total paid out.
+  final String paidAmount;
+
+  /// `byKind.runnerFee`.
+  final EarningsKindTotals runnerFee;
+
+  /// `byKind.itemReimbursement`.
+  final EarningsKindTotals itemReimbursement;
+
+  /// Current EAT week, Monday to Sunday (7 entries from the API).
+  final List<EarningsWeekDay> week;
+
+  /// Runner fees this week.
+  final String weekTotal;
+  final EarningsPeriod period;
+
+  factory EarningsSummary.fromJson(Map<String, dynamic> json) {
+    final byKind = json['byKind'] is Map
+        ? asJsonMap(json['byKind'])
+        : const <String, dynamic>{};
+    return EarningsSummary(
+      availableAmount: parseDecimalOrZero(json['availableAmount']),
+      pendingAmount: parseDecimalOrZero(json['pendingAmount']),
+      onHoldAmount: parseDecimalOrZero(json['onHoldAmount']),
+      paidAmount: parseDecimalOrZero(json['paidAmount']),
+      runnerFee: EarningsKindTotals.fromJson(byKind['runnerFee']),
+      itemReimbursement: EarningsKindTotals.fromJson(
+        byKind['itemReimbursement'],
+      ),
+      week: asJsonList(json['week']).map(EarningsWeekDay.fromJson).toList(),
+      weekTotal: parseDecimalOrZero(json['weekTotal']),
+      period: EarningsPeriod.fromJson(json['period']),
+    );
+  }
+
+  /// `YYYY-MM-DD` of [instant] in East Africa Time (UTC+3 all year), the
+  /// day format of `from` / `to`.
+  static String eatDay(DateTime instant) {
+    final eat = instant.toUtc().add(const Duration(hours: 3));
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${eat.year.toString().padLeft(4, '0')}-${two(eat.month)}-'
+        '${two(eat.day)}';
+  }
+}

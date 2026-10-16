@@ -378,4 +378,29 @@ abstract final class ApiErrorCodes {
   /// `RunnerAccountRepository.uploadVerificationDocument` instead.
   static const verificationDocumentUploadRequired =
       'verification_document_upload_required';
+
+  /// `GET /runners/me/earnings`: a bad date, `from` after `to`, or more than
+  /// 366 days (400). Details: `from`, `to`.
+  static const earningsRangeInvalid = 'earnings_range_invalid';
+
+  /// Reimbursement claim on a task that did not end CANCELLED or FAILED
+  /// (409, row 106). Details: `status`.
+  static const reimbursementClaimNotAllowed = 'reimbursement_claim_not_allowed';
+
+  /// Reimbursement claim: no item amount was paid to Nitume on the task
+  /// (409).
+  static const noItemAmountPaid = 'no_item_amount_paid';
+
+  /// Reimbursement claim: an item reimbursement line already exists for the
+  /// task (409). Details: `lineId`. Reload and show the existing line.
+  static const reimbursementAlreadyRecorded = 'reimbursement_already_recorded';
+
+  /// Reimbursement claim without the runner's own `receipt` evidence on the
+  /// task (400).
+  static const receiptRequired = 'receipt_required';
+
+  /// Reimbursement claim above the cap (400, rows 105, 108, 135). Details:
+  /// `cap`, `itemPaidToNitume`, `maxPurchaseAdvance` (decimal strings; read
+  /// with [NitumeApiException.decimalDetail]).
+  static const reimbursementExceedsCap = 'reimbursement_exceeds_cap';
 }
