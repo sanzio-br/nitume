@@ -146,9 +146,7 @@ class RunnerAccountRepository {
         'skills': [for (final s in skills) s.wire],
       },
     );
-    return [
-      for (final s in (data as List? ?? const [])) RunnerSkill.fromWire('$s'),
-    ];
+    return RunnerSkill.listFromWire(data);
   }
 
   /// `PUT /runners/me/service-areas` (≤ 50, each ≤ 64 characters). Returns

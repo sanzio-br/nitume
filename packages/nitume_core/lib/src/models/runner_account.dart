@@ -127,9 +127,7 @@ class RunnerMe {
       maxPurchaseAdvance: parseDecimalOrZero(json['maxPurchaseAdvance']),
       lastPingAt: parseDate(json['lastPingAt']),
       shortName: parseOptionalString(json['shortName']),
-      skills: skills is List
-          ? [for (final s in skills) RunnerSkill.fromWire('$s')]
-          : null,
+      skills: skills is List ? RunnerSkill.listFromWire(skills) : null,
       serviceAreas: areas is List ? [for (final a in areas) '$a'] : null,
     );
   }

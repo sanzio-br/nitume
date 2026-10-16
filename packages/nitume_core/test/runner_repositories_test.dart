@@ -88,11 +88,11 @@ void main() {
       final me = RunnerMe.fromJson({
         ..._profile,
         'shortName': 'Brian K.',
-        'skills': ['inspection'],
+        'skills': ['inspection', 'shopping'],
         'serviceAreas': ['Nyali'],
       });
       expect(me.shortName, 'Brian K.');
-      expect(me.skills, [RunnerSkill.inspection]);
+      expect(me.skills, [RunnerSkill.checkItForMe]);
       expect(me.serviceAreas, ['Nyali']);
     });
 
@@ -169,17 +169,17 @@ void main() {
 
     test('skills and areas use PUT', () async {
       final a = _Adapter({
-        'PUT /runners/me/skills': (200, ['inspection', 'shopping']),
+        'PUT /runners/me/skills': (200, ['inspection', 'buy_for_me']),
         'PUT /runners/me/service-areas': (200, ['Nyali']),
       });
       final repo = RunnerAccountRepository(_client(a));
       expect(
-        await repo.setSkills([RunnerSkill.inspection, RunnerSkill.shopping]),
-        [RunnerSkill.inspection, RunnerSkill.shopping],
+        await repo.setSkills([RunnerSkill.checkItForMe, RunnerSkill.buyForMe]),
+        [RunnerSkill.buyForMe, RunnerSkill.checkItForMe],
       );
       expect(await repo.setServiceAreas(['Nyali', 'Nyali']), ['Nyali']);
       expect(a.bodies.first, {
-        'skills': ['inspection', 'shopping'],
+        'skills': ['inspection', 'buy_for_me'],
       });
     });
   });
