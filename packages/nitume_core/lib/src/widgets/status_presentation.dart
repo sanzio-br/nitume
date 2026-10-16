@@ -41,3 +41,18 @@ ErrandStatusPresentation statusPresentation(ErrandStatus status) {
     ErrandStatus.disputed => (label: 'Disputed', tone: StatusTone.danger),
   };
 }
+
+/// C-19. Customer timeline step title for a status history row.
+///
+/// Customer app only (`_shared.md` §6.1, owner rows 176 and 182):
+/// - RUNNER_ASSIGNED returns `null`: the offer step is hidden, since it
+///   would repeat `Finding a runner` and re-offers would add more rows.
+/// - RUNNER_EN_ROUTE returns `Runner assigned`: the acceptance step.
+/// - Every other state returns its [statusPresentation] label.
+String? customerTimelineTitle(ErrandStatus status) {
+  return switch (status) {
+    ErrandStatus.runnerAssigned => null,
+    ErrandStatus.runnerEnRoute => 'Runner assigned',
+    _ => statusPresentation(status).label,
+  };
+}

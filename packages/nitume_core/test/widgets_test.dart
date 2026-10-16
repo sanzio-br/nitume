@@ -16,6 +16,30 @@ Color? _borderColor(WidgetTester tester, Finder f) {
 }
 
 void main() {
+  group('customerTimelineTitle', () {
+    test('hides the RUNNER_ASSIGNED offer step (row 176)', () {
+      expect(customerTimelineTitle(ErrandStatus.runnerAssigned), isNull);
+    });
+
+    test('titles the RUNNER_EN_ROUTE step Runner assigned (row 182)', () {
+      expect(customerTimelineTitle(ErrandStatus.runnerEnRoute),
+          'Runner assigned');
+    });
+
+    test('uses the C-06 label for every other state', () {
+      for (final s in ErrandStatus.values) {
+        if (s == ErrandStatus.runnerAssigned ||
+            s == ErrandStatus.runnerEnRoute) {
+          continue;
+        }
+        expect(customerTimelineTitle(s), statusPresentation(s).label);
+      }
+      expect(customerTimelineTitle(ErrandStatus.paymentConfirmed),
+          'Finding a runner');
+      expect(customerTimelineTitle(ErrandStatus.arrived), 'Arrived');
+    });
+  });
+
   group('statusPresentation', () {
     test('covers every state with the §6 labels', () {
       for (final s in ErrandStatus.values) {
