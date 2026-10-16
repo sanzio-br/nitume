@@ -63,27 +63,39 @@ class RunnerAccountRepository {
         .then(RunnerVerification.fromJson);
   }
 
-  /// `POST /runners/me/verifications/documents` (multipart: `file` +
-  /// `verificationType`): stores one ID side or selfie in restricted storage
-  /// and creates a `pending` record (rows 125, 154). One call per image: ID
-  /// front and back are two calls with
-  /// [RunnerVerificationType.governmentId].
+  /// `POST /runners/me/verifications/documents` (multipart: `file`,
+  /// `verificationType` and, for an ID, `side`): stores one ID side or
+  /// selfie in restricted storage and creates a `pending` record (rows 125,
+  /// 154). One call per image: ID front and back are two calls with
+  /// [RunnerVerificationType.governmentId] and [side]
+  /// [VerificationDocumentSide.front] / [VerificationDocumentSide.back]
+  /// (rows 195, 200).
   ///
   /// Throws [ArgumentError] before sending when [type] is not uploadable,
-  /// [bytes] is empty or above [VerificationDocumentRules.maxBytes] (row
-  /// 163), or [contentType] is not an accepted image type. API errors
+  /// [side] is missing for a government ID or given for a selfie, [bytes]
+  /// is empty or above [VerificationDocumentRules.maxBytes] (row 163), or
+  /// [contentType] is not an accepted image type. API errors
   /// (`NitumeApiException.code`): `verification_type_not_uploadable`,
-  /// `verification_document_type_invalid`, `verification_document_empty`;
-  /// a 413 above the server limit (`NitumeApiException.isPayloadTooLarge`;
-  /// code `verification_document_too_large` with `maxBytes` when sent).
+  /// `verification_document_side_invalid` (`allowed`),
+  /// `verification_document_type_invalid` (`allowed`),
+  /// `verification_document_empty`; a 413 above the server limit
+  /// (`NitumeApiException.isPayloadTooLarge`; code
+  /// `verification_document_too_large` with `maxBytes` when sent).
   Future<RunnerVerification> uploadVerificationDocument(
     RunnerVerificationType type, {
     required Uint8List bytes,
     required String contentType,
+    VerificationDocumentSide? side,
     String? filename,
   }) {
     if (!VerificationDocumentRules.uploadableTypes.contains(type)) {
       throw ArgumentError.value(type, 'type', 'Only ID and selfie images');
+    }
+    if (type == RunnerVerificationType.governmentId && side == null) {
+      throw ArgumentError.notNull('side');
+    }
+    if (type != RunnerVerificationType.governmentId && side != null) {
+      throw ArgumentError.value(side, 'side', 'Only sent with an ID image');
     }
     if (!VerificationDocumentRules.fitsSizeLimit(bytes.length)) {
       throw ArgumentError.value(
@@ -101,9 +113,13 @@ class RunnerAccountRepository {
     }
     final form = FormData.fromMap({
       'verificationType': type.wire,
+      if (side != null) 'side': side.wire,
       'file': MultipartFile.fromBytes(
         bytes,
-        filename: filename ?? '${type.wire}${_extensionFor(contentType)}',
+        filename:
+            filename ??
+            '${type.wire}${side == null ? '' : '_${side.wire}'}'
+                '${_extensionFor(contentType)}',
         contentType: DioMediaType.parse(contentType),
       ),
     });

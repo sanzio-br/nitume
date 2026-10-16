@@ -72,6 +72,15 @@ class NitumeApiException implements Exception {
   /// `availableAmount` of a [ApiErrorCodes.payoutExceedsAvailable] error.
   String? get availableAmount => decimalDetail('availableAmount');
 
+  /// `allowed` detail: the accepted values, e.g. image types for
+  /// [ApiErrorCodes.verificationDocumentTypeInvalid] or ID sides for
+  /// [ApiErrorCodes.verificationDocumentSideInvalid] (empty when no side may
+  /// be sent). `null` when absent.
+  List<String>? get allowed {
+    final v = details['allowed'];
+    return v is List ? [for (final e in v) '$e'] : null;
+  }
+
   /// HTTP 413: the upload is above the server's size limit (e.g. an ID image
   /// over 10 MB, row 163). Newer APIs send
   /// [ApiErrorCodes.verificationDocumentTooLarge] with `maxBytes`; older
@@ -375,6 +384,12 @@ abstract final class ApiErrorCodes {
   /// HEIC image (400). Details: `allowed`.
   static const verificationDocumentTypeInvalid =
       'verification_document_type_invalid';
+
+  /// `POST /runners/me/verifications/documents`: a government ID without a
+  /// `front` / `back` side, or a selfie with one (400, rows 195, 200).
+  /// Details: `allowed` ([NitumeApiException.allowed]; `[]` for a selfie).
+  static const verificationDocumentSideInvalid =
+      'verification_document_side_invalid';
 
   /// `POST /runners/me/verifications/documents`: no file or an empty file
   /// (400).

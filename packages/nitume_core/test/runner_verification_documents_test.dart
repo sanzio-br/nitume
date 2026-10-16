@@ -48,6 +48,7 @@ const _view = {
   'id': 'v9',
   'runnerProfileId': 'rp1',
   'verificationType': 'government_id',
+  'side': 'front',
   'status': 'pending',
   'reviewerNote': null,
   'reviewedBy': null,
@@ -83,6 +84,115 @@ void main() {
       });
       expect(v.hasDocument, isFalse);
       expect(v.purgedAt, isNull);
+      expect(v.side, isNull);
+    });
+
+    test('side parses tolerantly; null for selfies and older ID rows', () {
+      expect(
+        RunnerVerification.fromJson(_view).side,
+        VerificationDocumentSide.front,
+      );
+      expect(
+        RunnerVerification.fromJson({..._view, 'side': ' BACK '}).side,
+        VerificationDocumentSide.back,
+      );
+      expect(
+        RunnerVerification.fromJson({..._view, 'side': null}).side,
+        isNull,
+      );
+      expect(
+        RunnerVerification.fromJson({..._view, 'side': 'left'}).side,
+        isNull,
+      );
+      expect(RunnerVerification.fromJson({..._view, 'side': 1}).side, isNull);
+      final legacy = Map<String, dynamic>.of(_view)..remove('side');
+      expect(RunnerVerification.fromJson(legacy).side, isNull);
+    });
+  });
+
+  group('VerificationDocumentSide', () {
+    test('lowercase wire values and display labels', () {
+      expect(VerificationDocumentSide.values.map((e) => e.wire), [
+        'front',
+        'back',
+      ]);
+      expect(VerificationDocumentSide.front.label, 'Front');
+      expect(VerificationDocumentSide.back.label, 'Back');
+      expect(
+        VerificationDocumentSide.tryFromWire('Front'),
+        VerificationDocumentSide.front,
+      );
+      expect(VerificationDocumentSide.tryFromWire(''), isNull);
+      expect(VerificationDocumentSide.tryFromWire(null), isNull);
+    });
+  });
+
+  group('RunnerVerificationDocuments', () {
+    RunnerVerification rec(
+      String id,
+      String type, {
+      String? side,
+      String? at,
+      String status = 'pending',
+    }) => RunnerVerification.fromJson({
+      'id': id,
+      'verificationType': type,
+      'side': side,
+      'status': status,
+      'createdAt': at,
+    });
+
+    test('newest record per ID side and selfie; front before back', () {
+      final docs = RunnerVerificationDocuments.fromRecords([
+        rec('b1', 'government_id', side: 'back', at: '2026-10-14T08:00:00Z'),
+        rec(
+          'f1',
+          'government_id',
+          side: 'front',
+          at: '2026-10-14T08:00:00Z',
+          status: 'rejected',
+        ),
+        rec('f2', 'government_id', side: 'front', at: '2026-10-16T08:00:00Z'),
+        rec('s1', 'selfie', at: '2026-10-15T08:00:00Z'),
+        rec('s2', 'selfie', at: '2026-10-16T09:00:00Z'),
+        rec('p1', 'payment_identity', at: '2026-10-16T10:00:00Z'),
+      ]);
+      expect(docs.idFront!.id, 'f2');
+      expect(docs.idBack!.id, 'b1');
+      expect(docs.selfie!.id, 's2');
+      expect(docs.idUnknownSide, isNull);
+      expect(docs.idFor(VerificationDocumentSide.front)!.id, 'f2');
+      expect(docs.idFor(VerificationDocumentSide.back)!.id, 'b1');
+    });
+
+    test('legacy ID without a side fills no tile but stays visible', () {
+      final docs = RunnerVerificationDocuments.fromRecords([
+        rec('old1', 'government_id', at: '2026-09-01T08:00:00Z'),
+        rec('old2', 'government_id', at: '2026-09-02T08:00:00Z'),
+        rec('f1', 'government_id', side: 'front', at: '2026-10-16T08:00:00Z'),
+      ]);
+      expect(docs.idFront!.id, 'f1');
+      expect(docs.idBack, isNull);
+      expect(docs.idUnknownSide!.id, 'old2');
+    });
+
+    test('ties and missing dates keep the first record (newest first)', () {
+      final docs = RunnerVerificationDocuments.fromRecords([
+        rec('f-new', 'government_id', side: 'front'),
+        rec('f-old', 'government_id', side: 'front'),
+        rec('b-new', 'government_id', side: 'back', at: '2026-10-16T08:00:00Z'),
+        rec('b-old', 'government_id', side: 'back', at: '2026-10-16T08:00:00Z'),
+      ]);
+      expect(docs.idFront!.id, 'f-new');
+      expect(docs.idBack!.id, 'b-new');
+    });
+
+    test('empty list', () {
+      final docs = RunnerVerificationDocuments.fromRecords(const []);
+      expect(docs.idFront, isNull);
+      expect(docs.idBack, isNull);
+      expect(docs.idUnknownSide, isNull);
+      expect(docs.selfie, isNull);
     });
   });
 
@@ -119,15 +229,17 @@ void main() {
   });
 
   group('uploadVerificationDocument', () {
-    test('sends multipart file + verificationType', () async {
+    test('sends multipart file + verificationType + side', () async {
       final a = _Adapter(201, _view);
       final v = await _repo(a).uploadVerificationDocument(
         RunnerVerificationType.governmentId,
         bytes: Uint8List.fromList([1, 2, 3]),
         contentType: 'image/jpeg',
+        side: VerificationDocumentSide.front,
       );
       expect(v.id, 'v9');
       expect(v.hasDocument, isTrue);
+      expect(v.side, VerificationDocumentSide.front);
       final req = a.last!;
       expect(req.method, 'POST');
       expect(req.path, '/runners/me/verifications/documents');
@@ -138,17 +250,21 @@ void main() {
       final form = req.data as FormData;
       expect(
         {for (final f in form.fields) f.key: f.value},
-        {'verificationType': 'government_id'},
+        {'verificationType': 'government_id', 'side': 'front'},
       );
       final file = form.files.single;
       expect(file.key, 'file');
       expect(file.value.length, 3);
-      expect(file.value.filename, 'government_id.jpg');
+      expect(file.value.filename, 'government_id_front.jpg');
       expect(file.value.contentType.toString(), 'image/jpeg');
     });
 
     test('selfie with a filename', () async {
-      final a = _Adapter(201, {..._view, 'verificationType': 'selfie'});
+      final a = _Adapter(201, {
+        ..._view,
+        'verificationType': 'selfie',
+        'side': null,
+      });
       final v = await _repo(a).uploadVerificationDocument(
         RunnerVerificationType.selfie,
         bytes: Uint8List.fromList([9]),
@@ -156,9 +272,112 @@ void main() {
         filename: 'me.png',
       );
       expect(v.type, RunnerVerificationType.selfie);
+      expect(v.side, isNull);
       final form = a.last!.data as FormData;
+      expect(form.fields.single.key, 'verificationType');
       expect(form.fields.single.value, 'selfie');
       expect(form.files.single.value.filename, 'me.png');
+    });
+
+    test('back side of an ID', () async {
+      final a = _Adapter(201, {..._view, 'side': 'back'});
+      final v = await _repo(a).uploadVerificationDocument(
+        RunnerVerificationType.governmentId,
+        bytes: Uint8List.fromList([1]),
+        contentType: 'image/png',
+        side: VerificationDocumentSide.back,
+      );
+      expect(v.side, VerificationDocumentSide.back);
+      final form = a.last!.data as FormData;
+      expect({for (final f in form.fields) f.key: f.value}['side'], 'back');
+      expect(form.files.single.value.filename, 'government_id_back.png');
+    });
+
+    test('side is required for an ID and refused for a selfie', () {
+      final a = _Adapter(201, _view);
+      final repo = _repo(a);
+      expect(
+        () => repo.uploadVerificationDocument(
+          RunnerVerificationType.governmentId,
+          bytes: Uint8List.fromList([1]),
+          contentType: 'image/jpeg',
+        ),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'side')),
+      );
+      expect(
+        () => repo.uploadVerificationDocument(
+          RunnerVerificationType.selfie,
+          bytes: Uint8List.fromList([1]),
+          contentType: 'image/jpeg',
+          side: VerificationDocumentSide.front,
+        ),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'side')),
+      );
+      expect(a.calls, 0);
+    });
+
+    test('surfaces verification_document_side_invalid with allowed', () async {
+      final a = _Adapter(400, {
+        'statusCode': 400,
+        'code': 'verification_document_side_invalid',
+        'message': 'Say which side of the ID this is: front or back',
+        'allowed': ['front', 'back'],
+      });
+      await expectLater(
+        _repo(a).uploadVerificationDocument(
+          RunnerVerificationType.governmentId,
+          bytes: Uint8List.fromList([1]),
+          contentType: 'image/jpeg',
+          side: VerificationDocumentSide.front,
+        ),
+        throwsA(
+          isA<NitumeApiException>()
+              .having(
+                (e) => e.code,
+                'code',
+                ApiErrorCodes.verificationDocumentSideInvalid,
+              )
+              .having((e) => e.allowed, 'allowed', ['front', 'back']),
+        ),
+      );
+    });
+
+    test('allowed is [] for a selfie refusal and null when absent', () async {
+      final a = _Adapter(400, {
+        'statusCode': 400,
+        'code': 'verification_document_side_invalid',
+        'message': 'A side is only sent with an ID image',
+        'allowed': <String>[],
+      });
+      await expectLater(
+        _repo(a).uploadVerificationDocument(
+          RunnerVerificationType.selfie,
+          bytes: Uint8List.fromList([1]),
+          contentType: 'image/jpeg',
+        ),
+        throwsA(
+          isA<NitumeApiException>().having(
+            (e) => e.allowed,
+            'allowed',
+            isEmpty,
+          ),
+        ),
+      );
+      final b = _Adapter(400, {
+        'statusCode': 400,
+        'code': 'verification_document_empty',
+        'message': 'Empty',
+      });
+      await expectLater(
+        _repo(b).uploadVerificationDocument(
+          RunnerVerificationType.selfie,
+          bytes: Uint8List.fromList([1]),
+          contentType: 'image/jpeg',
+        ),
+        throwsA(
+          isA<NitumeApiException>().having((e) => e.allowed, 'allowed', null),
+        ),
+      );
     });
 
     test('client-side checks refuse before sending', () {
@@ -237,6 +456,7 @@ void main() {
           RunnerVerificationType.governmentId,
           bytes: Uint8List.fromList([1]),
           contentType: 'image/webp',
+          side: VerificationDocumentSide.back,
         ),
         throwsA(
           isA<NitumeApiException>()
