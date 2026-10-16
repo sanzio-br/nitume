@@ -174,7 +174,8 @@ export class ReviewRunnerPayoutDto {
    * Row 142 / 151 (N-21): reason for approving above the runner's purchase
    * limit (10-500 characters, checked by the service so the error carries
    * `purchase_limit_override_note_invalid`). Only used when the amount is
-   * above `approvalCeiling`; ignored otherwise.
+   * above `approvalCeiling`; ignored otherwise: not validated, not stored,
+   * no `task_exposure_overrides` row (review minor 10).
    */
   @IsOptional()
   @IsString()
@@ -260,7 +261,7 @@ export class ListMyPayoutRequestsQueryDto {
   limit?: number;
 }
 
-const REQUEST_STATUSES = ['requested', 'paid', 'rejected'] as const;
+const REQUEST_STATUSES = ['requested', 'paid', 'rejected', 'cancelled'] as const;
 
 export class ListPayoutRequestsQueryDto extends ListMyPayoutRequestsQueryDto {
   @IsOptional()
@@ -286,4 +287,16 @@ export class RejectPayoutRequestDto {
   @IsString()
   @MaxLength(1000)
   note: string;
+}
+
+/**
+ * POST /runner-payout-requests/:id/cancel (rows 166, 169): mandatory ops
+ * reason, 10-500 after trim. Checked by the service so a missing, blank,
+ * short or long reason all answer 400 cancellation_reason_invalid.
+ */
+export class CancelPayoutRequestDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reason?: string;
 }

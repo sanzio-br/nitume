@@ -93,6 +93,7 @@ const collection = {
     { key: 'payout_line_id', value: '', type: 'string' },
     { key: 'receipt_evidence_id', value: '', type: 'string' },
     { key: 'refund_id', value: '', type: 'string' },
+    { key: 'payout_request_id', value: '', type: 'string' },
   ],
   item: [
     folder('0_Health', [
@@ -223,6 +224,51 @@ const collection = {
       post('Admin hold item line (receipt mismatch)', '/runner-payouts/{{payout_line_id}}/hold', '{\n  "note": "Receipt total does not match"\n}', 'admin'),
       post('Admin mark paid (one M-Pesa payout, one runner)', '/runner-payouts/mark-paid', '{\n  "lineIds": ["{{payout_line_id}}"],\n  "payoutReference": "SLK4H7XQ2P"\n}', 'admin'),
       post('Admin correction / reversal / resent_payout', '/runner-payouts/{{payout_line_id}}/corrections', '{\n  "kind": "reversal",\n  "newReference": "RVS1234567",\n  "reason": "Sent to the wrong number",\n  "expectedLatestCorrectionId": null\n}', 'admin'),
+    ]),
+    folder('11_Owner_Answers_Rounds_8_9_2026_10_16', [
+      // Round 8 (rows 117, 146, 151-154) and round 9 (rows 157-184, review minors).
+      post('Admin review above the purchase limit (rows 142, 151; note 10-500, ignored under the ordinary ceiling)', '/runner-payouts/{{payout_line_id}}/review', '{\n  "decision": "approve",\n  "amount": 3500,\n  "purchaseLimitOverrideNote": "Approved by ops lead on the phone"\n}', 'admin'),
+      req('Runner payout request summary (minimumAmount KES 500, availableAmount, requestableAmount, openRequest)', 'GET', '/runners/me/payout-requests/summary', 'runner'),
+      {
+        ...post('Runner request a payout (Idempotency-Key bound to the amount)', '/runners/me/payout-requests', '{\n  "amount": 1500\n}', 'runner'),
+        request: {
+          ...post('x', '/runners/me/payout-requests', '{\n  "amount": 1500\n}', 'runner').request,
+          header: [
+            ...bearer('runner'),
+            { key: 'Content-Type', value: 'application/json' },
+            { key: 'Idempotency-Key', value: '{{$guid}}' },
+          ],
+        },
+      },
+      req('Runner payout requests (requested | paid | rejected | cancelled; no cancel reason)', 'GET', '/runners/me/payout-requests?limit=25', 'runner'),
+      req('Admin payout requests (status filter incl. cancelled)', 'GET', '/runner-payout-requests?status=requested', 'admin'),
+      req('Admin payout request count (badge)', 'GET', '/runner-payout-requests/count?status=requested', 'admin'),
+      req('Admin payout request detail (createdBy, updatedAt, cancel fields)', 'GET', '/runner-payout-requests/{{payout_request_id}}', 'admin'),
+      post('Admin pay a request with whole payable lines', '/runner-payout-requests/{{payout_request_id}}/pay', '{\n  "lineIds": ["{{payout_line_id}}"],\n  "payoutReference": "SGH81PRQ01"\n}', 'admin'),
+      post('Admin reject a request (note 5-300, shown to the runner)', '/runner-payout-requests/{{payout_request_id}}/reject', '{\n  "note": "Please confirm your M-Pesa name first"\n}', 'admin'),
+      post('Admin cancel a request (row 166; reason 10-500, ops only)', '/runner-payout-requests/{{payout_request_id}}/cancel', '{\n  "reason": "Destination number failed the fraud check"\n}', 'admin'),
+      {
+        name: 'Runner upload ID side or selfie (multipart, 10 MB, JPEG/PNG/WebP/HEIC by bytes, side front|back for an ID)',
+        request: {
+          method: 'POST',
+          header: bearer('runner'),
+          body: {
+            mode: 'formdata',
+            formdata: [
+              { key: 'verificationType', value: 'government_id', type: 'text' },
+              { key: 'side', value: 'front', type: 'text', description: 'front | back, government_id only (row 195)' },
+              { key: 'file', type: 'file', src: '' },
+            ],
+          },
+          url: u('{{baseUrl}}/runners/me/verifications/documents'),
+        },
+        response: [],
+      },
+      req('Admin verification queue (hasDocument, purgedAt, reviewer, reReviews[])', 'GET', '/runners/verifications?status=pending&limit=50', 'admin'),
+      req('Admin signed ID image link (<= 5 min, logged; never restarts retention)', 'GET', '/runners/verifications/{{verification_id}}/document', 'admin'),
+      post('Admin re-review evidence (row 171; optional note <= 500; restarts retention)', '/runners/verifications/{{verification_id}}/re-review', '{\n  "note": "Second check after a fraud flag"\n}', 'admin'),
+      req('Admin errand detail (lastAssignment, assignments[], offerWindowSeconds)', 'GET', '/errands/{{errand_id}}', 'admin'),
+      post('Admin offer / re-offer a runner (409 runner_already_offered)', '/errands/{{errand_id}}/assign', '{\n  "runnerProfileId": "{{runner_id}}"\n}', 'admin'),
     ]),
   ],
 };

@@ -5,7 +5,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { ErrandStatus, StatusHistoryActor, UserRole } from '../src/common/enums';
 import { ErrandsService } from '../src/errands/errands.service';
@@ -17,7 +17,8 @@ import { PaymentsService } from '../src/payments/payments.service';
 /**
  * Contract checks for the owner answers 7 (BOARD rows 140, 141: a
  * runner-favour dispute keeps the runner's payout lines; an offer lapsing
- * unaccepted expires the task at once). Every row created here is removed in
+ * unaccepted expires the offer, and per row 157 the task stays
+ * RUNNER_ASSIGNED for reassignment). Every row created here is removed in
  * afterAll.
  */
 describe('Owner answers 7 (e2e)', () => {
@@ -216,7 +217,7 @@ describe('Owner answers 7 (e2e)', () => {
       [errandId],
     );
 
-  it('an admin offer is open 10 minutes; once it lapses the accept is refused and the task goes EXPIRED at once (rows 114, 141)', async () => {
+  it('an admin offer is open 10 minutes; once it lapses the accept is refused, the offer expires and the task stays RUNNER_ASSIGNED for reassignment (rows 114, 141, 157)', async () => {
     const { customer, admin, runner, errand } = await paidAndAssigned();
     const detail = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(runner.token)).expect(200);
     const deadline = new Date(detail.body.assignment.offerExpiresAt).getTime();
@@ -232,65 +233,105 @@ describe('Owner answers 7 (e2e)', () => {
 
     expect(await app.get(ErrandsService).expireLapsedOffers()).toContain(errand.id);
     const after = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
-    expect(after.body.status).toBe('EXPIRED');
+    expect(after.body.status).toBe('RUNNER_ASSIGNED');
+    expect(after.body.assignment).toBeNull();
     expect(await assignmentOf(errand.id)).toMatchObject({ status: 'expired' });
+    // No status change, so no history row and no refund review (row 157).
     const history = (await db().query(
-      `SELECT "fromStatus", "toStatus", "actorType" FROM "errand_status_history" WHERE "errandId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+      `SELECT "toStatus" FROM "errand_status_history" WHERE "errandId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
       [errand.id],
-    )) as { fromStatus: string; toStatus: string; actorType: string }[];
-    expect(history[0]).toMatchObject({ fromStatus: 'RUNNER_ASSIGNED', toStatus: 'EXPIRED', actorType: 'system' });
-    // The paid task opens its refund review (row 102), no automatic refund.
-    const reviews = (await db().query('SELECT trigger, status FROM "refund_reviews" WHERE "errandId" = $1', [
-      errand.id,
-    ])) as { trigger: string; status: string }[];
-    expect(reviews).toEqual([expect.objectContaining({ trigger: 'expired_after_payment' })]);
+    )) as { toStatus: string }[];
+    expect(history[0].toStatus).toBe('RUNNER_ASSIGNED');
+    expect(await db().query('SELECT id FROM "refund_reviews" WHERE "errandId" = $1', [errand.id])).toEqual([]);
 
-    // No acceptance after expiry, and no reassignment of an EXPIRED task.
+    // The runner has lost the task: the accept is still 409 offer_expired.
     const again = await setStatus(runner, errand.id, 'RUNNER_EN_ROUTE', 409);
-    expect(again.body.code).toBe('illegal_transition');
+    expect(again.body).toMatchObject({ code: 'offer_expired', offerExpiresAt: late.body.offerExpiresAt });
+    expect(await app.get(ErrandsService).isCurrentRunner(errand.id, runner.id)).toBe(false);
+    // Idempotent: a second sweep expires nothing more.
+    expect(await app.get(ErrandsService).expireLapsedOffers()).not.toContain(errand.id);
+
+    // The admin offers the task to another runner, as after a decline.
+    const other = await makeUser(UserRole.RUNNER);
+    const reassigned = await http()
+      .post(`/api/v1/errands/${errand.id}/assign`)
+      .set(bearer(admin.token))
+      .send({ runnerProfileId: other.profileId })
+      .expect(201);
+    expect(reassigned.body.history).toBeNull();
+    const fresh = await assignmentOf(errand.id);
+    expect(fresh.status).toBe('assigned');
+    expect(new Date(fresh.offerExpiresAt as Date).getTime()).toBeGreaterThan(Date.now() + 540_000);
+    await setStatus(other, errand.id, 'RUNNER_EN_ROUTE');
+  });
+
+  it('the admin can reassign a lapsed offer before the sweep reaches it (row 157)', async () => {
+    const { admin, runner, errand } = await paidAndAssigned();
+    await lapse(errand.id);
+    const other = await makeUser(UserRole.RUNNER);
     await http()
       .post(`/api/v1/errands/${errand.id}/assign`)
       .set(bearer(admin.token))
-      .send({ runnerProfileId: runner.profileId })
-      .expect(409);
-    // Idempotent: a second sweep expires nothing more.
+      .send({ runnerProfileId: other.profileId })
+      .expect(201);
+    const rows = (await db().query(
+      `SELECT "runnerProfileId", status FROM "errand_assignments" WHERE "errandId" = $1 ORDER BY "createdAt"`,
+      [errand.id],
+    )) as { runnerProfileId: string; status: string }[];
+    expect(rows).toEqual([
+      { runnerProfileId: runner.profileId, status: 'expired' },
+      { runnerProfileId: other.profileId, status: 'assigned' },
+    ]);
     expect(await app.get(ErrandsService).expireLapsedOffers()).not.toContain(errand.id);
+    const late = await setStatus(runner, errand.id, 'RUNNER_EN_ROUTE', 409);
+    expect(late.body.code).toBe('offer_expired');
   });
 
-  it('an accept and an admin cancel racing the expiry sweep wait for it and are refused (reviewer B1)', async () => {
+  it('an accept and an admin reassign racing the expiry sweep wait for its row lock (reviewer B1, row 157)', async () => {
     const { admin, runner, errand } = await paidAndAssigned();
+    const other = await makeUser(UserRole.RUNNER);
     await lapse(errand.id);
+    const service = app.get(ErrandsService);
     const racers: Promise<request.Response>[] = [];
-    app.get(ErrandsService).onTerminated(async (_manager, change) => {
-      if (change.errandId !== errand.id || racers.length > 0) {
-        return;
+    const original = service.activeAssignmentFor.bind(service);
+    const spy = vi.spyOn(service, 'activeAssignmentFor').mockImplementation(async (errandId, manager) => {
+      if (errandId === errand.id && manager && racers.length === 0) {
+        // The sweep holds the errand row lock here and has not committed yet.
+        racers.push(
+          http().patch(`/api/v1/errands/${errand.id}/status`).set(bearer(runner.token)).send({ to: 'RUNNER_EN_ROUTE' }).then((r) => r),
+          http()
+            .post(`/api/v1/errands/${errand.id}/assign`)
+            .set(bearer(admin.token))
+            .send({ runnerProfileId: other.profileId })
+            .then((r) => r),
+        );
+        await new Promise((r) => setTimeout(r, 500));
       }
-      // The sweep holds the errand row lock here and has not committed yet.
-      const send = (actor: Actor, to: string) =>
-        http()
-          .patch(`/api/v1/errands/${errand.id}/status`)
-          .set(bearer(actor.token))
-          .send({ to })
-          .then((r) => r);
-      racers.push(send(runner, 'RUNNER_EN_ROUTE'), send(admin, 'CANCELLED'));
-      await new Promise((r) => setTimeout(r, 500));
+      return original(errandId, manager);
     });
-    expect(await app.get(ErrandsService).expireLapsedOffers()).toContain(errand.id);
-    const [accept, cancel] = await Promise.all(racers);
-    expect([accept.status, accept.body.code]).toEqual([409, 'illegal_transition']);
-    expect([cancel.status, cancel.body.code]).toEqual([409, 'illegal_transition']);
+    try {
+      expect(await service.expireLapsedOffers()).toContain(errand.id);
+      const [accept, assign] = await Promise.all(racers);
+      expect([accept.status, accept.body.code]).toEqual([409, 'offer_expired']);
+      expect(assign.status).toBe(201);
+    } finally {
+      spy.mockRestore();
+    }
+    const row = (await db().query('SELECT status FROM "errands" WHERE id = $1', [errand.id])) as { status: string }[];
+    expect(row[0].status).toBe('RUNNER_ASSIGNED');
+    const rows = (await db().query(
+      `SELECT "runnerProfileId", status FROM "errand_assignments" WHERE "errandId" = $1 ORDER BY "createdAt"`,
+      [errand.id],
+    )) as { runnerProfileId: string; status: string }[];
+    expect(rows).toEqual([
+      { runnerProfileId: runner.profileId, status: 'expired' },
+      { runnerProfileId: other.profileId, status: 'assigned' },
+    ]);
     const fromAssigned = (await db().query(
       `SELECT "toStatus" FROM "errand_status_history" WHERE "errandId" = $1 AND "fromStatus" = 'RUNNER_ASSIGNED'`,
       [errand.id],
     )) as { toStatus: string }[];
-    expect(fromAssigned).toEqual([{ toStatus: 'EXPIRED' }]);
-    const row = (await db().query('SELECT status FROM "errands" WHERE id = $1', [errand.id])) as { status: string }[];
-    expect(row[0].status).toBe('EXPIRED');
-    expect(await assignmentOf(errand.id)).toMatchObject({ status: 'expired' });
-    const reviews = (await db().query('SELECT trigger FROM "refund_reviews" WHERE "errandId" = $1', [
-      errand.id,
-    ])) as { trigger: string }[];
-    expect(reviews).toEqual([{ trigger: 'expired_after_payment' }]);
+    expect(fromAssigned).toEqual([]);
   });
 
   it('an offer accepted in time is not expired by the sweep (row 141)', async () => {

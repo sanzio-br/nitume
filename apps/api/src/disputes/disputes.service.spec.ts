@@ -242,3 +242,33 @@ describe('Dispute resolution visible to customer and runner (row 79)', () => {
     expect(view.resolvedAt).toBeNull();
   });
 });
+
+describe('DisputesService.runnersWithOpenDisputes (row 175)', () => {
+  it('returns the runners with an open or under-review dispute on a task they were assigned to', async () => {
+    const errands = {
+      errandIdsByRunner: vi.fn(() =>
+        Promise.resolve(
+          new Map([
+            ['rp-1', ['e-1', 'e-2']],
+            ['rp-2', ['e-3']],
+          ]),
+        ),
+      ),
+    };
+    const disputes = { find: vi.fn(() => Promise.resolve([{ errandId: 'e-2' }])) };
+    const service = new DisputesService(disputes as never, {} as never, errands as never);
+    await expect(service.runnersWithOpenDisputes(['rp-1', 'rp-2', 'rp-3'])).resolves.toEqual(new Set(['rp-1']));
+    expect(disputes.find).toHaveBeenCalledWith({
+      where: { errandId: expect.anything(), status: expect.anything() },
+      select: { errandId: true },
+    });
+  });
+
+  it('skips the dispute query when the runners have no tasks', async () => {
+    const errands = { errandIdsByRunner: vi.fn(() => Promise.resolve(new Map())) };
+    const disputes = { find: vi.fn() };
+    const service = new DisputesService(disputes as never, {} as never, errands as never);
+    await expect(service.runnersWithOpenDisputes(['rp-1'])).resolves.toEqual(new Set());
+    expect(disputes.find).not.toHaveBeenCalled();
+  });
+});

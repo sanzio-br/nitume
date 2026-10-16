@@ -4,7 +4,7 @@ import type { Job } from 'bullmq';
 import { ErrandsService } from '../errands/errands.service';
 import { MAINTENANCE_QUEUE, PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
 import { PaymentsService } from '../payments/payments.service';
-import { RunnersService } from '../runners/runners.service';
+import { IdDocumentRetentionService } from './id-document-retention.service';
 
 export const DISPUTE_WINDOW_JOB = 'dispute-window';
 export const STK_RECONCILE_JOB = 'stk-reconcile';
@@ -23,7 +23,7 @@ export class MaintenanceProcessor extends WorkerHost {
   constructor(
     private readonly errands: ErrandsService,
     private readonly payments: PaymentsService,
-    private readonly runners: RunnersService,
+    private readonly idDocuments: IdDocumentRetentionService,
   ) {
     super();
   }
@@ -59,7 +59,7 @@ export class MaintenanceProcessor extends WorkerHost {
     return { paymentId, state };
   }
 
-  /** Lapsed offers: RUNNER_ASSIGNED -> EXPIRED at the deadline (row 141). */
+  /** Lapsed offers: the assignment expires, the task stays RUNNER_ASSIGNED (row 157). */
   async offerExpiry(): Promise<{ expired: string[] }> {
     const expired = await this.errands.expireLapsedOffers();
     if (expired.length > 0) {
@@ -68,9 +68,9 @@ export class MaintenanceProcessor extends WorkerHost {
     return { expired };
   }
 
-  /** Row 154: securely delete ID/selfie images past their retention period. */
+  /** Rows 154, 161, 175: securely delete ID/selfie images past their retention period. */
   async idDocumentPurge(): Promise<{ purged: string[] }> {
-    const purged = await this.runners.purgeExpiredDocuments();
+    const purged = await this.idDocuments.purgeExpired();
     if (purged.length > 0) {
       this.logger.log(`ID document purge: deleted ${purged.length}`);
     }

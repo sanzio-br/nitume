@@ -89,9 +89,11 @@ export class RunnerEarningsController {
   /**
    * Requests a payout to the runner's sign-in phone (row 118), up to the
    * available amount and at least the minimum, one open request at a time.
-   * Send an `Idempotency-Key` header and reuse it on retry. Errors: 400
-   * payout_below_minimum (`minimumAmount`), payout_exceeds_available
-   * (`availableAmount`); 409 payout_request_open (`requestId`).
+   * Send an `Idempotency-Key` header and reuse it on retry (same amount).
+   * Errors: 400 payout_below_minimum (`minimumAmount`),
+   * payout_exceeds_available (`availableAmount`); 409 payout_request_open
+   * (`requestId`), idempotency_key_reused (`requestId`; same key, other
+   * amount), idempotency_in_progress (the first call is still running).
    */
   @Post('payout-requests')
   requestPayout(

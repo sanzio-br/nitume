@@ -60,6 +60,11 @@
       "key": "refund_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "payout_request_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -1996,6 +2001,573 @@
                 "runner-payouts",
                 "{{payout_line_id}}",
                 "corrections"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "11_Owner_Answers_Rounds_8_9_2026_10_16",
+      "item": [
+        {
+          "name": "Admin review above the purchase limit (rows 142, 151; note 10-500, ignored under the ordinary ceiling)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\",\n  \"amount\": 3500,\n  \"purchaseLimitOverrideNote\": \"Approved by ops lead on the phone\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payouts/{{payout_line_id}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payouts",
+                "{{payout_line_id}}",
+                "review"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner payout request summary (minimumAmount KES 500, availableAmount, requestableAmount, openRequest)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/payout-requests/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "payout-requests",
+                "summary"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner request a payout (Idempotency-Key bound to the amount)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/payout-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "payout-requests"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner payout requests (requested | paid | rejected | cancelled; no cancel reason)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/payout-requests?limit=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "payout-requests?limit=25"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin payout requests (status filter incl. cancelled)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runner-payout-requests?status=requested",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payout-requests?status=requested"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin payout request count (badge)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runner-payout-requests/count?status=requested",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payout-requests",
+                "count?status=requested"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin payout request detail (createdBy, updatedAt, cancel fields)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runner-payout-requests/{{payout_request_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payout-requests",
+                "{{payout_request_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin pay a request with whole payable lines",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lineIds\": [\"{{payout_line_id}}\"],\n  \"payoutReference\": \"SGH81PRQ01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payout-requests/{{payout_request_id}}/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payout-requests",
+                "{{payout_request_id}}",
+                "pay"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin reject a request (note 5-300, shown to the runner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Please confirm your M-Pesa name first\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payout-requests/{{payout_request_id}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payout-requests",
+                "{{payout_request_id}}",
+                "reject"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin cancel a request (row 166; reason 10-500, ops only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Destination number failed the fraud check\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runner-payout-requests/{{payout_request_id}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runner-payout-requests",
+                "{{payout_request_id}}",
+                "cancel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner upload ID side or selfie (multipart, 10 MB, JPEG/PNG/WebP/HEIC by bytes, side front|back for an ID)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "verificationType",
+                  "value": "government_id",
+                  "type": "text"
+                },
+                {
+                  "key": "side",
+                  "value": "front",
+                  "type": "text",
+                  "description": "front | back, government_id only (row 195)"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/verifications/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "verifications",
+                "documents"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin verification queue (hasDocument, purgedAt, reviewer, reReviews[])",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/verifications?status=pending&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "verifications?status=pending&limit=50"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin signed ID image link (<= 5 min, logged; never restarts retention)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/verifications/{{verification_id}}/document",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "verifications",
+                "{{verification_id}}",
+                "document"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin re-review evidence (row 171; optional note <= 500; restarts retention)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Second check after a fraud flag\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/runners/verifications/{{verification_id}}/re-review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "verifications",
+                "{{verification_id}}",
+                "re-review"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin errand detail (lastAssignment, assignments[], offerWindowSeconds)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin offer / re-offer a runner (409 runner_already_offered)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"runnerProfileId\": \"{{runner_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "assign"
               ]
             }
           },

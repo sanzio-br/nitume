@@ -41,6 +41,28 @@ export class AddVerificationDto {
 export class UploadVerificationDocumentDto {
   @IsIn([RunnerVerificationType.GOVERNMENT_ID, RunnerVerificationType.SELFIE])
   verificationType: RunnerVerificationType.GOVERNMENT_ID | RunnerVerificationType.SELFIE;
+
+  /**
+   * Row 195: `front` | `back` (case-insensitive), required for
+   * government_id, not allowed for selfie. Checked by the service so the
+   * error carries `verification_document_side_invalid`.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  side?: string;
+}
+
+/**
+ * POST /runners/verifications/:id/re-review (rows 171, 180): optional note,
+ * at most 500 characters after trimming (checked by the service:
+ * 400 re_review_note_invalid); a blank note is stored as null.
+ */
+export class ReReviewVerificationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
 }
 
 export class ReviewVerificationDto {

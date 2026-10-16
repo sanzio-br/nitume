@@ -17,7 +17,9 @@ import { DevicesService } from '../users/devices.service';
 import { UsersService } from '../users/users.service';
 import {
   ASSIGNMENT_DECLINED_EVENT,
+  ASSIGNMENT_EXPIRED_EVENT,
   AssignmentDeclinedEvent,
+  AssignmentExpiredEvent,
   MERCHANT_DETAILS_UPDATED_EVENT,
   MerchantDetailsUpdatedEvent,
   QUOTE_REISSUED_EVENT,
@@ -70,8 +72,6 @@ export type FeedJob =
       kind: 'errand_status';
       errandId: string;
       status: ErrandStatus;
-      /** EXPIRED only: a refund review was opened for the task (owner 2026-10-16). */
-      refundReviewOpened?: boolean;
     }
   | { kind: 'price_change'; errandId: string; requestId: string; fromPrice: string; toPrice: string }
   | { kind: 'refund'; errandId: string; refundId: string; status: string; refundAmount: string | null }
@@ -88,10 +88,12 @@ export type FeedJob =
   /** Admin-facing (row 68): written to every active admin's feed. */
   | { kind: 'quote_requested'; errandId: string; reference: string }
   /** Admin-facing (row 108): the runner declined; the task needs another runner. */
-  | { kind: 'assignment_declined'; errandId: string; reference: string };
+  | { kind: 'assignment_declined'; errandId: string; reference: string }
+  /** Admin-facing (row 157): an admin offer lapsed; the task needs another runner. */
+  | { kind: 'assignment_expired'; errandId: string; reference: string };
 
 /** Feed jobs whose recipients are the admins, not the errand's customer. */
-const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested', 'assignment_declined']);
+const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested', 'assignment_declined', 'assignment_expired']);
 
 export const FEED_JOB = 'feed';
 export const PUSH_JOB = 'push';
@@ -170,25 +172,22 @@ export class NotificationsService {
   @OnEvent(ERrandStatusChangedEvent, { async: true })
   async onStatusChanged(event: StatusChangedEvent): Promise<void> {
     // EXPIRED is queued from `errand.expired`, once the refund review is known.
-    if (!notificationEventTypeFor(event.status) || event.status === ErrandStatus.EXPIRED) {
+    // Statuses without customer copy (RUNNER_ASSIGNED, rows 182, 183) send nothing.
+    if (!notificationEventTypeFor(event.status) || event.status === ErrandStatus.EXPIRED || !statusCopy(event.status)) {
       return;
     }
     await this.enqueue({ kind: 'errand_status', errandId: event.errandId, status: event.status });
   }
 
   /**
-   * RUNNER_ASSIGNED -> EXPIRED (owner decision 2026-10-16): the customer's
-   * feed item + push, queued after the refund review was opened in the same
-   * flow so the copy can mention it.
+   * RUNNER_ASSIGNED -> EXPIRED: the customer's feed item + push, queued once
+   * the payments module has run its refund backstop for the task. The copy
+   * never mentions the refund review (row 158): refund wording is only for a
+   * refund the refund flow has already found due (refund.approved).
    */
   @OnEvent(ERRAND_EXPIRED_EVENT, { async: true })
   async onExpired(event: ErrandExpiredEvent): Promise<void> {
-    await this.enqueue({
-      kind: 'errand_status',
-      errandId: event.errandId,
-      status: ErrandStatus.EXPIRED,
-      refundReviewOpened: event.refundReviewOpened,
-    });
+    await this.enqueue({ kind: 'errand_status', errandId: event.errandId, status: ErrandStatus.EXPIRED });
   }
 
   @OnEvent('price_change.requested', { async: true })
@@ -268,6 +267,15 @@ export class NotificationsService {
   @OnEvent(ASSIGNMENT_DECLINED_EVENT, { async: true })
   async onAssignmentDeclined(event: AssignmentDeclinedEvent): Promise<void> {
     await this.enqueue({ kind: 'assignment_declined', errandId: event.errandId, reference: event.reference });
+  }
+
+  /**
+   * Admin offer lapsed (row 157) -> admin feed (N-20). The customer gets
+   * nothing: the task is still RUNNER_ASSIGNED.
+   */
+  @OnEvent(ASSIGNMENT_EXPIRED_EVENT, { async: true })
+  async onAssignmentExpired(event: AssignmentExpiredEvent): Promise<void> {
+    await this.enqueue({ kind: 'assignment_expired', errandId: event.errandId, reference: event.reference });
   }
 
   private async enqueue(job: FeedJob): Promise<void> {
@@ -408,9 +416,9 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
   switch (job.kind) {
     case 'errand_status': {
       const eventType = notificationEventTypeFor(job.status);
-      const copy = statusCopy(job.status, job.refundReviewOpened ?? false);
+      const copy = statusCopy(job.status);
       return eventType && copy
-        ? { eventType, title: `${copy.title} · ${humanStatus(job.status)}`, body: copy.body }
+        ? { eventType, title: copy.exactTitle ? copy.title : `${copy.title} · ${humanStatus(job.status)}`, body: copy.body }
         : null;
     }
     case 'price_change':
@@ -448,6 +456,12 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.ASSIGNMENT_DECLINED,
         title: 'Runner declined a task',
         body: `The runner declined ${job.reference}: the purchase is above their limit. Assign another runner.`,
+      };
+    case 'assignment_expired':
+      return {
+        eventType: NotificationEventType.ASSIGNMENT_EXPIRED,
+        title: 'Offer ended',
+        body: `The runner didn't accept ${job.reference} in time. Offer it to another runner.`,
       };
     case 'merchant_details':
       return {
@@ -499,25 +513,27 @@ const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
   }
 };
 
-const statusCopy = (
-  status: ErrandStatus,
-  refundReviewOpened = false,
-): { title: string; body: string } | null => {
+/**
+ * Customer copy per status. Titles get the " · {Status}" suffix unless
+ * `exactTitle` (row 188: the owner set "No runner available" and "Runner
+ * assigned" exactly; the other titles keep the builder pattern).
+ */
+const statusCopy = (status: ErrandStatus): { title: string; body: string; exactTitle?: boolean } | null => {
   switch (status) {
     case ErrandStatus.EXPIRED:
-      // Owner decision 2026-10-16: no refund promise unless a review is open.
+      // Owner wording, row 158. No refund sentence: an opened refund review
+      // is not a refund found due. Title kept from the round-8 builder.
       return {
         title: 'No runner available',
-        body: refundReviewOpened
-          ? "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready."
-          : "No runner accepted your task in time, so it has ended. You can start a new task whenever you're ready.",
+        exactTitle: true,
+        body: 'Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.',
       };
     case ErrandStatus.QUOTED:
       return { title: 'Your task has a quote', body: 'A runner can now accept your task. Review the price to continue.' };
-    case ErrandStatus.RUNNER_ASSIGNED:
-      return { title: 'Runner assigned', body: 'A runner has been assigned to your task.' };
+    // Rows 182, 184 (owner, 2026-10-16): nothing on RUNNER_ASSIGNED (only an
+    // offer exists, row 183); "Runner assigned" once the runner accepts.
     case ErrandStatus.RUNNER_EN_ROUTE:
-      return { title: 'Runner en route', body: 'Your runner is on the way to complete the task.' };
+      return { title: 'Runner assigned', body: 'A runner accepted your task and is on the way.', exactTitle: true };
     case ErrandStatus.ARRIVED:
       return { title: 'Runner arrived', body: 'Your runner has reached the location.' };
     case ErrandStatus.IN_PROGRESS:

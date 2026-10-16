@@ -18,7 +18,7 @@ const build = () => {
     resolveTimedOut: vi.fn(() => Promise.resolve(2)),
     verifyPayment: vi.fn(() => Promise.resolve<string | null>('success')),
   };
-  const runners = { purgeExpiredDocuments: vi.fn(() => Promise.resolve(['v-1'])) };
+  const runners = { purgeExpired: vi.fn(() => Promise.resolve(['v-1'])) };
   return {
     processor: new MaintenanceProcessor(errands as never, payments as never, runners as never),
     errands,
@@ -77,6 +77,6 @@ describe('MaintenanceProcessor (rows 26, 50, 52)', () => {
   it('id-document-purge deletes ID/selfie images past retention (row 154)', async () => {
     const { processor, runners } = build();
     await expect(processor.process({ name: ID_DOCUMENT_PURGE_JOB } as never)).resolves.toEqual({ purged: ['v-1'] });
-    expect(runners.purgeExpiredDocuments).toHaveBeenCalled();
+    expect(runners.purgeExpired).toHaveBeenCalled();
   });
 });

@@ -10,7 +10,7 @@ const codeOf = (p: Promise<unknown>) =>
     (e: unknown) => (e instanceof ApiError ? e.code : String(e)),
   );
 
-const build = (opts: { available?: number; minimum?: number } = {}) => {
+const build = (opts: { available?: number; requestable?: number; minimum?: number } = {}) => {
   const table: RunnerPayoutRequest[] = [];
   const lines = [
     { id: 'l-1', runnerProfileId: 'rp-1', status: S.PAYABLE, amount: '3000.00', payoutRequestId: null },
@@ -59,6 +59,7 @@ const build = (opts: { available?: number; minimum?: number } = {}) => {
   };
   const ledger = {
     availableFor: vi.fn(() => Promise.resolve(opts.available ?? 5500)),
+    requestableFor: vi.fn(() => Promise.resolve(opts.requestable ?? opts.available ?? 5500)),
     markPaidIn: vi.fn((_m: unknown, ids: string[], _ref: string, _admin: string, requestId: string) => {
       const rows = lines.filter((l) => ids.includes(l.id));
       for (const l of rows) {
@@ -82,12 +83,23 @@ const build = (opts: { available?: number; minimum?: number } = {}) => {
     findById: vi.fn(() => Promise.resolve({ id: 'u-run', phone: '+254733111222' })),
     displayNames: vi.fn(() => Promise.resolve(new Map([['admin-1', 'Finance']]))),
   };
-  const config = { get: vi.fn(() => opts.minimum ?? 500) };
+  const config = { get: vi.fn((_key: string, fallback?: number) => opts.minimum ?? fallback) };
   const store = new Map<string, string>();
   const redis = {
     get: vi.fn((k: string) => Promise.resolve(store.get(k) ?? null)),
     set: vi.fn((k: string, v: string) => {
       store.set(k, v);
+      return Promise.resolve();
+    }),
+    setIfAbsent: vi.fn((k: string, v: string) => {
+      if (store.has(k)) {
+        return Promise.resolve(false);
+      }
+      store.set(k, v);
+      return Promise.resolve(true);
+    }),
+    del: vi.fn((k: string) => {
+      store.delete(k);
       return Promise.resolve();
     }),
   };
@@ -99,7 +111,7 @@ const build = (opts: { available?: number; minimum?: number } = {}) => {
     config as never,
     redis as never,
   );
-  return { service, table, lines, ledger, redis };
+  return { service, table, lines, ledger, redis, store };
 };
 
 describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
@@ -128,12 +140,54 @@ describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
     expect((again as ApiError).getStatus()).toBe(409);
   });
 
+  it('caps a request by the payable lines, not reversed payouts awaiting a re-send (review minor 2)', async () => {
+    const b = build({ available: 5500, requestable: 4000 });
+    const over = await b.service.create('u-run', 4500).catch((e: unknown) => e);
+    expect((over as ApiError).getResponse()).toMatchObject({
+      code: 'payout_exceeds_available',
+      availableAmount: '5500.00',
+      requestableAmount: '4000.00',
+    });
+    const summary = await b.service.summaryFor('u-run');
+    expect(summary).toMatchObject({ availableAmount: '5500.00', requestableAmount: '4000.00' });
+    await expect(b.service.create('u-run', 4000)).resolves.toMatchObject({ requestedAmount: '4000.00' });
+  });
+
+  it('reads the KES 500 default when the config has no minimum (row 159)', async () => {
+    const b = build();
+    expect(b.service.minimumAmount()).toBe(500);
+    const summary = await b.service.summaryFor('u-run');
+    expect(summary.minimumAmount).toBe('500.00');
+  });
+
   it('replays with the same Idempotency-Key return the same request', async () => {
     const b = build();
     const first = await b.service.create('u-run', 1000, 'key-1');
     const replay = await b.service.create('u-run', 1000, 'key-1');
     expect(replay.id).toBe(first.id);
     expect(b.table).toHaveLength(1);
+  });
+
+  it('binds the key to the amount, refuses a call in flight, releases it on refusal (review minor 1)', async () => {
+    const b = build({ available: 5500 });
+    const first = await b.service.create('u-run', 1000, 'key-1');
+    const other = await b.service.create('u-run', 2000, 'key-1').catch((e: unknown) => e);
+    expect((other as ApiError).getResponse()).toMatchObject({ code: 'idempotency_key_reused', requestId: first.id });
+    // A call still running with the same key.
+    b.store.set('idem:runner-payout-request:rp-1:key-2', JSON.stringify({ pending: true, amount: '1000.00' }));
+    expect(await codeOf(b.service.create('u-run', 1000, 'key-2'))).toBe('idempotency_in_progress');
+    // A refused request frees its key for the retry.
+    expect(await codeOf(b.service.create('u-run', 9000, 'key-3'))).toBe('payout_request_open');
+    expect(b.store.has('idem:runner-payout-request:rp-1:key-3')).toBe(false);
+  });
+
+  it('a committed request is returned even when the key cannot be stored (review minor 1)', async () => {
+    const b = build();
+    b.redis.set.mockRejectedValueOnce(new Error('redis down'));
+    const view = await b.service.create('u-run', 1000, 'key-9');
+    expect(view.status).toBe(R.REQUESTED);
+    b.redis.setIfAbsent.mockRejectedValueOnce(new Error('redis down'));
+    expect(await codeOf(b.service.create('u-run', 1000, 'key-10'))).toBe('payout_request_open');
   });
 
   it('paid with whole lines below the request: closes PAID, paidAmount = lines total (row 146)', async () => {
@@ -175,5 +229,37 @@ describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
     const out = await b.service.reject(req.id, ' Payout details need checking ', 'admin-1');
     expect(out).toMatchObject({ status: R.REJECTED, note: 'Payout details need checking', paidAmount: null });
     expect(await codeOf(b.service.reject(req.id, 'again please', 'admin-1'))).toBe('payout_request_not_open');
+  });
+
+  it('ops cancel an open request with a mandatory reason; final, amount unchanged (row 166)', async () => {
+    const b = build();
+    const req = await b.service.create('u-run', 1000);
+    expect(await codeOf(b.service.cancel(req.id, '   ', 'admin-1'))).toBe('cancellation_reason_invalid');
+    expect(await codeOf(b.service.cancel(req.id, 'Too short', 'admin-1'))).toBe('cancellation_reason_invalid');
+    expect(await codeOf(b.service.cancel(req.id, 'x'.repeat(501), 'admin-1'))).toBe('cancellation_reason_invalid');
+    const out = await b.service.cancel(req.id, ' Wrong destination number on file ', 'admin-1');
+    expect(out.createdBy).toMatchObject({ id: 'u-run' });
+    expect(out).toMatchObject({
+      status: R.CANCELLED,
+      requestedAmount: '1000.00',
+      paidAmount: null,
+      decidedAt: null,
+      decidedBy: null,
+      note: null,
+      cancelledAt: expect.any(Date),
+      cancelledBy: { id: 'admin-1', displayName: 'Finance' },
+      cancellationReason: 'Wrong destination number on file',
+    });
+    for (const again of [
+      b.service.cancel(req.id, 'Second cancel', 'admin-1'),
+      b.service.reject(req.id, 'Too late now', 'admin-1'),
+      b.service.pay(req.id, ['l-1'], 'SGH12ABC9', 'admin-1'),
+    ]) {
+      expect(await codeOf(again)).toBe('payout_request_not_open');
+    }
+    expect(b.ledger.markPaidIn).not.toHaveBeenCalled();
+    // The runner may make a new request at once.
+    const next = await b.service.create('u-run', 1000);
+    expect(next.status).toBe(R.REQUESTED);
   });
 });

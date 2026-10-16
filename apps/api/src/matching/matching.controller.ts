@@ -50,8 +50,11 @@ export class MatchingController {
    * decline (row 108) it reassigns a RUNNER_ASSIGNED task (`history: null`).
    * The new assignment is an offer open for 10 minutes
    * (`assignment.offerExpiresAt`, MATCHING_ADMIN_OFFER_WINDOW_SECONDS, rows
-   * 114, 141). Unaccepted by then, the assignment becomes `expired` and the
-   * task RUNNER_ASSIGNED -> EXPIRED at once (system, offer-expiry job). The
+   * 114, 141). Unaccepted by then, the assignment becomes `expired`
+   * (offer-expiry job, or this call if it comes first) and the task stays
+   * RUNNER_ASSIGNED so it can be assigned again here (row 157), to another
+   * runner: 409 `runner_already_offered` for one who declined or let an
+   * offer for this task lapse (row 178). The
    * deadline only matters while the task is RUNNER_ASSIGNED and the
    * assignment `assigned`; once accepted it is kept for the record. */
   @Post(':id/assign')

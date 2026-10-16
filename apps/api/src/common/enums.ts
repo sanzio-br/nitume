@@ -236,7 +236,7 @@ export enum NotificationEventType {
   ERRAND_DISPUTED = 'errand.DISPUTED',
   ERRAND_CANCELLED = 'errand.CANCELLED',
   ERRAND_FAILED = 'errand.FAILED',
-  /** RUNNER_ASSIGNED -> EXPIRED: no runner accepted in time (owner 2026-10-16). */
+  /** RUNNER_ASSIGNED -> EXPIRED: no further runner can be assigned (rows 157, 158). */
   ERRAND_EXPIRED = 'errand.EXPIRED',
   PRICE_CHANGE_REQUESTED = 'price_change.requested',
   REFUND_APPROVED = 'refund.approved',
@@ -252,4 +252,6 @@ export enum NotificationEventType {
   QUOTE_REQUESTED = 'quote.requested',
   /** Admin feed: the runner declined, the purchase is above their limit (row 108). */
   ASSIGNMENT_DECLINED = 'assignment.declined',
+  /** Admin feed: an admin offer lapsed unaccepted; the task needs another runner (row 157, N-20). */
+  ASSIGNMENT_EXPIRED = 'assignment.expired',
 }

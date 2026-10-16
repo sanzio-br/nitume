@@ -2,7 +2,7 @@ import { HttpStatus, Inject, Injectable, Logger, NotFoundException, Optional } f
 import { ConfigService } from '@nestjs/config';
 import { ApiError } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, IsNull, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import {
   RunnerAvailability,
   RunnerSkill,
@@ -12,7 +12,8 @@ import {
 } from '../common/enums';
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
-import { RunnerVerification } from './runner-verification.entity';
+import { RunnerVerification, RunnerVerificationSide } from './runner-verification.entity';
+import { documentTooLarge, idMaxUploadBytes, matchesImageSignature } from './upload/verification-upload';
 import { VerificationDocumentAccessLog, VerificationDocumentAction } from './verification-document-access-log.entity';
 import {
   ConsoleVerificationDocumentStorage,
@@ -58,14 +59,59 @@ export interface PublicRunnerProfile {
 export type VerificationView = Omit<RunnerVerification, 'documentS3Key'> & { hasDocument: boolean };
 
 /** Admin queue item (row 154: no storage key). */
+/** One audited "Re-review evidence" (row 171). `note` is null after the purge (row 170). */
+export interface ReReviewView {
+  id: string;
+  /**
+   * Never null: CHK_verification_document_access_log_actor requires an actor
+   * on every row except the system purge, so a re_review always has its admin.
+   */
+  reviewedBy: { id: string; displayName: string | null };
+  createdAt: Date;
+  note: string | null;
+}
+
 export type AdminVerificationView = VerificationView & {
   runnerProfile: { id: string; userId: string } | null;
   user: { id: string; phone: string | null } | null;
+  /** The admin who decided, with a display name (round-10 spec). */
+  reviewer: { id: string; displayName: string | null } | null;
+  /** Re-reviews of the evidence, oldest first (row 171). */
+  reReviews: ReReviewView[];
 };
+
+/** Rows 171, 180 (decided): optional re-review note, at most 500 characters after trim, no minimum. */
+export const RE_REVIEW_NOTE_MAX = 500;
 
 export const toVerificationView = (v: RunnerVerification): VerificationView => {
   const { documentS3Key, ...rest } = v;
   return { ...rest, purgedAt: v.purgedAt ?? null, hasDocument: !!documentS3Key };
+};
+
+/**
+ * Row 195: `front` | `back` (any case) is required for a government_id image
+ * and refused for a selfie. 400 verification_document_side_invalid (`allowed`).
+ */
+export const documentSideOf = (
+  verificationType: RunnerVerificationType,
+  input: string | null | undefined,
+): RunnerVerificationSide | null => {
+  const value = typeof input === 'string' ? input.trim().toLowerCase() : '';
+  const allowed = Object.values(RunnerVerificationSide);
+  if (verificationType === RunnerVerificationType.GOVERNMENT_ID) {
+    if ((allowed as string[]).includes(value)) {
+      return value as RunnerVerificationSide;
+    }
+    throw new ApiError(HttpStatus.BAD_REQUEST, 'verification_document_side_invalid', 'Say which side of the ID this is: front or back', {
+      allowed,
+    });
+  }
+  if (value) {
+    throw new ApiError(HttpStatus.BAD_REQUEST, 'verification_document_side_invalid', 'A side is only sent with an ID image', {
+      allowed: [],
+    });
+  }
+  return null;
 };
 
 /** Verification types whose image goes to restricted storage (RA-7). */
@@ -228,14 +274,17 @@ export class RunnersService {
   /**
    * RA-7 (rows 125, 154): stores an ID or selfie image in restricted storage
    * and records a pending verification for it, logging the upload. Errors:
-   * 400 verification_type_not_uploadable, verification_document_type_invalid,
-   * verification_document_empty.
+   * 400 verification_type_not_uploadable, verification_document_type_invalid
+   * (also when the bytes are not that image type), verification_document_empty;
+   * 413 verification_document_too_large. If the row cannot be written the
+   * stored image is deleted again.
    */
   async uploadVerificationDocument(
     userId: string,
     verificationType: RunnerVerificationType,
     file: UploadedImage | undefined,
     ip: string | null,
+    sideInput?: string | null,
   ): Promise<VerificationView> {
     if (!DOCUMENT_VERIFICATION_TYPES.includes(verificationType)) {
       throw new ApiError(
@@ -244,10 +293,16 @@ export class RunnersService {
         'Only government_id and selfie images are uploaded',
       );
     }
+    const side = documentSideOf(verificationType, sideInput);
     if (!file || !file.buffer || file.size === 0) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'verification_document_empty', 'Attach the image as `file`');
     }
-    if (!DOCUMENT_CONTENT_TYPES.includes(file.mimetype)) {
+    // Multer already stops at the limit; checked again before anything is stored.
+    const maxBytes = idMaxUploadBytes(this.config);
+    if (file.size > maxBytes || file.buffer.length > maxBytes) {
+      throw documentTooLarge(maxBytes);
+    }
+    if (!DOCUMENT_CONTENT_TYPES.includes(file.mimetype) || !matchesImageSignature(file.buffer, file.mimetype)) {
       throw new ApiError(
         HttpStatus.BAD_REQUEST,
         'verification_document_type_invalid',
@@ -261,17 +316,30 @@ export class RunnersService {
       contentType: file.mimetype,
       runnerProfileId: profile.id,
     });
-    const saved = await this.verifications.manager.transaction(async (manager) => {
-      const row = await manager.getRepository(RunnerVerification).save(
-        manager.getRepository(RunnerVerification).create({
-          runnerProfileId: profile.id,
-          verificationType,
-          documentS3Key: key,
-        }),
+    let saved: RunnerVerification;
+    try {
+      saved = await this.verifications.manager.transaction(async (manager) => {
+        const row = await manager.getRepository(RunnerVerification).save(
+          manager.getRepository(RunnerVerification).create({
+            runnerProfileId: profile.id,
+            verificationType,
+            side,
+            documentS3Key: key,
+          }),
+        );
+        await this.logAccess(manager, row, VerificationDocumentAction.UPLOAD, userId, ip);
+        return row;
+      });
+    } catch (err) {
+      // Review minor 4: no stored image without its row. Best effort; a
+      // failed delete is logged with the key so ops can remove it.
+      await this.documents.destroy(key).catch((cleanup: unknown) =>
+        this.logger.error(
+          `Orphan verification image ${key} could not be deleted: ${cleanup instanceof Error ? cleanup.message : String(cleanup)}`,
+        ),
       );
-      await this.logAccess(manager, row, VerificationDocumentAction.UPLOAD, userId, ip);
-      return row;
-    });
+      throw err;
+    }
     return toVerificationView(saved);
   }
 
@@ -309,67 +377,206 @@ export class RunnersService {
   }
 
   /**
-   * Row 154 retention: deletes the stored ID/selfie images of runners whose
-   * last relevant verification/activity event is older than the retention
-   * period (`runnerVerification.retentionDays`, default 365). Events counted,
-   * per runner: any verification submitted or decided; any task assignment
-   * (offer) made to the runner; any dispute opened or updated on a task the
-   * runner was assigned to. Never purged: a verification still pending, or
-   * any runner with an open / under-review dispute. Each purge deletes the
-   * object, nulls the key, records purgedAt and logs a `purge` access row.
-   * A storage failure leaves the row as it is (retried the next day).
+   * Rows 161, 171, 191 (owner, 2026-10-16): the runner's retention clock is
+   * the latest of
+   *  (a)/(b)/(c) a verification that creates or replaces stored identity
+   *  evidence: `createdAt` of the runner's government_id and selfie rows
+   *  (payment identity stores no image today, so it does not count; it
+   *  would only if it reused the retained images);
+   *  (d) an admin review that needs the stored evidence: the decision on a
+   *  pending ID/selfie verification (`reviewedAt`, the initial review) and
+   *  every audited "Re-review evidence" (`re_review` log rows, row 171).
+   * Views never count; task assignments, offers and disputes do not count.
+   * Returns the decided, still-stored images whose runner's clock is older
+   * than `runnerVerification.retentionDays` (default 365). The pending guard
+   * is here; the open-dispute guard is applied by the caller (row 175).
    */
-  async purgeExpiredDocuments(now: Date = new Date(), batch = 200): Promise<string[]> {
-    const days = this.config?.get<number>('runnerVerification.retentionDays', 365) ?? 365;
-    const due: { id: string }[] = await this.verifications.query(
-      `WITH last_event AS (
-         SELECT rp.id AS runner,
-                GREATEST(
-                  (SELECT MAX(GREATEST(v."createdAt", COALESCE(v."reviewedAt", v."createdAt")))
-                     FROM "runner_verifications" v WHERE v."runnerProfileId" = rp.id),
-                  (SELECT MAX(a."createdAt") FROM "errand_assignments" a WHERE a."runnerProfileId" = rp.id),
-                  (SELECT MAX(GREATEST(d."createdAt", d."updatedAt"))
-                     FROM "disputes" d JOIN "errand_assignments" a ON a."errandId" = d."errandId"
-                    WHERE a."runnerProfileId" = rp.id)
-                ) AS at
-           FROM "runner_profiles" rp
-       )
-       SELECT v.id FROM "runner_verifications" v
-         JOIN last_event le ON le.runner = v."runnerProfileId"
-        WHERE v."documentS3Key" IS NOT NULL AND v."purgedAt" IS NULL AND v.status <> 'pending'
-          AND le.at < $1::timestamptz - make_interval(days => $2::int)
-          AND NOT EXISTS (
-            SELECT 1 FROM "disputes" d JOIN "errand_assignments" a ON a."errandId" = d."errandId"
-             WHERE a."runnerProfileId" = v."runnerProfileId" AND d.status IN ('open', 'under_review'))
+  async documentsDueForPurge(
+    now: Date = new Date(),
+    batch = 200,
+    opts: { onlyRunnerProfileIds?: string[]; excludeRunnerProfileIds?: string[]; excludeIds?: string[] } = {},
+  ): Promise<{ id: string; runnerProfileId: string }[]> {
+    const days = this.retentionDays();
+    return this.verifications.query(
+      `WITH clock AS (${RETENTION_CLOCK_SQL})
+       SELECT v.id, v."runnerProfileId" FROM "runner_verifications" v
+         JOIN clock c ON c.runner = v."runnerProfileId"
+        WHERE v."documentS3Key" IS NOT NULL AND v."purgedAt" IS NULL AND v.status::text <> 'pending'
+          AND c.at < $1::timestamptz - make_interval(days => $2::int)
+          AND ($4::uuid[] IS NULL OR v."runnerProfileId" = ANY($4::uuid[]))
+          AND NOT (v."runnerProfileId" = ANY($5::uuid[]))
+          AND NOT (v.id = ANY($6::uuid[]))
         ORDER BY v."createdAt" ASC
         LIMIT $3`,
-      [now.toISOString(), days, batch],
+      [
+        now.toISOString(),
+        days,
+        batch,
+        opts.onlyRunnerProfileIds ?? null,
+        opts.excludeRunnerProfileIds ?? [],
+        opts.excludeIds ?? [],
+      ],
     );
+  }
+
+  /**
+   * Row 154/161 purge of the given verifications, each re-checked first
+   * (still stored, not pending, clock still past retention). Deletes the
+   * image permanently (storage + backups), then keeps only the minimum audit
+   * record (row 170): status/outcome, timestamps, reviewer id, `purgedAt`,
+   * evidence type and the log ids. The storage key and the reviewer's note
+   * are cleared. Logs a `purge` row. A storage failure leaves the row as it
+   * is (retried the next day). Callers pass the open-dispute hold (`isHeld`),
+   * checked with the row locked just before the delete.
+   */
+  async purgeDocuments(
+    ids: string[],
+    now: Date = new Date(),
+    /** Row 175 hold, re-checked inside the purge transaction (reviewer minor 3). */
+    isHeld?: (runnerProfileId: string, manager: EntityManager) => Promise<boolean>,
+  ): Promise<string[]> {
+    const days = this.retentionDays();
     const purged: string[] = [];
-    for (const { id } of due) {
-      const row = await this.verifications.findOne({ where: { id } });
-      if (!row?.documentS3Key || row.purgedAt) {
-        continue;
-      }
+    for (const id of ids) {
       try {
-        await this.documents.destroy(row.documentS3Key);
-      } catch (err) {
-        this.logger.error(
-          `Could not delete verification image ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        continue;
-      }
-      await this.verifications.manager.transaction(async (manager) => {
-        const result = await manager
-          .getRepository(RunnerVerification)
-          .update({ id: row.id, purgedAt: IsNull() }, { documentS3Key: null, purgedAt: now });
-        if (result.affected) {
+        const done = await this.verifications.manager.transaction(async (manager) => {
+          // Locked so a concurrent re-review or decision waits for (or beats) the purge.
+          const row = await manager
+            .getRepository(RunnerVerification)
+            .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+          if (!row?.documentS3Key || row.purgedAt || row.status === VerificationStatus.PENDING) {
+            return false;
+          }
+          const at = await this.retentionClockOf(row.runnerProfileId, manager);
+          if (at && at.getTime() >= now.getTime() - days * 86_400_000) {
+            return false; // Restarted meanwhile (new upload, decision or re-review).
+          }
+          if (isHeld && (await isHeld(row.runnerProfileId, manager))) {
+            return false; // A dispute opened meanwhile (row 175).
+          }
+          // Storage first: a failure rolls back and leaves the row for the next run.
+          await this.documents.destroy(row.documentS3Key);
+          await manager
+            .getRepository(RunnerVerification)
+            .update({ id: row.id }, { documentS3Key: null, reviewerNote: null, purgedAt: now });
+          // Row 170: re-review notes go with the reviewer's note.
+          await manager.query(
+            `UPDATE "verification_document_access_log" SET "note" = NULL
+              WHERE "verificationId" = $1 AND "action"::text = 're_review' AND "note" IS NOT NULL`,
+            [row.id],
+          );
           await this.logAccess(manager, row, VerificationDocumentAction.PURGE, null, null);
-          purged.push(row.id);
+          return true;
+        });
+        if (done) {
+          purged.push(id);
         }
-      });
+      } catch (err) {
+        this.logger.error(`Could not purge verification image ${id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
     return purged;
+  }
+
+  /** The runner's retention clock (see `documentsDueForPurge`), or null without verifications. */
+  async retentionClockOf(runnerProfileId: string, manager?: EntityManager): Promise<Date | null> {
+    const rows: { at: Date | null }[] = await (manager ?? this.verifications.manager).query(
+      `WITH clock AS (${RETENTION_CLOCK_SQL}) SELECT at FROM clock WHERE runner = $1`,
+      [runnerProfileId],
+    );
+    return rows[0]?.at ?? null;
+  }
+
+  /**
+   * Row 171: explicit, audited admin "Re-review evidence" on an already
+   * decided ID/selfie verification whose image is still stored. In one
+   * transaction, with the verification row locked (so it cannot race the
+   * purge): writes the `re_review` event (admin, IP, time, verification,
+   * evidence type, optional note: trimmed, blank = none, over 500 -> 400
+   * re_review_note_invalid), which restarts the retention clock.
+   * It never changes the decision (row 181, decided). A pending
+   * verification is not re-reviewed: its decision is the initial review.
+   * Errors: 404; 409 verification_not_decided; 410
+   * verification_document_purged; 404 verification_document_missing.
+   */
+  async reReviewDocument(
+    verificationId: string,
+    adminUserId: string,
+    ip: string | null,
+    noteInput?: string | null,
+  ): Promise<{ verificationId: string; reReview: ReReviewView }> {
+    // Trimmed first; blank -> no note; over 500 after trim -> 400.
+    const trimmed = typeof noteInput === 'string' ? noteInput.trim() : '';
+    if (trimmed.length > RE_REVIEW_NOTE_MAX) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 're_review_note_invalid', `Keep the note to ${RE_REVIEW_NOTE_MAX} characters`, {
+        maxLength: RE_REVIEW_NOTE_MAX,
+      });
+    }
+    const note = trimmed || null;
+    const event = await this.verifications.manager.transaction(async (manager) => {
+      const verification = await manager
+        .getRepository(RunnerVerification)
+        .findOne({ where: { id: verificationId }, lock: { mode: 'pessimistic_write' } });
+      if (!verification) {
+        throw new NotFoundException('Verification not found');
+      }
+      if (verification.purgedAt) {
+        throw new ApiError(HttpStatus.GONE, 'verification_document_purged', 'The image was deleted at the end of its retention period', {
+          purgedAt: verification.purgedAt,
+        });
+      }
+      if (!verification.documentS3Key) {
+        throw new ApiError(HttpStatus.NOT_FOUND, 'verification_document_missing', 'No image is stored for this verification');
+      }
+      if (verification.status === VerificationStatus.PENDING) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'verification_not_decided',
+          'Decide the verification first; that decision is its review',
+          { status: verification.status },
+        );
+      }
+      return this.logAccess(manager, verification, VerificationDocumentAction.RE_REVIEW, adminUserId, ip, note);
+    });
+    const names = await this.users.displayNames([adminUserId]);
+    return {
+      verificationId,
+      reReview: {
+        id: event.id,
+        reviewedBy: { id: adminUserId, displayName: names.get(adminUserId) ?? null },
+        createdAt: event.createdAt,
+        note: event.note ?? null,
+      },
+    };
+  }
+
+  /** Re-reviews per verification, oldest first (row 171). */
+  private async reReviewsOf(verificationIds: string[]): Promise<Map<string, ReReviewView[]>> {
+    const out = new Map<string, ReReviewView[]>();
+    if (verificationIds.length === 0) {
+      return out;
+    }
+    const rows = await this.verifications.manager.getRepository(VerificationDocumentAccessLog).find({
+      where: { verificationId: In(verificationIds), action: VerificationDocumentAction.RE_REVIEW },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+    const names = await this.users.displayNames(rows.map((r) => r.actorUserId).filter((v): v is string => !!v));
+    for (const r of rows) {
+      const list = out.get(r.verificationId) ?? [];
+      const actor = r.actorUserId as string; // Required by the DB check (see ReReviewView).
+      list.push({
+        id: r.id,
+        reviewedBy: { id: actor, displayName: names.get(actor) ?? null },
+        createdAt: r.createdAt,
+        note: r.note ?? null,
+      });
+      out.set(r.verificationId, list);
+    }
+    return out;
+  }
+
+  private retentionDays(): number {
+    return this.config?.get<number>('runnerVerification.retentionDays', 365) ?? 365;
   }
 
   private async logAccess(
@@ -378,15 +585,17 @@ export class RunnersService {
     action: VerificationDocumentAction,
     actorUserId: string | null,
     ip: string | null,
-  ): Promise<void> {
+    note: string | null = null,
+  ): Promise<VerificationDocumentAccessLog> {
     const repo = manager.getRepository(VerificationDocumentAccessLog);
-    await repo.save(
+    return repo.save(
       repo.create({
         verificationId: verification.id,
         runnerProfileId: verification.runnerProfileId,
         actorUserId,
         action,
         ip: ip ? ip.slice(0, 64) : null,
+        note,
       }),
     );
   }
@@ -441,6 +650,8 @@ export class RunnersService {
       const u = await this.users.findById(p.userId);
       users.set(p.id, { id: p.userId, phone: u?.phone ?? null });
     }
+    const reReviews = await this.reReviewsOf(rows.map((r) => r.id));
+    const names = await this.users.displayNames(rows.map((r) => r.reviewedBy).filter((v): v is string => !!v));
     return {
       items: rows.map((r) => {
         const p = byId.get(r.runnerProfileId);
@@ -448,6 +659,8 @@ export class RunnersService {
           ...toVerificationView(r),
           runnerProfile: p ? { id: p.id, userId: p.userId } : null,
           user: users.get(r.runnerProfileId) ?? null,
+          reviewer: r.reviewedBy ? { id: r.reviewedBy, displayName: names.get(r.reviewedBy) ?? null } : null,
+          reReviews: reReviews.get(r.id) ?? [],
         };
       }),
       nextCursor,
@@ -568,6 +781,21 @@ export class RunnersService {
     return toVerificationView(verification);
   }
 }
+
+/**
+ * Per runner: the latest retention event (rows 161, 171). See
+ * `RunnersService.documentsDueForPurge`.
+ */
+const RETENTION_CLOCK_SQL = `
+  SELECT v."runnerProfileId" AS runner,
+         GREATEST(
+           MAX(v."createdAt") FILTER (WHERE v."verificationType"::text IN ('government_id', 'selfie')),
+           MAX(v."reviewedAt") FILTER (WHERE v."verificationType"::text IN ('government_id', 'selfie')),
+           (SELECT MAX(l."createdAt") FROM "verification_document_access_log" l
+             WHERE l."runnerProfileId" = v."runnerProfileId" AND l.action::text = 're_review')
+         ) AS at
+    FROM "runner_verifications" v
+   GROUP BY v."runnerProfileId"`;
 
 const encodeCursor = (profile: RunnerProfile): string =>
   Buffer.from(`${profile.createdAt.toISOString()}::${profile.id}`, 'utf-8').toString('base64');

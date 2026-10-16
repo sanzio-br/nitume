@@ -25,7 +25,7 @@ export interface TrackingPoint {
 export interface TrackingSnapshot {
   errandId: string;
   status: ErrandStatus;
-  /** True while the runner position is shared (see LIVE_TRACKING_STATUSES). */
+  /** True while a runner position is shared (LIVE_TRACKING_STATUSES and a runner visible to this viewer). */
   live: boolean;
   points: TrackingPoint[];
   runner: RunnerPublicSummary | null;
@@ -49,8 +49,10 @@ export class LocationService {
   async trackingFor(errandId: string, viewer: ViewerContext): Promise<TrackingSnapshot> {
     const errand = await this.errands.getDetail(errandId, viewer);
     const locations = await this.errands.locationsFor(errandId);
-    const live = LIVE_TRACKING_STATUSES.has(errand.status);
+    // Row 183: the errand view already hides an unaccepted offer from a
+    // customer, so there is no runner (and no position) to share before accept.
     const runnerId = errand.assignment?.runner?.id ?? null;
+    const live = LIVE_TRACKING_STATUSES.has(errand.status) && runnerId !== null;
     const runnerLocation =
       live && runnerId ? await this.runners.lastKnownLocation(runnerId) : null;
 

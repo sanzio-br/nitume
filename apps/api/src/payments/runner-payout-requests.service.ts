@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
@@ -14,10 +14,30 @@ import { RunnerPayoutsService } from './runner-payouts.service';
 const R = RunnerPayoutRequestStatus;
 const money = (v: string | number | null | undefined): string => Number(v ?? 0).toFixed(2);
 
+/** Row 159 (owner, 2026-10-16): smallest payout request, KES. */
+export const DEFAULT_MIN_RUNNER_PAYOUT_REQUEST = 500;
 export const REJECT_NOTE_MIN = 5;
 export const REJECT_NOTE_MAX = 300;
+/** Rows 166, 169 (decided): ops cancel reason, 10-500 characters after trimming. */
+export const CANCEL_REASON_MIN = 10;
+export const CANCEL_REASON_MAX = 500;
 /** How long an Idempotency-Key on a payout request is remembered. */
 export const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
+/** How long a reserved key waits for its first call to finish. */
+export const IDEMPOTENCY_PENDING_TTL_SECONDS = 60;
+
+/** Stored key value: `{ id, amount }` once created, `{ pending, amount }` while running; a bare id from round 8. */
+const parseIdempotencyValue = (raw: string | null): { id: string | null; amount: string | null } | null => {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const value = JSON.parse(raw) as { id?: string; amount?: string };
+    return { id: value.id ?? null, amount: value.amount ?? null };
+  } catch {
+    return { id: raw, amount: null };
+  }
+};
 
 /** A request as the runner sees it (v-payout, v-earnings, x-payout-history). */
 export interface RunnerPayoutRequestView {
@@ -33,8 +53,10 @@ export interface RunnerPayoutRequestView {
   paidAt: Date | null;
   /** M-Pesa receipt once paid. */
   reference: string | null;
-  /** Rejection reason (shown to the runner); null otherwise. */
+  /** Rejection reason (shown to the runner); null otherwise (also when cancelled). */
   decisionNote: string | null;
+  /** When ops cancelled the request (row 166); null otherwise. The ops reason is not shown. */
+  cancelledAt: Date | null;
 }
 
 export interface AdminRef {
@@ -52,6 +74,8 @@ export interface AdminRunnerPayoutRequestView {
   destinationPhone: string;
   /** The runner's available amount now (may be below the request). */
   availableAmount: string;
+  /** Payable lines now: what this request can be paid with (review minor 2). */
+  requestableAmount: string;
   createdAt: Date;
   decidedAt: Date | null;
   decidedBy: AdminRef | null;
@@ -61,12 +85,25 @@ export interface AdminRunnerPayoutRequestView {
   lineIds: string[];
   /** Rejection reason; null otherwise. */
   note: string | null;
+  /** The runner who submitted (row 165; always the request's runner). */
+  createdBy: AdminRef;
+  /** Last change (row 165): creation, then the status transition. */
+  updatedAt: Date;
+  /** Row 166: set only on a cancelled request. */
+  cancelledAt: Date | null;
+  cancelledBy: AdminRef | null;
+  cancellationReason: string | null;
 }
 
 export interface RunnerPayoutRequestSummary {
-  /** Ops-configured minimum (row 117), KES. */
+  /** Server-configured minimum (rows 117, 159; KES 500 by default). */
   minimumAmount: string;
   availableAmount: string;
+  /**
+   * Review minor 2: the most a request can ask for (payable lines). Below
+   * `availableAmount` only while a reversed payout awaits its re-send.
+   */
+  requestableAmount: string;
   openRequest: Pick<RunnerPayoutRequestView, 'id' | 'requestedAmount' | 'status' | 'createdAt'> | null;
 }
 
@@ -75,12 +112,14 @@ export interface RunnerPayoutRequestSummary {
  * N-17). A runner asks for a payout up to their available amount, above a
  * configurable minimum, one open request at a time; the destination is their
  * sign-in phone. Ops pay it by marking whole payable lines paid (the same
- * step as `mark-paid`, linking the lines to the request) or reject it with a
- * reason. No balance is stored: the ledger lines stay the only record of
+ * step as `mark-paid`, linking the lines to the request), reject it with a
+ * reason shown to the runner, or cancel it with an ops reason (row 166). No balance is stored: the ledger lines stay the only record of
  * what is owed. No payout time is promised anywhere (row 143).
  */
 @Injectable()
 export class RunnerPayoutRequestsService {
+  private readonly logger = new Logger(RunnerPayoutRequestsService.name);
+
   constructor(
     @InjectRepository(RunnerPayoutRequest)
     private readonly requests: Repository<RunnerPayoutRequest>,
@@ -91,8 +130,10 @@ export class RunnerPayoutRequestsService {
     @Optional() private readonly redis?: RedisService,
   ) {}
 
+  /** Row 159: KES 500 unless MIN_RUNNER_PAYOUT_REQUEST says otherwise. */
   minimumAmount(): number {
-    return Math.max(0, Number(this.config.get<number>('runnerPayouts.minimumRequestAmount', 0)) || 0);
+    const value = Number(this.config.get<number>('runnerPayouts.minimumRequestAmount', DEFAULT_MIN_RUNNER_PAYOUT_REQUEST));
+    return Number.isFinite(value) ? Math.max(0, value) : DEFAULT_MIN_RUNNER_PAYOUT_REQUEST;
   }
 
   // ---- runner ----------------------------------------------------------------
@@ -100,31 +141,97 @@ export class RunnerPayoutRequestsService {
   /**
    * POST /runners/me/payout-requests. Errors: 400 payout_below_minimum
    * (`minimumAmount`), payout_exceeds_available (`availableAmount`); 409
-   * payout_request_open (`requestId`). With an `Idempotency-Key`, a replay
-   * returns the request it created.
+   * payout_request_open (`requestId`).
+   *
+   * `Idempotency-Key` (review minor 1): the key is reserved atomically (SET
+   * NX) before any work and bound to the amount. A replay with the same
+   * amount returns the request it created; with another amount 409
+   * idempotency_key_reused (`requestId` when known); while the first call is
+   * still running 409 idempotency_in_progress (retry shortly). A refused
+   * request releases the key. Redis failures never fail a committed
+   * request: the one-open-request rule still prevents a duplicate.
    */
   async create(runnerUserId: string, amount: number, idempotencyKey?: string): Promise<RunnerPayoutRequestView> {
     const runner = await this.runners.profileByUserId(runnerUserId);
     const key = idempotencyKey?.trim()
       ? `idem:runner-payout-request:${runner.id}:${idempotencyKey.trim().slice(0, 128)}`
       : null;
+    const requested = money(amount);
+    let reserved = false;
     if (key && this.redis) {
-      const existing = await this.redis.get(key);
-      if (existing) {
-        const row = await this.requests.findOne({ where: { id: existing, runnerProfileId: runner.id } });
-        if (row) {
-          return toRunnerView(row);
-        }
+      const replay = await this.reserveKey(key, runner.id, requested);
+      if (replay) {
+        return replay;
       }
+      reserved = true;
     }
+    let saved: RunnerPayoutRequest;
+    try {
+      saved = await this.createLocked(runner.id, runnerUserId, amount);
+    } catch (err) {
+      if (reserved && key) {
+        await this.redis?.del(key).catch(() => undefined);
+      }
+      throw err;
+    }
+    if (reserved && key) {
+      await this.redis
+        ?.set(key, JSON.stringify({ id: saved.id, amount: requested }), IDEMPOTENCY_TTL_SECONDS)
+        .catch((err: unknown) =>
+          this.logger.error(
+            `Payout request ${saved.id} committed but its idempotency key was not stored: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+    }
+    return toRunnerView(saved);
+  }
+
+  /**
+   * Reserves the idempotency key, or returns the request of an earlier call
+   * with the same key and amount. Throws 409 on a different amount or a call
+   * still in flight. Null = reserved, go ahead (also when Redis is down).
+   */
+  private async reserveKey(key: string, runnerProfileId: string, amount: string): Promise<RunnerPayoutRequestView | null> {
+    try {
+      if (await this.redis!.setIfAbsent(key, JSON.stringify({ pending: true, amount }), IDEMPOTENCY_PENDING_TTL_SECONDS)) {
+        return null;
+      }
+      const raw = await this.redis!.get(key);
+      const stored = parseIdempotencyValue(raw);
+      if (!stored) {
+        return null; // Expired between the two calls: proceed (the open-request rule guards).
+      }
+      if (stored.amount !== null && stored.amount !== amount) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'idempotency_key_reused',
+          'This Idempotency-Key was used for a different amount',
+          stored.id ? { requestId: stored.id } : {},
+        );
+      }
+      if (!stored.id) {
+        throw new ApiError(HttpStatus.CONFLICT, 'idempotency_in_progress', 'This request is still being processed. Try again shortly.');
+      }
+      const row = await this.requests.findOne({ where: { id: stored.id, runnerProfileId } });
+      return row ? toRunnerView(row) : null;
+    } catch (err) {
+      if (err instanceof ApiError) {
+        throw err;
+      }
+      this.logger.warn(`Idempotency store unavailable: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  private async createLocked(runnerProfileId: string, runnerUserId: string, amount: number): Promise<RunnerPayoutRequest> {
     const user = await this.users.findById(runnerUserId);
     if (!user?.phone) {
       throw new ApiError(HttpStatus.CONFLICT, 'payout_destination_missing', 'Your account has no sign-in phone to pay to');
     }
-    const saved = await this.requests.manager.transaction(async (manager) => {
-      await lockRunner(manager, runner.id);
+    return this.requests.manager.transaction(async (manager) => {
+      await lockRunner(manager, runnerProfileId);
       const repo = manager.getRepository(RunnerPayoutRequest);
-      const open = await repo.findOne({ where: { runnerProfileId: runner.id, status: R.REQUESTED } });
+      const open = await repo.findOne({ where: { runnerProfileId, status: R.REQUESTED } });
       if (open) {
         throw new ApiError(HttpStatus.CONFLICT, 'payout_request_open', 'You already have a payout request open', {
           requestId: open.id,
@@ -136,18 +243,23 @@ export class RunnerPayoutRequestsService {
           minimumAmount: money(minimum),
         });
       }
-      const available = await this.ledger.availableFor(runner.id, manager);
-      if (amount > available) {
+      // Review minor 2: capped by the payable lines a request can be paid
+      // with, not by reversed payouts awaiting a re-send.
+      const [available, requestable] = await Promise.all([
+        this.ledger.availableFor(runnerProfileId, manager),
+        this.ledger.requestableFor(runnerProfileId, manager),
+      ]);
+      if (amount > requestable) {
         throw new ApiError(
           HttpStatus.BAD_REQUEST,
           'payout_exceeds_available',
-          `You can request up to KSh ${money(available)}`,
-          { availableAmount: money(available) },
+          `You can request up to KSh ${money(requestable)}`,
+          { availableAmount: money(available), requestableAmount: money(requestable) },
         );
       }
       return repo.save(
         repo.create({
-          runnerProfileId: runner.id,
+          runnerProfileId,
           requestedAmount: money(amount),
           paidAmount: null,
           status: R.REQUESTED,
@@ -156,26 +268,28 @@ export class RunnerPayoutRequestsService {
           decidedByUserId: null,
           decidedAt: null,
           decisionNote: null,
+          cancelledByUserId: null,
+          cancelledAt: null,
+          cancellationReason: null,
+          // Row 165: always the authenticated runner (from the JWT), never the body.
           createdByUserId: runnerUserId,
         }),
       );
     });
-    if (key && this.redis) {
-      await this.redis.set(key, saved.id, IDEMPOTENCY_TTL_SECONDS);
-    }
-    return toRunnerView(saved);
   }
 
   /** GET /runners/me/payout-requests/summary. */
   async summaryFor(runnerUserId: string): Promise<RunnerPayoutRequestSummary> {
     const runner = await this.runners.profileByUserId(runnerUserId);
-    const [open, available] = await Promise.all([
+    const [open, available, requestable] = await Promise.all([
       this.requests.findOne({ where: { runnerProfileId: runner.id, status: R.REQUESTED } }),
       this.ledger.availableFor(runner.id),
+      this.ledger.requestableFor(runner.id),
     ]);
     return {
       minimumAmount: money(this.minimumAmount()),
       availableAmount: money(available),
+      requestableAmount: money(requestable),
       openRequest: open
         ? { id: open.id, requestedAmount: money(open.requestedAmount), status: open.status, createdAt: open.createdAt }
         : null,
@@ -288,6 +402,36 @@ export class RunnerPayoutRequestsService {
     return this.detail(id);
   }
 
+  /**
+   * POST /runner-payout-requests/:id/cancel `{ reason }` (row 166): ops only,
+   * an open (`requested`) request only, mandatory reason (10-500 after trim,
+   * row 169; missing, blank, short or long -> 400 cancellation_reason_invalid).
+   * The reason is ops-only: never in a runner view or notification (row 168). Final: no reopening; `requestedAmount` unchanged. No lines
+   * are linked to an open request, so the runner's available amount is
+   * unchanged and a new request can be made at once. Errors: 409
+   * payout_request_not_open (`status`); 400 cancellation_reason_invalid
+   * (`minLength`, `maxLength`).
+   */
+  async cancel(id: string, reasonInput: string | undefined, adminUserId: string): Promise<AdminRunnerPayoutRequestView> {
+    const reason = typeof reasonInput === 'string' ? reasonInput.trim() : '';
+    if (reason.length < CANCEL_REASON_MIN || reason.length > CANCEL_REASON_MAX) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'cancellation_reason_invalid', 'Say why the request is cancelled', {
+        minLength: CANCEL_REASON_MIN,
+        maxLength: CANCEL_REASON_MAX,
+      });
+    }
+    await this.requests.manager.transaction(async (manager) => {
+      const request = await this.lockOpen(manager, id);
+      await manager.getRepository(RunnerPayoutRequest).update(request.id, {
+        status: R.CANCELLED,
+        cancellationReason: reason,
+        cancelledByUserId: adminUserId,
+        cancelledAt: new Date(),
+      });
+    });
+    return this.detail(id);
+  }
+
   // ---- internals ---------------------------------------------------------------
 
   private async lockOpen(manager: EntityManager, id: string): Promise<RunnerPayoutRequest> {
@@ -349,7 +493,9 @@ export class RunnerPayoutRequestsService {
     const runnerIds = [...new Set(rows.map((r) => r.runnerProfileId))];
     const [summaries, names, lines] = await Promise.all([
       this.runners.publicSummaries(runnerIds),
-      this.users.displayNames(rows.map((r) => r.decidedByUserId).filter((v): v is string => !!v)),
+      this.users.displayNames(
+        rows.flatMap((r) => [r.decidedByUserId, r.cancelledByUserId, r.createdByUserId]).filter((v): v is string => !!v),
+      ),
       this.requests.manager.getRepository(RunnerPayoutLine).find({
         where: { payoutRequestId: In(rows.map((r) => r.id)) },
         select: { id: true, payoutRequestId: true },
@@ -357,11 +503,13 @@ export class RunnerPayoutRequestsService {
     ]);
     const phones = new Map<string, string | null>();
     const available = new Map<string, number>();
+    const requestable = new Map<string, number>();
     for (const runnerId of runnerIds) {
       const profile = await this.runners.profileById(runnerId).catch(() => null);
       const user = profile ? await this.users.findById(profile.userId) : null;
       phones.set(runnerId, user?.phone ?? null);
       available.set(runnerId, await this.ledger.availableFor(runnerId));
+      requestable.set(runnerId, await this.ledger.requestableFor(runnerId));
     }
     return rows.map((r) => {
       const runner = summaries.get(r.runnerProfileId);
@@ -380,6 +528,7 @@ export class RunnerPayoutRequestsService {
         status: r.status,
         destinationPhone: r.destinationPhone,
         availableAmount: money(available.get(r.runnerProfileId)),
+        requestableAmount: money(requestable.get(r.runnerProfileId)),
         createdAt: r.createdAt,
         decidedAt: r.decidedAt,
         decidedBy: r.decidedByUserId ? { id: r.decidedByUserId, displayName: names.get(r.decidedByUserId) ?? null } : null,
@@ -390,6 +539,14 @@ export class RunnerPayoutRequestsService {
           .map((l) => l.id)
           .sort(),
         note: r.status === R.REJECTED ? r.decisionNote : null,
+        createdBy: { id: r.createdByUserId, displayName: names.get(r.createdByUserId) ?? null },
+        updatedAt: r.updatedAt,
+        cancelledAt: r.status === R.CANCELLED ? r.cancelledAt : null,
+        cancelledBy:
+          r.status === R.CANCELLED && r.cancelledByUserId
+            ? { id: r.cancelledByUserId, displayName: names.get(r.cancelledByUserId) ?? null }
+            : null,
+        cancellationReason: r.status === R.CANCELLED ? r.cancellationReason : null,
       };
     });
   }
@@ -406,6 +563,7 @@ const toRunnerView = (r: RunnerPayoutRequest): RunnerPayoutRequestView => ({
   paidAt: r.status === R.PAID ? r.decidedAt : null,
   reference: r.payoutReference,
   decisionNote: r.status === R.REJECTED ? r.decisionNote : null,
+  cancelledAt: r.status === R.CANCELLED ? r.cancelledAt : null,
 });
 
 const lockRunner = (manager: EntityManager, runnerProfileId: string): Promise<unknown> =>

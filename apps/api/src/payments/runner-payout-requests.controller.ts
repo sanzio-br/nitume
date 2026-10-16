@@ -4,6 +4,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { UserRole } from '../common/enums';
 import {
+  CancelPayoutRequestDto,
   CountPayoutRequestsQueryDto,
   ListPayoutRequestsQueryDto,
   PayPayoutRequestDto,
@@ -13,8 +14,9 @@ import { RunnerPayoutRequestStatus } from './runner-payout-request.entity';
 import { AdminRunnerPayoutRequestView, RunnerPayoutRequestsService } from './runner-payout-requests.service';
 
 /**
- * Admin runner payout requests (rows 117, 146, 153; N-17): list, count,
- * detail, pay with whole payable lines, reject. Static routes before `:id`.
+ * Admin runner payout requests (rows 117, 146, 153, 166; N-17): list,
+ * count, detail, pay with whole payable lines, reject, cancel. Static routes
+ * before `:id`.
  */
 @Controller('runner-payout-requests')
 @UseGuards(JwtAuthGuard)
@@ -22,7 +24,7 @@ import { AdminRunnerPayoutRequestView, RunnerPayoutRequestsService } from './run
 export class RunnerPayoutRequestsController {
   constructor(private readonly requests: RunnerPayoutRequestsService) {}
 
-  /** Newest first; `status` requested | paid | rejected; cursor pagination. */
+  /** Newest first; `status` requested | paid | rejected | cancelled; cursor pagination. */
   @Get()
   list(@Query() query: ListPayoutRequestsQueryDto) {
     return this.requests.list({
@@ -70,5 +72,21 @@ export class RunnerPayoutRequestsController {
     @CurrentUser() user: AuthContext,
   ): Promise<AdminRunnerPayoutRequestView> {
     return this.requests.reject(id, dto.note, user.userId);
+  }
+
+  /**
+   * Row 166: ops cancel an open request with a mandatory reason (10-500; not
+   * shown to the runner). Final; the runner makes a new request if still
+   * owed. Runners cannot call this (admin role). 409 payout_request_not_open;
+   * 400 cancellation_reason_invalid.
+   */
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CancelPayoutRequestDto,
+    @CurrentUser() user: AuthContext,
+  ): Promise<AdminRunnerPayoutRequestView> {
+    return this.requests.cancel(id, dto.reason, user.userId);
   }
 }

@@ -958,9 +958,9 @@ describe('rows 142, 151 (N-21): purchase-limit exception', () => {
     expect(b.overrides).toEqual([]);
   });
 
-  it('a note on an ordinary approval is ignored (no exception recorded)', async () => {
+  it('a note on an ordinary approval is ignored, even an invalid one (no exception recorded, review minor 10)', async () => {
     const b = await overLimit();
-    await b.service.review(b.item.id, { decision: 'approve', amount: 3000, purchaseLimitOverrideNote: NOTE }, 'admin-1');
+    await b.service.review(b.item.id, { decision: 'approve', amount: 3000, purchaseLimitOverrideNote: 'x' }, 'admin-1');
     expect(b.item).toMatchObject({ status: S.PAYABLE, amount: '3000.00' });
     expect(b.overrides).toEqual([]);
   });

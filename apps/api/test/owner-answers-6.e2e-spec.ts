@@ -345,9 +345,29 @@ describe('Owner answers 6 (e2e)', () => {
     expect(held.body).toMatchObject({ status: 'on_hold', reviewReason: 'receipt_mismatch', amount: null });
   });
 
+  /**
+   * The runner accepted, bought the item and the task then ended CANCELLED.
+   * Since round 9 (reviewer B1, row 183) an ops cancel before the accept
+   * closes the open offer, so the only CANCELLED after a purchase is a
+   * customer-favourable dispute.
+   */
+  const cancelledAfterPurchase = async () => {
+    const actors = await paidAndAssigned();
+    const { customer, admin, runner, errand } = actors;
+    for (const to of ['RUNNER_EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']) {
+      await setStatus(runner, errand.id, to);
+    }
+    await http().post('/api/v1/disputes').set(bearer(customer.token)).send({ errandId: errand.id, reason: 'Never delivered' }).expect(201);
+    await http()
+      .patch(`/api/v1/errands/${errand.id}/resolve-dispute`)
+      .set(bearer(admin.token))
+      .send({ verdict: 'customer', rationale: 'The customer was not served; the task is cancelled.' })
+      .expect(200);
+    return actors;
+  };
+
   it('CANCELLED after the purchase: item claim with a receipt, on hold, never a runner fee (row 106)', async () => {
-    const { admin, runner, errand } = await paidAndAssigned();
-    await setStatus(admin, errand.id, 'CANCELLED');
+    const { runner, errand } = await cancelledAfterPurchase();
     const photo = await upload(runner, errand.id, 'photo');
     const receipt = await upload(runner, errand.id);
     const url = '/api/v1/runners/me/reimbursement-claims';
@@ -434,8 +454,7 @@ describe('Owner answers 6 (e2e)', () => {
   });
 
   it('refunds and the runner item reimbursement share one cap; above it needs an audited override (row 136)', async () => {
-    const { admin, runner, errand } = await paidAndAssigned();
-    await setStatus(admin, errand.id, 'CANCELLED');
+    const { admin, runner, errand } = await cancelledAfterPurchase();
     const [review] = (await db().query('SELECT id FROM "refund_reviews" WHERE "errandId" = $1', [errand.id])) as { id: string }[];
     // The customer gets 700 of the 1000 paid back.
     await http().patch(`/api/v1/refunds/${review.id}/decision`).set(bearer(admin.token)).send({ refundAmount: 700 }).expect(200);

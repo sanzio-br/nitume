@@ -14,9 +14,10 @@ export interface MerchantDetailsChangedEvent {
 
 /**
  * Domain event: an errand went RUNNER_ASSIGNED -> EXPIRED and its refund
- * review (if the customer had paid) is open, so the customer notification can
- * say whether a refund is being reviewed (owner decision 2026-10-16).
- * Emitted after the refund backstop for every EXPIRED transition.
+ * review (if the customer had paid) is open. Emitted after the refund
+ * backstop for every EXPIRED transition; the customer notification is queued
+ * from it. `refundReviewOpened` is for ops listeners only: the customer copy
+ * never mentions a review (row 158).
  */
 export const ERRAND_EXPIRED_EVENT = 'errand.expired';
 

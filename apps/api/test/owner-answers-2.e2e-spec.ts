@@ -355,6 +355,14 @@ describe('Owner answers 2 (e2e)', () => {
       .expect(200);
     const errand = await createErrand(customer);
     await driveTo({ customer, admin, runner }, errand.id, 'RUNNER_ASSIGNED');
+    // Row 183: the customer sees the runner only once the offer is accepted.
+    const offered = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
+    expect(offered.body.assignment).toBeNull();
+    await http()
+      .patch(`/api/v1/errands/${errand.id}/status`)
+      .set(bearer(runner.token))
+      .send({ to: 'RUNNER_EN_ROUTE' })
+      .expect(200);
     const detail = await http()
       .get(`/api/v1/errands/${errand.id}`)
       .set(bearer(customer.token))

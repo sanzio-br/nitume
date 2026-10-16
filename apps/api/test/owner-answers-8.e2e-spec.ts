@@ -12,6 +12,7 @@ import { ErrandsService } from '../src/errands/errands.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
+import { IdDocumentRetentionService } from '../src/scheduler/id-document-retention.service';
 
 /**
  * Contract checks for the owner answers 8 (BOARD rows 151-154 and the OTP
@@ -344,7 +345,14 @@ describe('Owner answers 8 (e2e)', () => {
 
       const summary = await http().get('/api/v1/runners/me/payout-requests/summary').set(bearer(runner.token)).expect(200);
       expect(summary.body).toMatchObject({ availableAmount: '1600.00', openRequest: null });
-      expect(summary.body.minimumAmount).toEqual(expect.any(String));
+      // Row 159: KES 500 minimum from MIN_RUNNER_PAYOUT_REQUEST (default).
+      expect(summary.body.minimumAmount).toBe('500.00');
+      const low = await http()
+        .post('/api/v1/runners/me/payout-requests')
+        .set(bearer(runner.token))
+        .send({ amount: 499.99 })
+        .expect(400);
+      expect(low.body).toMatchObject({ code: 'payout_below_minimum', minimumAmount: '500.00' });
       const over = await http()
         .post('/api/v1/runners/me/payout-requests')
         .set(bearer(runner.token))
@@ -447,7 +455,8 @@ describe('Owner answers 8 (e2e)', () => {
         .post('/api/v1/runners/me/verifications/documents')
         .set(bearer(runner.token))
         .field('verificationType', 'government_id')
-        .attach('file', Buffer.from('fake-jpeg-bytes'), { filename: 'front.jpg', contentType: 'image/jpeg' })
+        .field('side', 'front')
+        .attach('file', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]), { filename: 'front.jpg', contentType: 'image/jpeg' })
         .expect(201);
       expect(uploaded.body).toMatchObject({ verificationType: 'government_id', status: 'pending', hasDocument: true, purgedAt: null });
       expect(uploaded.body).not.toHaveProperty('documentS3Key');
@@ -495,14 +504,14 @@ describe('Owner answers 8 (e2e)', () => {
         .send({ decision: 'approved' })
         .expect(200);
       // Not yet past retention: kept.
-      expect(await app.get(RunnersService).purgeExpiredDocuments()).not.toContain(uploaded.body.id);
+      expect(await app.get(IdDocumentRetentionService).purgeExpired(new Date(), 200, [runner.profileId!])).not.toContain(uploaded.body.id);
       // The runner's last relevant event was two years ago.
       await db().query(
         `UPDATE "runner_verifications" SET "createdAt" = now() - interval '730 days', "reviewedAt" = now() - interval '730 days'
           WHERE id = $1`,
         [uploaded.body.id],
       );
-      expect(await app.get(RunnersService).purgeExpiredDocuments()).toEqual([uploaded.body.id]);
+      expect(await app.get(IdDocumentRetentionService).purgeExpired(new Date(), 200, [runner.profileId!])).toEqual([uploaded.body.id]);
       const [row] = await db().query(
         `SELECT "documentS3Key", "purgedAt", status::text AS status FROM "runner_verifications" WHERE id = $1`,
         [uploaded.body.id],
@@ -513,7 +522,7 @@ describe('Owner answers 8 (e2e)', () => {
     });
   });
 
-  describe('errand.EXPIRED customer notification (owner 2026-10-16)', () => {
+  describe('errand.EXPIRED customer notification (rows 157, 158)', () => {
     const feedOf = async (userId: string, attempts = 30): Promise<{ title: string; body: string; errandId: string }[]> => {
       for (let i = 0; i < attempts; i += 1) {
         const rows = (await db().query(
@@ -528,21 +537,25 @@ describe('Owner answers 8 (e2e)', () => {
       return [];
     };
 
-    it('a paid task that expires tells the customer a refund is being reviewed', async () => {
+    // Row 196: e2e uses its own queue prefix, so this run's worker delivers the job.
+    it('a paid task that expires gets the owner copy, with no refund promise', async () => {
       const { customer, errand } = await paidAndAssigned();
-      await db().query(
-        `UPDATE "errand_assignments" SET "offerExpiresAt" = now() - interval '1 second' WHERE "errandId" = $1`,
-        [errand.id],
-      );
-      expect(await app.get(ErrandsService).expireLapsedOffers()).toContain(errand.id);
-      const feed = await feedOf(customer.id);
-      expect(feed).toEqual([
+      // Row 157: no automatic trigger exists yet; drive the system step directly.
+      await app
+        .get(ErrandsService)
+        .transition(errand.id, ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM }, 'No further runner can be assigned');
+      expect(await feedOf(customer.id)).toEqual([
         {
           errandId: errand.id,
-          title: 'No runner available · Expired',
-          body: "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready.",
+          title: 'No runner available',
+          body: 'Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.',
         },
       ]);
+      // The refund review still opens for ops (row 102); the copy does not mention it.
+      const reviews = (await db().query('SELECT trigger FROM "refund_reviews" WHERE "errandId" = $1', [errand.id])) as {
+        trigger: string;
+      }[];
+      expect(reviews).toEqual([{ trigger: 'expired_after_payment' }]);
       const api = await http().get('/api/v1/notifications').set(bearer(customer.token)).expect(200);
       const items = (api.body.items ?? api.body) as { eventType: string; errandId: string; readAt: unknown }[];
       expect(items).toEqual(

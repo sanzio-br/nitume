@@ -14,6 +14,7 @@ const build = (status: ErrandStatus) => {
   const repos = new Map<unknown, unknown>([
     [Errand, { findOne: vi.fn(() => Promise.resolve(errand)), save: vi.fn((e: Errand) => Promise.resolve(e)) }],
     [CustomerProfile, { findOne: vi.fn(() => Promise.resolve({ id: 'cust-1' })) }],
+    [ErrandAssignment, { update: vi.fn(() => Promise.resolve({ affected: 0 })) }],
     [
       ErrandStatusHistory,
       { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) },
@@ -392,15 +393,25 @@ describe('ErrandsService offer deadline (row 141)', () => {
     await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
     expect(errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
   });
+
+  it('still answers 409 offer_expired once the sweep has marked the offer expired (row 157)', async () => {
+    const deadline = new Date(Date.now() - 60_000);
+    const { service, errand, offer } = withOffer(deadline);
+    offer.status = 'expired';
+    const err = await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, code: 'offer_expired' });
+    expect((err as ApiError).getResponse()).toMatchObject({ offerExpiresAt: deadline.toISOString() });
+    expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+  });
 });
 
-describe('ErrandsService.expireLapsedOffers re-checks under the lock (row 141)', () => {
+describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 157)', () => {
   const now = new Date('2026-10-16T10:00:00Z');
   const past = new Date('2026-10-16T09:59:00Z');
 
   const sweep = (state: { status: ErrandStatus; offer: { status: string; offerExpiresAt: Date | null } | null }) => {
-    const errand = { id: 'e-1', status: state.status } as Errand;
-    const offer = state.offer ? { id: 'a-1', errandId: 'e-1', ...state.offer } : null;
+    const errand = { id: 'e-1', reference: 'NT-1', status: state.status } as Errand;
+    const offer = state.offer ? { id: 'a-1', errandId: 'e-1', runnerProfileId: 'rp-1', ...state.offer } : null;
     const assignmentRepo = {
       findOne: vi.fn(() => Promise.resolve(offer)),
       update: vi.fn(() => Promise.resolve()),
@@ -419,6 +430,7 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (row 141)',
       qb[m] = vi.fn(() => qb);
     }
     qb.getRawMany = vi.fn(() => Promise.resolve([{ id: 'e-1' }]));
+    const emit = vi.fn();
     const service = new ErrandsService(
       { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
       { createQueryBuilder: vi.fn(() => qb) } as never,
@@ -428,37 +440,51 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (row 141)',
       {} as never,
       {} as never,
       {} as never,
-      { emit: vi.fn() } as never,
+      { emit } as never,
       {} as never,
       {} as never,
     );
-    return { service, errand, assignmentRepo, errandRepo };
+    return { service, errand, assignmentRepo, errandRepo, history, emit };
   };
 
-  it('logs a skipped errand with its error code instead of failing the job', async () => {
-    const { service, errandRepo } = sweep({
-      status: ErrandStatus.RUNNER_ASSIGNED,
-      offer: { status: 'assigned', offerExpiresAt: past },
-    });
-    errandRepo.save.mockRejectedValueOnce(new Error('row changed'));
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    expect(await service.expireLapsedOffers(now)).toEqual([]);
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/e-1: concurrent_modification/));
-    warn.mockRestore();
-  });
-
-  it('expires a lapsed open offer: assignment expired, task EXPIRED', async () => {
-    const { service, errand, assignmentRepo } = sweep({
+  it('expires a lapsed open offer: assignment expired, task stays RUNNER_ASSIGNED, runner loses access (row 157)', async () => {
+    const { service, errand, assignmentRepo, errandRepo, history, emit } = sweep({
       status: ErrandStatus.RUNNER_ASSIGNED,
       offer: { status: 'assigned', offerExpiresAt: past },
     });
     expect(await service.expireLapsedOffers(now)).toEqual(['e-1']);
+    expect(errandRepo.findOne).toHaveBeenCalledWith({ where: { id: 'e-1' }, lock: { mode: 'pessimistic_write' } });
     expect(assignmentRepo.update).toHaveBeenCalledWith('a-1', { status: 'expired', decidedAt: now });
-    expect(errand.status).toBe(ErrandStatus.EXPIRED);
+    expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+    expect(errandRepo.save).not.toHaveBeenCalled();
+    expect(history.save).not.toHaveBeenCalled();
+    await new Promise((r) => setImmediate(r));
+    expect(emit).toHaveBeenCalledWith('errand.access_changed', { errandId: 'e-1' });
+    expect(emit).toHaveBeenCalledWith('assignment.expired', {
+      errandId: 'e-1',
+      reference: 'NT-1',
+      assignmentId: 'a-1',
+      runnerProfileId: 'rp-1',
+      offerExpiresAt: past.toISOString(),
+    });
+    expect(emit).not.toHaveBeenCalledWith('errand.status_changed', expect.anything());
+  });
+
+  it('one errand failing is logged and skipped; the batch goes on (reviewer minor 1)', async () => {
+    const { service, assignmentRepo } = sweep({
+      status: ErrandStatus.RUNNER_ASSIGNED,
+      offer: { status: 'assigned', offerExpiresAt: past },
+    });
+    assignmentRepo.update.mockRejectedValueOnce(new Error('deadlock detected'));
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    await expect(service.expireLapsedOffers(now)).resolves.toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/e-1: Error \(deadlock detected\)/));
+    warn.mockRestore();
   });
 
   it.each([
     ['the task moved on (accepted)', ErrandStatus.RUNNER_EN_ROUTE, { status: 'accepted', offerExpiresAt: past }],
+    ['the task was cancelled meanwhile', ErrandStatus.CANCELLED, { status: 'assigned', offerExpiresAt: past }],
     ['the offer was declined (no open assignment)', ErrandStatus.RUNNER_ASSIGNED, null],
     ['the offer was accepted but the status not yet read', ErrandStatus.RUNNER_ASSIGNED, { status: 'accepted', offerExpiresAt: past }],
     ['the deadline was pushed out (reassigned)', ErrandStatus.RUNNER_ASSIGNED, {
@@ -471,5 +497,18 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (row 141)',
     expect(await service.expireLapsedOffers(now)).toEqual([]);
     expect(assignmentRepo.update).not.toHaveBeenCalled();
     expect(errand.status).toBe(status);
+  });
+});
+
+describe('ErrandsService closes an open offer when the task ends before an accept (reviewer B1, row 183)', () => {
+  it.each([ErrandStatus.CANCELLED, ErrandStatus.EXPIRED])('RUNNER_ASSIGNED -> %s marks the open offer expired', async (to) => {
+    const built = build(ErrandStatus.RUNNER_ASSIGNED);
+    const assignments = built.manager.getRepository(ErrandAssignment) as { update: ReturnType<typeof vi.fn> };
+    const actor = to === ErrandStatus.CANCELLED ? { type: StatusHistoryActor.ADMIN, id: 'admin-1' } : { type: StatusHistoryActor.SYSTEM };
+    await built.service.transition('e-1', to, actor);
+    expect(assignments.update).toHaveBeenCalledWith(
+      { errandId: 'e-1', status: 'assigned' },
+      { status: 'expired', decidedAt: expect.any(Date) },
+    );
   });
 });

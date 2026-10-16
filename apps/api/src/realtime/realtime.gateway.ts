@@ -125,7 +125,12 @@ export class RealtimeGateway implements OnGatewayConnection {
     return { ok: true, room };
   }
 
-  /** §4.2 live position push. Producer (runner `location:ping`) not built yet. */
+  /**
+   * §4.2 live position push. Producer (runner `location:ping`) not built yet.
+   * Row 183: the errand room includes the customer, so the producer must
+   * only emit once the runner's assignment is `accepted` (RUNNER_EN_ROUTE
+   * onward), never for an open offer.
+   */
   emitLocationUpdate(payload: LocationUpdatePayload): void {
     this.server
       ?.to(errandRoom(payload.errandId))

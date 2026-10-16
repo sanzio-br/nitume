@@ -11,6 +11,7 @@ import {
   Query,
   UploadedFile,
   UseGuards,
+  UseFilters,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,6 +22,7 @@ import { UserRole } from '../common/enums';
 import {
   AddVerificationDto,
   ListVerificationsQueryDto,
+  ReReviewVerificationDto,
   ReviewVerificationDto,
   UploadVerificationDocumentDto,
   SetAvailabilityDto,
@@ -33,8 +35,7 @@ import {
   UploadedImage,
 } from './runners.service';
 
-/** Largest ID/selfie image accepted (multipart), read once at start-up. */
-const MAX_DOCUMENT_BYTES = Number.parseInt(process.env.RUNNER_ID_MAX_UPLOAD_BYTES ?? '', 10) || 10 * 1024 * 1024;
+import { VerificationUploadTooLargeFilter } from './upload/verification-upload';
 
 @Controller('runners')
 export class RunnersController {
@@ -100,6 +101,27 @@ export class RunnersController {
     return this.runners.documentLink(verificationId, user.userId, ip ?? null);
   }
 
+  /**
+   * Row 171: explicit, audited "Re-review evidence" on an already decided
+   * ID/selfie verification (admin only), `{ note? }` (<= 500, optional).
+   * 201 `{ verificationId, reReview { id, reviewedBy { id, displayName },
+   * createdAt, note } }`. Logged as `re_review` with the admin, IP and time;
+   * restarts the retention clock (viewing never does); never changes the
+   * decision. Errors: 404; 409 verification_not_decided; 410
+   * verification_document_purged; 404 verification_document_missing.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('verifications/:verificationId/re-review')
+  @Roles(UserRole.ADMIN)
+  reReviewDocument(
+    @Param('verificationId', ParseUUIDPipe) verificationId: string,
+    @Body() dto: ReReviewVerificationDto,
+    @CurrentUser() user: AuthContext,
+    @Ip() ip: string,
+  ) {
+    return this.runners.reReviewDocument(verificationId, user.userId, ip ?? null, dto.note);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @Roles(UserRole.RUNNER, UserRole.CUSTOMER, UserRole.ADMIN)
@@ -133,23 +155,28 @@ export class RunnersController {
 
   /**
    * RA-7: multipart upload of an ID side or selfie (`file`, JPEG/PNG/WebP/HEIC)
-   * with `verificationType` (`government_id` | `selfie`) to restricted
+   * with `verificationType` (`government_id` | `selfie`) and, for an ID,
+   * `side` (`front` | `back`, row 195; 400 verification_document_side_invalid
+   * when missing, invalid, or sent with a selfie) to restricted
    * storage; creates a pending verification (one per image: ID front and
    * back are two). The storage key is never returned. Errors: 400
    * verification_type_not_uploadable, verification_document_type_invalid,
-   * verification_document_empty; 413 above the size limit.
+   * verification_document_empty; 413 verification_document_too_large
+   * (`maxBytes`, row 163; the limit is `runnerVerification.maxUploadBytes`
+   * through the module's multer options, the only source).
    */
   @UseGuards(JwtAuthGuard)
   @Post('me/verifications/documents')
   @Roles(UserRole.RUNNER)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 } }))
+  @UseFilters(VerificationUploadTooLargeFilter)
+  @UseInterceptors(FileInterceptor('file'))
   uploadVerificationDocument(
     @CurrentUser() user: AuthContext,
     @Body() dto: UploadVerificationDocumentDto,
     @UploadedFile() file: UploadedImage | undefined,
     @Ip() ip: string,
   ) {
-    return this.runners.uploadVerificationDocument(user.userId, dto.verificationType, file, ip ?? null);
+    return this.runners.uploadVerificationDocument(user.userId, dto.verificationType, file, ip ?? null, dto.side);
   }
 
   @UseGuards(JwtAuthGuard)

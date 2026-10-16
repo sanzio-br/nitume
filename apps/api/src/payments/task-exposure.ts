@@ -111,6 +111,7 @@ export const assertWithinExposure = async (
 ): Promise<TaskExposureOverride | null> => {
   const remaining = Number(args.exposure.remaining);
   if (args.amount <= remaining) {
+    // Within the cap any override note is ignored: not stored, no row (review minor 10).
     return null;
   }
   const note = args.overrideNote?.trim() ?? '';
