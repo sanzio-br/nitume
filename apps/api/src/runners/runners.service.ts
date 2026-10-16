@@ -329,47 +329,62 @@ export class RunnersService {
   }
 
   /**
-   * Row 154 retention: deletes the stored ID/selfie images of runners whose
-   * last relevant verification/activity event is older than the retention
-   * period (`runnerVerification.retentionDays`, default 365). Events counted,
-   * per runner: any verification submitted or decided; any task assignment
-   * (offer) made to the runner; any dispute opened or updated on a task the
-   * runner was assigned to. Never purged: a verification still pending, or
-   * any runner with an open / under-review dispute. Each purge deletes the
-   * object, nulls the key, records purgedAt and logs a `purge` access row.
-   * A storage failure leaves the row as it is (retried the next day).
+   * Rows 161, 171 (owner, 2026-10-16): the runner's retention clock is the
+   * latest of
+   *  (a)/(b) a new or replacement ID or selfie submitted, and (c) any
+   *  verification or re-verification started: `createdAt` of every
+   *  verification row of the runner;
+   *  (d) an admin review that needs the stored evidence: the decision on a
+   *  pending ID/selfie verification (`reviewedAt`, the initial review) and
+   *  every audited "Re-review evidence" (`re_review` log rows, row 171).
+   * Views never count; task assignments, offers and disputes do not count.
+   * Returns the decided, still-stored images whose runner's clock is older
+   * than `runnerVerification.retentionDays` (default 365). The pending guard
+   * is here; the open-dispute guard is applied by the caller (row 175).
    */
-  async purgeExpiredDocuments(now: Date = new Date(), batch = 200): Promise<string[]> {
-    const days = this.config?.get<number>('runnerVerification.retentionDays', 365) ?? 365;
-    const due: { id: string }[] = await this.verifications.query(
-      `WITH last_event AS (
-         SELECT rp.id AS runner,
-                GREATEST(
-                  (SELECT MAX(GREATEST(v."createdAt", COALESCE(v."reviewedAt", v."createdAt")))
-                     FROM "runner_verifications" v WHERE v."runnerProfileId" = rp.id),
-                  (SELECT MAX(a."createdAt") FROM "errand_assignments" a WHERE a."runnerProfileId" = rp.id),
-                  (SELECT MAX(GREATEST(d."createdAt", d."updatedAt"))
-                     FROM "disputes" d JOIN "errand_assignments" a ON a."errandId" = d."errandId"
-                    WHERE a."runnerProfileId" = rp.id)
-                ) AS at
-           FROM "runner_profiles" rp
-       )
-       SELECT v.id FROM "runner_verifications" v
-         JOIN last_event le ON le.runner = v."runnerProfileId"
-        WHERE v."documentS3Key" IS NOT NULL AND v."purgedAt" IS NULL AND v.status <> 'pending'
-          AND le.at < $1::timestamptz - make_interval(days => $2::int)
-          AND NOT EXISTS (
-            SELECT 1 FROM "disputes" d JOIN "errand_assignments" a ON a."errandId" = d."errandId"
-             WHERE a."runnerProfileId" = v."runnerProfileId" AND d.status IN ('open', 'under_review'))
+  async documentsDueForPurge(
+    now: Date = new Date(),
+    batch = 200,
+    onlyRunnerProfileIds?: string[],
+  ): Promise<{ id: string; runnerProfileId: string }[]> {
+    const days = this.retentionDays();
+    const params: unknown[] = [now.toISOString(), days, batch];
+    if (onlyRunnerProfileIds) {
+      params.push(onlyRunnerProfileIds);
+    }
+    return this.verifications.query(
+      `WITH clock AS (${RETENTION_CLOCK_SQL})
+       SELECT v.id, v."runnerProfileId" FROM "runner_verifications" v
+         JOIN clock c ON c.runner = v."runnerProfileId"
+        WHERE v."documentS3Key" IS NOT NULL AND v."purgedAt" IS NULL AND v.status::text <> 'pending'
+          AND c.at < $1::timestamptz - make_interval(days => $2::int)
+          ${onlyRunnerProfileIds ? 'AND v."runnerProfileId" = ANY($4::uuid[])' : ''}
         ORDER BY v."createdAt" ASC
         LIMIT $3`,
-      [now.toISOString(), days, batch],
+      params,
     );
+  }
+
+  /**
+   * Row 154/161 purge of the given verifications, each re-checked first
+   * (still stored, not pending, clock still past retention). Deletes the
+   * image permanently (storage + backups), then keeps only the minimum audit
+   * record (row 170): status/outcome, timestamps, reviewer id, `purgedAt`,
+   * evidence type and the log ids. The storage key and the reviewer's note
+   * are cleared. Logs a `purge` row. A storage failure leaves the row as it
+   * is (retried the next day). Callers must apply the open-dispute guard.
+   */
+  async purgeDocuments(ids: string[], now: Date = new Date()): Promise<string[]> {
+    const days = this.retentionDays();
     const purged: string[] = [];
-    for (const { id } of due) {
+    for (const id of ids) {
       const row = await this.verifications.findOne({ where: { id } });
-      if (!row?.documentS3Key || row.purgedAt) {
+      if (!row?.documentS3Key || row.purgedAt || row.status === VerificationStatus.PENDING) {
         continue;
+      }
+      const at = await this.retentionClockOf(row.runnerProfileId);
+      if (at && at.getTime() >= now.getTime() - days * 86_400_000) {
+        continue; // Restarted meanwhile (new upload, decision or re-review).
       }
       try {
         await this.documents.destroy(row.documentS3Key);
@@ -382,7 +397,7 @@ export class RunnersService {
       await this.verifications.manager.transaction(async (manager) => {
         const result = await manager
           .getRepository(RunnerVerification)
-          .update({ id: row.id, purgedAt: IsNull() }, { documentS3Key: null, purgedAt: now });
+          .update({ id: row.id, purgedAt: IsNull() }, { documentS3Key: null, reviewerNote: null, purgedAt: now });
         if (result.affected) {
           await this.logAccess(manager, row, VerificationDocumentAction.PURGE, null, null);
           purged.push(row.id);
@@ -392,15 +407,72 @@ export class RunnersService {
     return purged;
   }
 
+  /** The runner's retention clock (see `documentsDueForPurge`), or null without verifications. */
+  async retentionClockOf(runnerProfileId: string): Promise<Date | null> {
+    const rows: { at: Date | null }[] = await this.verifications.query(
+      `WITH clock AS (${RETENTION_CLOCK_SQL}) SELECT at FROM clock WHERE runner = $1`,
+      [runnerProfileId],
+    );
+    return rows[0]?.at ?? null;
+  }
+
+  /**
+   * Row 171: explicit, audited admin "Re-review evidence" on an already
+   * decided ID/selfie verification whose image is still stored. Logged as
+   * `re_review` (admin, IP, time, verification, event id) and restarts the
+   * retention clock. A pending verification is not re-reviewed: its
+   * decision is the initial review. Errors: 404; 409
+   * verification_not_decided; 410 verification_document_purged; 404
+   * verification_document_missing.
+   */
+  async reReviewDocument(
+    verificationId: string,
+    adminUserId: string,
+    ip: string | null,
+  ): Promise<{ verificationId: string; eventId: string; reReviewedAt: Date }> {
+    const verification = await this.verifications.findOne({ where: { id: verificationId } });
+    if (!verification) {
+      throw new NotFoundException('Verification not found');
+    }
+    if (verification.purgedAt) {
+      throw new ApiError(HttpStatus.GONE, 'verification_document_purged', 'The image was deleted at the end of its retention period', {
+        purgedAt: verification.purgedAt,
+      });
+    }
+    if (!verification.documentS3Key) {
+      throw new ApiError(HttpStatus.NOT_FOUND, 'verification_document_missing', 'No image is stored for this verification');
+    }
+    if (verification.status === VerificationStatus.PENDING) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'verification_not_decided',
+        'Decide the verification first; that decision is its review',
+        { status: verification.status },
+      );
+    }
+    const event = await this.logAccess(
+      this.verifications.manager,
+      verification,
+      VerificationDocumentAction.RE_REVIEW,
+      adminUserId,
+      ip,
+    );
+    return { verificationId, eventId: event.id, reReviewedAt: event.createdAt };
+  }
+
+  private retentionDays(): number {
+    return this.config?.get<number>('runnerVerification.retentionDays', 365) ?? 365;
+  }
+
   private async logAccess(
     manager: EntityManager,
     verification: Pick<RunnerVerification, 'id' | 'runnerProfileId'>,
     action: VerificationDocumentAction,
     actorUserId: string | null,
     ip: string | null,
-  ): Promise<void> {
+  ): Promise<VerificationDocumentAccessLog> {
     const repo = manager.getRepository(VerificationDocumentAccessLog);
-    await repo.save(
+    return repo.save(
       repo.create({
         verificationId: verification.id,
         runnerProfileId: verification.runnerProfileId,
@@ -588,6 +660,21 @@ export class RunnersService {
     return toVerificationView(verification);
   }
 }
+
+/**
+ * Per runner: the latest retention event (rows 161, 171). See
+ * `RunnersService.documentsDueForPurge`.
+ */
+const RETENTION_CLOCK_SQL = `
+  SELECT v."runnerProfileId" AS runner,
+         GREATEST(
+           MAX(v."createdAt"),
+           MAX(v."reviewedAt") FILTER (WHERE v."verificationType"::text IN ('government_id', 'selfie')),
+           (SELECT MAX(l."createdAt") FROM "verification_document_access_log" l
+             WHERE l."runnerProfileId" = v."runnerProfileId" AND l.action::text = 're_review')
+         ) AS at
+    FROM "runner_verifications" v
+   GROUP BY v."runnerProfileId"`;
 
 const encodeCursor = (profile: RunnerProfile): string =>
   Buffer.from(`${profile.createdAt.toISOString()}::${profile.id}`, 'utf-8').toString('base64');

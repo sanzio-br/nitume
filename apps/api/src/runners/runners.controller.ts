@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Ip,
   Param,
   ParseUUIDPipe,
@@ -98,6 +99,25 @@ export class RunnersController {
     @Ip() ip: string,
   ) {
     return this.runners.documentLink(verificationId, user.userId, ip ?? null);
+  }
+
+  /**
+   * Row 171: explicit, audited "Re-review evidence" on an already decided
+   * ID/selfie verification (admin only). Logged as `re_review` with the
+   * admin, IP and time; restarts the retention clock (viewing never does).
+   * Errors: 404; 409 verification_not_decided; 410
+   * verification_document_purged; 404 verification_document_missing.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('verifications/:verificationId/re-review')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  reReviewDocument(
+    @Param('verificationId', ParseUUIDPipe) verificationId: string,
+    @CurrentUser() user: AuthContext,
+    @Ip() ip: string,
+  ) {
+    return this.runners.reReviewDocument(verificationId, user.userId, ip ?? null);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -65,7 +65,11 @@ export interface AppConfig {
     cloudinaryFolder: string;
     /** Admin signed-URL lifetime, capped at 300 s (row 154). */
     signedUrlTtlSeconds: number;
-    /** Days kept after the runner's last relevant verification/activity event (row 154). */
+    /**
+     * Days kept after the runner's last retention event (rows 154, 161, 171):
+     * a new/replacement ID or selfie, a verification started, the decision on
+     * an ID/selfie, or an audited re-review. Views never count.
+     */
     retentionDays: number;
     /** Largest accepted image upload, bytes. */
     maxUploadBytes: number;
@@ -276,9 +280,9 @@ export const configuration = (): AppConfig => ({
     // the system moves COMPLETED -> CONFIRMED (payout eligibility).
     disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
   },
-  // Rows 125, 144, 154: runner ID/selfie images in restricted storage, kept
-  // for a configurable period after the runner's last relevant event, then
-  // deleted by a daily job. Initial retention: 12 months (365 days).
+  // Rows 125, 144, 154, 161: runner ID/selfie images in restricted storage,
+  // kept for a configurable period after the runner's last retention event,
+  // then deleted by a daily job. Initial retention: 12 months (365 days).
   runnerVerification: {
     storageDriver: ((process.env.RUNNER_ID_STORAGE_DRIVER || process.env.EVIDENCE_STORAGE_DRIVER || 'console') as
       AppConfig['runnerVerification']['storageDriver']),

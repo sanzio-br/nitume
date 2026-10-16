@@ -45,6 +45,7 @@ export class RunnerVerification {
   @Column({ type: 'timestamptz', nullable: true })
   purgedAt: Date | null;
 
+  /** Cleared by the retention purge (row 170: not part of the minimum audit record). */
   @Column({ type: 'text', nullable: true })
   reviewerNote: string | null;
 

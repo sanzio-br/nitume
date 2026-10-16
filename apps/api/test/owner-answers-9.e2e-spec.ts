@@ -14,6 +14,8 @@ import { ErrandsService } from '../src/errands/errands.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
+import { IdDocumentRetentionService } from '../src/scheduler/id-document-retention.service';
+import { RunnersService as Runners } from '../src/runners/runners.service';
 import {
   VERIFICATION_DOCUMENT_STORAGE,
   VerificationDocumentStorage,
@@ -507,5 +509,98 @@ describe('Owner answers 9 (e2e)', () => {
     const res = await uploadDoc(runner, Buffer.from('%PDF-1.7 not an image'), 'image/jpeg', 'selfie').expect(400);
     expect(res.body).toMatchObject({ code: 'verification_document_type_invalid' });
     expect(await db().query('SELECT id FROM "runner_verifications" WHERE "runnerProfileId" = $1', [runner.profileId])).toEqual([]);
+  });
+
+  describe('rows 161, 170, 171, 175: retention clock, minimum metadata, re-review, holds', () => {
+    const approve = (admin: Actor, runner: Actor, id: string, reviewerNote?: string) =>
+      http()
+        .patch(`/api/v1/runners/${runner.profileId}/verifications/${id}`)
+        .set(bearer(admin.token))
+        .send({ decision: 'approved', ...(reviewerNote ? { reviewerNote } : {}) })
+        .expect(200);
+    const backdate = (runner: Actor) =>
+      db().query(
+        `UPDATE "runner_verifications" SET "createdAt" = now() - interval '730 days',
+                "reviewedAt" = CASE WHEN "reviewedAt" IS NULL THEN NULL ELSE now() - interval '730 days' END
+          WHERE "runnerProfileId" = $1`,
+        [runner.profileId],
+      );
+    const dueIds = async (runner: Actor) =>
+      (await app.get(Runners).documentsDueForPurge(new Date(), 200, [runner.profileId!])).map((d) => d.id);
+    const purge = (runner: Actor) => app.get(IdDocumentRetentionService).purgeExpired(new Date(), 200, [runner.profileId!]);
+
+    it('a view never restarts the clock; an audited re-review does; pending is never purged or re-reviewed', async () => {
+      const runner = await makeUser(UserRole.RUNNER);
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const id = (await uploadDoc(runner, jpeg()).expect(201)).body.id as string;
+      await approve(admin, runner, id);
+      await backdate(runner);
+      expect(await dueIds(runner)).toEqual([id]);
+      await http().get(`/api/v1/runners/verifications/${id}/document`).set(bearer(admin.token)).expect(200);
+      expect(await dueIds(runner)).toEqual([id]);
+
+      await http().post(`/api/v1/runners/verifications/${id}/re-review`).set(bearer(runner.token)).expect(403);
+      const rr = await http().post(`/api/v1/runners/verifications/${id}/re-review`).set(bearer(admin.token)).expect(200);
+      expect(rr.body).toMatchObject({ verificationId: id, eventId: expect.any(String), reReviewedAt: expect.any(String) });
+      const [event] = await db().query(
+        `SELECT action::text AS action, "actorUserId", ip FROM "verification_document_access_log" WHERE id = $1`,
+        [rr.body.eventId],
+      );
+      expect(event).toMatchObject({ action: 're_review', actorUserId: admin.id, ip: expect.any(String) });
+      expect(await dueIds(runner)).toEqual([]);
+      expect(await purge(runner)).toEqual([]);
+
+      const pending = (await uploadDoc(runner, jpeg(), 'image/jpeg', 'selfie').expect(201)).body.id as string;
+      const notDecided = await http().post(`/api/v1/runners/verifications/${pending}/re-review`).set(bearer(admin.token)).expect(409);
+      expect(notDecided.body).toMatchObject({ code: 'verification_not_decided' });
+      await backdate(runner);
+      // The re-review (logged today) still holds the clock, and pending is never due.
+      expect(await dueIds(runner)).toEqual([]);
+    });
+
+    it('an open dispute holds the purge; once resolved the image goes and only minimum metadata stays (note cleared)', async () => {
+      const ctx = await paidAndAssigned();
+      const { runner, admin, customer, errand } = ctx;
+      const id = (await uploadDoc(runner, jpeg()).expect(201)).body.id as string;
+      await approve(admin, runner, id, 'Name matches the M-Pesa record');
+      for (const to of ['RUNNER_EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']) {
+        await setStatus(runner, errand.id, to);
+      }
+      await upload(runner, errand.id);
+      await setStatus(runner, errand.id, 'AWAITING_CUSTOMER');
+      await http()
+        .post('/api/v1/disputes')
+        .set(bearer(customer.token))
+        .send({ errandId: errand.id, reason: 'Wrong item delivered' })
+        .expect(201);
+      await backdate(runner);
+      expect(await dueIds(runner)).toEqual([id]);
+      expect(await purge(runner)).toEqual([]);
+
+      await http()
+        .patch(`/api/v1/errands/${errand.id}/resolve-dispute`)
+        .set(bearer(admin.token))
+        .send({ verdict: 'runner', rationale: 'Receipt and photos show the runner bought the right item.' })
+        .expect(200);
+      expect(await purge(runner)).toEqual([id]);
+      const [row] = await db().query(
+        `SELECT "documentS3Key", "reviewerNote", "purgedAt", status::text AS status, "verificationType"::text AS type,
+                "reviewedBy", "reviewedAt", "createdAt"
+           FROM "runner_verifications" WHERE id = $1`,
+        [id],
+      );
+      expect(row).toMatchObject({
+        documentS3Key: null,
+        reviewerNote: null,
+        purgedAt: expect.any(Date),
+        status: 'approved',
+        type: 'government_id',
+        reviewedBy: admin.id,
+        reviewedAt: expect.any(Date),
+        createdAt: expect.any(Date),
+      });
+      const rr = await http().post(`/api/v1/runners/verifications/${id}/re-review`).set(bearer(admin.token)).expect(410);
+      expect(rr.body).toMatchObject({ code: 'verification_document_purged' });
+    });
   });
 });

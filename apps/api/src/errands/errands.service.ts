@@ -598,6 +598,30 @@ export class ErrandsService {
   }
 
   /**
+   * Errand ids each runner was ever assigned to (any assignment status), for
+   * other modules' read models (disputes: the ID-image purge guard, row 175).
+   */
+  async errandIdsByRunner(runnerProfileIds: string[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    const unique = [...new Set(runnerProfileIds)].filter(Boolean);
+    if (unique.length === 0) {
+      return out;
+    }
+    const rows = await this.assignments.find({
+      where: { runnerProfileId: In(unique) },
+      select: { errandId: true, runnerProfileId: true },
+    });
+    for (const r of rows) {
+      const list = out.get(r.runnerProfileId) ?? [];
+      if (!list.includes(r.errandId)) {
+        list.push(r.errandId);
+      }
+      out.set(r.runnerProfileId, list);
+    }
+    return out;
+  }
+
+  /**
    * The runner's latest assignment on an errand, whatever its status (audit
    * records, row 151). Null when the runner was never assigned.
    */

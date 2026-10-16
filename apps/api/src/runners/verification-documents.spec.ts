@@ -11,7 +11,7 @@ const codeOf = (p: Promise<unknown>) =>
     (e: unknown) => (e instanceof ApiError ? e.code : String(e)),
   );
 
-const build = (dueIds: string[] = []) => {
+const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
   const rows: RunnerVerification[] = [];
   const log: { action: VerificationDocumentAction; actorUserId: string | null; ip: string | null; verificationId: string }[] = [];
   const verificationRepo = {
@@ -32,13 +32,19 @@ const build = (dueIds: string[] = []) => {
       }
       return Promise.resolve({ affected: row ? 1 : 0 });
     }),
-    query: vi.fn(() => Promise.resolve(dueIds.map((id) => ({ id })))),
+    query: vi.fn((sql: string) =>
+      Promise.resolve(
+        sql.includes('SELECT at FROM clock')
+          ? [{ at: clockAt }]
+          : dueIds.map((id) => ({ id, runnerProfileId: 'rp-1' })),
+      ),
+    ),
   };
   const logRepo = {
     create: vi.fn((v: object) => v),
     save: vi.fn((v: (typeof log)[number]) => {
       log.push(v);
-      return Promise.resolve(v);
+      return Promise.resolve({ ...v, id: `log-${log.length}`, createdAt: new Date() });
     }),
   };
   const manager = {
@@ -116,27 +122,78 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
     expect(b.log[1]).toMatchObject({ action: 'view', actorUserId: 'admin-1', ip: '41.90.1.2', verificationId: v.id });
   });
 
-  it('purges due images: deletes the object, nulls the key, records purgedAt, logs it; then 410', async () => {
+  it('finds due images from the verification clock only (rows 161, 171)', async () => {
     const b = build(['v-1']);
-    await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null);
-    b.rows[0].status = VerificationStatus.APPROVED;
     const now = new Date('2027-11-01T00:00:00Z');
-    await expect(b.service.purgeExpiredDocuments(now)).resolves.toEqual(['v-1']);
+    await expect(b.service.documentsDueForPurge(now)).resolves.toEqual([{ id: 'v-1', runnerProfileId: 'rp-1' }]);
+    const [sql, params] = b.verificationRepo.query.mock.calls[0] as unknown as [string, unknown[]];
+    expect(params).toEqual([now.toISOString(), 365, 200]);
+    // The clock: verification rows, ID/selfie decisions and re-reviews only.
+    expect(sql).toContain('MAX(v."createdAt")');
+    expect(sql).toContain(`FILTER (WHERE v."verificationType"::text IN ('government_id', 'selfie'))`);
+    expect(sql).toContain(`l.action::text = 're_review'`);
+    expect(sql).not.toMatch(/errand_assignments|disputes|'view'/);
+    expect(sql).toContain(`v.status::text <> 'pending'`);
+  });
+
+  it('purges: deletes the object, keeps only minimum metadata (note cleared, row 170), logs it; then 410', async () => {
+    const b = build([], new Date('2026-01-01T00:00:00Z'));
+    await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null);
+    Object.assign(b.rows[0], {
+      status: VerificationStatus.APPROVED,
+      reviewerNote: 'Name matches the M-Pesa record',
+      reviewedBy: 'admin-1',
+      reviewedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    const now = new Date('2027-11-01T00:00:00Z');
+    await expect(b.service.purgeDocuments(['v-1'], now)).resolves.toEqual(['v-1']);
     expect(b.storage.destroy).toHaveBeenCalledWith('vdoc:jpg:nitume/runner-verification/rp1/k1');
-    expect(b.rows[0]).toMatchObject({ documentS3Key: null, purgedAt: now });
+    expect(b.rows[0]).toMatchObject({
+      documentS3Key: null,
+      reviewerNote: null,
+      purgedAt: now,
+      status: VerificationStatus.APPROVED,
+      reviewedBy: 'admin-1',
+      verificationType: RunnerVerificationType.GOVERNMENT_ID,
+    });
     expect(b.log[1]).toMatchObject({ action: 'purge', actorUserId: null });
-    expect((b.verificationRepo.query.mock.calls[0] as unknown[])[1]).toEqual([now.toISOString(), 365, 200]);
     expect(await codeOf(b.service.documentLink('v-1', 'admin-1', null))).toBe('verification_document_purged');
-    // Running again does nothing.
-    await expect(b.service.purgeExpiredDocuments(now)).resolves.toEqual([]);
+    await expect(b.service.purgeDocuments(['v-1'], now)).resolves.toEqual([]);
+  });
+
+  it('never purges a pending verification, or one whose clock restarted meanwhile (rows 171, 175)', async () => {
+    const now = new Date('2027-11-01T00:00:00Z');
+    const pending = build([], new Date('2026-01-01T00:00:00Z'));
+    await pending.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, image, null);
+    await expect(pending.service.purgeDocuments(['v-1'], now)).resolves.toEqual([]);
+    const restarted = build([], new Date('2027-10-01T00:00:00Z'));
+    await restarted.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, image, null);
+    restarted.rows[0].status = VerificationStatus.APPROVED;
+    await expect(restarted.service.purgeDocuments(['v-1'], now)).resolves.toEqual([]);
+    expect(restarted.storage.destroy).not.toHaveBeenCalled();
   });
 
   it('keeps the row when the storage deletion fails (retried next run)', async () => {
-    const b = build(['v-1']);
+    const b = build([], new Date('2026-01-01T00:00:00Z'));
     await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, image, null);
+    b.rows[0].status = VerificationStatus.APPROVED;
     b.storage.destroy.mockRejectedValueOnce(new Error('cloud down'));
-    await expect(b.service.purgeExpiredDocuments()).resolves.toEqual([]);
+    await expect(b.service.purgeDocuments(['v-1'])).resolves.toEqual([]);
     expect(b.rows[0].documentS3Key).not.toBeNull();
+  });
+
+  it('re-review of decided evidence is logged and restarts the clock; not on pending, purged or imageless (row 171)', async () => {
+    const b = build();
+    const v = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null);
+    expect(await codeOf(b.service.reReviewDocument(v.id, 'admin-1', null))).toBe('verification_not_decided');
+    b.rows[0].status = VerificationStatus.APPROVED;
+    const out = await b.service.reReviewDocument(v.id, 'admin-1', '41.90.1.2');
+    expect(out).toMatchObject({ verificationId: v.id, eventId: 'log-2', reReviewedAt: expect.any(Date) });
+    expect(b.log.at(-1)).toMatchObject({ action: 're_review', actorUserId: 'admin-1', ip: '41.90.1.2', verificationId: v.id });
+    b.rows[0].documentS3Key = null;
+    expect(await codeOf(b.service.reReviewDocument(v.id, 'admin-1', null))).toBe('verification_document_missing');
+    b.rows[0].purgedAt = new Date();
+    expect(await codeOf(b.service.reReviewDocument(v.id, 'admin-1', null))).toBe('verification_document_purged');
   });
 
   it('deletes the stored image again when the row cannot be written (review minor 4)', async () => {

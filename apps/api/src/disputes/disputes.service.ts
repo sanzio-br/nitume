@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { conflict } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import {
   DisputeEventType,
   DisputeStatus,
@@ -78,6 +78,25 @@ export class DisputesService implements OnModuleInit {
     private readonly events: Repository<DisputeEvent>,
     private readonly errands: ErrandsService,
   ) {}
+
+  /**
+   * Row 175: the runners with an open or under-review dispute on any task
+   * they were assigned to. Their ID/selfie evidence is never purged while
+   * such a dispute exists (the hold comes before the retention purge).
+   */
+  async runnersWithOpenDisputes(runnerProfileIds: string[]): Promise<Set<string>> {
+    const byRunner = await this.errands.errandIdsByRunner(runnerProfileIds);
+    const errandIds = [...new Set([...byRunner.values()].flat())];
+    if (errandIds.length === 0) {
+      return new Set();
+    }
+    const open = await this.disputes.find({
+      where: { errandId: In(errandIds), status: In([DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW]) },
+      select: { errandId: true },
+    });
+    const disputed = new Set(open.map((d) => d.errandId));
+    return new Set([...byRunner].filter(([, ids]) => ids.some((id) => disputed.has(id))).map(([runner]) => runner));
+  }
 
   /** Closes the dispute row in the resolve-dispute transaction (N-6). */
   onModuleInit(): void {

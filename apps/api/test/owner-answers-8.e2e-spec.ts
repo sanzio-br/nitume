@@ -14,6 +14,7 @@ import { ErrandsService } from '../src/errands/errands.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
+import { IdDocumentRetentionService } from '../src/scheduler/id-document-retention.service';
 import { NOTIFICATIONS_QUEUE } from '../src/infra/queue/queues';
 import { FEED_JOB, FeedJob, NotificationsService } from '../src/notifications/notifications.service';
 
@@ -506,14 +507,14 @@ describe('Owner answers 8 (e2e)', () => {
         .send({ decision: 'approved' })
         .expect(200);
       // Not yet past retention: kept.
-      expect(await app.get(RunnersService).purgeExpiredDocuments()).not.toContain(uploaded.body.id);
+      expect(await app.get(IdDocumentRetentionService).purgeExpired(new Date(), 200, [runner.profileId!])).not.toContain(uploaded.body.id);
       // The runner's last relevant event was two years ago.
       await db().query(
         `UPDATE "runner_verifications" SET "createdAt" = now() - interval '730 days', "reviewedAt" = now() - interval '730 days'
           WHERE id = $1`,
         [uploaded.body.id],
       );
-      expect(await app.get(RunnersService).purgeExpiredDocuments()).toEqual([uploaded.body.id]);
+      expect(await app.get(IdDocumentRetentionService).purgeExpired(new Date(), 200, [runner.profileId!])).toEqual([uploaded.body.id]);
       const [row] = await db().query(
         `SELECT "documentS3Key", "purgedAt", status::text AS status FROM "runner_verifications" WHERE id = $1`,
         [uploaded.body.id],
