@@ -37,7 +37,7 @@ Report row visible in IN_PROGRESS, AWAITING_CUSTOMER and COMPLETED (§3.3 as upd
 2. Scrollable body:
    1. Summary card (C-07): status chip (C-05), title 16/700 (margin `10 0 4`), meta Fira Code 12 slate-600 (`#NT-10482 · Today, 10:03 AM`).
    2. Primary action (table above).
-   3. Section label `Runner`; card with C-21 (avatar 36, name 13.5/600 = API short name, row 40; meta Fira Code 11 `Verified · 4.9 · 137 tasks`). Hidden when no runner was assigned, and **hidden in PAYMENT_CONFIRMED and RUNNER_ASSIGNED** even when the API returns an offered runner (row 176, `_shared.md` §6.1, proposed CQ-176b): the runner appears from RUNNER_EN_ROUTE, once they accepted.
+   3. Section label `Runner`; card with C-21 (avatar 36, name 13.5/600 = API short name, row 40; meta Fira Code 11 `Verified · 4.9 · 137 tasks`). Hidden when no runner was assigned, and **hidden in PAYMENT_CONFIRMED and RUNNER_ASSIGNED** even when the API returns an offered runner (rows 176, 183, decided; `_shared.md` §6.1): the runner appears from RUNNER_EN_ROUTE, once they accepted.
    4. Section label `Evidence`; evidence grid (C-25). Hidden when there is no evidence.
    5. Section label `Payment`; receipt card (C-18, dashed): **one** total row `Total (service + runner fee)` (row 34 clarification; no `Service fee` / `Runner fee` lines); separate group for `Item amount` + route line (`Paid to the merchant directly` / `Paid to Nitume for your runner`) and, while an amount is due, link `View payment details` (C-04).
    6. Refund group (`_shared.md` §11), only when the errand has a refund review: inside the same receipt card under a hairline, a row `Refund` with the status chip (C-05) right-aligned; the 13 slate-600 status line under it; for `approved` / `refunded` a receipt row `Refund amount` — amount (Fira Code). Several reviews (e.g. a price decrease, then a cancellation) are listed newest first, one group each.
@@ -99,14 +99,14 @@ States (proposed):
 
 ## Open questions (non-blocking; build default given)
 - None for the EXPIRED copy: row 174 (2026-10-16) keeps `No runner accepted your task in time.` and `Start a new task`.
-- CQ-176b (row 176 follow-up, proposed): no runner shown during RUNNER_ASSIGNED (`_shared.md` §6.1).
+- None for row 176: row 183 (offered runner never shown) decided 2026-10-16.
 - Q2: Active tasks open this screen with a `Track live` button (default, as the table above).
 - Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
 
 ## Current vs design
 Spec update 2026-10-16 (round 10, row 176), `main`:
 1. blocker (core-ui CC-176): the summary chip reads `Runner assigned` in RUNNER_ASSIGNED (`statusPresentation`, `packages/nitume_core/lib/src/widgets/status_presentation.dart:25-26`); must read `Finding a runner`. No app change once core changes.
-2. blocker (flutter-customer): the `Runner` section shows whenever the API returns a runner, which during RUNNER_ASSIGNED is the **offered** runner (API `ACTIVE_ASSIGNMENT_STATUSES` includes `assigned`, `errands.service.ts:89-92`). Hide it in PAYMENT_CONFIRMED and RUNNER_ASSIGNED.
+2. blocker (flutter-customer; row 183 decided): the `Runner` section shows whenever the API returns a runner, which during RUNNER_ASSIGNED is the **offered** runner (API `ACTIVE_ASSIGNMENT_STATUSES` includes `assigned`, `errands.service.ts:89-92`). Hide it in PAYMENT_CONFIRMED and RUNNER_ASSIGNED.
 
 Re-audit round 5, 2026-10-12, `feat/customer-owner-answers-5` (core `ad44dc6`, app `5cbd081`; API `feat/api-owner-answers-5` @ `6ce9ad2`): **PASS**, no findings. Items 1–4 of the row-102 update below are closed: core `RefundTrigger` has `expiredAfterPayment` / `failedAfterPayment`; `RefundGroup` picks the trigger-specific pending line (exact `_shared.md` §11 copy, wildcard fallback to the common line); tests cover paid EXPIRED, paid FAILED, an other-trigger fallback, an unpaid EXPIRED (no refund group) and a reversed payout (`Refund approved`, amount, no `Sent` line). Details in `docs/audits/customer-gap-report.md` → "Re-audit 2026-10-12: customer round 5".
 
