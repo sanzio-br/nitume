@@ -2,21 +2,27 @@ import {
   Body,
   Controller,
   Get,
+  Ip,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthContext, Public, Roles } from '../common/decorators/auth.decorators';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { UserRole, VerificationStatus } from '../common/enums';
+import { UserRole } from '../common/enums';
 import {
   AddVerificationDto,
   ListVerificationsQueryDto,
   ReviewVerificationDto,
+  UploadVerificationDocumentDto,
   SetAvailabilityDto,
   SetServiceAreasDto,
   SetSkillsDto,
@@ -24,7 +30,11 @@ import {
 import {
   PublicRunnerProfile,
   RunnersService,
+  UploadedImage,
 } from './runners.service';
+
+/** Largest ID/selfie image accepted (multipart), read once at start-up. */
+const MAX_DOCUMENT_BYTES = Number.parseInt(process.env.RUNNER_ID_MAX_UPLOAD_BYTES ?? '', 10) || 10 * 1024 * 1024;
 
 @Controller('runners')
 export class RunnersController {
@@ -73,6 +83,23 @@ export class RunnersController {
     });
   }
 
+  /**
+   * Admin only (rows 125, 154): a signed URL to a verification image, valid
+   * at most 5 minutes (`expiresAt`); every call is logged with the admin and
+   * IP. Errors: 404; 404 verification_document_missing; 410
+   * verification_document_purged. `url` is null on the console driver.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('verifications/:verificationId/document')
+  @Roles(UserRole.ADMIN)
+  verificationDocument(
+    @Param('verificationId', ParseUUIDPipe) verificationId: string,
+    @CurrentUser() user: AuthContext,
+    @Ip() ip: string,
+  ) {
+    return this.runners.documentLink(verificationId, user.userId, ip ?? null);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @Roles(UserRole.RUNNER, UserRole.CUSTOMER, UserRole.ADMIN)
@@ -102,6 +129,27 @@ export class RunnersController {
       dto.verificationType,
       dto.documentS3Key ?? null,
     );
+  }
+
+  /**
+   * RA-7: multipart upload of an ID side or selfie (`file`, JPEG/PNG/WebP/HEIC)
+   * with `verificationType` (`government_id` | `selfie`) to restricted
+   * storage; creates a pending verification (one per image: ID front and
+   * back are two). The storage key is never returned. Errors: 400
+   * verification_type_not_uploadable, verification_document_type_invalid,
+   * verification_document_empty; 413 above the size limit.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('me/verifications/documents')
+  @Roles(UserRole.RUNNER)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 } }))
+  uploadVerificationDocument(
+    @CurrentUser() user: AuthContext,
+    @Body() dto: UploadVerificationDocumentDto,
+    @UploadedFile() file: UploadedImage | undefined,
+    @Ip() ip: string,
+  ) {
+    return this.runners.uploadVerificationDocument(user.userId, dto.verificationType, file, ip ?? null);
   }
 
   @UseGuards(JwtAuthGuard)

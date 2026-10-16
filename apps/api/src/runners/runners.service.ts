@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApiError } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, Repository } from 'typeorm';
 import {
   RunnerAvailability,
   RunnerSkill,
@@ -11,6 +13,13 @@ import {
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification } from './runner-verification.entity';
+import { VerificationDocumentAccessLog, VerificationDocumentAction } from './verification-document-access-log.entity';
+import {
+  ConsoleVerificationDocumentStorage,
+  MAX_DOCUMENT_URL_TTL_SECONDS,
+  VERIFICATION_DOCUMENT_STORAGE,
+  VerificationDocumentStorage,
+} from './verification-storage/verification-document-storage';
 import { UsersService } from '../users/users.service';
 import { shortNameOf } from './short-name';
 
@@ -42,8 +51,41 @@ export interface PublicRunnerProfile {
   serviceAreas: string[];
 }
 
+/**
+ * A verification as clients see it: the storage key is never returned (rows
+ * 125, 154); `hasDocument` says whether an image is still stored.
+ */
+export type VerificationView = Omit<RunnerVerification, 'documentS3Key'> & { hasDocument: boolean };
+
+/** Admin queue item (row 154: no storage key). */
+export type AdminVerificationView = VerificationView & {
+  runnerProfile: { id: string; userId: string } | null;
+  user: { id: string; phone: string | null } | null;
+};
+
+export const toVerificationView = (v: RunnerVerification): VerificationView => {
+  const { documentS3Key, ...rest } = v;
+  return { ...rest, purgedAt: v.purgedAt ?? null, hasDocument: !!documentS3Key };
+};
+
+/** Verification types whose image goes to restricted storage (RA-7). */
+export const DOCUMENT_VERIFICATION_TYPES: readonly RunnerVerificationType[] = [
+  RunnerVerificationType.GOVERNMENT_ID,
+  RunnerVerificationType.SELFIE,
+];
+
+export const DOCUMENT_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+
+export interface UploadedImage {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class RunnersService {
+  private readonly logger = new Logger(RunnersService.name);
+
   constructor(
     @InjectRepository(RunnerProfile)
     private readonly profiles: Repository<RunnerProfile>,
@@ -54,6 +96,10 @@ export class RunnersService {
     @InjectRepository(RunnerServiceArea)
     private readonly serviceAreas: Repository<RunnerServiceArea>,
     private readonly users: UsersService,
+    @Optional()
+    @Inject(VERIFICATION_DOCUMENT_STORAGE)
+    private readonly documents: VerificationDocumentStorage = new ConsoleVerificationDocumentStorage(),
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   async createForUser(
@@ -155,55 +201,257 @@ export class RunnersService {
     return this.profiles.save(profile);
   }
 
+  /**
+   * Records a verification without an image (e.g. payment identity). ID and
+   * selfie images go through `uploadVerificationDocument`; a client-supplied
+   * storage key is never accepted (400 verification_document_upload_required).
+   */
   async addVerification(
     userId: string,
     verificationType: RunnerVerificationType,
     documentS3Key?: string | null,
-  ): Promise<RunnerVerification> {
+  ): Promise<VerificationView> {
+    if (documentS3Key || DOCUMENT_VERIFICATION_TYPES.includes(verificationType)) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'verification_document_upload_required',
+        'Upload the image with POST /runners/me/verifications/documents',
+      );
+    }
     const profile = await this.profileByUserId(userId);
-    return this.verifications.save(
-      this.verifications.create({
-        runnerProfileId: profile.id,
-        verificationType,
-        documentS3Key: documentS3Key ?? null,
+    const saved = await this.verifications.save(
+      this.verifications.create({ runnerProfileId: profile.id, verificationType, documentS3Key: null }),
+    );
+    return toVerificationView(saved);
+  }
+
+  /**
+   * RA-7 (rows 125, 154): stores an ID or selfie image in restricted storage
+   * and records a pending verification for it, logging the upload. Errors:
+   * 400 verification_type_not_uploadable, verification_document_type_invalid,
+   * verification_document_empty.
+   */
+  async uploadVerificationDocument(
+    userId: string,
+    verificationType: RunnerVerificationType,
+    file: UploadedImage | undefined,
+    ip: string | null,
+  ): Promise<VerificationView> {
+    if (!DOCUMENT_VERIFICATION_TYPES.includes(verificationType)) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'verification_type_not_uploadable',
+        'Only government_id and selfie images are uploaded',
+      );
+    }
+    if (!file || !file.buffer || file.size === 0) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'verification_document_empty', 'Attach the image as `file`');
+    }
+    if (!DOCUMENT_CONTENT_TYPES.includes(file.mimetype)) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'verification_document_type_invalid',
+        'Upload a JPEG, PNG, WebP or HEIC photo',
+        { allowed: DOCUMENT_CONTENT_TYPES },
+      );
+    }
+    const profile = await this.profileByUserId(userId);
+    const { key } = await this.documents.upload({
+      data: file.buffer,
+      contentType: file.mimetype,
+      runnerProfileId: profile.id,
+    });
+    const saved = await this.verifications.manager.transaction(async (manager) => {
+      const row = await manager.getRepository(RunnerVerification).save(
+        manager.getRepository(RunnerVerification).create({
+          runnerProfileId: profile.id,
+          verificationType,
+          documentS3Key: key,
+        }),
+      );
+      await this.logAccess(manager, row, VerificationDocumentAction.UPLOAD, userId, ip);
+      return row;
+    });
+    return toVerificationView(saved);
+  }
+
+  /**
+   * Admin only (rows 125, 154): a signed URL to the image, valid at most
+   * 5 minutes; every call is logged with the admin and IP. Errors: 404;
+   * 410 verification_document_purged; 404 verification_document_missing.
+   * `url` is null when the storage driver cannot serve (console).
+   */
+  async documentLink(
+    verificationId: string,
+    adminUserId: string,
+    ip: string | null,
+  ): Promise<{ verificationId: string; url: string | null; expiresAt: Date | null }> {
+    const verification = await this.verifications.findOne({ where: { id: verificationId } });
+    if (!verification) {
+      throw new NotFoundException('Verification not found');
+    }
+    if (verification.purgedAt) {
+      throw new ApiError(HttpStatus.GONE, 'verification_document_purged', 'The image was deleted at the end of its retention period', {
+        purgedAt: verification.purgedAt,
+      });
+    }
+    if (!verification.documentS3Key) {
+      throw new ApiError(HttpStatus.NOT_FOUND, 'verification_document_missing', 'No image is stored for this verification');
+    }
+    const ttl = Math.min(
+      this.config?.get<number>('runnerVerification.signedUrlTtlSeconds', MAX_DOCUMENT_URL_TTL_SECONDS) ??
+        MAX_DOCUMENT_URL_TTL_SECONDS,
+      MAX_DOCUMENT_URL_TTL_SECONDS,
+    );
+    await this.logAccess(this.verifications.manager, verification, VerificationDocumentAction.VIEW, adminUserId, ip);
+    const view = this.documents.viewUrl(verification.documentS3Key, ttl);
+    return { verificationId, url: view.url, expiresAt: view.expiresAt };
+  }
+
+  /**
+   * Row 154 retention: deletes the stored ID/selfie images of runners whose
+   * last relevant verification/activity event is older than the retention
+   * period (`runnerVerification.retentionDays`, default 365). Events counted,
+   * per runner: any verification submitted or decided; any task assignment
+   * (offer) made to the runner; any dispute opened or updated on a task the
+   * runner was assigned to. Never purged: a verification still pending, or
+   * any runner with an open / under-review dispute. Each purge deletes the
+   * object, nulls the key, records purgedAt and logs a `purge` access row.
+   * A storage failure leaves the row as it is (retried the next day).
+   */
+  async purgeExpiredDocuments(now: Date = new Date(), batch = 200): Promise<string[]> {
+    const days = this.config?.get<number>('runnerVerification.retentionDays', 365) ?? 365;
+    const due: { id: string }[] = await this.verifications.query(
+      `WITH last_event AS (
+         SELECT rp.id AS runner,
+                GREATEST(
+                  (SELECT MAX(GREATEST(v."createdAt", COALESCE(v."reviewedAt", v."createdAt")))
+                     FROM "runner_verifications" v WHERE v."runnerProfileId" = rp.id),
+                  (SELECT MAX(a."createdAt") FROM "errand_assignments" a WHERE a."runnerProfileId" = rp.id),
+                  (SELECT MAX(GREATEST(d."createdAt", d."updatedAt"))
+                     FROM "disputes" d JOIN "errand_assignments" a ON a."errandId" = d."errandId"
+                    WHERE a."runnerProfileId" = rp.id)
+                ) AS at
+           FROM "runner_profiles" rp
+       )
+       SELECT v.id FROM "runner_verifications" v
+         JOIN last_event le ON le.runner = v."runnerProfileId"
+        WHERE v."documentS3Key" IS NOT NULL AND v."purgedAt" IS NULL AND v.status <> 'pending'
+          AND le.at < $1::timestamptz - make_interval(days => $2::int)
+          AND NOT EXISTS (
+            SELECT 1 FROM "disputes" d JOIN "errand_assignments" a ON a."errandId" = d."errandId"
+             WHERE a."runnerProfileId" = v."runnerProfileId" AND d.status IN ('open', 'under_review'))
+        ORDER BY v."createdAt" ASC
+        LIMIT $3`,
+      [now.toISOString(), days, batch],
+    );
+    const purged: string[] = [];
+    for (const { id } of due) {
+      const row = await this.verifications.findOne({ where: { id } });
+      if (!row?.documentS3Key || row.purgedAt) {
+        continue;
+      }
+      try {
+        await this.documents.destroy(row.documentS3Key);
+      } catch (err) {
+        this.logger.error(
+          `Could not delete verification image ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        continue;
+      }
+      await this.verifications.manager.transaction(async (manager) => {
+        const result = await manager
+          .getRepository(RunnerVerification)
+          .update({ id: row.id, purgedAt: IsNull() }, { documentS3Key: null, purgedAt: now });
+        if (result.affected) {
+          await this.logAccess(manager, row, VerificationDocumentAction.PURGE, null, null);
+          purged.push(row.id);
+        }
+      });
+    }
+    return purged;
+  }
+
+  private async logAccess(
+    manager: EntityManager,
+    verification: Pick<RunnerVerification, 'id' | 'runnerProfileId'>,
+    action: VerificationDocumentAction,
+    actorUserId: string | null,
+    ip: string | null,
+  ): Promise<void> {
+    const repo = manager.getRepository(VerificationDocumentAccessLog);
+    await repo.save(
+      repo.create({
+        verificationId: verification.id,
+        runnerProfileId: verification.runnerProfileId,
+        actorUserId,
+        action,
+        ip: ip ? ip.slice(0, 64) : null,
       }),
     );
   }
 
-  verificationsByUserId(userId: string): Promise<RunnerVerification[]> {
-    return this.verifications
+  async verificationsByUserId(userId: string): Promise<VerificationView[]> {
+    const rows = await this.verifications
       .createQueryBuilder('v')
       .innerJoin(RunnerProfile, 'p', 'p.id = v."runnerProfileId" AND p."userId" = :userId', { userId })
       .orderBy('v."createdAt"', 'DESC')
       .getMany();
+    return rows.map(toVerificationView);
   }
 
+  /**
+   * Admin verification queue, newest first. Items never carry the storage
+   * key (row 154): `hasDocument` plus `GET /runners/verifications/:id/document`
+   * (logged, signed URL) replace it. Includes the runner profile ids and the
+   * runner's sign-in phone.
+   */
   async listVerificationsForAdmin(opts: {
     limit?: number;
     cursor?: string | null;
     status?: VerificationStatus | null;
-  } = {}): Promise<{ items: RunnerVerification[]; nextCursor: string | null }> {
-    const { limit = 50, cursor, status } = opts;
+  } = {}): Promise<{ items: AdminVerificationView[]; nextCursor: string | null }> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+    const { cursor, status } = opts;
     const qb = this.verifications
       .createQueryBuilder('v')
-      .leftJoinAndSelect('v.runnerProfile', 'p')
-      .leftJoinAndSelect('p.user', 'u')
       .orderBy('v."createdAt"', 'DESC')
+      .addOrderBy('v.id', 'DESC')
       .limit(limit + 1);
     if (status) {
       qb.andWhere('v.status = :status', { status });
     }
     if (cursor) {
       const [createdAt, id] = Buffer.from(cursor, 'base64').toString('utf-8').split('::');
-      qb.andWhere('(v."createdAt", v.id) < (:createdAt, :id)', { createdAt, id });
+      if (createdAt && id && !Number.isNaN(Date.parse(createdAt))) {
+        qb.andWhere('(v."createdAt", v.id) < (:createdAt, :id)', { createdAt: new Date(createdAt), id });
+      }
     }
     const rows = await qb.getMany();
     let nextCursor: string | null = null;
     if (rows.length > limit) {
-      const next = rows.pop()!;
-      nextCursor = Buffer.from(`${next.createdAt.toISOString()}::${next.id}`, 'utf-8').toString('base64');
+      rows.pop();
+      const last = rows[rows.length - 1];
+      nextCursor = Buffer.from(`${last.createdAt.toISOString()}::${last.id}`, 'utf-8').toString('base64');
     }
-    return { items: rows, nextCursor };
+    const profiles = await this.profiles.find({ where: { id: In([...new Set(rows.map((r) => r.runnerProfileId))]) } });
+    const byId = new Map(profiles.map((p) => [p.id, p]));
+    const users = new Map<string, { id: string; phone: string | null }>();
+    for (const p of profiles) {
+      const u = await this.users.findById(p.userId);
+      users.set(p.id, { id: p.userId, phone: u?.phone ?? null });
+    }
+    return {
+      items: rows.map((r) => {
+        const p = byId.get(r.runnerProfileId);
+        return {
+          ...toVerificationView(r),
+          runnerProfile: p ? { id: p.id, userId: p.userId } : null,
+          user: users.get(r.runnerProfileId) ?? null,
+        };
+      }),
+      nextCursor,
+    };
   }
 
   async setSkills(userId: string, skillNames: RunnerSkill[]): Promise<RunnerSkill[]> {
@@ -286,7 +534,7 @@ export class RunnersService {
     verificationId: string,
     review: { decision: 'approved' | 'rejected'; reviewerNote?: string },
     adminUserId: string,
-  ): Promise<RunnerVerification> {
+  ): Promise<VerificationView> {
     const verification = await this.verifications.findOne({
       where: { id: verificationId },
     });
@@ -317,7 +565,7 @@ export class RunnersService {
         await this.profiles.save(profile);
       }
     }
-    return verification;
+    return toVerificationView(verification);
   }
 }
 

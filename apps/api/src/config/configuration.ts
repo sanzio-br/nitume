@@ -59,6 +59,19 @@ export interface AppConfig {
     scheduledAfterHours: number;
     disputeWindowHours: number;
   };
+  runnerVerification: {
+    /** console | cloudinary (defaults to the evidence driver: same provider, own folder). */
+    storageDriver: 'console' | 'cloudinary';
+    cloudinaryFolder: string;
+    /** Admin signed-URL lifetime, capped at 300 s (row 154). */
+    signedUrlTtlSeconds: number;
+    /** Days kept after the runner's last relevant verification/activity event (row 154). */
+    retentionDays: number;
+    /** Largest accepted image upload, bytes. */
+    maxUploadBytes: number;
+    /** Daily purge schedule (cron, Africa/Nairobi). */
+    purgeCron: string;
+  };
   runnerPayouts: {
     /** Smallest payout a runner may request, KES (row 117: configurable; value not set by the owner yet). */
     minimumRequestAmount: number;
@@ -232,6 +245,18 @@ export const configuration = (): AppConfig => ({
     // TODO(owner): dispute window length is not defined anywhere. After it,
     // the system moves COMPLETED -> CONFIRMED (payout eligibility).
     disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
+  },
+  // Rows 125, 144, 154: runner ID/selfie images in restricted storage, kept
+  // for a configurable period after the runner's last relevant event, then
+  // deleted by a daily job. Initial retention: 12 months (365 days).
+  runnerVerification: {
+    storageDriver: ((process.env.RUNNER_ID_STORAGE_DRIVER || process.env.EVIDENCE_STORAGE_DRIVER || 'console') as
+      AppConfig['runnerVerification']['storageDriver']),
+    cloudinaryFolder: process.env.RUNNER_ID_CLOUDINARY_FOLDER || 'nitume/runner-verification',
+    signedUrlTtlSeconds: Math.min(int(process.env.RUNNER_ID_SIGNED_URL_TTL_SECONDS, 300), 300),
+    retentionDays: int(process.env.RUNNER_ID_RETENTION_DAYS, 365),
+    maxUploadBytes: int(process.env.RUNNER_ID_MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
+    purgeCron: process.env.RUNNER_ID_PURGE_CRON || '0 3 * * *',
   },
   // Row 117: runners request payouts above a configurable minimum. TODO(owner):
   // no amount is set in the documents; 0 means no minimum beyond KSh 0.01.

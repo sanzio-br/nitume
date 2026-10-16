@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
-import { DISPUTE_WINDOW_JOB, MaintenanceProcessor, OFFER_EXPIRY_JOB, STK_RECONCILE_JOB } from './maintenance.processor';
+import {
+  DISPUTE_WINDOW_JOB,
+  ID_DOCUMENT_PURGE_JOB,
+  MaintenanceProcessor,
+  OFFER_EXPIRY_JOB,
+  STK_RECONCILE_JOB,
+} from './maintenance.processor';
 
 const build = () => {
   const errands = {
@@ -12,7 +18,13 @@ const build = () => {
     resolveTimedOut: vi.fn(() => Promise.resolve(2)),
     verifyPayment: vi.fn(() => Promise.resolve<string | null>('success')),
   };
-  return { processor: new MaintenanceProcessor(errands as never, payments as never), errands, payments };
+  const runners = { purgeExpiredDocuments: vi.fn(() => Promise.resolve(['v-1'])) };
+  return {
+    processor: new MaintenanceProcessor(errands as never, payments as never, runners as never),
+    errands,
+    payments,
+    runners,
+  };
 };
 
 describe('MaintenanceProcessor (rows 26, 50, 52)', () => {
@@ -60,5 +72,11 @@ describe('MaintenanceProcessor (rows 26, 50, 52)', () => {
     await expect(
       processor.process({ name: PAYMENT_VERIFY_JOB, data: { paymentId: 'p-1' } } as never),
     ).rejects.toThrow(/still pending/);
+  });
+
+  it('id-document-purge deletes ID/selfie images past retention (row 154)', async () => {
+    const { processor, runners } = build();
+    await expect(processor.process({ name: ID_DOCUMENT_PURGE_JOB } as never)).resolves.toEqual({ purged: ['v-1'] });
+    expect(runners.purgeExpiredDocuments).toHaveBeenCalled();
   });
 });

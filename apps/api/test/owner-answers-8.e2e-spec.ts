@@ -112,6 +112,19 @@ describe('Owner answers 8 (e2e)', () => {
            (SELECT id FROM "customer_profiles" WHERE "userId" = ANY($1))`,
         [userIds],
       );
+      // ID document access log is append-only (row 154).
+      await ds.query('ALTER TABLE "verification_document_access_log" DISABLE TRIGGER USER');
+      await ds.query(
+        `DELETE FROM "verification_document_access_log" WHERE "runnerProfileId" IN
+           (SELECT id FROM "runner_profiles" WHERE "userId" = ANY($1))`,
+        [userIds],
+      );
+      await ds.query('ALTER TABLE "verification_document_access_log" ENABLE TRIGGER USER');
+      await ds.query(
+        `DELETE FROM "runner_verifications" WHERE "runnerProfileId" IN
+           (SELECT id FROM "runner_profiles" WHERE "userId" = ANY($1))`,
+        [userIds],
+      );
       // Payout requests are append-only (row 153): lift the trigger for the cleanup only.
       await ds.query('ALTER TABLE "runner_payout_requests" DISABLE TRIGGER USER');
       await ds.query(
@@ -423,6 +436,80 @@ describe('Owner answers 8 (e2e)', () => {
       await expect(
         db().query('UPDATE "runner_payout_requests" SET "requestedAmount" = 1 WHERE id = $1', [next.body.id]),
       ).rejects.toThrow(/final/);
+    });
+  });
+
+  describe('rows 125, 144, 154 (RA-7): restricted ID and selfie images', () => {
+    it('upload, admin-only logged signed access, no raw keys, purge after retention', async () => {
+      const runner = await makeUser(UserRole.RUNNER);
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const uploaded = await http()
+        .post('/api/v1/runners/me/verifications/documents')
+        .set(bearer(runner.token))
+        .field('verificationType', 'government_id')
+        .attach('file', Buffer.from('fake-jpeg-bytes'), { filename: 'front.jpg', contentType: 'image/jpeg' })
+        .expect(201);
+      expect(uploaded.body).toMatchObject({ verificationType: 'government_id', status: 'pending', hasDocument: true, purgedAt: null });
+      expect(uploaded.body).not.toHaveProperty('documentS3Key');
+      const pdf = await http()
+        .post('/api/v1/runners/me/verifications/documents')
+        .set(bearer(runner.token))
+        .field('verificationType', 'selfie')
+        .attach('file', Buffer.from('%PDF'), { filename: 'x.pdf', contentType: 'application/pdf' })
+        .expect(400);
+      expect(pdf.body).toMatchObject({ code: 'verification_document_type_invalid' });
+      const rawKey = await http()
+        .post('/api/v1/runners/me/verifications')
+        .set(bearer(runner.token))
+        .send({ verificationType: 'government_id', documentS3Key: 'someone-elses-key' })
+        .expect(400);
+      expect(rawKey.body).toMatchObject({ code: 'verification_document_upload_required' });
+
+      const mine = await http().get('/api/v1/runners/me/verifications').set(bearer(runner.token)).expect(200);
+      expect(mine.body[0]).not.toHaveProperty('documentS3Key');
+      const queue = await http().get('/api/v1/runners/verifications?status=pending&limit=100').set(bearer(admin.token)).expect(200);
+      const item = queue.body.items.find((v: { id: string }) => v.id === uploaded.body.id);
+      expect(item).toMatchObject({ hasDocument: true, runnerProfile: { id: runner.profileId } });
+      expect(item).not.toHaveProperty('documentS3Key');
+
+      const docUrl = `/api/v1/runners/verifications/${uploaded.body.id}/document`;
+      await http().get(docUrl).set(bearer(runner.token)).expect(403);
+      const link = await http().get(docUrl).set(bearer(admin.token)).expect(200);
+      expect(link.body).toMatchObject({ verificationId: uploaded.body.id });
+      const log = await db().query(
+        `SELECT action::text AS action, "actorUserId", ip FROM "verification_document_access_log"
+          WHERE "verificationId" = $1 ORDER BY "createdAt"`,
+        [uploaded.body.id],
+      );
+      expect(log).toEqual([
+        expect.objectContaining({ action: 'upload', actorUserId: runner.id }),
+        expect.objectContaining({ action: 'view', actorUserId: admin.id, ip: expect.any(String) }),
+      ]);
+      await expect(
+        db().query(`DELETE FROM "verification_document_access_log" WHERE "verificationId" = $1`, [uploaded.body.id]),
+      ).rejects.toThrow(/append-only/);
+
+      await http()
+        .patch(`/api/v1/runners/${runner.profileId}/verifications/${uploaded.body.id}`)
+        .set(bearer(admin.token))
+        .send({ decision: 'approved' })
+        .expect(200);
+      // Not yet past retention: kept.
+      expect(await app.get(RunnersService).purgeExpiredDocuments()).not.toContain(uploaded.body.id);
+      // The runner's last relevant event was two years ago.
+      await db().query(
+        `UPDATE "runner_verifications" SET "createdAt" = now() - interval '730 days', "reviewedAt" = now() - interval '730 days'
+          WHERE id = $1`,
+        [uploaded.body.id],
+      );
+      expect(await app.get(RunnersService).purgeExpiredDocuments()).toEqual([uploaded.body.id]);
+      const [row] = await db().query(
+        `SELECT "documentS3Key", "purgedAt", status::text AS status FROM "runner_verifications" WHERE id = $1`,
+        [uploaded.body.id],
+      );
+      expect(row).toMatchObject({ documentS3Key: null, purgedAt: expect.any(Date), status: 'approved' });
+      const gone = await http().get(docUrl).set(bearer(admin.token)).expect(410);
+      expect(gone.body).toMatchObject({ code: 'verification_document_purged' });
     });
   });
 });
