@@ -145,6 +145,16 @@ export class RunnerPayoutLine {
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
   capAmount: string | null;
 
+  /**
+   * Item reimbursements: the runner's max_purchase_advance in force when the
+   * obligation was created (CONFIRMED or claim; owner answer row 152). The
+   * ordinary approval ceiling uses it, never a later limit. Null on lines
+   * created before row 152 (the runner's current limit applies) and on
+   * other kinds.
+   */
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  purchaseLimitAtCreation: string | null;
+
   @Column({
     type: 'enum',
     enum: RunnerPayoutReviewReason,

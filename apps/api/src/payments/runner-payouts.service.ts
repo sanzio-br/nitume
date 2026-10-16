@@ -501,20 +501,48 @@ export const payoutFeedOf = (
 };
 
 /**
- * Pure: highest amount an ops approval may carry on an item line (rows 105,
- * 135): the lowest of the requested amount, the item amount paid to Nitume
- * now, the cap stored on the line when it was created (`capAmount`) and the
- * runner's max_purchase_advance; never below 0.
+ * Pure: the purchase limit that applies to an item line's review (row 152):
+ * the runner's max_purchase_advance stored on the line when it was created;
+ * lines created before row 152 (null) use the runner's current limit.
+ */
+export const purchaseLimitOf = (
+  line: Partial<Pick<RunnerPayoutLine, 'purchaseLimitAtCreation'>>,
+  currentLimit?: string | number | null,
+): number | null => {
+  if (line.purchaseLimitAtCreation !== null && line.purchaseLimitAtCreation !== undefined) {
+    return Number(line.purchaseLimitAtCreation);
+  }
+  return currentLimit === null || currentLimit === undefined ? null : Number(currentLimit);
+};
+
+/**
+ * Pure: highest amount an ops approval may carry on an item line without an
+ * exception (rows 105, 135, 142, 152): the lowest of the requested amount,
+ * the item amount paid to Nitume now, the cap stored on the line when it was
+ * created (`capAmount`) and the purchase limit of the line
+ * (`purchaseLimitOf`); never below 0.
  */
 export const approvalCeilingOf = (
+  line: Pick<RunnerPayoutLine, 'requestedAmount' | 'capAmount'> &
+    Partial<Pick<RunnerPayoutLine, 'purchaseLimitAtCreation'>>,
+  itemPaid: number,
+  currentLimit?: string | number | null,
+): number => {
+  const limit = purchaseLimitOf(line, currentLimit);
+  const ceiling = overLimitCeilingOf(line, itemPaid);
+  return limit === null ? ceiling : Math.max(0, Math.min(ceiling, limit));
+};
+
+/**
+ * Pure: highest amount an approval may carry with a recorded purchase-limit
+ * exception (rows 142, 151): the same terms as `approvalCeilingOf` without
+ * the purchase limit, so never above the item amount paid to Nitume.
+ */
+export const overLimitCeilingOf = (
   line: Pick<RunnerPayoutLine, 'requestedAmount' | 'capAmount'>,
   itemPaid: number,
-  maxPurchaseAdvance?: string | number | null,
 ): number => {
   const caps = [Number(line.requestedAmount), itemPaid];
-  if (maxPurchaseAdvance !== null && maxPurchaseAdvance !== undefined) {
-    caps.push(Number(maxPurchaseAdvance));
-  }
   if (line.capAmount !== null && line.capAmount !== undefined) {
     caps.push(Number(line.capAmount));
   }
@@ -572,8 +600,17 @@ export type AdminRunnerPayoutDetail = AdminRunnerPayoutItem & {
   } | null;
   /** Item lines: the item amount actually paid to Nitume now (cap, rows 105-106). */
   itemPaidToNitume: string | null;
-  /** Item lines in review: highest amount an approval may carry (requested, item paid, capAmount, max_purchase_advance). */
+  /**
+   * Item lines in review: highest amount an ordinary approval may carry
+   * (requested, item paid, capAmount, `purchaseLimit`).
+   */
   approvalCeiling: string | null;
+  /**
+   * Item lines: the purchase limit that applies to the review (row 152): the
+   * runner's max_purchase_advance stored at creation, else (older lines) the
+   * current one. `runner.maxPurchaseAdvance` is always the current limit.
+   */
+  purchaseLimit: string | null;
   /** Adjustments, oldest first; empty unless paid. */
   corrections: RunnerPayoutCorrectionView[];
   /** Paid lines: highest `newAmount` a correction or re-sent payout may carry (the line amount). */
@@ -703,6 +740,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         requestedAmount: fee,
         amount: fee,
         capAmount: null,
+        purchaseLimitAtCreation: null,
         reviewReason: null,
         receiptEvidenceId: null,
         note: 'Task confirmed: runner fee',
@@ -730,6 +768,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         requestedAmount: item,
         amount: reason ? null : item,
         capAmount: item,
+        purchaseLimitAtCreation: runner.maxPurchaseAdvance,
         reviewReason: reason,
         receiptEvidenceId: receipt?.id ?? null,
         note: 'Task confirmed: item reimbursement',
@@ -809,6 +848,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         requestedAmount: input.amount,
         amount: null,
         capAmount: cap,
+        purchaseLimitAtCreation: runner.maxPurchaseAdvance,
         reviewReason: RunnerPayoutReviewReason.OUT_OF_POCKET_CLAIM,
         receiptEvidenceId: receipt.id,
         note,
@@ -1025,6 +1065,10 @@ export class RunnerPayoutsService implements OnModuleInit {
         itemPaid !== null && line.status === S.ON_HOLD
           ? money(approvalCeilingOf(line, itemPaid, profile?.maxPurchaseAdvance))
           : null,
+      purchaseLimit:
+        line.kind === T.ITEM_REIMBURSEMENT
+          ? ((v) => (v === null ? null : money(v)))(purchaseLimitOf(line, profile?.maxPurchaseAdvance))
+          : null,
       corrections: own.map((a) => toCorrectionView(a, names)),
       correctionCeiling: line.status === S.PAID ? money(line.amount) : null,
       taskExposure: exposureOf(totalPaid, refunded, reimbursed),
@@ -1068,7 +1112,8 @@ export class RunnerPayoutsService implements OnModuleInit {
         this.itemPaidToNitume(line.errandId, manager),
         this.runners.profileById(line.runnerProfileId, manager),
       ]);
-      // Row 135: min(item amount paid to Nitume, the runner's max_purchase_advance).
+      // Row 135: min(item amount paid to Nitume, the runner's purchase limit);
+      // row 152: the limit stored on the line at creation, not a later one.
       const ceiling = approvalCeilingOf(line, itemPaid, runner.maxPurchaseAdvance);
       const amount = input.amount ?? 0;
       if (amount <= 0 || amount > ceiling) {
@@ -1083,6 +1128,7 @@ export class RunnerPayoutsService implements OnModuleInit {
             itemPaidToNitume: money(itemPaid),
             capAmount: line.capAmount === null ? null : money(line.capAmount),
             maxPurchaseAdvance: money(runner.maxPurchaseAdvance),
+            purchaseLimit: money(purchaseLimitOf(line, runner.maxPurchaseAdvance)),
           },
         );
       }
@@ -1376,6 +1422,8 @@ export class RunnerPayoutsService implements OnModuleInit {
       requestedAmount: number;
       amount: number | null;
       capAmount: number | null;
+      /** Row 152: the runner's limit at creation (item lines only). */
+      purchaseLimitAtCreation: string | number | null;
       reviewReason: RunnerPayoutReviewReason | null;
       receiptEvidenceId: string | null;
       note: string | null;
@@ -1385,8 +1433,9 @@ export class RunnerPayoutsService implements OnModuleInit {
     const rows: { id: string }[] = await manager.query(
       `INSERT INTO "runner_payout_lines"
          ("runnerProfileId", "errandId", "kind", "status", "requestedAmount", "amount",
-          "capAmount", "reviewReason", "receiptEvidenceId", "note", "createdByUserId")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          "capAmount", "reviewReason", "receiptEvidenceId", "note", "createdByUserId",
+          "purchaseLimitAtCreation")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT ("errandId", "kind") WHERE "kind" IN ('runner_fee', 'item_reimbursement')
        DO NOTHING
        RETURNING "id"`,
@@ -1402,6 +1451,7 @@ export class RunnerPayoutsService implements OnModuleInit {
         v.receiptEvidenceId,
         v.note,
         v.createdByUserId,
+        v.purchaseLimitAtCreation === null ? null : money(v.purchaseLimitAtCreation),
       ],
     );
     return rows[0]?.id ?? null;

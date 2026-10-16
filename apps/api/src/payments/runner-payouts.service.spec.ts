@@ -14,6 +14,8 @@ import {
 import {
   RunnerPayoutsService,
   approvalCeilingOf,
+  overLimitCeilingOf,
+  purchaseLimitOf,
   payoutFeedOf,
   earningsRangeOf,
   earningsSummaryOf,
@@ -33,6 +35,7 @@ const line = (over: Partial<RunnerPayoutLine> = {}): RunnerPayoutLine =>
     requestedAmount: '300.00',
     amount: '300.00',
     capAmount: null,
+    purchaseLimitAtCreation: null,
     reviewReason: null,
     receiptEvidenceId: null,
     relatedLineId: null,
@@ -101,7 +104,7 @@ const build = (
   const uses = new Map<string, ReferenceUse[]>();
   const query = vi.fn((sql: string, params: unknown[]) => {
     if (sql.includes('INSERT INTO "runner_payout_lines"')) {
-      const [runnerProfileId, errandId, kind, status, requestedAmount, amount, capAmount, reviewReason, receiptEvidenceId, note, createdByUserId] =
+      const [runnerProfileId, errandId, kind, status, requestedAmount, amount, capAmount, reviewReason, receiptEvidenceId, note, createdByUserId, purchaseLimitAtCreation] =
         params as string[];
       if (table.some((r) => r.errandId === errandId && r.kind === kind)) {
         return Promise.resolve([]);
@@ -121,6 +124,7 @@ const build = (
           receiptEvidenceId,
           note,
           createdByUserId,
+          purchaseLimitAtCreation: purchaseLimitAtCreation ?? null,
           createdAt: tick(),
         }),
       );
@@ -801,5 +805,56 @@ describe('pending price decrease at CONFIRMED (re-review fix)', () => {
       }),
     ]);
     expect(b.refunds.hasPendingDecrease).toHaveBeenCalledWith('e-1', b.manager);
+  });
+});
+
+describe('row 152: the purchase limit is the one in force when the line was created', () => {
+  it('stores the limit on the item line at CONFIRMED and at a claim, never on the runner fee', async () => {
+    const b = build({ itemPaid: 2000, feePaid: 300, maxPurchaseAdvance: '3000.00' });
+    await b.service.recordConfirmed(b.manager as never, 'e-1');
+    expect(b.table.find((r) => r.kind === T.ITEM_REIMBURSEMENT)).toMatchObject({ purchaseLimitAtCreation: '3000.00' });
+    expect(b.table.find((r) => r.kind === T.RUNNER_FEE)).toMatchObject({ purchaseLimitAtCreation: null });
+    const c = build({ itemPaid: 2000, maxPurchaseAdvance: '2500.00' });
+    await c.service.claim('u-run', { errandId: 'e-1', amount: 1500, receiptEvidenceId: 'ev-1' });
+    expect(c.table[0]).toMatchObject({ purchaseLimitAtCreation: '2500.00' });
+  });
+
+  it('created at KES 3,000, limit later raised to 5,000: the ceiling stays 3,000', async () => {
+    const b = build({ itemPaid: 4000, maxPurchaseAdvance: '3000.00' });
+    await b.service.recordConfirmed(b.manager as never, 'e-1');
+    const item = b.table.find((r) => r.kind === T.ITEM_REIMBURSEMENT)!;
+    expect(item).toMatchObject({ status: S.ON_HOLD, reviewReason: R.OVER_PURCHASE_LIMIT });
+    const runner = (await b.runners.profileById()) as { maxPurchaseAdvance: string };
+    runner.maxPurchaseAdvance = '5000.00';
+    const detail = await b.service.detail(item.id);
+    expect(detail).toMatchObject({ approvalCeiling: '3000.00', purchaseLimit: '3000.00' });
+    expect(detail.runner).toMatchObject({ maxPurchaseAdvance: '5000.00' });
+    const err = await b.service.review(item.id, { decision: 'approve', amount: 3000.01 }, 'a').catch((e: unknown) => e);
+    expect((err as ApiError).getResponse()).toMatchObject({
+      code: 'reimbursement_exceeds_cap',
+      approvalCeiling: '3000.00',
+      purchaseLimit: '3000.00',
+      maxPurchaseAdvance: '5000.00',
+    });
+    await b.service.review(item.id, { decision: 'approve', amount: 3000 }, 'a');
+    expect(item).toMatchObject({ status: S.PAYABLE, amount: '3000.00' });
+  });
+
+  it('a later lower limit does not cut an existing review either', async () => {
+    const b = build({ itemPaid: 2800, maxPurchaseAdvance: '3000.00', receipts: [] });
+    await b.service.recordConfirmed(b.manager as never, 'e-1');
+    const item = b.table.find((r) => r.kind === T.ITEM_REIMBURSEMENT)!;
+    const runner = (await b.runners.profileById()) as { maxPurchaseAdvance: string };
+    runner.maxPurchaseAdvance = '1000.00';
+    await b.service.review(item.id, { decision: 'approve', amount: 2800 }, 'a');
+    expect(item).toMatchObject({ status: S.PAYABLE, amount: '2800.00' });
+  });
+
+  it('lines created before row 152 (no stored limit) use the current limit', () => {
+    expect(purchaseLimitOf({ purchaseLimitAtCreation: null }, '5000.00')).toBe(5000);
+    expect(purchaseLimitOf({ purchaseLimitAtCreation: '3000.00' }, '5000.00')).toBe(3000);
+    expect(approvalCeilingOf({ requestedAmount: '4000.00', capAmount: '4000.00', purchaseLimitAtCreation: null }, 4000, '5000.00')).toBe(4000);
+    expect(approvalCeilingOf({ requestedAmount: '4000.00', capAmount: '4000.00', purchaseLimitAtCreation: '3000.00' }, 4000, '5000.00')).toBe(3000);
+    expect(overLimitCeilingOf({ requestedAmount: '4000.00', capAmount: '4000.00' }, 3500)).toBe(3500);
   });
 });
