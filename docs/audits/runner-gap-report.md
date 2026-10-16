@@ -7,24 +7,24 @@
 
 ## 1. Verdict
 
-**Partly built (updated 2026-10-13).** `apps/runner_app` is scaffolded on `feat/runner-scaffold`: shell, v-auth-phone, v-auth-otp and x-name-capture audited PASS (§7). Every other view is `missing`. All RQ-1 … RQ-21 are decided (rows 113–133, §9); blockers below are API (RA-n), shared widgets (R-n) and the still-open rows 140–146.
+**Partly built (updated 2026-10-13).** `apps/runner_app` is scaffolded on `feat/runner-scaffold`: shell, v-auth-phone, v-auth-otp and x-name-capture audited PASS (§7). Every other view is `missing`. All RQ-1 … RQ-21 are decided (rows 113–133, §9); blockers below are API (RA-n) and shared widgets (R-n). Rows 140–144 and 146 were answered 2026-10-16 (§10); row 145 is still open.
 
 | View | Spec | Status | Blocked by |
 |---|---|---|---|
 | v-auth-phone | `docs/specs/runner/v-auth-phone.md` | built, audited PASS (§7) | R-17 (stand-in) |
 | v-auth-otp | `docs/specs/runner/v-auth-otp.md` | built, audited PASS (§7) | RA-9 (recommended), RQ-15; onboarding routing waits on R-19 + onboarding screens |
 | x-name-capture (not drawn) | `docs/specs/runner/x-name-capture.md` | built, audited PASS (§7) | none |
-| v-onboard-id | `docs/specs/runner/v-onboard-id.md` | missing | RA-7; R-13, R-15; retention row 144 pending |
+| v-onboard-id | `docs/specs/runner/v-onboard-id.md` | missing | RA-7 (incl. row-144 retention); R-13, R-15 |
 | v-onboard-selfie | `docs/specs/runner/v-onboard-selfie.md` | missing | RA-7, RA-8 |
 | v-onboard-pending | `docs/specs/runner/v-onboard-pending.md` | missing | RA-8 (phone and payment-identity records); R-05 |
-| v-jobs | `docs/specs/runner/v-jobs.md` | missing | RA-1 (offer model), RA-2, RA-3 (accept refusal), RA-5, RA-8; R-02, R-04, R-14; row 141 pending |
+| v-jobs | `docs/specs/runner/v-jobs.md` | missing | RA-1 (offer model), RA-2, RA-3 (accept refusal), RA-5, RA-8; R-02, R-04, R-14 (row 141 decided: EXPIRED at once) |
 | v-job-detail | `docs/specs/runner/v-job-detail.md` | missing | RA-1, RA-2, RA-3; R-05, R-16 |
 | v-active | `docs/specs/runner/v-active.md` | missing | RA-2, RA-4, RA-5, RA-11, RA-12, RA-17; R-01, R-06, R-07, R-09, R-16, R-20, R-21 |
 | v-evidence-capture | `docs/specs/runner/v-evidence-capture.md` | missing | **RA-11** (upload size), RA-12 (24 h window); R-13, R-15, R-22 |
 | v-price-request | `docs/specs/runner/v-price-request.md` | missing | RA-2 (item amount), RA-5 (decision event) |
 | v-job-summary | `docs/specs/runner/v-job-summary.md` | missing | RA-2, RA-12 (RA-14/RA-16 satisfied; claim and combined cap built) |
 | v-earnings | `docs/specs/runner/v-earnings.md` | missing | R-08, R-11, R-12, R-19 (RA-14 satisfied; `Request payout` waits on RA-15) |
-| v-payout | `docs/specs/runner/v-payout.md` | missing | **RA-15** (payout requests, rows 117/118 decided); row 143 pending (copy only) |
+| v-payout | `docs/specs/runner/v-payout.md` | missing | **RA-15** (payout requests, rows 117/118/146 decided: `requestedAmount` + `paidAmount`); row 143 decided (no time promise) |
 | x-payout-history (not drawn) | `docs/specs/runner/x-payout-history.md` | missing | R-12, R-05, R-19 (RA-14 satisfied) |
 | v-notifications | `docs/specs/runner/v-notifications.md` | missing | RA-6 (runner kinds) |
 | v-profile | `docs/specs/runner/v-profile.md` | missing | RA-10, RA-18; R-10, R-14 |
@@ -96,7 +96,7 @@ Each falls under AGENT_BUILD_INSTRUCTIONS §3 unless marked minor. Defaults are 
 - **RQ-10 (display rule, minor)**: runner times in 12-hour East Africa Time regardless of device zone, as row 96 for admin. Default yes (the mockup shows `10:28 AM`).
 - **RQ-11 (privacy / security)**: when is location collected? Default: every 30 s while online (for the admin live map and matching radius, §4.2 GEO cache), every 4–8 s / 15 m during an accepted job up to AWAITING_CUSTOMER, never while offline; background collection only during a job; nothing persisted beyond the §4.2 sampling.
 - **RQ-12 (third-party packages)**: approve `geolocator` (named in §7.2) with its Android foreground-service support, `image_picker` (camera capture, §7.2 "native camera plugin"), `permission_handler`, and a small local store for the offline queue (`shared_preferences` or `sqflite`). Default: these four.
-- **RQ-13 (security / third-party)**: storage for ID photos and selfies: §10 requires a restricted store separate from evidence. Default: a separate private Cloudinary folder (or S3 bucket) with signed, short-lived admin-only URLs, access logged, retention while the account exists + a fixed period after closure (owner sets).
+- **RQ-13 (security / third-party)**: storage for ID photos and selfies: §10 requires a restricted store separate from evidence. Default: a separate private Cloudinary folder (or S3 bucket) with signed, short-lived admin-only URLs, access logged, retention while the account exists + a fixed period after closure (owner sets). Superseded on retention by row 144 (2026-10-16): kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; configurable period.
 - **RQ-14 (security)**: verification process. Default: manual review by ops of the ID (front/back), the selfie against the ID, and an M-Pesa name match (the name M-Pesa shows for the runner's number); "verified" = all four checks approved; no automated liveness vendor in MVP.
 - **RQ-15 (identity)**: one phone = one role in the API. May a customer also be a runner on the same number? Default: no for MVP; the runner app refuses customer accounts (copy in `v-auth-otp`), and RA-9 makes the API refuse too.
 - **RQ-16 (privacy)**: how does a runner reach the customer during a job (gate access, item questions)? In-task chat is out of MVP (OA-18) and the mockup shows no contact. Default: no direct contact and no phone number in the app; the runner uses Support and ops relay.
@@ -227,17 +227,19 @@ Read from `BOARD.md` on `main` @ `a99175d`. Specs updated in `f0ea925` (runner) 
 | RA-4 | `location:ping` with the row-123 cadence; the server ignores pings from an offline runner | missing |
 | RA-5 | Room `runner:{runnerId}` joined by the server from the JWT on connect (row 139: never a client-supplied id); `job:offered`, `job:offer_withdrawn`, `price_change:decided`, `payout:updated` | missing |
 | RA-6 | Runner notification kinds with the copy in `v-notifications.md` (row 139: at least payout sent, payout reversed, reimbursement approved, rejected, paid) | missing; copy now final |
-| RA-7 | Verification documents to restricted private storage (row 125) | missing |
+| RA-7 | Verification documents to restricted private storage (row 125); retention (row 144): configurable retention period, secure deletion when it ends (never indefinite), access restricted and logged for the whole period | missing |
 | RA-8 | Verification gate: verified only when all required checks are approved (row 126) | missing |
 | RA-10 | Skills migration to category values (row 115); `GET /runners/service-areas` from an ops-configured list, `PUT /runners/me/service-areas` accepts listed areas only (row 116) | missing |
 | RA-12 | 24 h receipt upload and claim window after CANCELLED/FAILED (row 129), then refused with a code (e.g. `reimbursement_window_closed`) | missing (claim built without a window) |
-| RA-15 | Payout-request record and endpoints (row 117): runner create/list/summary, ops list/mark-paid/reject, configurable minimum, one open request, destination = sign-in phone (row 118), every step audited; names in `v-payout.md` and the admin specs | missing |
+| RA-15 | Payout-request record and endpoints (row 117): runner create/list/summary, ops list/mark-paid/reject (row 146: store `requestedAmount` and `paidAmount` separately, close `paid` when paid below the request, remainder not carried; the derived `payout` feed entry carries `payoutRequestId` and `requestedAmount`), configurable minimum, one open request, destination = sign-in phone (row 118), every step audited; names in `v-payout.md` and the admin specs | missing |
 | RA-21 | **Built on `feat/api-owner-answers-6` @ `dbc3a76`** (409 `task_exposure_cap_exceeded`, `exposureOverrideNote`, `taskExposure`, `exposureOverrides[]`; storage row 145 pending). Task-level combined exposure cap (row 136) on CANCELLED/FAILED: customer refund decisions and runner item reimbursements (claims and approvals) checked together; above the cap only through an explicit ops override with a reason; the refund drawer and the ledger review both show the remaining exposure | missing |
 | RA-22 | Admin edit of `max_purchase_advance` per runner (row 138): `PATCH /admin/runners/:id/purchase-limit` `{ maxPurchaseAdvance, reason }` + an audit table (actor, time, previous, new, reason); `GET` history; runners cannot change it | missing (schema: audit table) |
-| RA-23 | Approval cap on an `on_hold` item line = min(item paid to Nitume, `max_purchase_advance`) (row 135) | satisfied: `approvalCeilingOf` (`runner-payouts.service.ts`) already takes min(requested, item paid, `capAmount`, `max_purchase_advance`) and `review` refuses above it (`reimbursement_exceeds_cap`). See RQ-23 for the over-limit consequence |
+| RA-23 | Approval cap on an `on_hold` item line = min(item paid to Nitume, `max_purchase_advance`) (row 135) | satisfied: `approvalCeilingOf` (`runner-payouts.service.ts`) already takes min(requested, item paid, `capAmount`, `max_purchase_advance`) and `review` refuses above it (`reimbursement_exceeds_cap`). Row 142 (2026-10-16) keeps this as the ordinary cap but adds an explicit, audited exception above the limit: see RA-25 |
 | RA-24 | Admin maintenance of the service-area list (row 116) | missing (no admin spec yet) |
+| RA-25 | Purchase-limit exception (row 142): `purchaseLimitOverrideNote` on `POST /runner-payouts/:id/review`; ceiling with it = min(requested, item amount paid to Nitume, line cap without the limit); actor, time, limit at the time, amount and reason recorded append-only; `overLimitCeiling` and `purchaseLimitOverride` on the admin detail (admin N-21) | missing (storage: owner question) |
+| RA-26 | Offer expiry (row 141): at `expiresAt` with no acceptance the assignment goes `expired` and the task RUNNER_ASSIGNED → EXPIRED at once (no re-offer step); accept after `expiresAt` refused with `offer_expired` even if the expiry job has not run yet | missing (part of RA-1) |
 
-### New questions for the owner
+### New questions for the owner (answered 2026-10-16 except RQ-26; see §10)
 
 - **RQ-22 → BOARD row 141 (state machine, rows 113/114)**: when one offer lapses unaccepted, does the task go straight to EXPIRED (literal reading of row 113, specced), or may ops re-offer it and EXPIRED only follows an overall deadline? Default: literal (EXPIRED on the first lapse).
 - **RQ-23 → row 142 (payments, row 135)**: with the approval cap at min(item paid, `max_purchase_advance`), a runner who bought a KES 5,000 item with a KES 3,000 limit can be reimbursed at most KES 3,000. Is that intended, or may ops approve up to the item paid after an explicit, audited decision (for example by raising the runner's limit first, row 138)? Default: the cap applies; ops raise the limit (audited) when they accept the purchase.
@@ -245,7 +247,7 @@ Read from `BOARD.md` on `main` @ `a99175d`. Specs updated in `f0ea925` (runner) 
 - **RQ-25 → row 144 (security/compliance, row 125)**: retention period for ID and selfie images after an account closes. No default.
 - **RQ-26 → row 145 (schema, row 136; override built as `task_exposure_overrides` on `dbc3a76`)**: the combined exposure cap needs a stored ops override (who, when, amount, reason). Approve an override record (or columns on the refund review and the ledger line)? Default: a small append-only override table keyed by errand.
 
-### System Design: changes (applied 2026-10-13; text depending on rows 140–146 marked pending)
+### System Design: changes (applied 2026-10-13; the text still marks rows 140–146 pending. Rows 140–144 and 146 are answered; the System Design edits wait for row 147, listed in §10)
 
 In addition to §8:
 - §3.3 notes: "Offers (row 113): the admin's assign puts the task in RUNNER_ASSIGNED with an offer to one runner. The runner's accept is the RUNNER_ASSIGNED → RUNNER_EN_ROUTE transition; a decline keeps RUNNER_ASSIGNED for reassignment (no new state); an offer not accepted in its window (10 min admin, 90 s auto, row 114) moves the task to EXPIRED (RQ-22 pending on re-offers). No FAILED from ARRIVED or IN_PROGRESS (row 132)."
@@ -254,3 +256,40 @@ In addition to §8:
 - §4.2: "Location: 30 s while online without a job, 4–8 s during a job, nothing offline (row 123). Runner room scoped server-side (row 139)."
 - §6: "Runner payout requests (row 117) … destination = sign-in phone (row 118). Combined exposure cap on CANCELLED/FAILED (row 136). Approval cap min(item paid, limit) (row 135). Receipt window 24 h (row 129)."
 - §10: "ID/selfie storage per row 125; verification per row 126."
+
+## 10. Owner answers rows 140–144, 146 (2026-10-16), applied on `docs/owner-answers-7-specs`
+
+Row 85 (PayHero) and rows 145, 147, 148, 149 stay open.
+
+### Decisions applied to the specs
+- **Row 140**: a runner-favourable dispute keeps the runner fee and item reimbursement payable. `_shared.md` §8, `v-job-summary.md` (DISPUTED line reworded, no `On hold` outside line status), admin `drawer-dispute-outcome.md` (note only). Built API matches (lines created at CONFIRMED after DISPUTED → COMPLETED).
+- **Row 141**: an offer unaccepted at its deadline expires and the task goes EXPIRED at once; no acceptance after expiry. `_shared.md` §6/§1, `v-jobs.md`, `v-job-detail.md`, admin `_shared.md` N-20. API: RA-26 (inside RA-1).
+- **Row 142**: ordinary approval capped at min(item amount paid to Nitume, `max_purchase_advance`); above the limit only through an explicit exceptional override with reason and actor. The earlier recommendation "ops raise the runner's limit first" is withdrawn everywhere: admin `drawer-runner-payout.md` (new §5 2b exception, `Change` link dropped), `drawer-runner-purchase-limit.md` (confirm copy, no link from the payout drawer), admin `_shared.md` (N-21), runner `_shared.md` §8, `v-job-summary.md`, `v-earnings.md`. API: RA-25.
+- **Row 143**: no payout-time promise; status only. `v-payout.md` (snackbar, open-request notice), `v-earnings.md`, `x-payout-history.md`, `v-notifications.md`, runner `_shared.md` §8 (banned phrasing).
+- **Row 144**: ID/selfie retention limited, configurable, secure deletion, access restricted and logged. `_shared.md` §9, `v-onboard-id.md`, `v-onboard-selfie.md`. API: RA-7.
+- **Row 146**: a request paid below the requested amount closes as PAID with `requestedAmount` and `paidAmount` stored separately; the remainder stays available for a new request. `v-payout.md`, `v-earnings.md`, `x-payout-history.md`, `v-notifications.md`, admin `p-payout-requests.md`, `p-runner-payouts.md`, admin `_shared.md` N-17. API: RA-15.
+
+### Built code that now conflicts with the specs
+| Area | Branch / file | Conflict | Owner of the fix |
+|---|---|---|---|
+| API reimbursement review | `feat/api-owner-answers-6` `apps/api/src/payments/runner-payouts.service.ts` (`approvalCeilingOf`, `review`) | No purchase-limit exception path (row 142); the ceiling reads the runner's **current** `max_purchase_advance`, so raising the limit (N-19, when built) would lift an existing line's ceiling without a per-line record (open question below) | api-contract (RA-25 / N-21) |
+| Admin reimbursement review | `feat/admin-runner-payouts` `apps/admin/src/app/features/admin/drawers/runner-payout-drawer.ts` | Ordinary path matches; the row-142 exception UI is missing (`drawer-runner-payout.md` §5 2b, §7, activity) | web-parity, after api-contract |
+| API offers | `feat/api-owner-answers-6` | RA-1 offer model not built; when built, expiry must go EXPIRED at once (RA-26) | api-contract |
+| Payout requests | none built (API, admin, runner) | No conflict; RA-15 / N-17 must use `requestedAmount` + `paidAmount` | api-contract, then web-parity / flutter-runner |
+| Runner app | `feat/runner-scaffold` | None: payout, offer and onboarding screens are not built | — |
+
+### New questions for the owner
+- **Row 141 follow-up (state machine)**: System Design §3.4 v1 lets a 90 s **auto-offer** fall through to the next runner; row 141 says an unaccepted offer sends the task to EXPIRED at once. Does row 141 cover auto-offers too (no fall-through), or only admin offers? Specced: every offer, as row 141 reads.
+- **Row 142 follow-up (schema)**: where is the purchase-limit exception stored? Recommended: the row-136 override record (`task_exposure_overrides`) with a source/scope value `purchase_limit`, together with the `scope` column asked under row 145; alternative: its own append-only table.
+- **Row 142 follow-up (payments)**: does a later change of the runner's limit (row 138) lift the ordinary ceiling of an item line already waiting for review? Recommended no: the ordinary ceiling uses the limit when the line was created, so paying an existing purchase above the limit always goes through the recorded exception.
+
+### System Design edits needed (not applied: row 147 is open)
+1. §3.3 notes, "Offers" bullet. Current: "**Pending (row 141)**: whether the first lapsed offer expires the task at once (recommended, as row 113 reads) or only after re-offers to other runners." Proposed: "**Decided (owner, 2026-10-16, row 141)**: "at the acceptance deadline with no acceptance the offer expires and the task goes EXPIRED at once; no runner acceptance after expiry." No re-offer step comes before EXPIRED; an accept after `expiresAt` is refused (`offer_expired`)."
+2. §3.4 v1. Current: "(or auto-offered to the top Runner with a 90-second accept window, falling through to the next)". Proposed (if the owner confirms row 141 covers auto-offers): "(or auto-offered to the top Runner with a 90-second accept window; an unaccepted offer expires and the task goes EXPIRED, row 141)". Otherwise unchanged, and §3.3 must say row 141 applies to admin offers only.
+3. §6 changelog line "> Updated 2026-10-13 (second pass) … rows 140–146 pending." Proposed: replace "rows 140–146 pending" with "rows 140–144 and 146 answered 2026-10-16 (offer expiry, runner-favourable disputes, purchase-limit exception, no payout-time promise, ID retention, payout requests paid below the amount); row 145 pending".
+4. §6 Runner reimbursement item 2 ("Accepted" = CONFIRMED). Append: "Row 140 (owner, 2026-10-16): "a runner-favour dispute keeps the runner eligible for the applicable payout/reimbursement; the dispute outcome does not cancel an otherwise valid runner payout." The row-104 words "and no dispute" therefore mean no dispute still open or decided against the runner."
+5. §6 item 4. Current: "Ops may make it payable, at most at min(item amount paid to Nitume, the runner's `max_purchase_advance`) (row 135; for an accepted over-limit purchase, row 142 pending)." Proposed: "Ops may make it payable, at most at min(item amount paid to Nitume, the runner's `max_purchase_advance`) (rows 135, 142). Paying above `max_purchase_advance` needs an explicit exceptional override that records the reason and the actor, auditable (owner, 2026-10-16, row 142: "ordinary approval is capped at min(verified item amount paid to Nitume, runner max_purchase_advance) and must not silently override the runner's limit"); it never goes above the item amount paid to Nitume (row 105). Changing the runner's limit is not the way to do this."
+6. §6 item 5a. Current: "**Pending**: approval of that override storage (row 145) and whether ops may pay an accepted over-limit purchase above the cap only by raising the runner's limit first (row 142). Row 140 (pending): whether a runner-favourable dispute still pays the runner at CONFIRMED (built: yes)." Proposed: "**Pending**: approval of that override storage (row 145). Decided 2026-10-16: payment above `max_purchase_advance` only through the explicit, audited exception in item 4 (row 142), not by raising the runner's limit; a runner-favourable dispute keeps the runner's payout (row 140, as built)."
+7. §6 "Payouts to Runners". Current: "**Pending (row 146)**: paying a request with whole ledger lines whose total is below the requested amount." Proposed: "**Paid below the request (decided, owner 2026-10-16, row 146)**: a request paid below the requested amount closes as PAID; the requested and actual paid amounts are stored separately (e.g. requested KES 5,000, paid KES 4,000, PAID); the remainder is not carried in that request and stays in the available amount for a new request. **No payout time (row 143)**: no UI promises a payout time or SLA; screens show payout status only."
+8. §2.2 `runner_profiles` bullet. Current: "Approved new records, shape for api-contract to propose: **runner payout requests** (row 117: …) and the **purchase-limit audit** (row 138)." Proposed: add "; the payout request stores the requested and the paid amount separately (row 146); the per-reimbursement **purchase-limit exception** (row 142: reason, actor, time, limit at the time, amount) is a required audit record, storage pending owner approval".
+9. §10 PII handling. Current: "**Pending (row 144)**: retention period." Proposed: "**Retention (decided, owner 2026-10-16, row 144)**: ID and selfie images are kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; never indefinitely. The retention period is configurable (final legal period not yet set); access stays restricted and logged for the whole period."

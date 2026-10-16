@@ -93,4 +93,4 @@ Proposed:
 - Row 123 (RQ-11): 30 s pings while online without a job; none offline.
 
 ## Questions
-- None open on this screen. RQ-22 (row 141) decided 2026-10-16, see Decisions.
+- New (state machine, row 141 follow-up): System Design §3.4 v1 says an **auto-offer** (90 s) falls through to the next runner, while row 141 says an unaccepted offer expires and the task goes EXPIRED at once. Does row 141 also apply to auto-offers (no fall-through), or only to admin offers? Specced: EXPIRED at once for every offer, as row 141 reads; the runner screens are the same either way (the card disappears at `expiresAt`).
