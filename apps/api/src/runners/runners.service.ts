@@ -13,6 +13,7 @@ import {
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification } from './runner-verification.entity';
+import { documentTooLarge, idMaxUploadBytes } from './upload/verification-upload';
 import { VerificationDocumentAccessLog, VerificationDocumentAction } from './verification-document-access-log.entity';
 import {
   ConsoleVerificationDocumentStorage,
@@ -246,6 +247,11 @@ export class RunnersService {
     }
     if (!file || !file.buffer || file.size === 0) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'verification_document_empty', 'Attach the image as `file`');
+    }
+    // Multer already stops at the limit; checked again before anything is stored.
+    const maxBytes = idMaxUploadBytes(this.config);
+    if (file.size > maxBytes || file.buffer.length > maxBytes) {
+      throw documentTooLarge(maxBytes);
     }
     if (!DOCUMENT_CONTENT_TYPES.includes(file.mimetype)) {
       throw new ApiError(

@@ -14,6 +14,10 @@ import { ErrandsService } from '../src/errands/errands.service';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
+import {
+  VERIFICATION_DOCUMENT_STORAGE,
+  VerificationDocumentStorage,
+} from '../src/runners/verification-storage/verification-document-storage';
 import { NOTIFICATIONS_QUEUE } from '../src/infra/queue/queues';
 import { FEED_JOB, FeedJob, NotificationsService } from '../src/notifications/notifications.service';
 
@@ -460,6 +464,41 @@ describe('Owner answers 9 (e2e)', () => {
       const mine = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
       expect(mine.body).not.toHaveProperty('assignments');
       expect(mine.body).not.toHaveProperty('offerWindowSeconds');
+    });
+  });
+
+  /** A minimal JPEG-signed buffer of `size` bytes. */
+  const jpeg = (size = 64): Buffer => {
+    const buf = Buffer.alloc(size, 0);
+    buf.set([0xff, 0xd8, 0xff, 0xe0]);
+    return buf;
+  };
+
+  const uploadDoc = (runner: Actor, file: Buffer, contentType = 'image/jpeg', verificationType = 'government_id') =>
+    http()
+      .post('/api/v1/runners/me/verifications/documents')
+      .set(bearer(runner.token))
+      .field('verificationType', verificationType)
+      .attach('file', file, { filename: 'front.jpg', contentType });
+
+  describe('row 163: 10 MB per ID/selfie image, refused before storage', () => {
+    it('answers 413 verification_document_too_large with maxBytes and stores nothing', async () => {
+      const runner = await makeUser(UserRole.RUNNER);
+      const storage = app.get<VerificationDocumentStorage>(VERIFICATION_DOCUMENT_STORAGE);
+      const upload = vi.spyOn(storage, 'upload');
+      try {
+        const big = await uploadDoc(runner, jpeg(10 * 1024 * 1024 + 1)).expect(413);
+        expect(big.body).toMatchObject({ statusCode: 413, code: 'verification_document_too_large', maxBytes: 10 * 1024 * 1024 });
+        expect(upload).not.toHaveBeenCalled();
+        expect(
+          await db().query('SELECT id FROM "runner_verifications" WHERE "runnerProfileId" = $1', [runner.profileId]),
+        ).toEqual([]);
+        // Exactly at the limit is accepted.
+        await uploadDoc(runner, jpeg(10 * 1024 * 1024)).expect(201);
+        expect(upload).toHaveBeenCalledTimes(1);
+      } finally {
+        upload.mockRestore();
+      }
     });
   });
 });

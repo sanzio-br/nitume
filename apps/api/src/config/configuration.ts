@@ -285,6 +285,7 @@ export const configuration = (): AppConfig => ({
     cloudinaryFolder: process.env.RUNNER_ID_CLOUDINARY_FOLDER || 'nitume/runner-verification',
     signedUrlTtlSeconds: Math.min(int(process.env.RUNNER_ID_SIGNED_URL_TTL_SECONDS, 300), 300),
     retentionDays: int(process.env.RUNNER_ID_RETENTION_DAYS, 365),
+    // Row 163: 10 MB per image; read by the runners module's multer options only.
     maxUploadBytes: int(process.env.RUNNER_ID_MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
     purgeCron: process.env.RUNNER_ID_PURGE_CRON || '0 3 * * *',
     cloudinary: resolveIdCloudinary(process.env),

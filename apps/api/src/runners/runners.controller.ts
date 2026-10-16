@@ -11,6 +11,7 @@ import {
   Query,
   UploadedFile,
   UseGuards,
+  UseFilters,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -33,8 +34,7 @@ import {
   UploadedImage,
 } from './runners.service';
 
-/** Largest ID/selfie image accepted (multipart), read once at start-up. */
-const MAX_DOCUMENT_BYTES = Number.parseInt(process.env.RUNNER_ID_MAX_UPLOAD_BYTES ?? '', 10) || 10 * 1024 * 1024;
+import { VerificationUploadTooLargeFilter } from './upload/verification-upload';
 
 @Controller('runners')
 export class RunnersController {
@@ -137,12 +137,15 @@ export class RunnersController {
    * storage; creates a pending verification (one per image: ID front and
    * back are two). The storage key is never returned. Errors: 400
    * verification_type_not_uploadable, verification_document_type_invalid,
-   * verification_document_empty; 413 above the size limit.
+   * verification_document_empty; 413 verification_document_too_large
+   * (`maxBytes`, row 163; the limit is `runnerVerification.maxUploadBytes`
+   * through the module's multer options, the only source).
    */
   @UseGuards(JwtAuthGuard)
   @Post('me/verifications/documents')
   @Roles(UserRole.RUNNER)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 } }))
+  @UseFilters(VerificationUploadTooLargeFilter)
+  @UseInterceptors(FileInterceptor('file'))
   uploadVerificationDocument(
     @CurrentUser() user: AuthContext,
     @Body() dto: UploadVerificationDocumentDto,
