@@ -139,6 +139,9 @@ class OpenPayoutRequest {
 
 /// Why an amount cannot be requested, from [PayoutRequestSummary.check].
 enum PayoutAmountProblem {
+  /// Not a KES amount with at most two decimals.
+  invalid,
+
   /// A request is already open (409 `payout_request_open`).
   requestOpen,
 
@@ -171,22 +174,37 @@ class PayoutRequestSummary {
   bool get hasOpenRequest => openRequest != null;
 
   /// Client-side check before `POST /runners/me/payout-requests`, using the
-  /// same rules as the API (the API still decides). `null` when [amount]
-  /// (KES) can be requested. Compares whole cents.
-  PayoutAmountProblem? check(num amount) {
+  /// same rules as the API (the API still decides). [amount] is the KES
+  /// amount as a decimal string (the field text, e.g. `"2500"` or
+  /// `"2500.50"`). `null` when it can be requested. Compares whole cents
+  /// read straight from the strings, so no money passes through a double.
+  PayoutAmountProblem? check(String amount) {
     if (openRequest != null) return PayoutAmountProblem.requestOpen;
-    final cents = (amount * 100).round();
-    if (cents <= 0 || cents < _cents(minimumAmount)) {
+    final cents = parseCents(amount);
+    if (cents == null) return PayoutAmountProblem.invalid;
+    if (cents <= 0 || cents < (parseCents(minimumAmount) ?? 0)) {
       return PayoutAmountProblem.belowMinimum;
     }
-    if (cents > _cents(availableAmount)) {
+    if (cents > (parseCents(availableAmount) ?? 0)) {
       return PayoutAmountProblem.exceedsAvailable;
     }
     return null;
   }
 
-  static int _cents(String decimal) =>
-      ((double.tryParse(decimal) ?? 0) * 100).round();
+  static final _decimal = RegExp(r'^(-?)(\d+)(?:\.(\d{1,2}))?$');
+
+  /// Whole cents of a KES decimal string (`"2500.5"` → 250050), split on
+  /// the `.` without floating point. Surrounding spaces and `,` thousands
+  /// separators are ignored. `null` when it is not a number with at most
+  /// two decimals.
+  static int? parseCents(String decimal) {
+    final m = _decimal.firstMatch(decimal.trim().replaceAll(',', ''));
+    if (m == null) return null;
+    final whole = int.parse(m.group(2)!);
+    final fraction = int.parse((m.group(3) ?? '').padRight(2, '0'));
+    final cents = whole * 100 + fraction;
+    return m.group(1) == '-' ? -cents : cents;
+  }
 
   factory PayoutRequestSummary.fromJson(Map<String, dynamic> json) {
     final open = asJsonMapOrNull(json['openRequest']);

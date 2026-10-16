@@ -164,11 +164,15 @@ void main() {
         minimumAmount: '500.00',
         availableAmount: '3200.50',
       );
-      expect(s.check(500), isNull);
-      expect(s.check(3200.50), isNull);
-      expect(s.check(499.99), PayoutAmountProblem.belowMinimum);
-      expect(s.check(0), PayoutAmountProblem.belowMinimum);
-      expect(s.check(3200.51), PayoutAmountProblem.exceedsAvailable);
+      expect(s.check('500'), isNull);
+      expect(s.check('3200.50'), isNull);
+      expect(s.check('3,200.5'), isNull);
+      expect(s.check('499.99'), PayoutAmountProblem.belowMinimum);
+      expect(s.check('0'), PayoutAmountProblem.belowMinimum);
+      expect(s.check('3200.51'), PayoutAmountProblem.exceedsAvailable);
+      expect(s.check('12.345'), PayoutAmountProblem.invalid);
+      expect(s.check('abc'), PayoutAmountProblem.invalid);
+      expect(s.check(''), PayoutAmountProblem.invalid);
 
       final open = PayoutRequestSummary(
         minimumAmount: '500.00',
@@ -179,8 +183,19 @@ void main() {
           'status': 'requested',
         }),
       );
-      expect(open.check(1000), PayoutAmountProblem.requestOpen);
+      expect(open.check('1000'), PayoutAmountProblem.requestOpen);
     });
+  });
+
+  test('parseCents reads whole cents without a double', () {
+    expect(PayoutRequestSummary.parseCents('2500.00'), 250000);
+    expect(PayoutRequestSummary.parseCents('2500.5'), 250050);
+    expect(PayoutRequestSummary.parseCents(' 0.07 '), 7);
+    expect(PayoutRequestSummary.parseCents('-6000.00'), -600000);
+    expect(PayoutRequestSummary.parseCents('1,234,567.89'), 123456789);
+    expect(PayoutRequestSummary.parseCents('1e3'), isNull);
+    expect(PayoutRequestSummary.parseCents('.5'), isNull);
+    expect(PayoutRequestSummary.parseCents('1.234'), isNull);
   });
 
   group('PayoutFeedItem', () {
