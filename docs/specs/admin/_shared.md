@@ -42,9 +42,24 @@
 | 100 | "Build the auditable correction/reversal schema now. Original payout/receipt records remain immutable; corrections/reversals are represented separately." | drawer-refund (Corrections), §6, §7 N-15 |
 | 101 | Round-4 breaking API changes accepted as specified (customer/runner `resolvedBy: null` on disputes; no `payoutReference` in customer refund views; price changes outside Buy For Me / Get It For Me answer 400) | (no admin change) |
 | 102 | "Paid tasks ending CANCELLED, EXPIRED, or FAILED should create a refund review. This is a review trigger, not an automatic refund." | §6, p-refunds, drawer-refund |
+| 104 | "'Accepted' for runner item reimbursement means the task reaches CONFIRMED: receipt uploaded, customer confirmed, dispute window closed, and no dispute." | §3 |
+| 105 | "A missing or mismatched receipt is not automatically payable and requires ops review. Any approved reimbursement is capped at the item amount actually paid to Nitume." | §3 |
+| 106 | Runner already bought the item and the task ends CANCELLED or FAILED: "reimburse the runner for verified eligible out-of-pocket item expenditure, subject to the applicable caps/evidence requirements. Do not pay the runner service fee." | §3 |
+| 107 | "Approve the runner payout ledger table. Build it now. It must support distinct financial lines for runner fee, item reimbursement, corrections, reversals, and re-sent payouts." | §3, p-runner-payouts, drawer-runner-payout |
+| 108 | "Runner out-of-pocket purchases are limited by max_purchase_advance, and a runner may decline a task when the required purchase exceeds their configured limit." | §3 |
+| 109 | "Customer notification is required for a re-sent payout. Internal payout corrections/reversals do not notify the customer by default." (AQ-9) | drawer-refund |
+| 110 | "A correction must not record an amount above the applicable refund ceiling." (AQ-10) | drawer-refund |
+| 111 | "A reversed, not-yet-re-sent payout remains committed at the decided refund amount until the obligation is resolved/re-sent, and therefore continues to count against the cumulative refund cap." | §3, drawer-refund |
+| 112 | "Approve. Admin runner payout ledger and reimbursement ops-review screens are in scope." | p-runner-payouts, drawer-runner-payout, p-payout-requests, drawer-runner-purchase-limit |
+| 113 | Offer model: offers inside RUNNER_ASSIGNED; accept → RUNNER_EN_ROUTE; decline → stays RUNNER_ASSIGNED, reassigned; lapse → EXPIRED; accept above the purchase limit refused | assign flow (admin assign creates an offer; spec of the assign drawer to follow when the API exists) |
+| 117 | Runner payout requests up to the available amount, configurable minimum, one open request, ops pay manually, own auditable record | p-payout-requests |
+| 118 | Payout destination fixed to the runner's sign-in phone | p-runner-payouts, p-payout-requests |
+| 135 | Over-limit purchase at CONFIRMED → ops review; maximum claimable = min(item amount paid to Nitume, `max_purchase_advance`) | drawer-runner-payout |
+| 136 | "Add a task-level combined financial exposure cap covering the customer refund and the runner item reimbursement on CANCELLED/FAILED tasks … Cases above the normal cap require ops review and explicit handling." | drawer-runner-payout, drawer-refund (amendment) |
+| 138 | "KES 3,000 default, configurable per runner by admins. Changes audited with actor, timestamp, previous and new value. Runners cannot change their own limit." | drawer-runner-purchase-limit |
 | 93 | The four admin tones `#DCE3EE`, `#C3CADC`, `#7E8CA8`, `#EEF1F5` are approved admin palette tokens in `_tokens.scss` | §4.1 |
 
-Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94 (AQ-1 … AQ-6, AQ-R1, AQ-R2). Answered 2026-10-12 and applied on `docs/owner-answers-5`: rows 95, 96 (AQ-7), 98, 100, 101, 102 (AQ-8). Still open on the BOARD and relevant here: row 85 (PayHero contract, no admin UI impact).
+Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94 (AQ-1 … AQ-6, AQ-R1, AQ-R2). Answered 2026-10-12 and applied on `docs/owner-answers-5`: rows 95, 96 (AQ-7), 98, 100, 101, 102 (AQ-8). Answered 2026-10-13 and applied on `docs/owner-answers-6-runner-specs`: rows 104–108 (runner reimbursement and payout ledger, system design §2.2/§6), 109 (AQ-9), 110 (AQ-10), 111. Still open on the BOARD and relevant here: row 85 (PayHero contract, no admin UI impact).
 
 ## 2. Access
 
@@ -61,9 +76,9 @@ Answered 2026-10-09 and applied above: rows 62, 68, 69, 77–83, 86–88, 93, 94
 - Money inputs: `<input type="text" inputmode="decimal">` in a `.field-input` with Fira Code value text, a static `KSh` prefix label in Fira Sans 13 slate-600 inside the field's left padding. Accept digits and one `.`, max 2 decimals; strip `,` and spaces before sending; send a JSON **number** (the DTOs use `@IsNumber`).
 - The three flows stay separate in every label:
   - **Service + runner fee**: one STK charge to Nitume (row 34 hides the split from the customer; the admin may see components where the API gives them).
-  - **Item amount, paid to Nitume** (`send_to_runner`, rows 42, 66, 76): part of the combined STK charge to Nitume. The runner buys the item with their own money; Nitume **reimburses** the runner through the payout ledger after the receipt is uploaded and accepted (task CONFIRMED), never in advance (row 95, system design §6 "Runner reimbursement"). It counts toward the refund ceiling even when the runner already bought the item (row 81).
+  - **Item amount, paid to Nitume** (`send_to_runner`, rows 42, 66, 76): part of the combined STK charge to Nitume. The runner buys the item with their own money; Nitume **reimburses** the runner through the payout ledger after the receipt is uploaded and accepted (task CONFIRMED, row 104), never in advance (row 95, system design §6 "Runner reimbursement"). A missing or mismatched receipt goes to ops review, capped at the item amount paid to Nitume (row 105); on a CANCELLED or FAILED task verified item spend is reimbursed but no runner fee is paid (row 106); lines live in the runner payout ledger (row 107). It counts toward the refund ceiling even when the runner already bought the item (row 81).
   - **Item amount, paid to the merchant** (`merchant_direct`): the customer pays the merchant's Till/Paybill, including any increase, manually (row 67); Nitume never holds it and can't refund it; a decrease opens no refund review (row 86).
-- **Refund ceiling (rows 37, 81, 87)**: what the customer paid **to Nitume** on the task (fees, item amount on `send_to_runner`, completed differences), **minus refunds already approved or sent** on the same task. Cumulative refunds never exceed what was paid. The API returns the ceiling as the review's `amountPaid` (needs N-9 for the net rule) and enforces it again at decision time.
+- **Refund ceiling (rows 37, 81, 87)**: what the customer paid **to Nitume** on the task (fees, item amount on `send_to_runner`, completed differences), **minus refunds already approved or sent** on the same task. Cumulative refunds never exceed what was paid; a reversed, not-yet-re-sent payout keeps counting at its decided amount (row 111). The API returns the ceiling as the review's `amountPaid` (needs N-9 for the net rule) and enforces it again at decision time.
 - Forbidden words in this surface (copy, tooltips, code identifiers shown to users): wallet, balance, escrow, held, hold, release, credit, top up. Use "paid to Nitume", "paid to the merchant", "refund", "payout".
 
 ## 3.1 Times (row 96, decided 2026-10-12)
@@ -123,6 +138,7 @@ An audit treats these four as palette, not as violations. Any other new hex is s
 | A-12 | "Load more" pagination (centered `.btn .btn-outline`, label `Load more` / `Loading…`) | exists as a pattern in `verifications.panel.ts` (no `.pagination` style yet) |
 | A-13 | Format helpers: `formatKshExact(value)` (§3), `formatDateTime(iso)` → `Today, 4:30 PM` / `Yesterday, 4:30 PM` / `Mon 12 Oct, 4:30 PM` (12-hour with AM/PM as in the mockup, East Africa Time; §3.1, row 96 decided) | **NEW** (`timeAgo` and `formatKsh` exist; neither fits exact money or absolute times) |
 | A-14 | `apiError(err)` helper → `{ status, code?, message, extra }` read from `HttpErrorResponse.error` (API body `{ statusCode, code, message, ...extra }`; class-validator 400s carry `message: string[]`) | **NEW** (`core/`). Today every drawer shows `HttpErrorResponse.message` ("Http failure response for …"), which is not user copy |
+| A-16 | Row checkbox column + sticky batch bar (selected count and Fira Code total, one primary action), for `p-runner-payouts` and `p-payout-requests` | **NEW** |
 | A-15 | Sidebar nav item with badge (`.ops-nav-item`, `.badge-count`) | exists (admin-dashboard shell) |
 
 ## 6. Refund status vocabulary (admin)
@@ -151,6 +167,20 @@ Unknown values: show the raw value title-cased (never hide a row). Row 102: thes
 
 Effective payout state (row 100, see `drawer-refund` "Corrections"): a `refunded` review whose latest correction is a reversal shows the chip `Payout reversed` (pending, amber; next action: send again and record the new payout) instead of `Refunded`. A `refunded` review with corrections that leave it sent still shows `Refunded`.
 
+## 6.1 Runner payout vocabulary (admin, row 107)
+
+API effective status (`effectiveStatus`, with `effectivePayout`) → A-02 `kind="runner_payout"`:
+
+| Effective status | Chip | Tone | Next action |
+|---|---|---|---|
+| `on_hold` | `Needs review` | pending (amber) | Approve (capped) or reject |
+| `payable`, no reversed payout | `Payout due` | pending (amber) | Send M-Pesa, record the receipt (batch per runner) |
+| `payable` with `effectivePayout.state = 'reversed'` | `Payout reversed` | pending (amber) | Re-send (`resent_payout`), never `mark-paid` |
+| `paid` | `Paid` | success (complete state) | none |
+| `rejected` | `Not approved` | neutral (slate) | none |
+
+Review reasons (`reviewReason`): `receipt_missing` → `No receipt`; `receipt_mismatch` → `Receipt doesn't match`; `out_of_pocket_claim` → `Claim after cancel/fail`; `over_purchase_limit` → `Above purchase limit`; `price_decrease_pending` → `Waiting for the price-decrease refund decision` (built on `cf525cf`: the item line waits at CONFIRMED while a price-decrease refund review is undecided; decide that refund first). Line kinds: `runner_fee` → `Runner fee`; `item_reimbursement` → `Item reimbursement`. Adjustment kinds: `correction` → `Payout corrected`; `reversal` → `Payout reversed`; `resent_payout` → `Payout sent again`. Payout requests (N-17): `requested` → `Waiting` (pending), `paid` → `Paid` (success), `rejected` → `Not approved` (neutral). Unknown values: raw value title-cased.
+
 ## 7. Cross-cutting API gaps (needs: api-contract)
 
 Collected here; each spec repeats the ones it depends on.
@@ -171,6 +201,10 @@ Collected here; each spec repeats the ones it depends on.
 - N-15 (rows 82, 100; **schema approved 2026-10-12, build now**) Payout correction/reversal records, append-only table `refund_payout_corrections` (system design §2.2): `POST /refunds/:id/corrections`, `corrections[]` and `effectivePayout` on admin refund responses, customer view on the effective payout. Full contract in `drawer-refund.md` "Corrections" → Data.
 - N-16 (row 102, **approved 2026-10-12**) New `RefundTrigger` values `expired_after_payment` and `failed_after_payment` (enum migration); open a review (same upsert as the cancellation review, `priceChangeRequestId` null, so at most one cancellation-type review per errand) when a **paid** errand moves RUNNER_ASSIGNED → EXPIRED or RUNNER_EN_ROUTE → FAILED, with the same ceiling rules (rows 81, 87) and the same customer notification as a cancellation review. "Paid" = at least one completed STK leg to Nitume, as for `cancelled_after_payment`. A late STK completion on an EXPIRED/FAILED errand refreshes `amountPaid` while `pending_review`, as for CANCELLED.
 - Row 98 (note, no admin change): the API runs as **one instance** (no Socket.IO Redis adapter). The `admins` room and live events assume that; nothing in these screens needs a change.
+- N-17 (row 117) Runner payout requests: record + endpoints (`/runner-payout-requests` list/count/detail/pay/reject, runner create/list/summary), configurable minimum with an audited setting, one open request per runner, destination = sign-in phone; `pay` marks whole lines paid like `mark-paid` and links them (paying a total below the request: pending row 146, AQ-11).
+- N-18 (row 136) **Built on `feat/api-owner-answers-6` @ `dbc3a76`**: 409 `task_exposure_cap_exceeded`, `exposureOverrideNote`, `taskExposure`, `exposureOverrides[]`, table `task_exposure_overrides` (storage approval pending row 145). Original requirement: task-level combined exposure cap on CANCELLED/FAILED: one figure across the customer refund reviews and the runner's item reimbursements; refund decisions, refund corrections, item approvals and claims checked against it; above it only with an explicit override (amount, reason ≥ 20 chars, actor, time; schema RQ-26); expose `exposure { itemPaidToNitume, customerRefundsCommitted, runnerReimbursementCommitted, remaining }` on the refund detail and the runner payout detail.
+- N-19 (row 138) `PATCH /runners/:id/purchase-limit` + append-only audit history, `GET …/history`; runners refused.
+- N-20 (row 113) Admin assign creates an offer (10 min) instead of an accepted assignment; the task drawer's assign action and the queue need an `Offered to {runner}, ends {time}` state and the decline/expiry outcomes (spec to follow with RA-1).
 - N-8 Non-`ApiError` conflicts (`ConflictException` in `performDisputeResolution`, state-machine 409s) have no `code`; the client can only switch on status 409. A code such as `errand_not_disputed` would let the UI word it precisely.
 
 ## 8. Owner questions (AQ-n)
@@ -195,6 +229,18 @@ Answered 2026-10-12:
 | AQ-7 | 96 | 12-hour East Africa Time in the admin; backend timestamps stay canonical (§3.1) |
 | AQ-8 | 102 | Paid tasks ending CANCELLED, EXPIRED or FAILED open a refund review (review trigger, not an automatic refund); labels `Task expired`, `Task failed` (§6) |
 
-New, from the row-100 corrections spec (payments; defaults given, nothing blocks the build):
-- **AQ-9**: Is the customer notified when a payout is corrected or reversed? Default: notify only when a new payout is recorded after a reversal (`Refund sent`, same as today); a receipt or amount correction and a reversal send nothing, and the refund status/amount on the customer's task updates silently to the effective payout.
-- **AQ-10**: If ops sent **more** than the review's ceiling by mistake, can a correction record an amount above the ceiling (so the record is true), or must it be capped (default: capped at the ceiling, with the over-payment handled outside the app)?
+Answered 2026-10-13:
+
+| AQ | BOARD row | Answer |
+|---|---|---|
+| AQ-9 | 109 | Only a re-sent payout notifies the customer; payout corrections and reversals do not by default |
+| AQ-10 | 110 | A correction must not record an amount above the applicable refund ceiling |
+| — | 111 | A reversed, not-yet-re-sent payout stays committed at the decided refund amount and keeps counting against the cumulative refund cap (row 87) |
+
+Answered 2026-10-13 (rows 112–139): applied in §1 and the runner payout specs.
+
+Open:
+| AQ | Question | Default |
+|---|---|---|
+| AQ-11 (payments, BOARD row 146, pending) | Paying part of a payout request with whole lines (`p-payout-requests.md`) | Yes: pay whole lines up to the requested amount; the request closes `paid` with the actual total |
+| RQ-23, RQ-26 (BOARD rows 142, 145, pending) | See `docs/audits/runner-gap-report.md` §9 (approval cap on an accepted over-limit purchase; override storage) | as there |

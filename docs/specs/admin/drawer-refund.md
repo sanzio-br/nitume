@@ -3,7 +3,7 @@
 - Mockup: **not drawn. EXTENDS MOCKUP**: a fourth drawer next to `#drawer-task`, `#drawer-runner`, `#drawer-dispute`, built from the same drawer anatomy (`.drawer-head`, `.drawer-section`, `.drawer-label`, `.drawer-card`, `.drawer-row`, `.drawer-timeline`, `.drawer-actions`) and the design-system form field. Copy is **(proposed)**.
 - Shared conventions: `docs/specs/admin/_shared.md`
 - Implementation: `apps/admin/src/app/features/admin/drawers/refund-drawer.ts` (hosted by the shell's `app-ops-drawer`, `DrawerKind` `'refund'`) and `refund-link.section.ts` (task drawer link)
-- Status: matches-design (re-audit round 5, 2026-10-12, `fix/angular-admin-owner-answers-5` @ `053fbc6`: PASS, minors m-10, m-11; see Current vs design)
+- Status: matches-design (row 136 amendment audited PASS 2026-10-14 on `feat/admin-runner-payouts` @ `04837b4`; earlier minors m-10, m-11 still open)
 
 ## Purpose
 Show one refund review and let any authorized admin (row 77: no second approver, no amount threshold) (1) decide the refund amount, KSh 0 up to the review's ceiling, and (2) for an approved refund, record the manual M-Pesa payout with its receipt (rows 37, 54). The ceiling is what the customer paid **to Nitume** (including an item amount paid to Nitume even if the runner already bought the item, row 81) **minus refunds already approved or sent on the same task** (row 87); for a `Price decrease` review it is the decrease (`send_to_runner` tasks only, row 86). A review opens for every **paid** task that ends CANCELLED, EXPIRED or FAILED (row 102: "a review trigger, not an automatic refund") and for an approved price decrease. (3) After a payout is recorded, record an auditable **correction or reversal** of it without touching the original receipt (row 100). The refund is a record attached to the task, not a task state.
@@ -61,6 +61,16 @@ Show one refund review and let any authorized admin (row 77: no second approver,
    3. The action: `Record a correction` (`.btn .btn-outline`, full width) while the effective payout is sent; the `Record the new payout` form (primary) while it is reversed.
 6. **Activity** (`.drawer-label` `Activity`, `.drawer-card` with `.drawer-timeline`, mockup timeline pattern): `Review opened` (createdAt); `Refund of KSh X approved` / `Closed with no refund` (decidedAt); `Refund sent · {receipt}` (paidAt); then one item per correction (row 100): `Payout corrected · {new receipt or KSh new amount}`, `Payout reversed · {reversal receipt}`, `New payout sent · {receipt}` (createdAt). Times `.dt-time` Fira Code 11.
 
+## Combined exposure cap (row 136, amendment 2026-10-13; built on `feat/api-owner-answers-6` @ `dbc3a76`)
+
+Customer refunds and the runner's item reimbursement on a task share one cap (row 136). Copy is **(proposed)**.
+- **Task exposure card** (under `What the customer paid`, every review): `.drawer-label` `Task exposure`; rows from `taskExposure`: `Total paid to Nitume`, `Customer refunds committed` (`committedRefunds`), `Runner reimbursements committed` (`committedReimbursements`, only when > 0), `Left within the task cap` (`remaining`, 600). Fira Code amounts.
+- **Cap overrides** (only when `exposureOverrides[]` is not empty): read-only cards oldest first, as `drawer-runner-payout` §3 (source label, `Amount`, `Normal cap at the time`, `Note`, `By`, time). Storage `task_exposure_overrides`: owner approval pending (rows 145, 148). The override rows do not store the scope, so an item-scope override shows the item basis under `Total paid to Nitume` (needs api-contract: store `scope`, then label the card by scope).
+- **Override form**: when `PATCH /refunds/:id/decision` or `POST /refunds/:id/corrections` answers 409 `task_exposure_cap_exceeded` (extra `totalPaidToNitume`, `committedRefunds`, `committedReimbursements`, `remaining`, `requested`), the form keeps its input and shows A-11 info `This is KSh {requested − remaining} above the task cap.`, the four figures as `.drawer-row`s, and a required A-06 `Why go over the cap?` (textarea 10–500, Fira Code counter; hint `Kept in the audit history. Not shown to the customer.`; message `Explain the override in 10 to 500 characters.`). The primary label gains `over the cap` (`Approve refund over the cap · KSh 1,200`, `Save correction over the cap`, `Record new payout over the cap`); the confirm body adds `This goes over the task cap. Your note is kept in the audit history.` Re-sending carries `exposureOverrideNote`; 400 `exposure_override_note_invalid` → that field's error. Lowering the amount to `remaining` or below hides the field.
+- Scope (`scope` in the 409 extra, built on `feat/api-owner-answers-6` @ `cf525cf`): `task` → label the figures `Total paid to Nitume`, `Customer refunds committed`, `Runner reimbursements committed`, `Left within the task cap`, and the notice `This is KSh {requested − remaining} above the task cap.`; `item` → `totalPaidToNitume` is the item amount paid to Nitume and `committedRefunds` the **other** price-decrease refunds, so label them `Item amount paid`, `Other price-decrease refunds`, `Runner item reimbursement committed`, `Left of the item amount`, with the notice `Price-decrease refunds and the runner's item reimbursement both come out of the item amount paid. This is KSh {requested − remaining} above it.` Both scopes can bind on one request. The API takes one `exposureOverrideNote` and applies it to every scope that binds (one override row per bound scope), so the form has one note field; a later 409 with the other scope (possible only when the first request needed no note) switches the figures to that scope and makes the same field required (corrected 2026-10-14). Override storage: row 145 pending (also row 148). Item scope applies to `Price decrease` reviews and to refunds on tasks with a runner item reimbursement.
+
+Audit 2026-10-14: the task exposure card sits right after `What the customer paid` as its own section (accepted), with the reimbursement row only when > 0.
+
 ## Corrections (row 100)
 
 Owner (2026-10-12): "Build the auditable correction/reversal schema now. Original payout/receipt records remain immutable; corrections/reversals are represented separately." Copy is **(proposed)**. Any authorized admin may record one (row 77, no second approver).
@@ -72,7 +82,7 @@ Owner (2026-10-12): "Build the auditable correction/reversal schema now. Origina
 | `reversed` | Effective payout is sent; the M-Pesa payment was reversed (wrong number, failed delivery) and the money came back | `Payout reversed` | `newReference` = the reversal's M-Pesa code (required); `reason` (required) | amount sent becomes 0; chip `Payout reversed`; the refund is owed again |
 | `resent` | Effective payout is reversed; ops sent the refund again | `New payout sent` | `newReference` (required), `newAmount` (required, prefilled with the review's `refundAmount`), `reason` (required) | sent again with the new receipt and amount |
 
-A partial reversal is a `corrected` record with the lower amount. The review's `status` stays `refunded` throughout; `refundAmount` (the decision) never changes. The effective payout is what counts for the customer view, reconciliation and the cumulative cap of other reviews on the task (row 87).
+A partial reversal is a `corrected` record with the lower amount. The review's `status` stays `refunded` throughout; `refundAmount` (the decision) never changes. The effective payout is what counts for the customer view and reconciliation. For the cumulative cap of other reviews on the task (row 87) a review counts at its effective payout while sent, and at its decided `refundAmount` while reversed and not yet re-sent (decided, owner 2026-10-13, row 111: "A reversed, not-yet-re-sent payout remains committed at the decided refund amount until the obligation is resolved/re-sent, and therefore continues to count against the cumulative refund cap.").
 
 ### Correction card (one per record, read-only)
 `.drawer-card`, first row: kind label (Fira Sans 13/600, blue) left, date/time (Fira Code 11 slate-600) right. Then `.drawer-row`s, only those that apply:
@@ -100,7 +110,7 @@ No edit, delete or undo control on a card. A mistake in a correction is fixed wi
 5. A-06 `Reason` (required, all kinds): textarea 3 rows, max 500, Fira Code counter `0/500`. Hint: `Kept in the audit history. Not shown to the customer.`
 6. `.drawer-actions`: `.btn .btn-outline` `Cancel` (closes the form; asks the A-08 discard dialog `Discard this correction?` / `What you entered will be lost.` if anything was typed) + `.btn .btn-primary` `Save correction` / `Record reversal` / `Record new payout`, disabled while any field is invalid. The `resent` form has **no** `Cancel`: while the payout is reversed the form is the drawer's standing action (as the `approved` payout form), not something the admin opened (accepted 2026-10-12, round 5).
 
-The ceiling for `newAmount` is the API's `correctionCeiling` (the review's own basis `amountPaid`, net of the effective payouts of the task's **other** approved/refunded reviews, row 87).
+The ceiling for `newAmount` is the API's `correctionCeiling` (the review's own basis `amountPaid`, net of the task's **other** approved/refunded reviews, row 87, counted as in row 111). A correction above it is refused (row 110, decided).
 
 ### Validation (corrections)
 | Field | Rule | Message (`.field-error`) |
@@ -108,7 +118,7 @@ The ceiling for `newAmount` is the API's `correctionCeiling` (the review's own b
 | Correct receipt / Reversal code / M-Pesa receipt | trimmed, `^[A-Za-z0-9-]{4,64}$` (required for `reversed`, `resent`) | `Enter the M-Pesa code, letters and numbers only.` |
 | Correct receipt | differs from the current effective receipt | `This is already the receipt on record.` |
 | Correct amount / Amount sent | number > 0, at most 2 decimals | `Enter an amount in KSh, up to 2 decimal places.` |
-| Correct amount / Amount sent | ≤ `correctionCeiling` | `The amount can't be more than KSh {ceiling} for this review.` (AQ-10) |
+| Correct amount / Amount sent | ≤ `correctionCeiling` | `The amount can't be more than KSh {ceiling} for this review.` (decided, owner 2026-10-13, row 110) |
 | Correct amount | differs from the current effective amount | `This is already the amount on record.` |
 | `corrected` | at least one of receipt or amount filled | form-level, under the two fields: `Enter the correct receipt, the correct amount, or both.` |
 | Reason | required, 5–500 characters after trimming | `Say why you're making this change.` |
@@ -138,7 +148,7 @@ Validate on blur and on submit; re-validate on input after an error.
 | 403, 404, network / 5xx | As in Error codes below |
 
 ### Customer view (row 100)
-The customer sees **no** correction records, reasons, receipts or admin names (rows 69, 101). Their refund group on `v-task-detail` reflects the **latest effective payout** only: `Refunded` with the effective amount and the time of the latest sent payout; after a reversal not yet re-sent, `Refund approved` (`We'll send you this refund and update this page when it's sent.`) with the approved amount. Notifications: AQ-9 (default: only `resent` notifies, with the usual `Refund sent` text).
+The customer sees **no** correction records, reasons, receipts or admin names (rows 69, 101). Their refund group on `v-task-detail` reflects the **latest effective payout** only: `Refunded` with the effective amount and the time of the latest sent payout; after a reversal not yet re-sent, `Refund approved` (`We'll send you this refund and update this page when it's sent.`) with the approved amount. Notifications (decided, owner 2026-10-13, row 109): only `resent` notifies, with the usual `Refund sent` text; `corrected` and `reversed` send nothing to the customer.
 
 ## Validation (client, mirrors `DecideRefundDto` / `MarkRefundPaidDto` / `RefundsService`)
 | Field | Rule | Message (`.field-error`) |
@@ -223,8 +233,8 @@ Task id, every amount (paid rows, total, already refunded, refundable in this re
   - Admin refund responses (detail, list items, decision, mark-paid, corrections): `corrections[]` (detail only, oldest first: `{ id, kind, previousReference, previousAmount, newReference, newAmount, reason, createdByUserId, createdAt }`), `effectivePayout` `{ state: 'sent' | 'reversed', amount, reference, at } | null` (list and detail), `correctionCeiling` (detail, `refunded` only).
   - Status filter: `GET /refunds?status=approved` (`Payout due`) also returns `refunded` reviews whose effective payout is reversed (they need a payout); the list item's `effectivePayout.state` lets the panel show `Payout reversed`.
   - Customer view (`GET /errands/:id/refunds`, `toCustomerView`): `status` `approved` and `paidAt` null while the effective payout is reversed; otherwise `refunded` with `refundAmount` = effective amount and `paidAt` = time of the latest sent payout (original or `resent`). Never the corrections, reasons, receipts or admin ids.
-  - Cumulative cap (row 87): other reviews' `alreadyRefunded` uses effective amounts.
-  - Events: `refund.updated` on every record (admin refresh); customer notification only on `resent` (AQ-9 default).
+  - Cumulative cap (row 87): other reviews' `alreadyRefunded` uses effective amounts, except that a review whose payout is reversed and not yet re-sent counts at its decided `refundAmount` (row 111). Already built on `main`: `committedAmountOf` (`apps/api/src/payments/refunds.service.ts:120`) counts a reversed, not-yet-re-sent review at `refundAmount`.
+  - Events: `refund.updated` on every record (admin refresh); customer notification only on `resent` (row 109, decided).
 - Expired/failed triggers (N-16, row 102): `expired_after_payment`, `failed_after_payment`.
 - Task states: a cancellation-type review's task is CANCELLED, EXPIRED or FAILED (row 102); a decrease review's task is usually active. No transition is triggered here.
 
@@ -246,11 +256,16 @@ Task id, every amount (paid rows, total, already refunded, refundable in this re
 - AQ-7 → row 96: times in 12-hour EAT (`_shared.md` §3.1).
 - Row 95: a refund on a `send_to_runner` task never has to claw back an item advance from the runner, because the item amount is reimbursed only after the task is CONFIRMED. The ceiling rule (row 81) is unchanged.
 
+- AQ-9 → row 109 (owner, 2026-10-13): only a re-sent payout notifies the customer; corrections and reversals do not by default.
+- AQ-10 → row 110 (owner, 2026-10-13): a correction must not record an amount above the applicable refund ceiling (refused; an over-payment is handled outside the app).
+- Row 111 (owner, 2026-10-13): a reversed, not-yet-re-sent payout stays committed at the decided refund amount and counts against the cumulative cap.
+
 ## Open questions for the owner
-- AQ-9 (payments, default given): customer notification on corrections and reversals (default: only a new payout after a reversal notifies).
-- AQ-10 (payments, default given): a correction amount above the ceiling (an over-payment) is refused (default); the over-payment is handled outside the app.
+None.
 
 ## Current vs design
+Spec update 2026-10-13 (owner rows 109–111, `docs/owner-answers-6-runner-specs`): AQ-9 and AQ-10 decided as the defaults already built; row 111 matches the API's customer view (reversed → `approved` at `refundAmount`). Row 111 is already built in the API (`committedAmountOf`, `refunds.service.ts:120`). No drawer or API change; status unchanged (addendum "Owner answers round 6" in `docs/audits/admin-gap-report.md`).
+
 Re-audit round 5 (2026-10-12) against `fix/angular-admin-owner-answers-5` @ `053fbc6` (`docs/audits/admin-gap-report.md`, "Re-audit round 5"): **PASS**. API round-5 fields typed optional with `TODO(owner-answers-5)` until `feat/api-owner-answers-5` merges (accepted).
 1. Row 100 built: `Current payout` card above `Original payout` (original card unchanged after corrections, tested), `Corrections` history with one `app-refund-correction-card` per record (no edit/delete/undo, tested), inline form with the A-09 kind toggle (reason kept across the switch, tested) or the `resent` form prefilled with `refundAmount`, validation table, the three A-08 dialogs, A-11 notices, every error code in the table (conflict reload keeps the reason, reused receipt, ceiling, no change; tested), Activity items, `expectedLatestCorrectionId` sent. Form rules live in `refund-correction.ts` (unit-tested).
 2. Row 102: `Task expired` / `Task failed` from the shared `refund-labels.ts` (tested).

@@ -745,3 +745,18 @@ No other customer code reads `RefundTrigger` (`rg` over `apps/customer_app/lib`)
 ### Questions for the owner
 
 - None new. AQ-9 (customer notification on a correction/reversal) remains open; it affects API push text only, not this screen.
+
+## Owner answers round 6 (rows 104–111, applied 2026-10-13 on `docs/owner-answers-6-runner-specs`)
+
+| Row | Was | Decision | Customer impact |
+|---|---|---|---|
+| 104 | SQ-12 | Runner item reimbursement is payable when the task reaches CONFIRMED (receipt uploaded, customer confirmed, dispute window closed, no dispute) | none (system design §6) |
+| 105 | SQ-13 | Missing/mismatched receipt → not auto-payable, ops review; any approved reimbursement capped at the item amount paid to Nitume | none |
+| 106 | SQ-14 | Runner already bought the item, task ends CANCELLED/FAILED → reimburse verified eligible item spend (caps/evidence apply); no runner fee | none (the customer's refund review is unchanged, row 81) |
+| 107 | SQ-15 | Runner payout ledger table approved (`runner_payout_lines`, system design §2.2): distinct lines for runner fee, item reimbursement, corrections, reversals, re-sent payouts | none |
+| 108 | SQ-16 | Out-of-pocket purchases limited by `max_purchase_advance`; a runner may decline a task over their limit | none (runner app `v-job-detail`, `v-jobs`) |
+| 109 | AQ-9 | Only a re-sent refund payout notifies the customer; corrections/reversals don't by default | `_shared.md` §11 wording only. Already built that way in the API (`refunds.service.ts:917`) |
+| 110 | AQ-10 | A correction never records an amount above the refund ceiling | none (admin) |
+| 111 | api-contract | A reversed, not-yet-re-sent payout stays committed at the decided amount against the cumulative cap | none; matches the `approved` customer view already built (`committedAmountOf`, `refunds.service.ts:120`) |
+
+No customer screen changes status. No builder work. SQ-12 … SQ-16, AQ-9 and AQ-10 above are closed.
