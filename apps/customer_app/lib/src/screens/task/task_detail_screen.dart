@@ -209,7 +209,13 @@ class _Body extends StatelessWidget {
   Widget build(BuildContext context) {
     final e = data.errand;
     final primary = _primary(context);
-    final r = e.runner;
+    // The Runner section appears once a runner accepted: never the offered
+    // runner in PAYMENT_CONFIRMED or RUNNER_ASSIGNED (rows 176, 183).
+    final r =
+        e.status == ErrandStatus.paymentConfirmed ||
+            e.status == ErrandStatus.runnerAssigned
+        ? null
+        : e.runner;
     final payment = data.payment?.payment;
     final paid = !_unpaid.contains(e.status) && payment != null;
     final canReport =

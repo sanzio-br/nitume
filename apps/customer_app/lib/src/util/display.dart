@@ -144,7 +144,8 @@ String activeCardMeta(Errand errand) {
     ErrandStatus.quoted => 'Your quote is ready',
     ErrandStatus.accepted => 'Pay to confirm your task',
     ErrandStatus.paymentConfirmed => 'Finding a runner',
-    ErrandStatus.runnerAssigned => '$name is assigned',
+    // No runner name before acceptance (rows 176, 183).
+    ErrandStatus.runnerAssigned => 'Finding a runner',
     ErrandStatus.runnerEnRoute => '$name is en route',
     ErrandStatus.arrived => '$name has arrived',
     ErrandStatus.inProgress => '$name is on it',
