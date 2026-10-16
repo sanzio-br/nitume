@@ -19,7 +19,7 @@ Row 138 (owner, 2026-10-13): "KES 3,000 default, configurable per runner by admi
    - A-06 `New limit` (money input, `KSh` prefix, Fira Code, whole or 2 dp, > 0; hint `Default KSh 3,000.`).
    - A-06 `Reason` (required, 5–500, counter; hint `Kept in the audit history. Not shown to the runner.`). **Proposal for api-contract**: row 138 names only actor, time, previous and new value; a reason field is an addition. If api-contract does not add it, drop this field and the reason from History.
    - Actions `Cancel` / primary `Save limit`, disabled until valid and different from the current limit (`This is already the limit.`).
-   - A-08 `Change {runner}'s purchase limit to KSh {x}?` / `It applies to new offers and new purchases. To pay one purchase above the limit, use the exception on that reimbursement.` / `Back` · `Save limit`. (Whether a raised limit also lifts the ordinary ceiling of item lines already waiting for review is an open question, see `drawer-runner-payout.md`; recommended no.)
+   - A-08 `Change {runner}'s purchase limit to KSh {x}?` / `It applies to new offers and to reimbursements created from now on.` / `Back` · `Save limit`. (Row 152, decided: each reimbursement keeps the limit stored when it was created, so a change never alters existing claims or reviews; paying one existing purchase above its limit uses the exception on that reimbursement, `drawer-runner-payout.md` §5 2b.)
 3. `History` (`.drawer-timeline`, newest first): `KSh {previous} → KSh {new} · {admin} · {reason}` with time (Fira Code). Empty: `No changes yet.`
 
 Success: A-11 success `Purchase limit saved.`; the drawer reloads. Errors (proposed codes): 409 `purchase_limit_conflict` (someone changed it; only if api-contract adopts the proposed `expectedPrevious` check) → reload + A-11; 400 validation → field errors; 403 → `_shared.md` §2.
@@ -36,10 +36,10 @@ Limits, previous/new values, times.
 - `GET /runners` / runner detail already return `maxPurchaseAdvance`.
 
 ## Owner decisions applied
-Row 138. Row 142 (2026-10-16): paying above the limit is a per-reimbursement exception with a recorded reason and actor (`drawer-runner-payout.md` §5 2b), not a limit change; the earlier "raise the limit first" proposal is withdrawn.
+Row 138. Row 142 (2026-10-16): paying above the limit is a per-reimbursement exception with a recorded reason and actor (`drawer-runner-payout.md` §5 2b), not a limit change; the earlier "raise the limit first" proposal is withdrawn. Row 152 (2026-10-16, option b): the limit in force is stored on each payment/reimbursement obligation at creation; changing it here never changes existing claims or reviews (created at KSh 3,000, later 5,000 → that line stays 3,000).
 
 ## Open questions for the owner
-- Row 142 follow-up (see `drawer-runner-payout.md`): does a limit change apply to item lines already waiting for review? Recommended no.
+- None. The row-142 follow-up was answered by row 152 (no: existing lines keep their stored limit).
 
 ## Current vs design
 Not built.
