@@ -5,9 +5,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
-import { getQueueToken } from '@nestjs/bullmq';
-import type { Queue } from 'bullmq';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { ErrandStatus, StatusHistoryActor, UserRole } from '../src/common/enums';
 import { ErrandsService } from '../src/errands/errands.service';
@@ -15,8 +13,6 @@ import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { IdDocumentRetentionService } from '../src/scheduler/id-document-retention.service';
-import { NOTIFICATIONS_QUEUE } from '../src/infra/queue/queues';
-import { FEED_JOB, FeedJob, NotificationsService } from '../src/notifications/notifications.service';
 
 /**
  * Contract checks for the owner answers 8 (BOARD rows 151-154 and the OTP
@@ -526,39 +522,28 @@ describe('Owner answers 8 (e2e)', () => {
   });
 
   describe('errand.EXPIRED customer notification (rows 157, 158)', () => {
+    const feedOf = async (userId: string, attempts = 30): Promise<{ title: string; body: string; errandId: string }[]> => {
+      for (let i = 0; i < attempts; i += 1) {
+        const rows = (await db().query(
+          `SELECT title, body, "errandId" FROM "notifications" WHERE "userId" = $1 AND "eventType" = 'errand.EXPIRED'`,
+          [userId],
+        )) as { title: string; body: string; errandId: string }[];
+        if (rows.length > 0) {
+          return rows;
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return [];
+    };
+
+    // Row 196: e2e uses its own queue prefix, so this run's worker delivers the job.
     it('a paid task that expires gets the owner copy, with no refund promise', async () => {
       const { customer, errand } = await paidAndAssigned();
-      // The notifications queue lives in the shared Redis, where another API
-      // process may run a worker: capture this errand's EXPIRED job here and
-      // run the worker step in-process, so the copy checked is this build's.
-      const queue = app.get<Queue>(getQueueToken(NOTIFICATIONS_QUEUE));
-      const original = queue.add.bind(queue);
-      const captured: FeedJob[] = [];
-      const spy = vi.spyOn(queue, 'add').mockImplementation(((name: string, data: FeedJob, opts?: unknown) => {
-        if (name === FEED_JOB && data.kind === 'errand_status' && data.errandId === errand.id && data.status === ErrandStatus.EXPIRED) {
-          captured.push(data);
-          return Promise.resolve({ id: 'captured' } as never);
-        }
-        return original(name, data, opts as never);
-      }) as never);
-      try {
-        // Row 157: no automatic trigger exists yet; drive the system step directly.
-        await app
-          .get(ErrandsService)
-          .transition(errand.id, ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM }, 'No further runner can be assigned');
-        for (let i = 0; i < 30 && captured.length === 0; i += 1) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      } finally {
-        spy.mockRestore();
-      }
-      expect(captured).toEqual([{ kind: 'errand_status', errandId: errand.id, status: ErrandStatus.EXPIRED }]);
-      await app.get(NotificationsService).deliverFeed(captured[0]);
-      const feed = (await db().query(
-        `SELECT title, body, "errandId" FROM "notifications" WHERE "userId" = $1 AND "eventType" = 'errand.EXPIRED'`,
-        [customer.id],
-      )) as { title: string; body: string; errandId: string }[];
-      expect(feed).toEqual([
+      // Row 157: no automatic trigger exists yet; drive the system step directly.
+      await app
+        .get(ErrandsService)
+        .transition(errand.id, ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM }, 'No further runner can be assigned');
+      expect(await feedOf(customer.id)).toEqual([
         {
           errandId: errand.id,
           title: 'No runner available · Expired',
