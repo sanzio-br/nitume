@@ -875,3 +875,11 @@ No findings. Round-10 finding 5 closed.
 ### Notes (not findings on these three screens)
 - Task detail hides the runner only in the two states the spec names. If the API ever kept an offered (never accepted) runner on a task that then went EXPIRED or CANCELLED, Task detail and `history_tab.dart:125` (v-history) would show that name. This depends on the API dropping the `assigned` assignment when the offer ends (`ACTIVE_ASSIGNMENT_STATUSES`); api-contract can confirm it. No spec change proposed.
 - The schematic fallback map (`SchematicMap`, dev builds without a Maps key) reads the runner notifier directly rather than `pos`; it stays empty because the notifier is cleared outside the window.
+
+## Owner answers round 11 (rows 185, 187, 188, 201, 2026-10-16), applied on `docs/owner-answers-11-specs`
+
+Spec-only update; no screen re-audited. Full list: `docs/audits/runner-gap-report.md` §14.
+- **Row 185** (deadline path) and **row 187** (admin expire) reach the same EXPIRED state as exhaustion. The customer sees the same chip, `No runner accepted your task in time.`, `Start a new task`, the trigger-specific refund line (row 102) and the `errand.EXPIRED` notification with the row-158 body. **No new customer copy.** Before the server expires it, a RUNNER_ASSIGNED task past its deadline still reads `Finding a runner`. Files: `_shared.md` §0, §6; `v-notifications.md`; `v-track.md`; `v-task-detail.md`.
+- **Row 188**: exact titles `No runner available` and `Runner assigned`, no status suffix. Built on `main` (`statusCopy` `exactTitle`). This supersedes the `No runner available · Expired` title recorded in the round-7 addendum above.
+- **Row 201** (open, proposed): a paid PAYMENT_CONFIRMED task past its deadline stays for ops. Proposed customer impact: none, so it keeps `Finding a runner` and no notification is sent. Flagged.
+- **Findings against `main`**: none. The app renders the API's `title` / `body`, and EXPIRED is already handled. v-notifications, v-track and v-task-detail stay `matches-design`.

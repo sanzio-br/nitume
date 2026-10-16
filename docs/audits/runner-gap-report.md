@@ -531,3 +531,95 @@ Round 10 removed row 155's "the applicable task deadline is reached" path on the
 ### Open question for the owner
 - BOARD row 185 (already on BOARD): does `deadline_at` passing while RUNNER_ASSIGNED trigger EXPIRED (row 155), or is exhaustion the only trigger? Not decided here.
 - Low priority (from row 177): does a runner whose purchase limit is below the task's purchase (no approved exception) count as ineligible for the pool? Proposed yes (row 113 refuses their accept).
+
+## 14. Owner answers rows 185–200 (2026-10-16), applied on `docs/owner-answers-11-specs`
+
+Spec-only update; no screen re-audited. System Design edited under row 147 (§2.2, §3.3, §3.4, §4.4, §6, §8, §10).
+
+### Decisions applied
+| Row | Decision | Files |
+|---|---|---|
+| 185 | RUNNER_ASSIGNED → EXPIRED by (1) the customer `deadlineAt` reached with no runner accepted, or (2) matching exhausted; the deadline takes precedence; after it no offer or reassign; a single lapse/decline never expires; RUNNER_ASSIGNED only. Replaces every "row 185 open" pointer | System Design §3.3/§3.4/§4.4; admin `_shared.md` §1, N-20, `drawer-task-offer.md`; runner `_shared.md` §0/§6, `v-jobs.md`, `v-job-detail.md`, `v-notifications.md`; customer `_shared.md`, `v-notifications.md`, `v-track.md`, `v-task-detail.md` |
+| 186 | Purchase limit below the task's purchase = ineligible unless an approved exception exists; never offered; Reassign list greys them with the reason; assign 409 `runner_not_eligible` `over_purchase_limit` | System Design §3.3 "Pool"; admin N-20, `drawer-task-offer.md`; runner `_shared.md` §8, `v-jobs.md`, `v-job-detail.md` (over-limit UI kept as a fallback) |
+| 187 | (a) an empty online pool never expires a task, re-check, no time rule; (b) no PAYMENT_CONFIRMED → EXPIRED; (c) a runner on another accepted/active task is ineligible; audited admin "Expire task — no runner available"; RUNNER_ASSIGNED → EXPIRED actor S → S, A (no new state or transition) | System Design §3.3 (diagram, table, bullets); admin `drawer-task-offer.md` (button, confirm with reason, result, activity row, errors) |
+| 188 | Exact titles `Runner assigned`, `No runner available` (built on `main`) | System Design §4.4; customer `v-notifications.md` |
+| 189 | No `updatedAt` on `task_exposure_overrides` (built that way) | System Design §2.2; admin `_shared.md` |
+| 190 | Open-dispute hold on ID images intended | System Design §10; admin `p-runners-verification-documents.md` |
+| 191 | Narrowed retention clock (built on `main`, `RETENTION_CLOCK_SQL`) | System Design §10; admin N-23, `p-runners-verification-documents.md` |
+| 192, 193 | Cloudinary internal backups = external dependency; owner console checklist, a production-readiness owner action | System Design §10 (new "External dependency" section) |
+| 194 | `Payout request cancelled` / `Your payout request was cancelled by Nitume operations.` | System Design §4.4; runner `v-notifications.md`, `v-payout.md`; admin `p-payout-requests.md` |
+| 195, 200 | `side` `front \| back`, required on ID images, lowercase on the wire, `Front` / `Back` in the UI (built on `main`) | System Design §2.2; runner `v-onboard-id.md` (labelled tiles, front then back, side sent per upload), `_shared.md` R-19; admin `p-runners-verification-documents.md` |
+| 196, 198, 199 | Test isolation: `nitume_test:*` queue prefix, teardown deletes only those keys, dedicated test database (owner creates it) | System Design §8 |
+| 197 | An ops cancel or expiry before any accept: no receipt upload, no claim | System Design §6 item 5; runner `_shared.md` §8 |
+| 201 | **Open**. Paid PAYMENT_CONFIRMED task past its deadline stays for ops, `Deadline passed` flag, one ops feed item | Specced as proposed, pending: System Design §3.3, §4.4; admin `drawer-task-offer.md`; customer `_shared.md` |
+
+### API items for api-contract (`feat/api-runner-1`)
+1. **Row 185 deadline sweep**:
+   - RUNNER_ASSIGNED with `deadlineAt ≤ now` and no accepted offer → EXPIRED (S), with history note `Customer deadline passed` (proposed).
+   - Close an open offer as `expired` and emit `job:offer_withdrawn` to that runner.
+   - Side effects: `errand.EXPIRED` (exact title), a refund review when paid, and the admin feed item `deadline_passed`.
+   - Not held back by row 179.
+2. **Row 185 refusals**:
+   - `POST /errands/:id/assign` → 409 `task_deadline_passed` from `deadlineAt` on. Your proposal is accepted in the specs.
+   - Accept after `deadlineAt` → 409 `task_deadline_passed` or `offer_expired`.
+   - Add `deadlinePassed` to the admin errand list and detail.
+   - Add `deadlineAt` to `GET /runners/me/offers`, or cap `offerExpiresAt` at `deadlineAt`.
+3. **Row 186**:
+   - Pool filter on `max_purchase_advance` against the required purchase.
+   - Candidates return the excluded runners with `ineligibleReason: 'over_purchase_limit'`, `purchaseLimit` and `requiredPurchase`.
+   - Assign → 409 `runner_not_eligible` `{ reason: 'over_purchase_limit' }`. This replaces `purchase_limit_exceeded` on assign; accept keeps `purchase_limit_exceeded`.
+4. **Row 187 (a)–(c)**:
+   - Busy runners are out of the pool.
+   - An empty online pool never expires a task; re-check at the next sweep or when a runner comes online, with no time rule.
+   - No PAYMENT_CONFIRMED → EXPIRED.
+5. **Row 187 admin expire**:
+   - Allow actor A on RUNNER_ASSIGNED → EXPIRED. Use `PATCH /errands/:id/status` `{ to: 'EXPIRED', note }` or a dedicated `POST /errands/:id/expire` `{ reason }`; your choice.
+   - Guard: RUNNER_ASSIGNED, no open offer, deadline not passed, `eligibleRemaining = 0`. Otherwise 409 `expiry_not_allowed` with `reason`.
+   - Reason required, 10–500 after trimming (400 `expiry_reason_invalid`; pending AQ-23).
+   - Add `canExpireNoRunner` to the admin view.
+   - Side effects are the same as the system expiry.
+6. **Expiry trigger and actor names**:
+   - `expiry { trigger, at, by, note }` on the admin view of an EXPIRED task, derived from the history row (no schema change).
+   - `actor { id, displayName }` on `GET /errands/:id/history` items.
+7. **Row 201 (pending)**:
+   - A PAYMENT_CONFIRMED task past its deadline gets no state change (already true).
+   - Hold the `deadline_passed` feed item for PAYMENT_CONFIRMED, and any assign refusal at PAYMENT_CONFIRMED, until row 201 is answered.
+8. **Row 194**: send `payout_request.cancelled` with the owner copy once runner notifications exist (RA-6).
+9. Already on `main` (checked 2026-10-16), nothing to build:
+   - 188: `statusCopy` `exactTitle`.
+   - 189: no `updatedAt` on `task-exposure-override.entity.ts`.
+   - 191: `RETENTION_CLOCK_SQL`.
+   - 195, 200: `side`, `documentSideOf`, 400 `verification_document_side_invalid`.
+   - 196, 199: `nitume_test` prefix.
+   - 197: confirms the built behaviour; an ops cancel closes the open offer as `expired` (`errands.service.ts:1238`).
+   - 198 is an owner action (create the test database).
+
+### core-ui, flutter-runner and flutter-customer items
+- **core-ui (blocker, built conflict)**: `packages/nitume_core/lib/src/repositories/runner_repositories.dart:79-110`. `uploadVerificationDocument` sends no `side`, and the API on `main` now refuses a `government_id` upload without one (400 `verification_document_side_invalid`). Fixes:
+  - Add a required `IdDocumentSide side` for `government_id` (wire `front` / `back`, labels `Front` / `Back`), refused for a selfie.
+  - Add `side` to `RunnerVerification` (`models/runner_account.dart:120-145`).
+  - Update the tests (`test/runner_verification_documents_test.dart`).
+- **flutter-runner** (screens not built yet; build to the updated specs):
+  - `v-onboard-id`: labelled `Front` / `Back` tiles, front then back, the side sent per upload, tiles rebuilt by `side`.
+  - `v-jobs` / `v-job-detail`: an offer ends at the earlier of `offerExpiresAt` and `deadlineAt`; `task_deadline_passed` → `That offer is no longer available.`; over-limit UI is a fallback only.
+  - `v-notifications`: render the API's payout-cancel copy.
+- **flutter-customer**: nothing to build; every change is API copy or a state the app already shows.
+
+### Built screens that conflict
+| Area | Branch @ file | Conflict | Fix owner |
+|---|---|---|---|
+| Core ID upload | `main` @ `runner_repositories.dart:79-110`, `runner_account.dart:120-145` | No `side`; the API now requires it | core-ui |
+| Admin task drawer / queue | `main` @ `task-drawer.ts`, `task-queue.panel.ts` | No deadline state, no purchase-limit greying, no expire action (with the open findings 16–21) | web-parity, after api-contract |
+| Admin verifications | `main` @ `verifications.panel.ts` | No `Front` / `Back` on ID images | web-parity |
+| Customer app | `main` | None | — |
+| Runner app | `main` @ `apps/runner_app` | None (screens not built) | — |
+
+### New questions for the owner
+- Row 201 (open, on BOARD). Follow-up: which exit ops use for a paid PAYMENT_CONFIRMED task past its deadline. §3.3 has none but RUNNER_ASSIGNED, and assign would be refused.
+- AQ-22: the exact availability rule of the admin expire action.
+- AQ-23: is the expire reason required, at 10–500 characters?
+- AQ-24: "genuine" exhaustion vs row 177. An empty online pool never expires a task (187 (a)), so does an untried offline or busy runner block auto-expiry?
+- AQ-25: does an offer open at the deadline end at once?
+- AQ-26: should every errand carry a `deadlineAt`? It is optional on create today.
+- AQ-27: what is an "approved exception" before an offer (row 186)? None exists; would it need a schema change?
+- Full wording: admin `_shared.md` §8 and `drawer-task-offer.md`.
