@@ -10,11 +10,17 @@ import {
 } from 'typeorm';
 import { RunnerProfile } from '../runners/runner-profile.entity';
 
-/** Lifecycle of a runner payout request (rows 117, 153): requested -> paid | rejected. */
+/**
+ * Lifecycle of a runner payout request (rows 117, 153, 166): requested
+ * (owner name PENDING) -> paid | rejected | cancelled; the last three are
+ * final, no reopening.
+ */
 export enum RunnerPayoutRequestStatus {
   REQUESTED = 'requested',
   PAID = 'paid',
   REJECTED = 'rejected',
+  /** Ops only, with a mandatory reason (row 166). */
+  CANCELLED = 'cancelled',
 }
 
 /**
@@ -23,7 +29,8 @@ export enum RunnerPayoutRequestStatus {
  * ledger lines; a request only asks ops to pay some of them. Ops pay whole
  * lines, so `paidAmount` can be below `requestedAmount`; the request still
  * closes `paid` and the difference stays available for a new request.
- * Rows are never deleted; final once `paid` or `rejected` (DB trigger).
+ * Rows are never deleted; final once `paid`, `rejected` or `cancelled`
+ * (DB trigger).
  */
 @Entity('runner_payout_requests')
 @Index('IDX_runner_payout_requests_runner', ['runnerProfileId', 'createdAt'])
@@ -76,6 +83,17 @@ export class RunnerPayoutRequest {
   /** Rejection reason (shown to the runner), or an optional note on payment. */
   @Column({ type: 'text', nullable: true })
   decisionNote: string | null;
+
+  /** Admin who cancelled the request (row 166); null unless `cancelled`. */
+  @Column({ type: 'uuid', nullable: true })
+  cancelledByUserId: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  cancelledAt: Date | null;
+
+  /** Mandatory ops reason for the cancel (row 166); ops-only, not in the runner view. */
+  @Column({ type: 'text', nullable: true })
+  cancellationReason: string | null;
 
   /**
    * The authenticated runner who submitted (row 165): set by the server from
