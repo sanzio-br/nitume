@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 482–506 (`#v-task-detail`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
 - Implementation: `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` on branch `feat/customer-integrations`
-- Status: partial (round 8, 2026-10-16: EXPIRED copy and `Start a new task` not built)
+- Status: matches-design (re-audit 2026-10-16, `feat/customer-expired-next-action` @ `9978345`: EXPIRED copy and `Start a new task` PASS)
 
 ## Purpose
 Record of one task in any state: status, reference and time, runner, evidence, payment, **refund status** (row 54), the next action, and a way to report a problem.
