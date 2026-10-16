@@ -715,6 +715,22 @@ describe('row 135: approval is capped by max_purchase_advance too', () => {
     await b.service.review(item.id, { decision: 'approve', amount: 3000 }, 'a');
     expect(item).toMatchObject({ status: S.PAYABLE, amount: '3000.00' });
   });
+
+  it('row 142: the combined-cap override never lifts the purchase limit', async () => {
+    const b = build({ itemPaid: 3500, maxPurchaseAdvance: '3000.00' });
+    await b.service.recordConfirmed(b.manager as never, 'e-1');
+    const item = b.table.find((r) => r.kind === T.ITEM_REIMBURSEMENT)!;
+    const err = await b.service
+      .review(
+        item.id,
+        { decision: 'approve', amount: 3500, exposureOverrideNote: 'Ops agreed to pay the full receipt amount' },
+        'a',
+      )
+      .catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'reimbursement_exceeds_cap' });
+    expect((err as ApiError).getResponse()).toMatchObject({ approvalCeiling: '3000.00', maxPurchaseAdvance: '3000.00' });
+    expect(item).toMatchObject({ status: S.ON_HOLD, amount: null });
+  });
 });
 
 describe('row 136: combined cap with customer refunds', () => {
