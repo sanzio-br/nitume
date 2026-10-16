@@ -183,4 +183,36 @@ describe('RunnerPayoutRequestsService (rows 117, 118, 146, 153)', () => {
     expect(out).toMatchObject({ status: R.REJECTED, note: 'Payout details need checking', paidAmount: null });
     expect(await codeOf(b.service.reject(req.id, 'again please', 'admin-1'))).toBe('payout_request_not_open');
   });
+
+  it('ops cancel an open request with a mandatory reason; final, amount unchanged (row 166)', async () => {
+    const b = build();
+    const req = await b.service.create('u-run', 1000);
+    expect(await codeOf(b.service.cancel(req.id, '   ', 'admin-1'))).toBe('cancellation_reason_required');
+    expect(await codeOf(b.service.cancel(req.id, 'Too short', 'admin-1'))).toBe('cancellation_reason_required');
+    expect(await codeOf(b.service.cancel(req.id, 'x'.repeat(501), 'admin-1'))).toBe('cancellation_reason_required');
+    const out = await b.service.cancel(req.id, ' Wrong destination number on file ', 'admin-1');
+    expect(out.createdBy).toMatchObject({ id: 'u-run' });
+    expect(out).toMatchObject({
+      status: R.CANCELLED,
+      requestedAmount: '1000.00',
+      paidAmount: null,
+      decidedAt: null,
+      decidedBy: null,
+      note: null,
+      cancelledAt: expect.any(Date),
+      cancelledBy: { id: 'admin-1', displayName: 'Finance' },
+      cancellationReason: 'Wrong destination number on file',
+    });
+    for (const again of [
+      b.service.cancel(req.id, 'Second cancel', 'admin-1'),
+      b.service.reject(req.id, 'Too late now', 'admin-1'),
+      b.service.pay(req.id, ['l-1'], 'SGH12ABC9', 'admin-1'),
+    ]) {
+      expect(await codeOf(again)).toBe('payout_request_not_open');
+    }
+    expect(b.ledger.markPaidIn).not.toHaveBeenCalled();
+    // The runner may make a new request at once.
+    const next = await b.service.create('u-run', 1000);
+    expect(next.status).toBe(R.REQUESTED);
+  });
 });

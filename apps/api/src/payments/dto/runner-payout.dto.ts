@@ -260,7 +260,7 @@ export class ListMyPayoutRequestsQueryDto {
   limit?: number;
 }
 
-const REQUEST_STATUSES = ['requested', 'paid', 'rejected'] as const;
+const REQUEST_STATUSES = ['requested', 'paid', 'rejected', 'cancelled'] as const;
 
 export class ListPayoutRequestsQueryDto extends ListMyPayoutRequestsQueryDto {
   @IsOptional()
@@ -286,4 +286,11 @@ export class RejectPayoutRequestDto {
   @IsString()
   @MaxLength(1000)
   note: string;
+}
+
+/** POST /runner-payout-requests/:id/cancel (row 166): mandatory ops reason (10-500, checked by the service). */
+export class CancelPayoutRequestDto {
+  @IsString()
+  @MaxLength(1000)
+  reason: string;
 }

@@ -18,6 +18,9 @@ const money = (v: string | number | null | undefined): string => Number(v ?? 0).
 export const DEFAULT_MIN_RUNNER_PAYOUT_REQUEST = 500;
 export const REJECT_NOTE_MIN = 5;
 export const REJECT_NOTE_MAX = 300;
+/** Row 166: ops cancel reason length (10-500, proposed by the spec, pending the owner, AQ-14). */
+export const CANCEL_REASON_MIN = 10;
+export const CANCEL_REASON_MAX = 500;
 /** How long an Idempotency-Key on a payout request is remembered. */
 export const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
 
@@ -35,8 +38,10 @@ export interface RunnerPayoutRequestView {
   paidAt: Date | null;
   /** M-Pesa receipt once paid. */
   reference: string | null;
-  /** Rejection reason (shown to the runner); null otherwise. */
+  /** Rejection reason (shown to the runner); null otherwise (also when cancelled). */
   decisionNote: string | null;
+  /** When ops cancelled the request (row 166); null otherwise. The ops reason is not shown. */
+  cancelledAt: Date | null;
 }
 
 export interface AdminRef {
@@ -63,6 +68,14 @@ export interface AdminRunnerPayoutRequestView {
   lineIds: string[];
   /** Rejection reason; null otherwise. */
   note: string | null;
+  /** The runner who submitted (row 165; always the request's runner). */
+  createdBy: AdminRef;
+  /** Last change (row 165): creation, then the status transition. */
+  updatedAt: Date;
+  /** Row 166: set only on a cancelled request. */
+  cancelledAt: Date | null;
+  cancelledBy: AdminRef | null;
+  cancellationReason: string | null;
 }
 
 export interface RunnerPayoutRequestSummary {
@@ -77,8 +90,8 @@ export interface RunnerPayoutRequestSummary {
  * N-17). A runner asks for a payout up to their available amount, above a
  * configurable minimum, one open request at a time; the destination is their
  * sign-in phone. Ops pay it by marking whole payable lines paid (the same
- * step as `mark-paid`, linking the lines to the request) or reject it with a
- * reason. No balance is stored: the ledger lines stay the only record of
+ * step as `mark-paid`, linking the lines to the request), reject it with a
+ * reason shown to the runner, or cancel it with an ops reason (row 166). No balance is stored: the ledger lines stay the only record of
  * what is owed. No payout time is promised anywhere (row 143).
  */
 @Injectable()
@@ -160,6 +173,10 @@ export class RunnerPayoutRequestsService {
           decidedByUserId: null,
           decidedAt: null,
           decisionNote: null,
+          cancelledByUserId: null,
+          cancelledAt: null,
+          cancellationReason: null,
+          // Row 165: always the authenticated runner (from the JWT), never the body.
           createdByUserId: runnerUserId,
         }),
       );
@@ -292,6 +309,34 @@ export class RunnerPayoutRequestsService {
     return this.detail(id);
   }
 
+  /**
+   * POST /runner-payout-requests/:id/cancel `{ reason }` (row 166): ops only,
+   * an open (`requested`) request only, mandatory reason (10-500, AQ-14). Final: no reopening; `requestedAmount` unchanged. No lines
+   * are linked to an open request, so the runner's available amount is
+   * unchanged and a new request can be made at once. Errors: 409
+   * payout_request_not_open (`status`); 400 cancellation_reason_required
+   * (`minLength`, `maxLength`).
+   */
+  async cancel(id: string, reasonInput: string, adminUserId: string): Promise<AdminRunnerPayoutRequestView> {
+    const reason = reasonInput?.trim() ?? '';
+    if (reason.length < CANCEL_REASON_MIN || reason.length > CANCEL_REASON_MAX) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'cancellation_reason_required', 'Say why the request is cancelled', {
+        minLength: CANCEL_REASON_MIN,
+        maxLength: CANCEL_REASON_MAX,
+      });
+    }
+    await this.requests.manager.transaction(async (manager) => {
+      const request = await this.lockOpen(manager, id);
+      await manager.getRepository(RunnerPayoutRequest).update(request.id, {
+        status: R.CANCELLED,
+        cancellationReason: reason,
+        cancelledByUserId: adminUserId,
+        cancelledAt: new Date(),
+      });
+    });
+    return this.detail(id);
+  }
+
   // ---- internals ---------------------------------------------------------------
 
   private async lockOpen(manager: EntityManager, id: string): Promise<RunnerPayoutRequest> {
@@ -353,7 +398,9 @@ export class RunnerPayoutRequestsService {
     const runnerIds = [...new Set(rows.map((r) => r.runnerProfileId))];
     const [summaries, names, lines] = await Promise.all([
       this.runners.publicSummaries(runnerIds),
-      this.users.displayNames(rows.map((r) => r.decidedByUserId).filter((v): v is string => !!v)),
+      this.users.displayNames(
+        rows.flatMap((r) => [r.decidedByUserId, r.cancelledByUserId, r.createdByUserId]).filter((v): v is string => !!v),
+      ),
       this.requests.manager.getRepository(RunnerPayoutLine).find({
         where: { payoutRequestId: In(rows.map((r) => r.id)) },
         select: { id: true, payoutRequestId: true },
@@ -394,6 +441,14 @@ export class RunnerPayoutRequestsService {
           .map((l) => l.id)
           .sort(),
         note: r.status === R.REJECTED ? r.decisionNote : null,
+        createdBy: { id: r.createdByUserId, displayName: names.get(r.createdByUserId) ?? null },
+        updatedAt: r.updatedAt,
+        cancelledAt: r.status === R.CANCELLED ? r.cancelledAt : null,
+        cancelledBy:
+          r.status === R.CANCELLED && r.cancelledByUserId
+            ? { id: r.cancelledByUserId, displayName: names.get(r.cancelledByUserId) ?? null }
+            : null,
+        cancellationReason: r.status === R.CANCELLED ? r.cancellationReason : null,
       };
     });
   }
@@ -410,6 +465,7 @@ const toRunnerView = (r: RunnerPayoutRequest): RunnerPayoutRequestView => ({
   paidAt: r.status === R.PAID ? r.decidedAt : null,
   reference: r.payoutReference,
   decisionNote: r.status === R.REJECTED ? r.decisionNote : null,
+  cancelledAt: r.status === R.CANCELLED ? r.cancelledAt : null,
 });
 
 const lockRunner = (manager: EntityManager, runnerProfileId: string): Promise<unknown> =>

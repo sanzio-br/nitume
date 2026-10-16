@@ -291,4 +291,90 @@ describe('Owner answers 9 (e2e)', () => {
       expect(after.updatedAt.getTime()).toBeGreaterThan(row.updatedAt.getTime());
     });
   });
+
+  describe('row 166: ops-only cancel of an open payout request', () => {
+    it('admin cancels with a reason; final; the runner sees cancelled without the reason; available unchanged; runner cannot cancel', async () => {
+      const { runner, admin } = await runnerWithAvailable();
+      const created = await requestPayout(runner, 700);
+      // Runners cannot cancel (admin route), not even their own request.
+      await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`)
+        .set(bearer(runner.token))
+        .send({ reason: 'I changed my mind' })
+        .expect(403);
+      const missing = await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`)
+        .set(bearer(admin.token))
+        .send({ reason: 'Too short' })
+        .expect(400);
+      expect(missing.body).toMatchObject({ code: 'cancellation_reason_required', minLength: 10, maxLength: 500 });
+      await http().post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`).set(bearer(admin.token)).send({}).expect(400);
+      const cancelled = await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`)
+        .set(bearer(admin.token))
+        .send({ reason: 'Destination number failed the fraud check' })
+        .expect(200);
+      expect(cancelled.body).toMatchObject({
+        status: 'cancelled',
+        requestedAmount: '700.00',
+        paidAmount: null,
+        decidedAt: null,
+        decidedBy: null,
+        note: null,
+        cancelledBy: { id: admin.id, displayName: 'Finance Ops' },
+        cancellationReason: 'Destination number failed the fraud check',
+        lineIds: [],
+        createdBy: { id: runner.id },
+      });
+      expect(typeof cancelled.body.cancelledAt).toBe('string');
+      expect(new Date(cancelled.body.updatedAt).getTime()).toBeGreaterThan(new Date(cancelled.body.createdAt).getTime());
+      // Final: no second decision.
+      for (const [path, body] of [
+        ['cancel', { reason: 'Second cancel attempt' }],
+        ['reject', { note: 'Too late to reject' }],
+      ] as const) {
+        const again = await http()
+          .post(`/api/v1/runner-payout-requests/${created.body.id}/${path}`)
+          .set(bearer(admin.token))
+          .send(body)
+          .expect(409);
+        expect(again.body).toMatchObject({ code: 'payout_request_not_open', status: 'cancelled' });
+      }
+      await expect(
+        db().query(`UPDATE "runner_payout_requests" SET status = 'requested' WHERE id = $1`, [created.body.id]),
+      ).rejects.toThrow(/final/);
+      // Admin filters and count know the status.
+      const list = await http()
+        .get(`/api/v1/runner-payout-requests?status=cancelled&runnerProfileId=${runner.profileId}`)
+        .set(bearer(admin.token))
+        .expect(200);
+      expect(list.body.items.map((i: { id: string }) => i.id)).toEqual([created.body.id]);
+      await http().get('/api/v1/runner-payout-requests/count?status=cancelled').set(bearer(admin.token)).expect(200);
+      // The runner sees it cancelled, without the ops reason; the amount stays available.
+      const mine = await http().get('/api/v1/runners/me/payout-requests').set(bearer(runner.token)).expect(200);
+      expect(mine.body.items[0]).toMatchObject({ id: created.body.id, status: 'cancelled', decisionNote: null, paidAmount: null });
+      expect(typeof mine.body.items[0].cancelledAt).toBe('string');
+      expect(JSON.stringify(mine.body)).not.toContain('fraud check');
+      const summary = await http().get('/api/v1/runners/me/payout-requests/summary').set(bearer(runner.token)).expect(200);
+      expect(summary.body).toMatchObject({ availableAmount: '800.00', openRequest: null });
+      // A new request can be made at once.
+      await requestPayout(runner, 800);
+    });
+
+    it('a paid or rejected request cannot be cancelled', async () => {
+      const { runner, admin } = await runnerWithAvailable();
+      const created = await requestPayout(runner, 600);
+      await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/reject`)
+        .set(bearer(admin.token))
+        .send({ note: 'Please confirm your M-Pesa name first' })
+        .expect(200);
+      const res = await http()
+        .post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`)
+        .set(bearer(admin.token))
+        .send({ reason: 'Cancel after the reject' })
+        .expect(409);
+      expect(res.body).toMatchObject({ code: 'payout_request_not_open', status: 'rejected' });
+    });
+  });
 });
