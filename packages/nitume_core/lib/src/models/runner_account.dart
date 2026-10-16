@@ -22,6 +22,31 @@ enum RunnerVerificationType {
   }
 }
 
+/// Which side of the ID card a [RunnerVerificationType.governmentId] image
+/// shows (rows 195, 200). Lowercase on the wire; screens show [label]
+/// ("Front" / "Back"). Selfies have no side.
+enum VerificationDocumentSide {
+  front('front', 'Front'),
+  back('back', 'Back');
+
+  const VerificationDocumentSide(this.wire, this.label);
+  final String wire;
+
+  /// Display text.
+  final String label;
+
+  /// Tolerant parse (trims, ignores case); `null` for a missing or unknown
+  /// value (selfies and ID rows stored before row 195).
+  static VerificationDocumentSide? tryFromWire(Object? v) {
+    if (v is! String) return null;
+    final s = v.trim().toLowerCase();
+    for (final e in values) {
+      if (e.wire == s) return e;
+    }
+    return null;
+  }
+}
+
 /// Review state of one verification record.
 enum VerificationStatus {
   pending('pending'),
@@ -126,6 +151,7 @@ class RunnerVerification {
     this.reviewedAt,
     this.hasDocument = false,
     this.purgedAt,
+    this.side,
   });
 
   final String id;
@@ -142,6 +168,10 @@ class RunnerVerification {
   /// When the image was purged (retention, rows 144, 154); `null` otherwise.
   final DateTime? purgedAt;
 
+  /// ID side of a government ID image (row 195); `null` for selfies, other
+  /// types and ID rows stored before sides were recorded.
+  final VerificationDocumentSide? side;
+
   factory RunnerVerification.fromJson(Map<String, dynamic> json) =>
       RunnerVerification(
         id: json['id'] as String,
@@ -155,6 +185,7 @@ class RunnerVerification {
         reviewedAt: parseDate(json['reviewedAt']),
         hasDocument: json['hasDocument'] == true,
         purgedAt: parseDate(json['purgedAt']),
+        side: VerificationDocumentSide.tryFromWire(json['side']),
       );
 
   /// Newest record per type (the list is newest first, so the first one
