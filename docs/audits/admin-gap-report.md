@@ -594,7 +594,7 @@ Spec-only update; no admin code read beyond `feat/admin-runner-payouts` @ `04837
 - `drawer-runner-purchase-limit.md`: confirm body `It applies to new offers and new purchases. To pay one purchase above the limit, use the exception on that reimbursement.`; no entry from the payout drawer.
 - `p-payout-requests.md`: row 146 decided: `requestedAmount` and `paidAmount` stored and shown separately (table `Paid` column, read-only rows, activity), below-request caption and confirm, request closes `paid`; AQ-11 closed. Row 143: no payout time anywhere.
 - `p-runner-payouts.md`, `drawer-dispute-outcome.md`: notes only (rows 146, 140).
-- `_shared.md`: decision rows 140–144, 146; N-17 (two amounts), N-20 (offer expiry; round 8: admin-offer lapse EXPIRED at once only as built, pending row 157; auto-offers fall through, row 150), new N-21 (purchase-limit exception API); §8 AQ table.
+- `_shared.md`: decision rows 140–144, 146; N-17 (two amounts), N-20 (offer expiry; auto-offers fall through, row 150; admin-offer lapse decided in round 9, row 157: the task stays RUNNER_ASSIGNED), new N-21 (purchase-limit exception API); §8 AQ table.
 
 ### drawer-runner-payout: conflict with the build (`feat/admin-runner-payouts`)
 14. **blocker (when N-21 lands)** — `runner-payout-drawer.ts:219-222`, `:300-335`, `:1124-1132`. Design (row 142): an ordinary approval up to `approvalCeiling`, plus an explicit, recorded exception up to `overLimitCeiling` with a required reason (§5 2b, §7, §10). Code: only the ordinary path. Fix: add the exception action, the note field (reuse the `app-exposure-override-field` pattern as a shared component, no copy-paste), the label/confirm changes and the read-only rows once the API exposes `overLimitCeiling`, `purchaseLimitOverride` and `purchaseLimitOverrideNote`.
@@ -605,14 +605,14 @@ Spec-only update; no admin code read beyond `feat/admin-runner-payouts` @ `04837
 
 ### Questions for the owner (new)
 - Row 142 follow-ups → answered 2026-10-16 by rows 151 (storage in `task_exposure_overrides`) and 152 (no: the limit stored at creation applies).
-- Row 141 follow-up → answered 2026-10-16 by row 150 (auto-offers keep the fall-through); admin-offer lapse is row 157, open.
+- Row 141 follow-up → answered 2026-10-16 by row 150 (auto-offers keep the fall-through); admin-offer lapse is row 157, answered in round 9 (task stays RUNNER_ASSIGNED).
 
 ## Owner answers round 8 (rows 150–156, 2026-10-16), applied on `docs/owner-answers-8-specs`
 
-Spec-only update. Row 157 open. Full list, API items and the System Design edits (replacing the round-7 list): `docs/audits/runner-gap-report.md` §11.
+Spec-only update. Row 157 was open (answered in round 9, below). Full list, API items and the System Design edits (replacing the round-7 list): `docs/audits/runner-gap-report.md` §11.
 
 ### What changed in the admin specs
-- `_shared.md`: decision rows 150–157; N-20 rewritten (admin-offer lapse held as built pending row 157; auto-offer fall-through row 150; decline row 155; null deadline row 156; `errand.EXPIRED` customer notification); N-21 now carries the row-151 storage and record fields (`errandId`, `assignmentId`, `runnerProfileId`, `limitAtTime`, `requestedAmount`, `approvedAmount`, `amountAbove`, `note`, `createdBy`, `createdAt`) and the row-152 stored limit (`purchaseLimitAtCreation`, `currentPurchaseLimit`); N-17 notes row 153; new N-22 (OTP email says 5 minutes); §8 open list reduced to rows 145/157.
+- `_shared.md`: decision rows 150–157; N-20 rewritten (admin-offer lapse held as built at the time, superseded by row 157 in round 9; auto-offer fall-through row 150; decline row 155; null deadline row 156; `errand.EXPIRED` customer notification); N-21 now carries the row-151 storage and record fields (`errandId`, `assignmentId`, `runnerProfileId`, `limitAtTime`, `requestedAmount`, `approvedAmount`, `amountAbove`, `note`, `createdBy`, `createdAt`) and the row-152 stored limit (`purchaseLimitAtCreation`, `currentPurchaseLimit`); N-17 notes row 153; new N-22 (OTP email says 5 minutes); §8 open list reduced to rows 145/157.
 - `drawer-runner-payout.md`: Amounts show `Purchase limit for this line` (stored limit) and, when different, `Runner's current limit` with a caption; 2b A-11 and confirm use the stored limit, Fira Code spans stated; §7 read-only exception rows add `Requested`, `Approved`, `Recorded`; Data and open questions updated (rows 151/152 answered).
 - `drawer-runner-purchase-limit.md`: A-08 body `It applies to new offers and to reimbursements created from now on.`; open question closed (row 152).
 - `p-payout-requests.md`: row 153 noted; Fira Code spans stated in the §2 and §4 captions; §4 caption templated `KSh {requestedAmount − paidAmount}`.
@@ -624,3 +624,28 @@ Item 14 stands, with the §7 rows extended by `Requested`, `Approved`, `Recorded
 ### Builder lists
 - api-contract: N-20 / RA-26 as amended; N-21 / RA-25 with the row-151 record and the row-152 column; N-17 / RA-15 (table approved); N-22 OTP copy; customer `errand.EXPIRED`.
 - web-parity: items 14 and 15 after N-21.
+
+## Owner answers round 9 (rows 145, 147, 148, 157–166, 2026-10-16), applied on `docs/owner-answers-9-specs`
+
+Spec-only update. Full list, API items, conflicts and the System Design edits (row 147): `docs/audits/runner-gap-report.md` §12.
+
+### What changed in the admin specs
+- `_shared.md`: decision rows 145/160, 148, 157, 158, 159, 161, 162, 163, 165, 166; §6.1 payout-request chip `cancelled` → `Cancelled` and the offer chips (`Offered`, `Offer ended`, `Declined`); N-17 (built on `main`; cancel, KES 500 server config, row-165 fields), N-18 (storage approved, every task), N-20 (row 157: the task stays RUNNER_ASSIGNED; the sweep must change; EXPIRED trigger open), N-22 (OTP SMS owner wording), new N-23 (verification documents: clock, purge metadata, restricted credential); §8 rows 145 and 157 closed, new AQ-12 … AQ-16.
+- `p-payout-requests.md`: rewritten. API on `main` (list, count, detail, pay, reject); status names PENDING = `requested`; new `Cancelled` filter; ops-only **cancel** (A-07 `.btn-text` `Cancel request` → required internal reason → A-08 confirm → `POST /runner-payout-requests/:id/cancel`); read-only cancelled state (`Cancelled at`, `Cancelled by`, `Reason`); Activity actor from `createdByUserId`; `Last change` = `updatedAt` (row 165); the `Minimum payout request` setting is dropped (row 159: server config, no admin UI).
+- `drawer-runner-payout.md`, `drawer-refund.md`: row 145 and 148 "pending" removed (approved, no `scope`; every task). The drawer-refund need "store `scope`, then label the card by scope" is withdrawn (row 160). No UI change.
+- **New** `drawer-task-offer.md`: `Runner` section of the task drawer (mockup card) with Offered / Offer ended / Declined states, `Reassign runner` (mockup label) for a RUNNER_ASSIGNED task whose offer ended or was declined, queue chips and `Reassign` row action (row 157).
+- **New** `p-runners-verification-documents.md`: `View image` through the logged signed link, `Deleted {date}` for purged images with the minimum record kept, `No image on file` (rows 154, 161).
+
+### New findings against built code (`main`)
+16. **blocker** — `drawers/task-drawer.ts:22-23`, `panels/task-queue.panel.ts:136-137`. Design (`drawer-task-offer.md`, row 157): a RUNNER_ASSIGNED task whose offer ended or was declined shows that state and `Reassign runner`. Code: assign only at PAYMENT_CONFIRMED; no offer state at all. Fix: the `Runner` section and the re-offer action, after api-contract stops the sweep from expiring the task.
+17. **minor** — `drawers/task-drawer.ts:305`. Design: `Offer sent to {runner}.` (the assign makes an offer, row 113). Code: `Runner assigned.`
+18. **blocker** — `panels/verifications.panel.ts:63-69, 203-206`. Design (`p-runners-verification-documents.md`): `View image` through `GET /runners/verifications/:id/document` (logged, ≤ 5 min). Code: link only when `documentKey` is present (never, the API hides it) to `/api/v1/files/{key}`. Admins cannot open any image today.
+19. **blocker** — `panels/verifications.panel.ts`, `core/api-types.ts:646-660`. Design: Deleted state from `purgedAt`, No image from `hasDocument`. Code: neither field is read; `submittedAt` is read but the API sends `createdAt`.
+20. **minor** — `panels/verifications.panel.ts:194-201`. Design: mockup labels `National ID`, `Selfie / liveness check`, `Phone number`, `M-Pesa identity match`. Code: `Government ID`, `Driving License`, raw fallbacks.
+
+### Builder lists
+- api-contract: `runner-gap-report.md` §12 items 1–10 (N-17 cancel and fields, N-20 sweep and feed item, N-22 SMS, N-23 purge clock and metadata, `errand.EXPIRED` body).
+- web-parity: items 16–20; `p-payout-requests` (whole panel) after the cancel route lands.
+
+### Questions for the owner (new)
+AQ-12 … AQ-16 (`_shared.md` §8); RQ-27 … RQ-31 in `runner-gap-report.md` §12.
