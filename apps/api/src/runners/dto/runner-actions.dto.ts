@@ -41,6 +41,16 @@ export class AddVerificationDto {
 export class UploadVerificationDocumentDto {
   @IsIn([RunnerVerificationType.GOVERNMENT_ID, RunnerVerificationType.SELFIE])
   verificationType: RunnerVerificationType.GOVERNMENT_ID | RunnerVerificationType.SELFIE;
+
+  /**
+   * Row 195: `front` | `back` (case-insensitive), required for
+   * government_id, not allowed for selfie. Checked by the service so the
+   * error carries `verification_document_side_invalid`.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  side?: string;
 }
 
 /**

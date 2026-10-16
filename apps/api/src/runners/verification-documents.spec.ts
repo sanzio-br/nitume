@@ -99,8 +99,8 @@ const image = { buffer: jpegBytes, mimetype: 'image/jpeg', size: jpegBytes.lengt
 describe('RA-7 / row 154: restricted ID and selfie images', () => {
   it('uploads to restricted storage, creates a pending verification, logs the upload and hides the key', async () => {
     const b = build();
-    const view = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, '10.0.0.7');
-    expect(view).toMatchObject({ verificationType: 'government_id', status: 'pending', hasDocument: true, purgedAt: null });
+    const view = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, '10.0.0.7', 'front');
+    expect(view).toMatchObject({ verificationType: 'government_id', side: 'front', status: 'pending', hasDocument: true, purgedAt: null });
     expect(view).not.toHaveProperty('documentS3Key');
     expect(b.rows[0].documentS3Key).toBe('vdoc:jpg:nitume/runner-verification/rp1/k1');
     expect(b.log).toEqual([expect.objectContaining({ action: 'upload', actorUserId: 'u-run', ip: '10.0.0.7' })]);
@@ -158,7 +158,7 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
 
   it('purges: deletes the object, keeps only minimum metadata (notes cleared, row 170), logs it; then 410', async () => {
     const b = build([], new Date('2026-01-01T00:00:00Z'));
-    await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null);
+    await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null, 'front');
     b.log.push({ action: VerificationDocumentAction.RE_REVIEW, actorUserId: 'admin-1', ip: null, verificationId: 'v-1', note: 'kept until purge' });
     Object.assign(b.rows[0], {
       status: VerificationStatus.APPROVED,
@@ -206,7 +206,7 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
 
   it('re-review of decided evidence is logged and restarts the clock; not on pending, purged or imageless (row 171)', async () => {
     const b = build();
-    const v = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null);
+    const v = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null, 'front');
     expect(await codeOf(b.service.reReviewDocument(v.id, 'admin-1', null))).toBe('verification_not_decided');
     b.rows[0].status = VerificationStatus.APPROVED;
     const out = await b.service.reReviewDocument(v.id, 'admin-1', '41.90.1.2', '  Second check after a fraud flag  ');
@@ -257,5 +257,24 @@ describe('matchesImageSignature (review minor 4)', () => {
     expect(matchesImageSignature(png, 'image/jpeg')).toBe(false);
     expect(matchesImageSignature(Buffer.from('fake-jpeg-bytes'), 'image/jpeg')).toBe(false);
     expect(matchesImageSignature(Buffer.from('ftyp'), 'image/heic')).toBe(false);
+  });
+});
+
+describe('ID side (row 195)', () => {
+  it('requires front or back on a government ID, refuses a side on a selfie, before anything is stored', async () => {
+    const b = build();
+    for (const side of [undefined, '', 'left']) {
+      expect(
+        await codeOf(b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null, side)),
+      ).toBe('verification_document_side_invalid');
+    }
+    expect(
+      await codeOf(b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, image, null, 'front')),
+    ).toBe('verification_document_side_invalid');
+    expect(b.storage.upload).not.toHaveBeenCalled();
+    const back = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.GOVERNMENT_ID, image, null, 'BACK');
+    expect(back.side).toBe('back');
+    const selfie = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, image, null);
+    expect(selfie.side ?? null).toBeNull();
   });
 });

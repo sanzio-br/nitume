@@ -12,7 +12,7 @@ import {
 } from '../common/enums';
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
-import { RunnerVerification } from './runner-verification.entity';
+import { RunnerVerification, RunnerVerificationSide } from './runner-verification.entity';
 import { documentTooLarge, idMaxUploadBytes, matchesImageSignature } from './upload/verification-upload';
 import { VerificationDocumentAccessLog, VerificationDocumentAction } from './verification-document-access-log.entity';
 import {
@@ -86,6 +86,32 @@ export const RE_REVIEW_NOTE_MAX = 500;
 export const toVerificationView = (v: RunnerVerification): VerificationView => {
   const { documentS3Key, ...rest } = v;
   return { ...rest, purgedAt: v.purgedAt ?? null, hasDocument: !!documentS3Key };
+};
+
+/**
+ * Row 195: `front` | `back` (any case) is required for a government_id image
+ * and refused for a selfie. 400 verification_document_side_invalid (`allowed`).
+ */
+export const documentSideOf = (
+  verificationType: RunnerVerificationType,
+  input: string | null | undefined,
+): RunnerVerificationSide | null => {
+  const value = typeof input === 'string' ? input.trim().toLowerCase() : '';
+  const allowed = Object.values(RunnerVerificationSide);
+  if (verificationType === RunnerVerificationType.GOVERNMENT_ID) {
+    if ((allowed as string[]).includes(value)) {
+      return value as RunnerVerificationSide;
+    }
+    throw new ApiError(HttpStatus.BAD_REQUEST, 'verification_document_side_invalid', 'Say which side of the ID this is: front or back', {
+      allowed,
+    });
+  }
+  if (value) {
+    throw new ApiError(HttpStatus.BAD_REQUEST, 'verification_document_side_invalid', 'A side is only sent with an ID image', {
+      allowed: [],
+    });
+  }
+  return null;
 };
 
 /** Verification types whose image goes to restricted storage (RA-7). */
@@ -258,6 +284,7 @@ export class RunnersService {
     verificationType: RunnerVerificationType,
     file: UploadedImage | undefined,
     ip: string | null,
+    sideInput?: string | null,
   ): Promise<VerificationView> {
     if (!DOCUMENT_VERIFICATION_TYPES.includes(verificationType)) {
       throw new ApiError(
@@ -266,6 +293,7 @@ export class RunnersService {
         'Only government_id and selfie images are uploaded',
       );
     }
+    const side = documentSideOf(verificationType, sideInput);
     if (!file || !file.buffer || file.size === 0) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'verification_document_empty', 'Attach the image as `file`');
     }
@@ -295,6 +323,7 @@ export class RunnersService {
           manager.getRepository(RunnerVerification).create({
             runnerProfileId: profile.id,
             verificationType,
+            side,
             documentS3Key: key,
           }),
         );

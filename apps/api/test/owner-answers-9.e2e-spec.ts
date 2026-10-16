@@ -500,12 +500,22 @@ describe('Owner answers 9 (e2e)', () => {
     return buf;
   };
 
-  const uploadDoc = (runner: Actor, file: Buffer, contentType = 'image/jpeg', verificationType = 'government_id') =>
-    http()
+  const uploadDoc = (
+    runner: Actor,
+    file: Buffer,
+    contentType = 'image/jpeg',
+    verificationType = 'government_id',
+    side: string | null = verificationType === 'government_id' ? 'front' : null,
+  ) => {
+    const req = http()
       .post('/api/v1/runners/me/verifications/documents')
       .set(bearer(runner.token))
-      .field('verificationType', verificationType)
-      .attach('file', file, { filename: 'front.jpg', contentType });
+      .field('verificationType', verificationType);
+    if (side !== null) {
+      req.field('side', side);
+    }
+    return req.attach('file', file, { filename: 'front.jpg', contentType });
+  };
 
   describe('row 163: 10 MB per ID/selfie image, refused before storage', () => {
     it('answers 413 verification_document_too_large with maxBytes and stores nothing', async () => {
@@ -837,6 +847,21 @@ describe('Owner answers 9 (e2e)', () => {
       expect(lapsed.body).toMatchObject({ code: 'runner_already_offered', previousStatus: 'expired' });
       const third = await makeUser(UserRole.RUNNER);
       await http().post(`/api/v1/errands/${errand.id}/assign`).set(bearer(admin.token)).send({ runnerProfileId: third.profileId }).expect(201);
+    });
+  });
+
+  describe('row 195: ID side', () => {
+    it('a government ID upload needs front or back; a selfie takes none', async () => {
+      const runner = await makeUser(UserRole.RUNNER);
+      const missing = await uploadDoc(runner, jpeg(), 'image/jpeg', 'government_id', null).expect(400);
+      expect(missing.body).toMatchObject({ code: 'verification_document_side_invalid', allowed: ['front', 'back'] });
+      await uploadDoc(runner, jpeg(), 'image/jpeg', 'government_id', 'side-ways').expect(400);
+      await uploadDoc(runner, jpeg(), 'image/jpeg', 'selfie', 'front').expect(400);
+      const back = await uploadDoc(runner, jpeg(), 'image/jpeg', 'government_id', 'back').expect(201);
+      expect(back.body).toMatchObject({ verificationType: 'government_id', side: 'back' });
+      const selfie = await uploadDoc(runner, jpeg(), 'image/jpeg', 'selfie').expect(201);
+      expect(selfie.body.side).toBeNull();
+      expect(await db().query('SELECT id FROM "runner_verifications" WHERE "runnerProfileId" = $1', [runner.profileId])).toHaveLength(2);
     });
   });
 });

@@ -455,6 +455,7 @@ describe('Owner answers 8 (e2e)', () => {
         .post('/api/v1/runners/me/verifications/documents')
         .set(bearer(runner.token))
         .field('verificationType', 'government_id')
+        .field('side', 'front')
         .attach('file', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]), { filename: 'front.jpg', contentType: 'image/jpeg' })
         .expect(201);
       expect(uploaded.body).toMatchObject({ verificationType: 'government_id', status: 'pending', hasDocument: true, purgedAt: null });

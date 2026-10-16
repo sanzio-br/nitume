@@ -155,7 +155,9 @@ export class RunnersController {
 
   /**
    * RA-7: multipart upload of an ID side or selfie (`file`, JPEG/PNG/WebP/HEIC)
-   * with `verificationType` (`government_id` | `selfie`) to restricted
+   * with `verificationType` (`government_id` | `selfie`) and, for an ID,
+   * `side` (`front` | `back`, row 195; 400 verification_document_side_invalid
+   * when missing, invalid, or sent with a selfie) to restricted
    * storage; creates a pending verification (one per image: ID front and
    * back are two). The storage key is never returned. Errors: 400
    * verification_type_not_uploadable, verification_document_type_invalid,
@@ -174,7 +176,7 @@ export class RunnersController {
     @UploadedFile() file: UploadedImage | undefined,
     @Ip() ip: string,
   ) {
-    return this.runners.uploadVerificationDocument(user.userId, dto.verificationType, file, ip ?? null);
+    return this.runners.uploadVerificationDocument(user.userId, dto.verificationType, file, ip ?? null, dto.side);
   }
 
   @UseGuards(JwtAuthGuard)

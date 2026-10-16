@@ -2358,7 +2358,7 @@
           "response": []
         },
         {
-          "name": "Runner upload ID side or selfie (multipart, 10 MB, JPEG/PNG/WebP/HEIC by bytes)",
+          "name": "Runner upload ID side or selfie (multipart, 10 MB, JPEG/PNG/WebP/HEIC by bytes, side front|back for an ID)",
           "request": {
             "method": "POST",
             "header": [
@@ -2378,6 +2378,12 @@
                   "key": "verificationType",
                   "value": "government_id",
                   "type": "text"
+                },
+                {
+                  "key": "side",
+                  "value": "front",
+                  "type": "text",
+                  "description": "front | back, government_id only (row 195)"
                 },
                 {
                   "key": "file",

@@ -248,7 +248,7 @@ const collection = {
       post('Admin reject a request (note 5-300, shown to the runner)', '/runner-payout-requests/{{payout_request_id}}/reject', '{\n  "note": "Please confirm your M-Pesa name first"\n}', 'admin'),
       post('Admin cancel a request (row 166; reason 10-500, ops only)', '/runner-payout-requests/{{payout_request_id}}/cancel', '{\n  "reason": "Destination number failed the fraud check"\n}', 'admin'),
       {
-        name: 'Runner upload ID side or selfie (multipart, 10 MB, JPEG/PNG/WebP/HEIC by bytes)',
+        name: 'Runner upload ID side or selfie (multipart, 10 MB, JPEG/PNG/WebP/HEIC by bytes, side front|back for an ID)',
         request: {
           method: 'POST',
           header: bearer('runner'),
@@ -256,6 +256,7 @@ const collection = {
             mode: 'formdata',
             formdata: [
               { key: 'verificationType', value: 'government_id', type: 'text' },
+              { key: 'side', value: 'front', type: 'text', description: 'front | back, government_id only (row 195)' },
               { key: 'file', type: 'file', src: '' },
             ],
           },
