@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../models/enums.dart';
+
 /// A normalised API failure, safe to show to a user.
 ///
 /// The NestJS API returns `{ statusCode, message, error }` where `message` may
@@ -73,6 +75,19 @@ class NitumeApiException implements Exception {
   /// HTTP 413: the upload is above the server's size limit (e.g. an ID image
   /// over 10 MB, row 163). Sent without a [code].
   bool get isPayloadTooLarge => statusCode == 413;
+
+  /// `offerExpiresAt` of an [ApiErrorCodes.offerExpired] error, when sent.
+  DateTime? get offerExpiresAt {
+    final v = details['offerExpiresAt'];
+    return v is String ? DateTime.tryParse(v) : null;
+  }
+
+  /// `from` of an [ApiErrorCodes.illegalTransition] error: the task's
+  /// committed state; `null` when absent or unknown.
+  ErrandStatus? get transitionFrom => ErrandStatus.tryFromWire(details['from']);
+
+  /// `to` of an [ApiErrorCodes.illegalTransition] error.
+  ErrandStatus? get transitionTo => ErrandStatus.tryFromWire(details['to']);
 
   /// Session-level 401 (no [code]): the app signs the user out. Coded 401s
   /// such as `otp_incorrect` are not session failures.
@@ -217,8 +232,17 @@ abstract final class ApiErrorCodes {
   /// it (409, admin re-quote). Details: `paymentId`, `paymentStatus`.
   static const paymentInProgress = 'payment_in_progress';
 
-  /// The task's state does not allow this transition (409).
+  /// The task's state does not allow this transition (409), e.g. it moved
+  /// on (another actor, a lost race, an expired offer). Details: `from`,
+  /// `to` ([NitumeApiException.transitionFrom] / `transitionTo`). Reload
+  /// the task.
   static const illegalTransition = 'illegal_transition';
+
+  /// Runner accept (RUNNER_ASSIGNED → RUNNER_EN_ROUTE) after the offer's
+  /// deadline (409, rows 141, 150), even before the task shows EXPIRED.
+  /// Details: `offerExpiresAt` ([NitumeApiException.offerExpiresAt]).
+  /// Remove the offer and reload.
+  static const offerExpired = 'offer_expired';
 
   /// Someone else changed the task at the same time; reload and retry (409).
   static const concurrentModification = 'concurrent_modification';
