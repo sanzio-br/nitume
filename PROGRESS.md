@@ -339,5 +339,22 @@ onboarding → profile → jobs → active job → job summary → earnings → 
   `docs/customer-finding-a-runner-audit` (54d0fa6): customers see "Finding a runner" during
   RUNNER_ASSIGNED, "En route" chip with a "Runner assigned" timeline step at acceptance, and no offered
   runner (name, card, marker, ETA) before acceptance. core 383, customer 131, runner 26 tests.
-  Server-side enforcement of row 183 lands with `feat/api-owner-answers-9` (in review fix).
+  Server-side enforcement of row 183 is in `feat/api-owner-answers-9`, merged below.
+- `feat/api-owner-answers-9` (0e12564): admin-offer lapse keeps the task open; offer history for admins;
+  no re-offer to a runner who declined/lapsed; customers never see an unaccepted runner (incl. after
+  cancel/expire); owner notification and OTP copy with exact titles; KES 500 minimum; payout request
+  creator/updatedAt guarded, ops-only cancel (reason 10–500, hidden from runners); ID images: narrowed
+  retention clock, audited re-review with optional note, notes deleted at purge, dispute/pending holds,
+  restricted Cloudinary credential with backup off, byte check, required front/back side; e2e on its own
+  queue prefix. 520 unit, 81 e2e. Note: commit ea87af9 was committed with 2 failing e2e (fixed in the
+  next commit; history not rewritten).
+
+**Open**
+
+- Owner rows 85 (PayHero), 185 (deadline as EXPIRED trigger), 186 (purchase limit in the pool).
+- Owner action: create a dedicated test database (row 198); Cloudinary checklist and support question
+  (rows 192, 193) before production.
+- Next: runner API round (offers RA-1, pool and matching-exhausted rules, admin "Expire task — no runner
+  available", runner notifications incl. payout cancel, location producer, skills/areas, evidence upload,
+  idempotent transitions), then runner screens one by one.
 
