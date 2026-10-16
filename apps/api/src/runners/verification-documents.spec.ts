@@ -67,7 +67,8 @@ const build = (dueIds: string[] = []) => {
   return { service, rows, log, storage, verificationRepo };
 };
 
-const image = { buffer: Buffer.from('jpeg-bytes'), mimetype: 'image/jpeg', size: 10 };
+const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+const image = { buffer: jpegBytes, mimetype: 'image/jpeg', size: jpegBytes.length };
 
 describe('RA-7 / row 154: restricted ID and selfie images', () => {
   it('uploads to restricted storage, creates a pending verification, logs the upload and hides the key', async () => {
@@ -89,6 +90,12 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
         b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, { ...image, mimetype: 'application/pdf' }, null),
       ),
     ).toBe('verification_document_type_invalid');
+    // Review minor 4: a PDF (or anything) sent as image/jpeg is refused by its bytes.
+    const pdfAsJpeg = { buffer: Buffer.from('%PDF-1.7'), mimetype: 'image/jpeg', size: 8 };
+    expect(await codeOf(b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, pdfAsJpeg, null))).toBe(
+      'verification_document_type_invalid',
+    );
+    expect(b.storage.upload).not.toHaveBeenCalled();
     expect(await codeOf(b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, undefined, null))).toBe(
       'verification_document_empty',
     );
@@ -130,5 +137,31 @@ describe('RA-7 / row 154: restricted ID and selfie images', () => {
     b.storage.destroy.mockRejectedValueOnce(new Error('cloud down'));
     await expect(b.service.purgeExpiredDocuments()).resolves.toEqual([]);
     expect(b.rows[0].documentS3Key).not.toBeNull();
+  });
+
+  it('deletes the stored image again when the row cannot be written (review minor 4)', async () => {
+    const b = build();
+    b.verificationRepo.save.mockRejectedValueOnce(new Error('db down'));
+    await expect(
+      b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, image, null),
+    ).rejects.toThrow('db down');
+    expect(b.storage.destroy).toHaveBeenCalledWith('vdoc:jpg:nitume/runner-verification/rp1/k1');
+    expect(b.rows).toEqual([]);
+  });
+});
+
+describe('matchesImageSignature (review minor 4)', () => {
+  it('checks each allowed type by its first bytes', async () => {
+    const { matchesImageSignature } = await import('./upload/verification-upload');
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+    const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]);
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypheic'), Buffer.alloc(8)]);
+    expect(matchesImageSignature(jpegBytes, 'image/jpeg')).toBe(true);
+    expect(matchesImageSignature(png, 'image/png')).toBe(true);
+    expect(matchesImageSignature(webp, 'image/webp')).toBe(true);
+    expect(matchesImageSignature(heic, 'image/heic')).toBe(true);
+    expect(matchesImageSignature(png, 'image/jpeg')).toBe(false);
+    expect(matchesImageSignature(Buffer.from('fake-jpeg-bytes'), 'image/jpeg')).toBe(false);
+    expect(matchesImageSignature(Buffer.from('ftyp'), 'image/heic')).toBe(false);
   });
 });

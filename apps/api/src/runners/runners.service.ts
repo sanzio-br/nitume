@@ -13,7 +13,7 @@ import {
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification } from './runner-verification.entity';
-import { documentTooLarge, idMaxUploadBytes } from './upload/verification-upload';
+import { documentTooLarge, idMaxUploadBytes, matchesImageSignature } from './upload/verification-upload';
 import { VerificationDocumentAccessLog, VerificationDocumentAction } from './verification-document-access-log.entity';
 import {
   ConsoleVerificationDocumentStorage,
@@ -229,8 +229,10 @@ export class RunnersService {
   /**
    * RA-7 (rows 125, 154): stores an ID or selfie image in restricted storage
    * and records a pending verification for it, logging the upload. Errors:
-   * 400 verification_type_not_uploadable, verification_document_type_invalid,
-   * verification_document_empty.
+   * 400 verification_type_not_uploadable, verification_document_type_invalid
+   * (also when the bytes are not that image type), verification_document_empty;
+   * 413 verification_document_too_large. If the row cannot be written the
+   * stored image is deleted again.
    */
   async uploadVerificationDocument(
     userId: string,
@@ -253,7 +255,7 @@ export class RunnersService {
     if (file.size > maxBytes || file.buffer.length > maxBytes) {
       throw documentTooLarge(maxBytes);
     }
-    if (!DOCUMENT_CONTENT_TYPES.includes(file.mimetype)) {
+    if (!DOCUMENT_CONTENT_TYPES.includes(file.mimetype) || !matchesImageSignature(file.buffer, file.mimetype)) {
       throw new ApiError(
         HttpStatus.BAD_REQUEST,
         'verification_document_type_invalid',
@@ -267,17 +269,29 @@ export class RunnersService {
       contentType: file.mimetype,
       runnerProfileId: profile.id,
     });
-    const saved = await this.verifications.manager.transaction(async (manager) => {
-      const row = await manager.getRepository(RunnerVerification).save(
-        manager.getRepository(RunnerVerification).create({
-          runnerProfileId: profile.id,
-          verificationType,
-          documentS3Key: key,
-        }),
+    let saved: RunnerVerification;
+    try {
+      saved = await this.verifications.manager.transaction(async (manager) => {
+        const row = await manager.getRepository(RunnerVerification).save(
+          manager.getRepository(RunnerVerification).create({
+            runnerProfileId: profile.id,
+            verificationType,
+            documentS3Key: key,
+          }),
+        );
+        await this.logAccess(manager, row, VerificationDocumentAction.UPLOAD, userId, ip);
+        return row;
+      });
+    } catch (err) {
+      // Review minor 4: no stored image without its row. Best effort; a
+      // failed delete is logged with the key so ops can remove it.
+      await this.documents.destroy(key).catch((cleanup: unknown) =>
+        this.logger.error(
+          `Orphan verification image ${key} could not be deleted: ${cleanup instanceof Error ? cleanup.message : String(cleanup)}`,
+        ),
       );
-      await this.logAccess(manager, row, VerificationDocumentAction.UPLOAD, userId, ip);
-      return row;
-    });
+      throw err;
+    }
     return toVerificationView(saved);
   }
 

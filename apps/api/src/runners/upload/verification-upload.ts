@@ -42,3 +42,30 @@ export class VerificationUploadTooLargeFilter implements ExceptionFilter {
     host.switchToHttp().getResponse<Response>().status(error.getStatus()).json(error.getResponse());
   }
 }
+
+const startsWith = (buf: Buffer, bytes: number[], offset = 0): boolean =>
+  buf.length >= offset + bytes.length && bytes.every((b, i) => buf[offset + i] === b);
+
+const HEIF_BRANDS = new Set(['heic', 'heix', 'heim', 'heis', 'hevc', 'hevx', 'mif1', 'msf1']);
+
+/**
+ * Review minor 4: the file's first bytes must match the declared image type
+ * (JPEG FF D8 FF; PNG 89 50 4E 47 0D 0A 1A 0A; WebP RIFF....WEBP; HEIC/HEIF
+ * an ISO-BMFF `ftyp` box with a HEIF brand). The client's content type alone
+ * is not trusted.
+ */
+export const matchesImageSignature = (buf: Buffer, contentType: string): boolean => {
+  switch (contentType) {
+    case 'image/jpeg':
+      return startsWith(buf, [0xff, 0xd8, 0xff]);
+    case 'image/png':
+      return startsWith(buf, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    case 'image/webp':
+      return startsWith(buf, [0x52, 0x49, 0x46, 0x46]) && startsWith(buf, [0x57, 0x45, 0x42, 0x50], 8);
+    case 'image/heic':
+    case 'image/heif':
+      return startsWith(buf, [0x66, 0x74, 0x79, 0x70], 4) && HEIF_BRANDS.has(buf.subarray(8, 12).toString('latin1'));
+    default:
+      return false;
+  }
+};

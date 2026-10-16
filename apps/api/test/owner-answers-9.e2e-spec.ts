@@ -501,4 +501,11 @@ describe('Owner answers 9 (e2e)', () => {
       }
     });
   });
+
+  it('a file whose bytes are not the declared image type is refused before storage (review minor 4)', async () => {
+    const runner = await makeUser(UserRole.RUNNER);
+    const res = await uploadDoc(runner, Buffer.from('%PDF-1.7 not an image'), 'image/jpeg', 'selfie').expect(400);
+    expect(res.body).toMatchObject({ code: 'verification_document_type_invalid' });
+    expect(await db().query('SELECT id FROM "runner_verifications" WHERE "runnerProfileId" = $1', [runner.profileId])).toEqual([]);
+  });
 });
