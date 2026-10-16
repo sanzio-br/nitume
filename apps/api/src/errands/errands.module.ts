@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
 import { RunnersModule } from '../runners/runners.module';
+import { UsersModule } from '../users/users.module';
 import { ErrandAssignment } from './errand-assignment.entity';
 import { ErrandItem } from './errand-item.entity';
 import { ErrandLocation } from './errand-location.entity';
@@ -15,6 +16,7 @@ import { Quote } from './quote.entity';
 @Module({
   imports: [
     RunnersModule,
+    UsersModule,
     TypeOrmModule.forFeature([
       Errand,
       ErrandLocation,

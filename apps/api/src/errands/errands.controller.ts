@@ -174,8 +174,9 @@ export class ErrandsController {
 
   @Get(':id/history')
   history(@Param('id') id: string, @CurrentUser() user: AuthContext) {
+    // Each row carries `actor { id, displayName }` (null for system rows).
     return this.errands.getById(id, { role: user.role, userId: user.userId }).then(() =>
-      this.errands.historyFor(id),
+      this.errands.historyViewsFor(id),
     );
   }
 

@@ -12,18 +12,41 @@ import { ErrandsService } from './errands.service';
 const build = (status: ErrandStatus) => {
   const errand = { id: 'e-1', customerId: 'cust-1', status } as Errand;
   const repos = new Map<unknown, unknown>([
-    [Errand, { findOne: vi.fn(() => Promise.resolve(errand)), save: vi.fn((e: Errand) => Promise.resolve(e)) }],
-    [CustomerProfile, { findOne: vi.fn(() => Promise.resolve({ id: 'cust-1' })) }],
-    [ErrandAssignment, { update: vi.fn(() => Promise.resolve({ affected: 0 })), findOne: vi.fn(() => Promise.resolve(null)) }],
+    [
+      Errand,
+      {
+        findOne: vi.fn(() => Promise.resolve(errand)),
+        save: vi.fn((e: Errand) => Promise.resolve(e)),
+      },
+    ],
+    [
+      CustomerProfile,
+      { findOne: vi.fn(() => Promise.resolve({ id: 'cust-1' })) },
+    ],
+    [
+      ErrandAssignment,
+      {
+        update: vi.fn(() => Promise.resolve({ affected: 0 })),
+        findOne: vi.fn(() => Promise.resolve(null)),
+      },
+    ],
     [
       ErrandStatusHistory,
-      { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) },
+      {
+        create: vi.fn((r: object) => r),
+        save: vi.fn((r: object) => Promise.resolve(r)),
+      },
     ],
   ]);
   const manager = { getRepository: (entity: unknown) => repos.get(entity) };
-  const dataSource = { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) };
+  const dataSource = {
+    transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)),
+  };
   const emit = vi.fn();
-  const runners = { startJob: vi.fn(() => Promise.resolve()), endJob: vi.fn(() => Promise.resolve()) };
+  const runners = {
+    startJob: vi.fn(() => Promise.resolve()),
+    endJob: vi.fn(() => Promise.resolve()),
+  };
   const service = new ErrandsService(
     dataSource as never,
     {} as never,
@@ -50,7 +73,9 @@ describe('ErrandsService guarded transitions', () => {
       .transition('e-1', ErrandStatus.CANCELLED, customer, undefined, subject)
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect((err as ApiError).code).toBe('transition_requires_price_change_rejection');
+    expect((err as ApiError).code).toBe(
+      'transition_requires_price_change_rejection',
+    );
   });
 
   it('allows it when the price-change rejection flow passes the guard', async () => {
@@ -69,31 +94,57 @@ describe('ErrandsService guarded transitions', () => {
   it('409 illegal_transition with from/to on an impossible move (N-8)', async () => {
     const { service } = build(ErrandStatus.DRAFT);
     await expect(
-      service.transition('e-1', ErrandStatus.SETTLED, customer, undefined, subject),
+      service.transition(
+        'e-1',
+        ErrandStatus.SETTLED,
+        customer,
+        undefined,
+        subject,
+      ),
     ).rejects.toMatchObject({ status: 409, code: 'illegal_transition' });
   });
 
   it('refuses a customer COMPLETED -> CONFIRMED (system-only now)', async () => {
     const { service } = build(ErrandStatus.COMPLETED);
     await expect(
-      service.transition('e-1', ErrandStatus.CONFIRMED, customer, undefined, subject),
+      service.transition(
+        'e-1',
+        ErrandStatus.CONFIRMED,
+        customer,
+        undefined,
+        subject,
+      ),
     ).rejects.toThrow(/cannot perform/);
   });
 });
 
 describe('ErrandsService.resolveDispute', () => {
-  const admin = { userId: 'admin-1', role: UserRole.ADMIN, phone: '+254700000000' };
+  const admin = {
+    userId: 'admin-1',
+    role: UserRole.ADMIN,
+    phone: '+254700000000',
+  };
   const rationale = 'Evidence shows the runner completed the task.';
 
   it('runner-favourable resolves DISPUTED -> COMPLETED', async () => {
     const { service, errand } = build(ErrandStatus.DISPUTED);
-    await service.resolveDispute('e-1', 'runner_favourable', rationale, admin as never);
+    await service.resolveDispute(
+      'e-1',
+      'runner_favourable',
+      rationale,
+      admin as never,
+    );
     expect(errand.status).toBe(ErrandStatus.COMPLETED);
   });
 
   it('customer-favourable resolves DISPUTED -> CANCELLED', async () => {
     const { service, errand } = build(ErrandStatus.DISPUTED);
-    await service.resolveDispute('e-1', 'customer_favourable', rationale, admin as never);
+    await service.resolveDispute(
+      'e-1',
+      'customer_favourable',
+      rationale,
+      admin as never,
+    );
     expect(errand.status).toBe(ErrandStatus.CANCELLED);
   });
 
@@ -101,7 +152,12 @@ describe('ErrandsService.resolveDispute', () => {
     const { service, manager } = build(ErrandStatus.DISPUTED);
     const hook = vi.fn(() => Promise.resolve());
     service.onDisputeResolved(hook);
-    await service.resolveDispute('e-1', 'customer_favourable', `  ${rationale} `, admin as never);
+    await service.resolveDispute(
+      'e-1',
+      'customer_favourable',
+      `  ${rationale} `,
+      admin as never,
+    );
     expect(hook).toHaveBeenCalledWith(manager, {
       errandId: 'e-1',
       verdict: 'customer_favourable',
@@ -113,14 +169,24 @@ describe('ErrandsService.resolveDispute', () => {
   it('409 errand_not_disputed outside DISPUTED (N-8)', async () => {
     const { service } = build(ErrandStatus.COMPLETED);
     await expect(
-      service.resolveDispute('e-1', 'runner_favourable', rationale, admin as never),
+      service.resolveDispute(
+        'e-1',
+        'runner_favourable',
+        rationale,
+        admin as never,
+      ),
     ).rejects.toMatchObject({ status: 409, code: 'errand_not_disputed' });
   });
 
   it('requires a 20+ character rationale', async () => {
     const { service } = build(ErrandStatus.DISPUTED);
     await expect(
-      service.resolveDispute('e-1', 'runner_favourable', 'too short', admin as never),
+      service.resolveDispute(
+        'e-1',
+        'runner_favourable',
+        'too short',
+        admin as never,
+      ),
     ).rejects.toMatchObject({ status: 409, code: 'rationale_too_short' });
   });
 });
@@ -151,7 +217,9 @@ describe('ErrandsService.confirmPastDisputeWindow', () => {
     const transition = vi
       .spyOn(service, 'transition')
       .mockResolvedValueOnce({} as never)
-      .mockRejectedValueOnce(new ConflictException('Illegal status transition'));
+      .mockRejectedValueOnce(
+        new ConflictException('Illegal status transition'),
+      );
     const now = new Date('2026-10-07T12:00:00Z');
 
     const confirmed = await service.confirmPastDisputeWindow(now);
@@ -174,7 +242,13 @@ describe('ErrandsService status events', () => {
 
   it('emits errand.status_changed only after the transaction commits', async () => {
     const { service, emit } = build(ErrandStatus.AWAITING_CUSTOMER);
-    await service.transition('e-1', ErrandStatus.COMPLETED, customer, undefined, subject);
+    await service.transition(
+      'e-1',
+      ErrandStatus.COMPLETED,
+      customer,
+      undefined,
+      subject,
+    );
     await tick();
     expect(emit).toHaveBeenCalledWith('errand.status_changed', {
       errandId: 'e-1',
@@ -187,12 +261,20 @@ describe('ErrandsService status events', () => {
   it('drops the event when the transaction rolls back', async () => {
     const { service, emit, dataSource } = build(ErrandStatus.AWAITING_CUSTOMER);
     const inner = dataSource.transaction.getMockImplementation()!;
-    dataSource.transaction.mockImplementationOnce(async (cb: (m: unknown) => unknown) => {
-      await inner(cb);
-      throw new Error('rollback');
-    });
+    dataSource.transaction.mockImplementationOnce(
+      async (cb: (m: unknown) => unknown) => {
+        await inner(cb);
+        throw new Error('rollback');
+      },
+    );
     await expect(
-      service.transition('e-1', ErrandStatus.COMPLETED, customer, undefined, subject),
+      service.transition(
+        'e-1',
+        ErrandStatus.COMPLETED,
+        customer,
+        undefined,
+        subject,
+      ),
     ).rejects.toThrow('rollback');
     await tick();
     expect(emit).not.toHaveBeenCalled();
@@ -200,14 +282,23 @@ describe('ErrandsService status events', () => {
 });
 
 describe('ErrandsService cancellation hooks', () => {
-  const admin = { userId: 'admin-1', role: UserRole.ADMIN, phone: '+254700000000' };
+  const admin = {
+    userId: 'admin-1',
+    role: UserRole.ADMIN,
+    phone: '+254700000000',
+  };
   const rationale = 'Evidence shows the customer was not served.';
 
   it('runs on every CANCELLED transition with the transaction manager', async () => {
     const dispute = build(ErrandStatus.DISPUTED);
     const hook = vi.fn(() => Promise.resolve());
     dispute.service.onCancelled(hook);
-    await dispute.service.resolveDispute('e-1', 'customer_favourable', rationale, admin as never);
+    await dispute.service.resolveDispute(
+      'e-1',
+      'customer_favourable',
+      rationale,
+      admin as never,
+    );
     expect(hook).toHaveBeenCalledWith(dispute.manager, {
       errandId: 'e-1',
       from: ErrandStatus.DISPUTED,
@@ -227,10 +318,13 @@ describe('ErrandsService cancellation hooks', () => {
       () => Promise.resolve(null),
       TransitionGuard.PRICE_CHANGE_REJECTION,
     );
-    expect(pcHook).toHaveBeenCalledWith(priceChange.manager, expect.objectContaining({
-      from: ErrandStatus.IN_PROGRESS,
-      guard: TransitionGuard.PRICE_CHANGE_REJECTION,
-    }));
+    expect(pcHook).toHaveBeenCalledWith(
+      priceChange.manager,
+      expect.objectContaining({
+        from: ErrandStatus.IN_PROGRESS,
+        guard: TransitionGuard.PRICE_CHANGE_REJECTION,
+      }),
+    );
 
     const adminCancel = build(ErrandStatus.RUNNER_ASSIGNED);
     const acHook = vi.fn(() => Promise.resolve());
@@ -246,15 +340,27 @@ describe('ErrandsService cancellation hooks', () => {
     const { service } = build(ErrandStatus.DISPUTED);
     const hook = vi.fn(() => Promise.resolve());
     service.onCancelled(hook);
-    await service.resolveDispute('e-1', 'runner_favourable', rationale, admin as never);
+    await service.resolveDispute(
+      'e-1',
+      'runner_favourable',
+      rationale,
+      admin as never,
+    );
     expect(hook).not.toHaveBeenCalled();
   });
 
   it('fails the cancellation (no event) when a hook throws', async () => {
     const { service, emit } = build(ErrandStatus.DISPUTED);
-    service.onCancelled(() => Promise.reject(new Error('refund review failed')));
+    service.onCancelled(() =>
+      Promise.reject(new Error('refund review failed')),
+    );
     await expect(
-      service.resolveDispute('e-1', 'customer_favourable', rationale, admin as never),
+      service.resolveDispute(
+        'e-1',
+        'customer_favourable',
+        rationale,
+        admin as never,
+      ),
     ).rejects.toThrow('refund review failed');
     await new Promise((r) => setImmediate(r));
     expect(emit).not.toHaveBeenCalled();
@@ -268,7 +374,9 @@ describe('ErrandsService termination hooks (row 102)', () => {
     const cancelOnly = vi.fn(() => Promise.resolve());
     expired.service.onTerminated(hook);
     expired.service.onCancelled(cancelOnly);
-    await expired.service.transition('e-1', ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM });
+    await expired.service.transition('e-1', ErrandStatus.EXPIRED, {
+      type: StatusHistoryActor.SYSTEM,
+    });
     expect(hook).toHaveBeenCalledWith(expired.manager, {
       errandId: 'e-1',
       from: ErrandStatus.RUNNER_ASSIGNED,
@@ -282,10 +390,15 @@ describe('ErrandsService termination hooks (row 102)', () => {
     const failed = build(ErrandStatus.RUNNER_EN_ROUTE);
     const fHook = vi.fn(() => Promise.resolve());
     failed.service.onTerminated(fHook);
-    await failed.service.transition('e-1', ErrandStatus.FAILED, { type: StatusHistoryActor.SYSTEM });
+    await failed.service.transition('e-1', ErrandStatus.FAILED, {
+      type: StatusHistoryActor.SYSTEM,
+    });
     expect(fHook).toHaveBeenCalledWith(
       failed.manager,
-      expect.objectContaining({ from: ErrandStatus.RUNNER_EN_ROUTE, to: ErrandStatus.FAILED }),
+      expect.objectContaining({
+        from: ErrandStatus.RUNNER_EN_ROUTE,
+        to: ErrandStatus.FAILED,
+      }),
     );
   });
 
@@ -293,15 +406,23 @@ describe('ErrandsService termination hooks (row 102)', () => {
     const { service } = build(ErrandStatus.RUNNER_ASSIGNED);
     const hook = vi.fn(() => Promise.resolve());
     service.onTerminated(hook);
-    await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, { type: StatusHistoryActor.SYSTEM }).catch(() => undefined);
+    await service
+      .transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, {
+        type: StatusHistoryActor.SYSTEM,
+      })
+      .catch(() => undefined);
     expect(hook).not.toHaveBeenCalled();
   });
 
   it('rolls the EXPIRED transition back (no event) when a hook throws', async () => {
     const { service, emit } = build(ErrandStatus.RUNNER_ASSIGNED);
-    service.onTerminated(() => Promise.reject(new Error('refund review failed')));
+    service.onTerminated(() =>
+      Promise.reject(new Error('refund review failed')),
+    );
     await expect(
-      service.transition('e-1', ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM }),
+      service.transition('e-1', ErrandStatus.EXPIRED, {
+        type: StatusHistoryActor.SYSTEM,
+      }),
     ).rejects.toThrow('refund review failed');
     await new Promise((r) => setImmediate(r));
     expect(emit).not.toHaveBeenCalled();
@@ -313,7 +434,9 @@ describe('ErrandsService confirmation hooks (rows 104, 107)', () => {
     const { service, manager } = build(ErrandStatus.COMPLETED);
     const hook = vi.fn(() => Promise.resolve());
     service.onConfirmed(hook);
-    await service.transition('e-1', ErrandStatus.CONFIRMED, { type: StatusHistoryActor.SYSTEM });
+    await service.transition('e-1', ErrandStatus.CONFIRMED, {
+      type: StatusHistoryActor.SYSTEM,
+    });
     expect(hook).toHaveBeenCalledWith(manager, {
       errandId: 'e-1',
       from: ErrandStatus.COMPLETED,
@@ -339,7 +462,9 @@ describe('ErrandsService confirmation hooks (rows 104, 107)', () => {
     const { service, emit } = build(ErrandStatus.COMPLETED);
     service.onConfirmed(() => Promise.reject(new Error('ledger failed')));
     await expect(
-      service.transition('e-1', ErrandStatus.CONFIRMED, { type: StatusHistoryActor.SYSTEM }),
+      service.transition('e-1', ErrandStatus.CONFIRMED, {
+        type: StatusHistoryActor.SYSTEM,
+      }),
     ).rejects.toThrow('ledger failed');
     await new Promise((r) => setImmediate(r));
     expect(emit).not.toHaveBeenCalled();
@@ -351,14 +476,26 @@ describe('ErrandsService offer deadline (row 141)', () => {
 
   const withOffer = (offerExpiresAt: Date | null) => {
     const built = build(ErrandStatus.RUNNER_ASSIGNED);
-    const offer = { id: 'a-1', errandId: 'e-1', runnerProfileId: 'rp-1', status: 'assigned', offerExpiresAt };
-    const qb = { where: vi.fn(), andWhere: vi.fn(), getOne: vi.fn(() => Promise.resolve(offer)) };
+    const offer = {
+      id: 'a-1',
+      errandId: 'e-1',
+      runnerProfileId: 'rp-1',
+      status: 'assigned',
+      offerExpiresAt,
+    };
+    const qb = {
+      where: vi.fn(),
+      andWhere: vi.fn(),
+      getOne: vi.fn(() => Promise.resolve(offer)),
+    };
     qb.where.mockReturnValue(qb);
     qb.andWhere.mockReturnValue(qb);
     const repo = {
       createQueryBuilder: vi.fn(() => qb),
       findOne: vi.fn(() => Promise.resolve(offer)),
-      update: vi.fn((_id: string, patch: object) => Promise.resolve(Object.assign(offer, patch))),
+      update: vi.fn((_id: string, patch: object) =>
+        Promise.resolve(Object.assign(offer, patch)),
+      ),
     };
     const original = built.manager.getRepository;
     built.manager.getRepository = (entity: unknown) =>
@@ -370,22 +507,34 @@ describe('ErrandsService offer deadline (row 141)', () => {
     const { service, errand, offer } = withOffer(new Date(Date.now() + 60_000));
     await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
     expect(errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
-    expect(offer).toMatchObject({ status: 'accepted', decidedAt: expect.any(Date) });
+    expect(offer).toMatchObject({
+      status: 'accepted',
+      decidedAt: expect.any(Date),
+    });
   });
 
   it('reads the errand under a row lock so concurrent transitions serialise (reviewer B1)', async () => {
     const { service, manager } = withOffer(new Date(Date.now() + 60_000));
-    const errands = manager.getRepository(Errand) as { findOne: ReturnType<typeof vi.fn> };
+    const errands = manager.getRepository(Errand) as {
+      findOne: ReturnType<typeof vi.fn>;
+    };
     await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
-    expect(errands.findOne).toHaveBeenCalledWith({ where: { id: 'e-1' }, lock: { mode: 'pessimistic_write' } });
+    expect(errands.findOne).toHaveBeenCalledWith({
+      where: { id: 'e-1' },
+      lock: { mode: 'pessimistic_write' },
+    });
   });
 
   it('refuses the accept after the deadline with 409 offer_expired', async () => {
     const deadline = new Date(Date.now() - 1_000);
     const { service, errand } = withOffer(deadline);
-    const err = await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner).catch((e: unknown) => e);
+    const err = await service
+      .transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner)
+      .catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 409, code: 'offer_expired' });
-    expect((err as ApiError).getResponse()).toMatchObject({ offerExpiresAt: deadline.toISOString() });
+    expect((err as ApiError).getResponse()).toMatchObject({
+      offerExpiresAt: deadline.toISOString(),
+    });
     expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
   });
 
@@ -399,9 +548,13 @@ describe('ErrandsService offer deadline (row 141)', () => {
     const deadline = new Date(Date.now() - 60_000);
     const { service, errand, offer } = withOffer(deadline);
     offer.status = 'expired';
-    const err = await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner).catch((e: unknown) => e);
+    const err = await service
+      .transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner)
+      .catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 409, code: 'offer_expired' });
-    expect((err as ApiError).getResponse()).toMatchObject({ offerExpiresAt: deadline.toISOString() });
+    expect((err as ApiError).getResponse()).toMatchObject({
+      offerExpiresAt: deadline.toISOString(),
+    });
     expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
   });
 });
@@ -410,30 +563,55 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
   const now = new Date('2026-10-16T10:00:00Z');
   const past = new Date('2026-10-16T09:59:00Z');
 
-  const sweep = (state: { status: ErrandStatus; offer: { status: string; offerExpiresAt: Date | null } | null }) => {
-    const errand = { id: 'e-1', reference: 'NT-1', status: state.status } as Errand;
-    const offer = state.offer ? { id: 'a-1', errandId: 'e-1', runnerProfileId: 'rp-1', ...state.offer } : null;
+  const sweep = (state: {
+    status: ErrandStatus;
+    offer: { status: string; offerExpiresAt: Date | null } | null;
+  }) => {
+    const errand = {
+      id: 'e-1',
+      reference: 'NT-1',
+      status: state.status,
+    } as Errand;
+    const offer = state.offer
+      ? { id: 'a-1', errandId: 'e-1', runnerProfileId: 'rp-1', ...state.offer }
+      : null;
     const assignmentRepo = {
       findOne: vi.fn(() => Promise.resolve(offer)),
       update: vi.fn(() => Promise.resolve()),
     };
-    const history = { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) };
+    const history = {
+      create: vi.fn((r: object) => r),
+      save: vi.fn((r: object) => Promise.resolve(r)),
+    };
     const errandRepo = {
       findOne: vi.fn(() => Promise.resolve(errand)),
       save: vi.fn((e: Errand) => Promise.resolve(e)),
     };
     const manager = {
       getRepository: (entity: unknown) =>
-        entity === Errand ? errandRepo : entity === ErrandAssignment ? assignmentRepo : history,
+        entity === Errand
+          ? errandRepo
+          : entity === ErrandAssignment
+            ? assignmentRepo
+            : history,
     };
     const qb: Record<string, ReturnType<typeof vi.fn>> = {};
-    for (const m of ['select', 'innerJoin', 'where', 'andWhere', 'orderBy', 'limit']) {
+    for (const m of [
+      'select',
+      'innerJoin',
+      'where',
+      'andWhere',
+      'orderBy',
+      'limit',
+    ]) {
       qb[m] = vi.fn(() => qb);
     }
     qb.getRawMany = vi.fn(() => Promise.resolve([{ id: 'e-1' }]));
     const emit = vi.fn();
     const service = new ErrandsService(
-      { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
+      {
+        transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)),
+      } as never,
       { createQueryBuilder: vi.fn(() => qb) } as never,
       {} as never,
       {} as never,
@@ -449,18 +627,27 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
   };
 
   it('expires a lapsed open offer: assignment expired, task stays RUNNER_ASSIGNED, runner loses access (row 157)', async () => {
-    const { service, errand, assignmentRepo, errandRepo, history, emit } = sweep({
-      status: ErrandStatus.RUNNER_ASSIGNED,
-      offer: { status: 'assigned', offerExpiresAt: past },
-    });
+    const { service, errand, assignmentRepo, errandRepo, history, emit } =
+      sweep({
+        status: ErrandStatus.RUNNER_ASSIGNED,
+        offer: { status: 'assigned', offerExpiresAt: past },
+      });
     expect(await service.expireLapsedOffers(now)).toEqual(['e-1']);
-    expect(errandRepo.findOne).toHaveBeenCalledWith({ where: { id: 'e-1' }, lock: { mode: 'pessimistic_write' } });
-    expect(assignmentRepo.update).toHaveBeenCalledWith('a-1', { status: 'expired', decidedAt: now });
+    expect(errandRepo.findOne).toHaveBeenCalledWith({
+      where: { id: 'e-1' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(assignmentRepo.update).toHaveBeenCalledWith('a-1', {
+      status: 'expired',
+      decidedAt: now,
+    });
     expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
     expect(errandRepo.save).not.toHaveBeenCalled();
     expect(history.save).not.toHaveBeenCalled();
     await new Promise((r) => setImmediate(r));
-    expect(emit).toHaveBeenCalledWith('errand.access_changed', { errandId: 'e-1' });
+    expect(emit).toHaveBeenCalledWith('errand.access_changed', {
+      errandId: 'e-1',
+    });
     expect(emit).toHaveBeenCalledWith('assignment.expired', {
       errandId: 'e-1',
       reference: 'NT-1',
@@ -468,7 +655,10 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
       runnerProfileId: 'rp-1',
       offerExpiresAt: past.toISOString(),
     });
-    expect(emit).not.toHaveBeenCalledWith('errand.status_changed', expect.anything());
+    expect(emit).not.toHaveBeenCalledWith(
+      'errand.status_changed',
+      expect.anything(),
+    );
   });
 
   it('one errand failing is logged and skipped; the batch goes on (reviewer minor 1)', async () => {
@@ -477,22 +667,50 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
       offer: { status: 'assigned', offerExpiresAt: past },
     });
     assignmentRepo.update.mockRejectedValueOnce(new Error('deadlock detected'));
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     await expect(service.expireLapsedOffers(now)).resolves.toEqual([]);
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/e-1: Error \(deadlock detected\)/));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/e-1: Error \(deadlock detected\)/),
+    );
     warn.mockRestore();
   });
 
   it.each([
-    ['the task moved on (accepted)', ErrandStatus.RUNNER_EN_ROUTE, { status: 'accepted', offerExpiresAt: past }],
-    ['the task was cancelled meanwhile', ErrandStatus.CANCELLED, { status: 'assigned', offerExpiresAt: past }],
-    ['the offer was declined (no open assignment)', ErrandStatus.RUNNER_ASSIGNED, null],
-    ['the offer was accepted but the status not yet read', ErrandStatus.RUNNER_ASSIGNED, { status: 'accepted', offerExpiresAt: past }],
-    ['the deadline was pushed out (reassigned)', ErrandStatus.RUNNER_ASSIGNED, {
-      status: 'assigned',
-      offerExpiresAt: new Date('2026-10-16T10:10:00Z'),
-    }],
-    ['the offer has no deadline', ErrandStatus.RUNNER_ASSIGNED, { status: 'assigned', offerExpiresAt: null }],
+    [
+      'the task moved on (accepted)',
+      ErrandStatus.RUNNER_EN_ROUTE,
+      { status: 'accepted', offerExpiresAt: past },
+    ],
+    [
+      'the task was cancelled meanwhile',
+      ErrandStatus.CANCELLED,
+      { status: 'assigned', offerExpiresAt: past },
+    ],
+    [
+      'the offer was declined (no open assignment)',
+      ErrandStatus.RUNNER_ASSIGNED,
+      null,
+    ],
+    [
+      'the offer was accepted but the status not yet read',
+      ErrandStatus.RUNNER_ASSIGNED,
+      { status: 'accepted', offerExpiresAt: past },
+    ],
+    [
+      'the deadline was pushed out (reassigned)',
+      ErrandStatus.RUNNER_ASSIGNED,
+      {
+        status: 'assigned',
+        offerExpiresAt: new Date('2026-10-16T10:10:00Z'),
+      },
+    ],
+    [
+      'the offer has no deadline',
+      ErrandStatus.RUNNER_ASSIGNED,
+      { status: 'assigned', offerExpiresAt: null },
+    ],
   ])('skips when %s', async (_label, status, offer) => {
     const { service, errand, assignmentRepo } = sweep({ status, offer });
     expect(await service.expireLapsedOffers(now)).toEqual([]);
@@ -502,16 +720,24 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
 });
 
 describe('ErrandsService closes an open offer when the task ends before an accept (reviewer B1, row 183)', () => {
-  it.each([ErrandStatus.CANCELLED, ErrandStatus.EXPIRED])('RUNNER_ASSIGNED -> %s marks the open offer expired', async (to) => {
-    const built = build(ErrandStatus.RUNNER_ASSIGNED);
-    const assignments = built.manager.getRepository(ErrandAssignment) as { update: ReturnType<typeof vi.fn> };
-    const actor = to === ErrandStatus.CANCELLED ? { type: StatusHistoryActor.ADMIN, id: 'admin-1' } : { type: StatusHistoryActor.SYSTEM };
-    await built.service.transition('e-1', to, actor);
-    expect(assignments.update).toHaveBeenCalledWith(
-      { errandId: 'e-1', status: 'assigned' },
-      { status: 'expired', decidedAt: expect.any(Date) },
-    );
-  });
+  it.each([ErrandStatus.CANCELLED, ErrandStatus.EXPIRED])(
+    'RUNNER_ASSIGNED -> %s marks the open offer expired',
+    async (to) => {
+      const built = build(ErrandStatus.RUNNER_ASSIGNED);
+      const assignments = built.manager.getRepository(ErrandAssignment) as {
+        update: ReturnType<typeof vi.fn>;
+      };
+      const actor =
+        to === ErrandStatus.CANCELLED
+          ? { type: StatusHistoryActor.ADMIN, id: 'admin-1' }
+          : { type: StatusHistoryActor.SYSTEM };
+      await built.service.transition('e-1', to, actor);
+      expect(assignments.update).toHaveBeenCalledWith(
+        { errandId: 'e-1', status: 'assigned' },
+        { status: 'expired', decidedAt: expect.any(Date) },
+      );
+    },
+  );
 });
 
 describe('runner accept checks and busy (RA-3, RA-8, RA-20, row 185)', () => {
@@ -526,16 +752,23 @@ describe('runner accept checks and busy (RA-3, RA-8, RA-20, row 185)', () => {
       status: status === ErrandStatus.RUNNER_ASSIGNED ? 'assigned' : 'accepted',
       offerExpiresAt: new Date(Date.now() + 60_000),
     };
-    const qb = { where: vi.fn(), andWhere: vi.fn(), getOne: vi.fn(() => Promise.resolve(offer)) };
+    const qb = {
+      where: vi.fn(),
+      andWhere: vi.fn(),
+      getOne: vi.fn(() => Promise.resolve(offer)),
+    };
     qb.where.mockReturnValue(qb);
     qb.andWhere.mockReturnValue(qb);
     const repo = {
       createQueryBuilder: vi.fn(() => qb),
       findOne: vi.fn(() => Promise.resolve(offer)),
-      update: vi.fn((_id: unknown, patch: object) => Promise.resolve(Object.assign(offer, patch))),
+      update: vi.fn((_id: unknown, patch: object) =>
+        Promise.resolve(Object.assign(offer, patch)),
+      ),
     };
     const original = built.manager.getRepository;
-    built.manager.getRepository = (entity: unknown) => (entity === ErrandAssignment ? repo : original(entity));
+    built.manager.getRepository = (entity: unknown) =>
+      entity === ErrandAssignment ? repo : original(entity);
     return { ...built, offer };
   };
 
@@ -545,19 +778,30 @@ describe('runner accept checks and busy (RA-3, RA-8, RA-20, row 185)', () => {
     service.onRunnerAccept(guard);
     await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
     expect(runners.startJob).toHaveBeenCalledWith('rp-1', manager);
-    expect(guard).toHaveBeenCalledWith(manager, { errandId: 'e-1', runnerProfileId: 'rp-1' });
+    expect(guard).toHaveBeenCalledWith(manager, {
+      errandId: 'e-1',
+      runnerProfileId: 'rp-1',
+    });
   });
 
   it('a refused guard or start rolls the accept back (errand unchanged)', async () => {
     const a = withOffer();
-    a.service.onRunnerAccept(() => Promise.reject(new ApiError(409, 'purchase_limit_exceeded', 'over')));
-    await expect(a.service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner)).rejects.toMatchObject({
+    a.service.onRunnerAccept(() =>
+      Promise.reject(new ApiError(409, 'purchase_limit_exceeded', 'over')),
+    );
+    await expect(
+      a.service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner),
+    ).rejects.toMatchObject({
       code: 'purchase_limit_exceeded',
     });
     expect(a.errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
     const b = withOffer();
-    b.runners.startJob.mockRejectedValueOnce(new ApiError(403, 'runner_not_verified', 'no'));
-    await expect(b.service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner)).rejects.toMatchObject({
+    b.runners.startJob.mockRejectedValueOnce(
+      new ApiError(403, 'runner_not_verified', 'no'),
+    );
+    await expect(
+      b.service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner),
+    ).rejects.toMatchObject({
       code: 'runner_not_verified',
     });
     expect(b.errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
@@ -566,9 +810,14 @@ describe('runner accept checks and busy (RA-3, RA-8, RA-20, row 185)', () => {
   it('refuses the accept once the task deadline has passed: offer_expired with reason task_deadline_passed', async () => {
     const { service, errand, runners } = withOffer();
     errand.deadlineAt = new Date(Date.now() - 1_000);
-    const err = await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner).catch((e: unknown) => e);
+    const err = await service
+      .transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner)
+      .catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 409, code: 'offer_expired' });
-    expect((err as ApiError).getResponse()).toMatchObject({ reason: 'task_deadline_passed', deadlineAt: errand.deadlineAt.toISOString() });
+    expect((err as ApiError).getResponse()).toMatchObject({
+      reason: 'task_deadline_passed',
+      deadlineAt: errand.deadlineAt.toISOString(),
+    });
     expect(runners.startJob).not.toHaveBeenCalled();
   });
 
@@ -577,7 +826,11 @@ describe('runner accept checks and busy (RA-3, RA-8, RA-20, row 185)', () => {
     await moving.service.transition('e-1', ErrandStatus.ARRIVED, runner);
     expect(moving.runners.endJob).not.toHaveBeenCalled();
     const done = withOffer(ErrandStatus.IN_PROGRESS);
-    await done.service.transition('e-1', ErrandStatus.AWAITING_CUSTOMER, runner);
+    await done.service.transition(
+      'e-1',
+      ErrandStatus.AWAITING_CUSTOMER,
+      runner,
+    );
     expect(done.runners.endJob).toHaveBeenCalledWith('rp-1', done.manager);
     const failed = withOffer(ErrandStatus.RUNNER_EN_ROUTE);
     await failed.service.transition('e-1', ErrandStatus.FAILED, runner);
@@ -597,7 +850,13 @@ describe('ErrandsService.expirePastDeadline (row 185)', () => {
       limit: vi.fn(),
       getRawMany: vi.fn(() => Promise.resolve([{ id: 'e-1' }])),
     };
-    for (const k of ['select', 'where', 'andWhere', 'orderBy', 'limit'] as const) {
+    for (const k of [
+      'select',
+      'where',
+      'andWhere',
+      'orderBy',
+      'limit',
+    ] as const) {
       qb[k].mockReturnValue(qb);
     }
     const hook = vi.fn(() => Promise.resolve());
@@ -619,11 +878,33 @@ describe('ErrandsService.expirePastDeadline (row 185)', () => {
   };
 
   it('moves a RUNNER_ASSIGNED task past its deadline to EXPIRED (system), runs the termination hooks and closes the open offer', async () => {
-    const { service, errand, hook, repos } = sweep({ deadlineAt: new Date(Date.now() - 1_000) });
+    const { service, errand, hook, repos, emit } = sweep({
+      deadlineAt: new Date(Date.now() - 1_000),
+    });
     await expect(service.expirePastDeadline()).resolves.toEqual(['e-1']);
     expect(errand.status).toBe(ErrandStatus.EXPIRED);
-    expect(hook).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ to: ErrandStatus.EXPIRED, actor: 'system' }));
-    const assignments = repos.get(ErrandAssignment) as { update: ReturnType<typeof vi.fn> };
+    const history = repos.get(ErrandStatusHistory) as {
+      create: ReturnType<typeof vi.fn>;
+    };
+    expect(history.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toStatus: 'EXPIRED',
+        actorType: 'system',
+        note: 'Customer deadline passed',
+      }),
+    );
+    await new Promise((r) => setImmediate(r));
+    expect(emit).toHaveBeenCalledWith(
+      'errand.deadline_expired',
+      expect.objectContaining({ errandId: 'e-1', closedOffer: null }),
+    );
+    expect(hook).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ to: ErrandStatus.EXPIRED, actor: 'system' }),
+    );
+    const assignments = repos.get(ErrandAssignment) as {
+      update: ReturnType<typeof vi.fn>;
+    };
     expect(assignments.update).toHaveBeenCalledWith(
       { errandId: 'e-1', status: 'assigned' },
       expect.objectContaining({ status: 'expired' }),
@@ -631,7 +912,10 @@ describe('ErrandsService.expirePastDeadline (row 185)', () => {
   });
 
   it('skips a task accepted or re-dated meanwhile (re-checked under the lock)', async () => {
-    const accepted = sweep({ status: ErrandStatus.RUNNER_EN_ROUTE, deadlineAt: new Date(Date.now() - 1_000) });
+    const accepted = sweep({
+      status: ErrandStatus.RUNNER_EN_ROUTE,
+      deadlineAt: new Date(Date.now() - 1_000),
+    });
     await expect(accepted.service.expirePastDeadline()).resolves.toEqual([]);
     expect(accepted.errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
     const later = sweep({ deadlineAt: new Date(Date.now() + 60_000) });
@@ -639,7 +923,9 @@ describe('ErrandsService.expirePastDeadline (row 185)', () => {
   });
 
   it('one failing errand never stops the batch', async () => {
-    const { service, hook } = sweep({ deadlineAt: new Date(Date.now() - 1_000) });
+    const { service, hook } = sweep({
+      deadlineAt: new Date(Date.now() - 1_000),
+    });
     hook.mockRejectedValueOnce(new Error('refund review failed'));
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     await expect(service.expirePastDeadline()).resolves.toEqual([]);
