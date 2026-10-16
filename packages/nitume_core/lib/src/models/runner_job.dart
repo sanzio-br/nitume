@@ -192,9 +192,7 @@ class RunnerJobView {
       runnerNotes: parseOptionalString(json['runnerNotes']),
       runnerFee: parseDecimalOrZero(json['runnerFee']),
       itemAmount: parseDecimal(json['itemAmount']),
-      merchantRoute: MerchantRoute.tryFromWire(
-        json['merchantRoute'] as String?,
-      ),
+      merchantRoute: MerchantRoute.tryFromWire(json['merchantRoute']),
       requiredPurchase: parseDecimalOrZero(json['requiredPurchase']),
       maxPurchaseAdvance: parseDecimalOrZero(json['maxPurchaseAdvance']),
       overPurchaseLimit: json['overPurchaseLimit'] == true,

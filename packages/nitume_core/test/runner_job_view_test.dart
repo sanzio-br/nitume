@@ -146,6 +146,23 @@ void main() {
       expect(j.firstPoint, isNull);
     });
 
+    test('a non-string merchantRoute reads as null', () {
+      final j = RunnerJobView.fromJson(_job({'merchantRoute': 1}));
+      expect(j.merchantRoute, isNull);
+      expect(MerchantRoute.tryFromWire(true), isNull);
+      expect(RunnerVerificationType.tryFromWire(3), isNull);
+    });
+
+    test('an unknown status, category or urgency still throws', () {
+      for (final bad in [
+        {'status': 'NOPE'},
+        {'category': 'shopping'},
+        {'urgency': 'whenever'},
+      ]) {
+        expect(() => RunnerJobView.fromJson(_job(bad)), throwsA(anything));
+      }
+    });
+
     group('offerEndsAt', () {
       test('is the offer expiry when it comes first', () {
         expect(RunnerJobView.fromJson(_job()).offerEndsAt, offerExpiry);

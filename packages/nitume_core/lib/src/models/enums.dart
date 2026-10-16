@@ -309,7 +309,7 @@ enum MerchantRoute {
       _fromWire(values, (e) => e.wire, v);
 
   /// `null` for unknown values.
-  static MerchantRoute? tryFromWire(String? v) {
+  static MerchantRoute? tryFromWire(Object? v) {
     for (final e in values) {
       if (e.wire == v) return e;
     }

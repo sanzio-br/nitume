@@ -132,6 +132,7 @@ void main() {
             'verified': 'yes',
             'checks': [
               {'type': 'retina', 'side': 'left', 'status': 'maybe'},
+              {'type': 7, 'side': 1, 'status': false},
               'junk',
             ],
           },
@@ -143,10 +144,12 @@ void main() {
         ServiceAreaOption(id: 'kisauni', name: 'Kisauni'),
       ]);
       expect(me.isVerified, isFalse);
-      final c = me.verification.checks.single;
-      expect(c.type, isNull);
-      expect(c.side, isNull);
-      expect(c.status, VerificationCheckStatus.missing);
+      expect(me.verification.checks, hasLength(2));
+      for (final c in me.verification.checks) {
+        expect(c.type, isNull);
+        expect(c.side, isNull);
+        expect(c.status, VerificationCheckStatus.missing);
+      }
     });
 
     test('VerificationCheckStatus wire values', () {
@@ -180,10 +183,10 @@ void main() {
       final me = await repo.setAvailability(RunnerAvailability.online);
       expect(a.bodies.single, {'availability': 'online'});
       expect(me.isOnline, isTrue);
-      expect(
-        () => repo.setAvailability(RunnerAvailability.busy),
-        throwsArgumentError,
-      );
+      // A failed Future, not a synchronous throw.
+      final busy = repo.setAvailability(RunnerAvailability.busy);
+      expect(busy, isA<Future<RunnerMe>>());
+      await expectLater(busy, throwsArgumentError);
       expect(a.calls, hasLength(1));
     });
 
@@ -244,6 +247,19 @@ void main() {
       expect(RunnerAccountRepository.maxSkills, 5);
     });
 
+    test('setSkills accepts exactly 5 skills', () async {
+      final a = FakeApiAdapter({
+        'PUT /runners/me/skills': (
+          200,
+          [for (final s in RunnerSkill.offered) s.wire],
+        ),
+      });
+      final saved = await RunnerAccountRepository(fakeClient(a))
+          .setSkills(RunnerSkill.offered);
+      expect(saved, RunnerSkill.offered);
+      expect((a.bodies.single as Map)['skills'], hasLength(5));
+    });
+
     test('setSkills maps skill_not_offered', () async {
       final a = FakeApiAdapter({
         'PUT /runners/me/skills': (
@@ -302,6 +318,23 @@ void main() {
         () => repo.setServiceAreas([for (var i = 0; i < 51; i++) 'a$i']),
         throwsArgumentError,
       );
+    });
+
+    test('setServiceAreas accepts exactly 50 areas', () async {
+      final ids = [for (var i = 0; i < 50; i++) 'a$i'];
+      final a = FakeApiAdapter({
+        'PUT /runners/me/service-areas': (
+          200,
+          [
+            for (final id in ids) {'id': id, 'name': id.toUpperCase()},
+          ],
+        ),
+      });
+      final saved = await RunnerAccountRepository(fakeClient(a))
+          .setServiceAreas(ids);
+      expect(saved, hasLength(50));
+      expect((a.bodies.single as Map)['areas'], ids);
+      expect(RunnerAccountRepository.maxServiceAreas, 50);
     });
 
     test('setServiceAreas maps service_area_unknown', () async {

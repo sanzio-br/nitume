@@ -30,7 +30,7 @@ class RunnerAccountRepository {
 
   /// `PATCH /runners/me/availability` `{ availability }` → the updated
   /// [RunnerMe] (RA-8, RA-20). Only [RunnerAvailability.online] or
-  /// [RunnerAvailability.offline]: `busy` is server-set and throws
+  /// [RunnerAvailability.offline]: `busy` is server-set and fails with
   /// [ArgumentError] before sending. Sending `online` while busy changes
   /// nothing.
   ///
@@ -39,7 +39,7 @@ class RunnerAccountRepository {
   /// - 403 [ApiErrorCodes.runnerNotVerified]: going online before every
   ///   required check is approved (`NitumeApiException.verificationSummary`);
   /// - 409 [ApiErrorCodes.runnerOnActiveJob]: going offline while busy.
-  Future<RunnerMe> setAvailability(RunnerAvailability availability) {
+  Future<RunnerMe> setAvailability(RunnerAvailability availability) async {
     if (availability == RunnerAvailability.busy) {
       throw ArgumentError.value(
         availability,
@@ -47,12 +47,12 @@ class RunnerAccountRepository {
         'Busy is set by the server',
       );
     }
-    return _api
-        .patchMap(
-          '/runners/me/availability',
-          data: {'availability': availability.wire},
-        )
-        .then(RunnerMe.fromJson);
+    return RunnerMe.fromJson(
+      await _api.patchMap(
+        '/runners/me/availability',
+        data: {'availability': availability.wire},
+      ),
+    );
   }
 
   /// `GET /runners/me/verifications`, newest first.

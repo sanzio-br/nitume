@@ -14,7 +14,7 @@ enum RunnerVerificationType {
   final String wire;
 
   /// `null` for values this build does not know.
-  static RunnerVerificationType? tryFromWire(String? v) {
+  static RunnerVerificationType? tryFromWire(Object? v) {
     for (final e in values) {
       if (e.wire == v) return e;
     }
@@ -145,7 +145,7 @@ class RunnerVerificationCheck {
 
   factory RunnerVerificationCheck.fromJson(Map<String, dynamic> json) =>
       RunnerVerificationCheck(
-        type: RunnerVerificationType.tryFromWire(json['type'] as String?),
+        type: RunnerVerificationType.tryFromWire(json['type']),
         side: VerificationDocumentSide.tryFromWire(json['side']),
         status:
             VerificationCheckStatus.tryFromWire(json['status']) ??
