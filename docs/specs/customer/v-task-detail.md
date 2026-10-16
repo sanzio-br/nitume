@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 482–506 (`#v-task-detail`, overlay)
 - Shared conventions: `_shared.md` (OA-n §0, fees §8)
-- Implementation: `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` on branch `feat/customer-integrations`
-- Status: partial (row 176, 2026-10-16: RUNNER_ASSIGNED now reads `Finding a runner` and shows no runner; see Current vs design. Earlier: re-audit 2026-10-16, `feat/customer-expired-next-action` @ `9978345`, EXPIRED copy and `Start a new task` PASS)
+- Implementation: `apps/customer_app/lib/src/screens/task/task_detail_screen.dart` on branch `feat/customer-finding-a-runner`
+- Status: matches-design (re-audit 2026-10-16, round 10, `feat/customer-finding-a-runner` @ `3b5a8e4`: rows 176, 182, 183 PASS)
 
 ## Purpose
 Record of one task in any state: status, reference and time, runner, evidence, payment, **refund status** (row 54), the next action, and a way to report a problem.
@@ -104,6 +104,8 @@ States (proposed):
 - Q4: Which verification level counts as "Verified"? Default `2_id_verified` or higher.
 
 ## Current vs design
+Re-audit 2026-10-16, customer round 10, `feat/customer-finding-a-runner` @ `3b5a8e4` (app `99e6839`, `4e21f10`, `575be0d`, `f4f735e`; core `153509e`, `21cfa5f`): **PASS**, no findings. Items 1–2 of the row-176 update below are closed: summary chip `Finding a runner`; the `Runner` section is hidden in PAYMENT_CONFIRMED and RUNNER_ASSIGNED even with an offered runner in the response, and shows from RUNNER_EN_ROUTE. Details: `docs/audits/customer-gap-report.md` → "Re-audit 2026-10-16: customer round 10".
+
 Spec update 2026-10-16 (round 10, row 176), `main`:
 1. blocker (core-ui CC-176): the summary chip reads `Runner assigned` in RUNNER_ASSIGNED (`statusPresentation`, `packages/nitume_core/lib/src/widgets/status_presentation.dart:25-26`); must read `Finding a runner`. No app change once core changes.
 2. blocker (flutter-customer; row 183 decided): the `Runner` section shows whenever the API returns a runner, which during RUNNER_ASSIGNED is the **offered** runner (API `ACTIVE_ASSIGNMENT_STATUSES` includes `assigned`, `errands.service.ts:89-92`). Hide it in PAYMENT_CONFIRMED and RUNNER_ASSIGNED.

@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_customer_app.html` lines 257–284 (`#v-track`, root tab view)
 - Shared conventions: `_shared.md` (OA-n §0)
-- Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-owner-answers`
-- Status: partial (row 176, 2026-10-16: RUNNER_ASSIGNED is shown as `Finding a runner` with no runner; see Current vs design. Earlier: re-audit 2026-10-16, `feat/customer-expired-next-action` @ `9978345`, EXPIRED copy and `Start a new task` PASS)
+- Implementation: `apps/customer_app/lib/src/screens/shell/track_tab.dart` (+ `widgets/schematic_map.dart` as the `LiveTrackingMap` body) on branch `feat/customer-finding-a-runner`
+- Status: matches-design (re-audit 2026-10-16, round 10, `feat/customer-finding-a-runner` @ `3b5a8e4`: rows 176, 182, 183 PASS)
 
 ## Purpose
 Watch the assigned runner on a map, see ETA and runner identity, follow the status timeline, and act on what the task needs (price change, item payment, evidence review).
@@ -103,6 +103,8 @@ States (proposed):
 - Q4: Show the action buttons only when relevant (default) or always (mockup).
 
 ## Current vs design
+Re-audit 2026-10-16, customer round 10, `feat/customer-finding-a-runner` @ `3b5a8e4` (app `99e6839`, `4e21f10`, `575be0d`, `f4f735e`; core `153509e`, `21cfa5f`): **PASS**, no findings. Items 1–3 of the row-176 update below are closed: chip `Finding a runner` (info), `En route` amber unchanged; RUNNER_ASSIGNED joins PAYMENT_CONFIRMED as "finding" and leaves `runnerWindow`, so no runner card, marker or ETA even when the API sends them or a live `location:update` arrives; timeline uses `customerTimelineTitle()` (RUNNER_ASSIGNED rows hidden, RUNNER_EN_ROUTE `Runner assigned` with the time in Fira Code, next step `Runner assigned` / `Arrived`). Details: `docs/audits/customer-gap-report.md` → "Re-audit 2026-10-16: customer round 10".
+
 Spec update 2026-10-16 (round 10, row 176), `main`:
 1. blocker (core-ui CC-176): chip and runner-card chip read `Runner assigned` in RUNNER_ASSIGNED (`status_presentation.dart:25-26`); must be `Finding a runner`.
 2. blocker (flutter-customer; row 183 decided): `track_tab.dart:454` treats only PAYMENT_CONFIRMED as finding (`finding = status == ErrandStatus.paymentConfirmed`) and `runnerWindow` (`:23-28`) includes RUNNER_ASSIGNED, so the offered runner's card, marker and ETA show before acceptance. Treat RUNNER_ASSIGNED as finding and drop it from `runnerWindow`.
