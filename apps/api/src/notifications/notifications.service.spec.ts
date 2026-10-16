@@ -71,7 +71,6 @@ describe('NotificationEventType (A-14)', () => {
       ErrandStatus.REQUESTED,
       ErrandStatus.ACCEPTED,
       ErrandStatus.PAYMENT_CONFIRMED,
-      ErrandStatus.EXPIRED,
       ErrandStatus.CONFIRMED,
       ErrandStatus.SETTLED,
     ]) {
@@ -115,6 +114,36 @@ describe('NotificationEventType (A-14)', () => {
     expect(
       copyFor({ kind: 'refund', errandId: 'e', refundId: 'r', status: 'pending_review', refundAmount: null }),
     ).toBeNull();
+  });
+});
+
+describe('errand.EXPIRED customer notification (owner 2026-10-16)', () => {
+  it('has the decided copy, with the refund sentence only when a review was opened', () => {
+    expect(
+      copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.EXPIRED, refundReviewOpened: true }),
+    ).toEqual({
+      eventType: 'errand.EXPIRED',
+      title: 'No runner available · Expired',
+      body: "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready.",
+    });
+    expect(
+      copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.EXPIRED, refundReviewOpened: false }),
+    ).toMatchObject({
+      body: "No runner accepted your task in time, so it has ended. You can start a new task whenever you're ready.",
+    });
+  });
+
+  it('is queued from errand.expired (refund known), not from the bare status change', async () => {
+    const { service, queue } = build();
+    await service.onStatusChanged({ errandId: 'e-1', status: ErrandStatus.EXPIRED, actor: 'system' });
+    expect(queue.add).not.toHaveBeenCalled();
+    await service.onExpired({ errandId: 'e-1', refundReviewOpened: true });
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
+      kind: 'errand_status',
+      errandId: 'e-1',
+      status: ErrandStatus.EXPIRED,
+      refundReviewOpened: true,
+    });
   });
 });
 

@@ -512,4 +512,42 @@ describe('Owner answers 8 (e2e)', () => {
       expect(gone.body).toMatchObject({ code: 'verification_document_purged' });
     });
   });
+
+  describe('errand.EXPIRED customer notification (owner 2026-10-16)', () => {
+    const feedOf = async (userId: string, attempts = 30): Promise<{ title: string; body: string; errandId: string }[]> => {
+      for (let i = 0; i < attempts; i += 1) {
+        const rows = (await db().query(
+          `SELECT title, body, "errandId" FROM "notifications" WHERE "userId" = $1 AND "eventType" = 'errand.EXPIRED'`,
+          [userId],
+        )) as { title: string; body: string; errandId: string }[];
+        if (rows.length > 0) {
+          return rows;
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return [];
+    };
+
+    it('a paid task that expires tells the customer a refund is being reviewed', async () => {
+      const { customer, errand } = await paidAndAssigned();
+      await db().query(
+        `UPDATE "errand_assignments" SET "offerExpiresAt" = now() - interval '1 second' WHERE "errandId" = $1`,
+        [errand.id],
+      );
+      expect(await app.get(ErrandsService).expireLapsedOffers()).toContain(errand.id);
+      const feed = await feedOf(customer.id);
+      expect(feed).toEqual([
+        {
+          errandId: errand.id,
+          title: 'No runner available · Expired',
+          body: "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready.",
+        },
+      ]);
+      const api = await http().get('/api/v1/notifications').set(bearer(customer.token)).expect(200);
+      const items = (api.body.items ?? api.body) as { eventType: string; errandId: string; readAt: unknown }[];
+      expect(items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ eventType: 'errand.EXPIRED', errandId: errand.id, readAt: null })]),
+      );
+    });
+  });
 });

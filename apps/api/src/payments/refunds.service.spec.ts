@@ -171,6 +171,24 @@ describe('RefundsService', () => {
     }
   });
 
+  it('EXPIRED: announces the expiry once the refund review is known (owner 2026-10-16)', async () => {
+    for (const [paid, opened] of [
+      ['300.00', true],
+      ['0', false],
+    ] as const) {
+      const b = build({ paid, status: ErrandStatus.EXPIRED });
+      const events = { emit: vi.fn() };
+      (b.service as unknown as { events: typeof events }).events = events;
+      await b.service.onStatusChanged({ errandId: 'e-1', status: ErrandStatus.EXPIRED, from: ErrandStatus.RUNNER_ASSIGNED });
+      expect(events.emit).toHaveBeenCalledWith('errand.expired', { errandId: 'e-1', refundReviewOpened: opened });
+    }
+    const failed = build({ paid: '300.00', status: ErrandStatus.FAILED });
+    const events = { emit: vi.fn() };
+    (failed.service as unknown as { events: typeof events }).events = events;
+    await failed.service.onStatusChanged({ errandId: 'e-1', status: ErrandStatus.FAILED, from: ErrandStatus.RUNNER_EN_ROUTE });
+    expect(events.emit).not.toHaveBeenCalledWith('errand.expired', expect.anything());
+  });
+
   it('does not open a review for an unpaid cancellation', async () => {
     const { runHook, table, query } = build({ paid: '0' });
     await runHook({ errandId: 'e-1', from: ErrandStatus.QUOTED, actor: 'customer' });
