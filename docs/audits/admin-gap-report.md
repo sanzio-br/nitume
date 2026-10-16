@@ -594,15 +594,33 @@ Spec-only update; no admin code read beyond `feat/admin-runner-payouts` @ `04837
 - `drawer-runner-purchase-limit.md`: confirm body `It applies to new offers and new purchases. To pay one purchase above the limit, use the exception on that reimbursement.`; no entry from the payout drawer.
 - `p-payout-requests.md`: row 146 decided: `requestedAmount` and `paidAmount` stored and shown separately (table `Paid` column, read-only rows, activity), below-request caption and confirm, request closes `paid`; AQ-11 closed. Row 143: no payout time anywhere.
 - `p-runner-payouts.md`, `drawer-dispute-outcome.md`: notes only (rows 146, 140).
-- `_shared.md`: decision rows 140–144, 146; N-17 (two amounts), N-20 (offer expiry → EXPIRED at once, row 141), new N-21 (purchase-limit exception API); §8 AQ table.
+- `_shared.md`: decision rows 140–144, 146; N-17 (two amounts), N-20 (offer expiry; round 8: admin-offer lapse EXPIRED at once only as built, pending row 157; auto-offers fall through, row 150), new N-21 (purchase-limit exception API); §8 AQ table.
 
 ### drawer-runner-payout: conflict with the build (`feat/admin-runner-payouts`)
 14. **blocker (when N-21 lands)** — `runner-payout-drawer.ts:219-222`, `:300-335`, `:1124-1132`. Design (row 142): an ordinary approval up to `approvalCeiling`, plus an explicit, recorded exception up to `overLimitCeiling` with a required reason (§5 2b, §7, §10). Code: only the ordinary path. Fix: add the exception action, the note field (reuse the `app-exposure-override-field` pattern as a shared component, no copy-paste), the label/confirm changes and the read-only rows once the API exposes `overLimitCeiling`, `purchaseLimitOverride` and `purchaseLimitOverrideNote`.
 
 ### Builder lists
-- api-contract: N-21 / RA-25 (purchase-limit exception, storage per the owner's answer); N-17 / RA-15 with `requestedAmount` + `paidAmount`; N-20 / RA-26 (offer expiry → EXPIRED at once).
+- api-contract: N-21 / RA-25 (purchase-limit exception, storage per the owner's answer); N-17 / RA-15 with `requestedAmount` + `paidAmount`; N-20 / RA-26 (offer expiry as amended in round 8 below).
 - web-parity: item 14 after N-21; `p-payout-requests` after N-17.
 
 ### Questions for the owner (new)
-- Row 142 follow-ups: storage of the purchase-limit exception; whether a later limit change lifts the ordinary ceiling of lines already in review (recommended no).
-- Row 141 follow-up: does "EXPIRED at once" also remove the auto-offer fall-through in System Design §3.4?
+- Row 142 follow-ups → answered 2026-10-16 by rows 151 (storage in `task_exposure_overrides`) and 152 (no: the limit stored at creation applies).
+- Row 141 follow-up → answered 2026-10-16 by row 150 (auto-offers keep the fall-through); admin-offer lapse is row 157, open.
+
+## Owner answers round 8 (rows 150–156, 2026-10-16), applied on `docs/owner-answers-8-specs`
+
+Spec-only update. Row 157 open. Full list, API items and the System Design edits (replacing the round-7 list): `docs/audits/runner-gap-report.md` §11.
+
+### What changed in the admin specs
+- `_shared.md`: decision rows 150–157; N-20 rewritten (admin-offer lapse held as built pending row 157; auto-offer fall-through row 150; decline row 155; null deadline row 156; `errand.EXPIRED` customer notification); N-21 now carries the row-151 storage and record fields (`errandId`, `assignmentId`, `runnerProfileId`, `limitAtTime`, `requestedAmount`, `approvedAmount`, `amountAbove`, `note`, `createdBy`, `createdAt`) and the row-152 stored limit (`purchaseLimitAtCreation`, `currentPurchaseLimit`); N-17 notes row 153; new N-22 (OTP email says 5 minutes); §8 open list reduced to rows 145/157.
+- `drawer-runner-payout.md`: Amounts show `Purchase limit for this line` (stored limit) and, when different, `Runner's current limit` with a caption; 2b A-11 and confirm use the stored limit, Fira Code spans stated; §7 read-only exception rows add `Requested`, `Approved`, `Recorded`; Data and open questions updated (rows 151/152 answered).
+- `drawer-runner-purchase-limit.md`: A-08 body `It applies to new offers and to reimbursements created from now on.`; open question closed (row 152).
+- `p-payout-requests.md`: row 153 noted; Fira Code spans stated in the §2 and §4 captions; §4 caption templated `KSh {requestedAmount − paidAmount}`.
+
+### drawer-runner-payout: conflict with the build (`feat/admin-runner-payouts`)
+15. **blocker (when N-21 lands)** — `runner-payout-drawer.ts:213-218`. Design (row 152): the purchase limit shown and used is the line's stored `purchaseLimitAtCreation` (plus `Runner's current limit` when different). Code: `runner.maxPurchaseAdvance` (current limit) labelled `Runner's purchase limit`. Fix: read the line's stored limit once the API exposes it; rename the label; add the second row and caption.
+Item 14 stands, with the §7 rows extended by `Requested`, `Approved`, `Recorded`.
+
+### Builder lists
+- api-contract: N-20 / RA-26 as amended; N-21 / RA-25 with the row-151 record and the row-152 column; N-17 / RA-15 (table approved); N-22 OTP copy; customer `errand.EXPIRED`.
+- web-parity: items 14 and 15 after N-21.
