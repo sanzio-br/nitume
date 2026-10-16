@@ -260,41 +260,49 @@ Reviewed READY; merged into main 2026-10-12 with merge commits (every commit com
 - Migration 1790101100000 down is a no-op (Postgres can't drop enum values).
 
 
-## Owner answers rounds 7–8: rows 140–156 (2026-10-16) — stacked on the round-6 branches
+## Owner answers rounds 6–8: rows 103–164 (merged into main 2026-10-16, not pushed)
 
-Merge order: feat/api-owner-answers-6 → feat/api-owner-answers-7; docs/owner-answers-6-runner-specs →
-docs/owner-answers-7-specs → docs/owner-answers-8-specs → docs/customer-expired-audit → then
-feat/customer-expired-next-action (its specs live on the docs stack).
+Merged in reviewed order (merge commits): docs/owner-answers-6-runner-specs (25209e7),
+fix/angular-admin-owner-answers-6 (99feb23), feat/runner-scaffold (493e260), feat/api-owner-answers-6
+(e4257d5), feat/api-owner-answers-7 (4512f1e), feat/api-owner-answers-8 (feb1dcc),
+docs/owner-answers-7-specs (cb57ace), docs/owner-answers-8-specs (4b57454), docs/customer-expired-audit
+(ab8c40c), feat/customer-expired-next-action (2985291), feat/admin-runner-payouts (19fdc32; conflict in
+refund-drawer.ts / refund-labels.ts resolved by web-parity in fc35709).
 
-**Reviewed (READY)**
+**What is on main now**
 
-- `feat/api-owner-answers-7` (0549c5c, a83d179, f595637, 7165eb1, eeb9cc5, fb31f1c): admin offers
-  expire after 10 min (`offerExpiresAt`, 409 `offer_expired`), 30 s maintenance sweep moves the task
-  RUNNER_ASSIGNED → EXPIRED (row 141, held as built pending row 157) and opens the refund review for
-  paid tasks; status transitions serialised with a row lock (accept/cancel vs sweep race); accepting
-  marks the assignment `accepted`; tests for rows 140–142. 442 unit, 59 e2e (one file at a time).
-- `docs/owner-answers-7-specs` (493f133, e2112ae, 2800da5, fb84a36): rows 140–144, 146 in runner/admin
-  specs. Partly superseded by round 8 — merge together.
-- `docs/owner-answers-8-specs` (96d69c0 … 5748303): rows 150–156, customer EXPIRED notification,
-  OTP 5-minute copy; round-7 review findings closed.
-- `feat/customer-expired-next-action` (b624803, eb50eaf, 9978345) + audit `docs/customer-expired-audit`
-  (eb86f5c): EXPIRED copy and "Start a new task" on v-track and v-task-detail; design-auditor PASS;
-  122 tests. Copy waits on row 158 (recommended before merge).
+- API: runner payout ledger and reimbursement rules (round 6); combined exposure cap with audited
+  override; admin offers expire after 10 min with 409 `offer_expired`; status transitions serialised by
+  a row lock; purchase limit stored per line; above-limit approval only with a recorded reason;
+  runner payout requests (paid below request closes PAID); private Cloudinary ID/selfie storage with
+  signed admin links (≤ 300 s), access log and daily purge; customer `errand.EXPIRED` notification;
+  OTP email/SMS say 5 minutes.
+- Admin: runner payouts page and drawer, refund drawer task-cap card and override form, round-5 fields
+  required.
+- Runner app: scaffold (auth, shell, name capture). Customer app: EXPIRED copy + "Start a new task".
+- Specs and audits for rows 103–156; 11 System Design edits listed (runner-gap-report §11), not applied.
 
-- `feat/api-owner-answers-8` (8b7bdb1 … ee16a60, merge 9957495): row 152 limit stored per line; rows
-  142/151 above-limit approval with a recorded reason in task_exposure_overrides; row 153 payout
-  requests (paid below request closes PAID); row 154 private Cloudinary ID/selfie storage, signed admin
-  links ≤ 300 s, access log, daily purge (365 days default); errand.EXPIRED customer notification; OTP
-  email + SMS 5-minute copy. 4 migrations (1790102100000–1790102400000). 475 unit, 65 e2e. Merge after
-  feat/api-owner-answers-7. Defaults pending owner rows 158–164.
+**Verified on main:** API tsc clean, 475 unit tests; migrations 43/43 applied on local `nitume`;
+nitume_core 319, nitume_runner_device 6, customer_app 122, runner_app 26 tests, analyze clean; admin tsc
+clean, 220 tests, production build OK. API e2e not re-run on main (65/65 on the branch, one file at a time).
+
+**Owner answers 157–164 not yet built (rework needed on main)**
+
+- 157: an admin offer that lapses keeps the task RUNNER_ASSIGNED for reassignment (main still expires it).
+- 158: owner copy for OTP SMS, ID/selfie privacy line, customer EXPIRED notification (main has the
+  earlier proposed copy).
+- 159: payout minimum KES 500 via config (main defaults to 0).
+- 161: retention clock events (main counts assignments/offers/disputes).
+- 162: verify Cloudinary backups/versioning; separate restricted API key.
+- 163: reject oversized ID files before permanent storage; client-side check.
 
 **Open / deferred**
 
-- Owner rows 85 (PayHero), 145, 147, 148, 157, 158–164.
-- API follow-ups from round-8 review (minors 1–6, 9, 10), not dispatched.
-- System Design edits (11, runner-gap-report §11 on docs/owner-answers-8-specs) wait on row 147.
-- Auto-offer fall-through (row 150) needs the RA-1 offer model; not built.
-- Customer: explicit errand.EXPIRED notification route + core-ui enum once the API sends it.
-- Admin: drawer-runner-payout findings 14, 15 and p-payout-requests after the round-8 API.
+- Owner rows 85 (PayHero, incl. reconciliation), 147 (System Design edits), 148 (row-136 cap scope),
+  149 (path_provider), 165 (row 164 re-ask). 147 and 148 were open when their branches merged.
+- API review minors (idempotency replay race, reversed payouts in available amount, refuse console
+  storage in production, magic-byte check, purge SQL placement, upload-limit source, Postman).
+- Auto-offer fall-through (row 150) needs the RA-1 offer model.
+- Admin: N-21 exception UI, stored-limit display (findings 14, 15), payout requests page, verifications
+  panel. Runner: payout and onboarding screens. Customer: explicit errand.EXPIRED route.
 - e2e suite flaky in parallel (pre-existing); run with --no-file-parallelism.
-- Shared local DB `nitume` has round-6 and round-8 migrations applied (ahead of main).
