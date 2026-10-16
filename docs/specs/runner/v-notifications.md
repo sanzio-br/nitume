@@ -45,7 +45,7 @@ Written 2026-10-13 for api-contract (RA-6). The API writes these strings into th
 
 | `eventType` | When (recipient: the runner) | Title | Body | Opens |
 |---|---|---|---|---|
-| `job.offered` | An offer is made to this runner (row 113) | `New job offer` | `{task} · KSh {runnerFee}. Accept by {expiresAt, h:mm a}.` | `v-job-detail` (if no longer offered: snackbar `That offer is no longer available.`) |
+| `job.offered` | An offer is made to this runner (row 113) | `New job offer` | `{task} · KSh {runnerFee}. Accept by {offerExpiresAt, h:mm a}.` | `v-job-detail` (if no longer offered: snackbar `That offer is no longer available.`) |
 | `job.offer_withdrawn` | The offer is withdrawn before the runner answered (customer cancelled, ops reassigned) | `Offer no longer available` | `The offer for {task} has been withdrawn.` | none (feed only; no push) |
 | `job.offer_expired` | The offer lapsed without an answer | `Offer ended` | `The offer for {task} ended before you accepted it.` | none (feed only; no push) |
 | `errand.CANCELLED` | A task the runner holds is cancelled | `Job cancelled` | `{task} was cancelled, so there's no runner fee.[ If you already bought the item, upload the receipt within 24 hours.]` (bracket: `send_to_runner` with an item amount, row 129) | `v-active` (ended card) |

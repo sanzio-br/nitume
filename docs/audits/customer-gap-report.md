@@ -760,3 +760,23 @@ No other customer code reads `RefundTrigger` (`rg` over `apps/customer_app/lib`)
 | 111 | api-contract | A reversed, not-yet-re-sent payout stays committed at the decided amount against the cumulative cap | none; matches the `approved` customer view already built (`committedAmountOf`, `refunds.service.ts:120`) |
 
 No customer screen changes status. No builder work. SQ-12 … SQ-16, AQ-9 and AQ-10 above are closed.
+
+## Owner answers round 8 (2026-10-16): EXPIRED notification and OTP copy, applied on `docs/owner-answers-8-specs`
+
+Spec-only update. Source: BOARD Needs row "api-contract (round 7) | design-auditor" (owner decided 2026-10-16) and rows 150, 155, 157 (when a task expires).
+
+### What changed
+- `v-notifications.md`: new `errand.EXPIRED` event (title `No runner available · Expired`; body with/without refund review; no refund promise; payload and deep link to `v-task-detail`).
+- `v-track.md`: EXPIRED card text `No runner accepted your task in time.` plus C-04 `Start a new task` → `v-new-category`.
+- `v-task-detail.md`: EXPIRED primary action `Start a new task`; summary line `No runner accepted your task in time.` when there is no refund review.
+- `_shared.md`: §0 decision row; §6 EXPIRED row (when it happens, next action, notification).
+- `v-auth-otp.md` (and runner `v-auth-otp.md`): OTP messages say `Your verification code expires in 5 minutes.`; TTL 300 s unchanged.
+
+### Conflicts with built code (v-track and v-task-detail set to `partial`; minors for flutter-customer)
+1. **minor** — Track EXPIRED card copy: design `No runner accepted your task in time.` + `Start a new task`; code (`track_tab.dart:410` on `main`) shows the round-4 text `No runner was available in time.` with `View task` only. Fix in the status card.
+2. **minor** — Task detail EXPIRED: design primary `Start a new task` and the no-review line; code shows no action for EXPIRED. Fix in the action table.
+3. Notifications: `errand.EXPIRED` routes to Task detail already through the unknown-type fallback (`Nav.openNotification`); add an explicit route and a test once the API sends it.
+
+### api-contract
+- `errand.EXPIRED` customer notification (contract in `v-notifications.md`).
+- OTP copy: `mail.service.ts:23` and `africas-talking-otp-sender.ts:33` say 10 minutes; change to 5 minutes (email wording fixed by the owner; SMS wording proposed).

@@ -63,7 +63,8 @@ Heading announced on open; amounts read as currency; CTA above the safe area.
 
 ## Decisions (owner, 2026-10-16)
 - Row 140: a dispute decided in the runner's favour keeps the runner fee and item reimbursement payable as normal (COMPLETED → CONFIRMED, then the CONFIRMED rows above).
-- Row 142: the claim form keeps the ordinary cap min(item amount paid to Nitume, `max_purchase_advance`); only ops can approve above the limit, through an audited override; no runner copy for it.
+- Row 142: the claim form keeps the ordinary cap min(item amount paid to Nitume, `max_purchase_advance`); only ops can approve above the limit, through an audited override (stored in `task_exposure_overrides`, row 151); no runner copy for it.
+- Row 152 (2026-10-16): the `max_purchase_advance` in that cap is the value stored when the reimbursement obligation was created; a later change of the runner's limit never changes an existing claim or line. Any limit figure this screen shows for a line (e.g. a refused claim's cap) is the line's stored limit, never the current `v-profile` value.
 - Row 143: the `SETTLED` / `paid` lines state status only, never a payout time.
 
 ## Questions

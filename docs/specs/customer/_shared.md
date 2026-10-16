@@ -107,6 +107,7 @@ All answered. Specs no longer say "pending row N" for these.
 | 100 | Payout corrections/reversals are separate audit records; the original receipt is immutable. The customer sees only the refund status and amount of the latest effective payout, never corrections, reasons or admin notes | §11, v-task-detail |
 | 101 | Round-4 breaking API changes accepted (dispute `resolvedBy: null` for customers; no `payoutReference` in the customer refund view; price changes outside Buy For Me / Get It For Me answer 400). The app was updated in round 4 | (no change) |
 | 102 | Paid tasks ending CANCELLED, EXPIRED or FAILED open a refund **review** (not an automatic refund) | §11, v-task-detail |
+| owner 2026-10-16 (Needs row, round 7) | EXPIRED customer notification: explain no runner accepted in time, give the next action, no refund promise (a paid task gets a review, not a guaranteed refund). OTP messages say `Your verification code expires in 5 minutes.` (TTL 300 s unchanged) | v-notifications, v-track, v-task-detail, v-auth-otp |
 | 104–108 | Runner reimbursement and payout ledger (owner 2026-10-13): reimbursement payable at CONFIRMED; missing/mismatched receipt → ops review, capped at the item amount paid to Nitume; verified item spend reimbursed on CANCELLED/FAILED without a runner fee; runner payout ledger table approved; purchases limited by `max_purchase_advance`. No customer copy changes: the customer never sees the runner's payouts | (none) |
 | 109 | Only a **re-sent** refund payout notifies the customer; payout corrections and reversals do not by default (was AQ-9) | §11, v-notifications |
 | 110 | A payout correction never records an amount above the refund ceiling (admin rule, was AQ-10) | (none) |
@@ -298,7 +299,7 @@ State machine: `docs/design/Nitume_System_Design.md` §3.3, updated 2026-10-08 t
 | SETTLED | Completed | success (system-only, row 35 answered) |
 | CANCELLED | Cancelled | **danger (red), OA-13** |
 | FAILED | Failed | danger |
-| EXPIRED | Expired | info (not drawn; nothing for the customer to act on) |
+| EXPIRED | Expired | info (not drawn). Reached when no eligible runner accepted in time (rows 141, 150, 155; row 157 open for admin offers). Next action `Start a new task` (`v-track`, `v-task-detail`); the customer is told by the `errand.EXPIRED` notification (`v-notifications.md`, owner 2026-10-16) |
 | DISPUTED | Disputed | danger |
 
 "Active" set (Home "In progress", Track): REQUESTED, QUOTED, ACCEPTED, PAYMENT_CONFIRMED, RUNNER_ASSIGNED, RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER.

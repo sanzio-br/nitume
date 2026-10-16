@@ -44,13 +44,15 @@ Proposed:
 - Upload error (tile): `Not uploaded` + `Retry`; screen notice C-40 `Check your connection and try again.`
 - Rejected (from pending): C-40 notice above the tiles with the reviewer's reason only if the API returns a runner-safe reason (RA-7; default: generic `Your ID photos couldn't be verified. Upload clear photos of both sides.`).
 - Image quality hint under the drop zone, 11.5 slate-600: `Make sure all four corners are visible and the text is sharp.`
+- Privacy line (row 154, proposed), 11.5 slate-600 Fira Sans, under the hint: `Only our verification team can see these photos. We keep them only as long as needed, then delete them.` Deliberately **no period** (`12 months`): retention is config-driven (row 154) and the sentence must stay true if the setting changes. Never `forever`, `permanently` or a fixed number of months.
 
 ## Numeric fields (Fira Code)
 - `Step 1 of 2`.
 
 ## Data
 - Upload each side to **restricted ID storage** (system design §10: separate from general evidence, access logged, never shown to customers or other runners). **Missing** (RA-7): no upload endpoint for verification documents; `POST /runners/me/verifications` takes only `{ verificationType, documentS3Key }` (one key), so front + back need two keys or two records. Proposed: `POST /runners/me/verifications/government_id/documents` (multipart or base64, `side: front|back`) → `{ documentKey }`, then `POST /runners/me/verifications` `{ verificationType: 'government_id', documentKeys: [front, back] }`. Storage: row 125 (restricted, private, signed admin-only URLs, access logged).
-- Re-submission after rejection creates a new `pending` record (the old one stays for audit, within the row-144 retention period, then it is securely deleted like any other ID image).
+- Re-submission after rejection creates a new `pending` record (the old one stays for audit, within the retention period, then it is purged like any other ID image).
+- Storage and retention (row 154, design approved 2026-10-16): private objects on the existing object-storage provider (no public URLs; access only through short-lived signed URLs from a logged, admin-authorised endpoint); retention config-driven, initially 12 months after the runner's last relevant verification/activity event; a daily purge deletes the objects and unnecessary metadata and records the purge; uploads, views and purges are logged (RA-7). No runner screen reads the retention setting.
 - `GET /runners/me/verifications` (exists) to show existing uploads.
 - No socket events.
 - Camera package: `image_picker` (row 124).
@@ -63,7 +65,8 @@ Proposed:
 
 ## Decisions (owner, 2026-10-13)
 - Row 125 (RQ-13): restricted private storage, separate folder/bucket, no public URLs, signed admin-only URLs, access logged.
-- Row 144 (RQ-25, owner 2026-10-16): images are kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; never indefinitely. The retention period is a configurable setting (final legal period not set yet); access stays restricted and logged for the whole period. Screen impact: no copy may say the photos are kept permanently; the device copy is deleted after upload (unchanged). API impact: RA-7 (retention setting, secure deletion job, access log).
+- Row 144 (RQ-25, owner 2026-10-16): images are kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; never indefinitely. The retention period is a configurable setting (initially 12 months after the last relevant verification/activity event, row 154); access stays restricted and logged for the whole period. Screen impact: no copy may say the photos are kept permanently; the device copy is deleted after upload (unchanged). API impact: RA-7 (retention setting, secure deletion job, access log).
+- Row 154 (owner 2026-10-16): design approved; existing object-storage provider with private objects + signed URLs; initial retention 12 months after the last relevant verification/activity event, config-driven; daily purge of objects and unnecessary metadata; access signed, admin-authorised and logged. Copy choice: the privacy line above states no period (flagged in the HANDOFF).
 - Row 126 (RQ-14): manual review of ID, selfie, M-Pesa name and every other required check; verified only when all are approved. No automated liveness vendor.
 - Row 124 (RQ-12): camera packages approved.
 
