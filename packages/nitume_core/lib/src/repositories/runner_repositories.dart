@@ -11,6 +11,7 @@ import '../models/errand_activity.dart';
 import '../models/errand_details.dart';
 import '../models/json_utils.dart';
 import '../models/runner_account.dart';
+import '../models/runner_job.dart';
 import 'errand_activity_repositories.dart';
 import 'errand_repository.dart';
 
@@ -216,12 +217,14 @@ class RunnerAccountRepository {
   }
 }
 
-/// R-19. The runner's job: list, detail, runner transitions, notes,
-/// evidence and price-change requests. Endpoints that exist on `main`.
+/// R-19. The runner's offers and jobs: offers, the runner job view,
+/// accept / decline, runner transitions, notes, evidence and price-change
+/// requests.
 ///
-/// The detail is the customer-shaped `Errand` until the runner projection
-/// lands (RA-2): **never show [Errand.feeTotal] or any customer fee to a
-/// runner**. The runner fee, item amount and route are not available yet.
+/// Read the job through [job] / [offers] ([RunnerJobView], RA-2): it has the
+/// runner fee, item amount and route and no customer fees. [get] and
+/// [activeJobs] return the customer-shaped `Errand`: **never show
+/// [Errand.feeTotal] or any customer fee to a runner**.
 class RunnerJobsRepository {
   RunnerJobsRepository(this._api)
     : _errands = ErrandRepository(_api),
@@ -270,6 +273,69 @@ class RunnerJobsRepository {
     ErrandStatus.inProgress,
     ErrandStatus.awaitingCustomer,
   };
+
+  /// Largest page `GET /runners/me/offers` returns.
+  static const maxOffersPageSize = 50;
+
+  /// `GET /runners/me/offers`: open offers, newest first (RA-1). [limit] is
+  /// 1–[maxOffersPageSize] (API default 20); pass the previous page's
+  /// [RunnerOffersPage.nextCursor] as [cursor]. Offers past
+  /// [RunnerJobView.offerEndsAt] are not listed. Returned whatever the
+  /// runner's availability: hide them while offline.
+  ///
+  /// API error: 403 [ApiErrorCodes.runnerNotVerified] (`verification`).
+  Future<RunnerOffersPage> offers({int? limit, String? cursor}) async {
+    if (limit != null && (limit < 1 || limit > maxOffersPageSize)) {
+      throw RangeError.range(limit, 1, maxOffersPageSize, 'limit');
+    }
+    final data = await _api.getMap(
+      '/runners/me/offers',
+      query: {'limit': ?limit, 'cursor': ?cursor},
+    );
+    return RunnerOffersPage.fromJson(data);
+  }
+
+  /// `GET /runners/me/jobs/:errandId`: the runner's view of an offered or
+  /// held job (RA-2). 403 when the runner does not hold the current
+  /// assignment (also after a decline or a lapsed offer).
+  Future<RunnerJobView> job(String errandId) =>
+      _api.getMap('/runners/me/jobs/$errandId').then(RunnerJobView.fromJson);
+
+  /// `POST /errands/:id/accept`: RUNNER_ASSIGNED → RUNNER_EN_ROUTE (row
+  /// 113); the runner becomes busy. Returns the job and the history row.
+  ///
+  /// API errors (`NitumeApiException.code`):
+  /// - 403 [ApiErrorCodes.runnerNotVerified] (`verificationSummary`); a 403
+  ///   without a code when the offer is not this runner's;
+  /// - 409 [ApiErrorCodes.offerExpired] (`offerExpiresAt`; past the task
+  ///   deadline also `reason` task_deadline_passed and `deadlineAt`, see
+  ///   `isTaskDeadlinePassed`);
+  /// - 409 [ApiErrorCodes.runnerOffline], [ApiErrorCodes.runnerBusy];
+  /// - 409 [ApiErrorCodes.purchaseLimitExceeded] (`requiredPurchase`,
+  ///   `maxPurchaseAdvance`);
+  /// - 409 [ApiErrorCodes.illegalTransition] (the task left
+  ///   RUNNER_ASSIGNED).
+  Future<OfferAcceptResult> accept(String errandId) => _api
+      .postMap('/errands/$errandId/accept')
+      .then(OfferAcceptResult.fromJson);
+
+  /// `POST /errands/:id/decline` `{ reason? }` (rows 108, 113, 134). Without
+  /// [reason] it is a general decline; with
+  /// [OfferDeclineReason.overPurchaseLimit] only while
+  /// [RunnerJobView.overPurchaseLimit]. The task stays RUNNER_ASSIGNED for
+  /// another runner.
+  ///
+  /// API errors: 400 [ApiErrorCodes.declineReasonInvalid] (`allowed`); 403
+  /// not the offered runner; 409 [ApiErrorCodes.offerExpired]; 409
+  /// [ApiErrorCodes.assignmentNotDeclinable] (`status`); 409
+  /// [ApiErrorCodes.purchaseWithinLimit] (`requiredPurchase`,
+  /// `maxPurchaseAdvance`).
+  Future<OfferDeclineResult> decline(
+    String errandId, {
+    OfferDeclineReason? reason,
+  }) => _api
+      .postMap('/errands/$errandId/decline', data: {'reason': ?reason?.wire})
+      .then(OfferDeclineResult.fromJson);
 
   /// The runner's current job(s): `GET /errands?status=…` (runner-scoped
   /// to the current assignment by the API).
