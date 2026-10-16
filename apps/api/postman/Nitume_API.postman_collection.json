@@ -887,7 +887,7 @@
       "name": "7_Matching",
       "item": [
         {
-          "name": "Admin assign",
+          "name": "Admin assign (offer open 10 min: assignment.offerExpiresAt, rows 114, 141)",
           "request": {
             "method": "POST",
             "header": [
@@ -906,7 +906,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"candidateRunnerIds\": [\"{{runner_id}}\"]\n}",
+              "raw": "{\n  \"runnerProfileId\": \"{{runner_id}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -922,6 +922,47 @@
                 "errands",
                 "{{errand_id}}",
                 "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner accept offer (RUNNER_EN_ROUTE; 409 offer_expired { offerExpiresAt } after the deadline)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"RUNNER_EN_ROUTE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "status"
               ]
             }
           },

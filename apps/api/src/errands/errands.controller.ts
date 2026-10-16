@@ -193,6 +193,14 @@ export class ErrandsController {
    * Generic transition endpoint. Access is enforced by the state machine's
    * actor check: a customer can only trigger customer-actor transitions, a
    * runner only runner-actor transitions, and an admin any admin-actor one.
+   * Transitions on one errand are serialised (row lock): a request that loses
+   * a race re-reads the committed status and gets 409 `illegal_transition`
+   * (`from`, `to`).
+   *
+   * Runner accept = RUNNER_ASSIGNED -> RUNNER_EN_ROUTE (rows 113, 141): the
+   * assignment becomes `accepted`. After `assignment.offerExpiresAt` it is
+   * refused with 409 `{ code: 'offer_expired', offerExpiresAt }` (ISO), even
+   * before the expiry job has moved the task to EXPIRED.
    */
   @Patch(':id/status')
   @HttpCode(200)

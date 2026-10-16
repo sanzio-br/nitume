@@ -257,9 +257,47 @@ describe('Owner answers 7 (e2e)', () => {
     expect(await app.get(ErrandsService).expireLapsedOffers()).not.toContain(errand.id);
   });
 
+  it('an accept and an admin cancel racing the expiry sweep wait for it and are refused (reviewer B1)', async () => {
+    const { admin, runner, errand } = await paidAndAssigned();
+    await lapse(errand.id);
+    const racers: Promise<request.Response>[] = [];
+    app.get(ErrandsService).onTerminated(async (_manager, change) => {
+      if (change.errandId !== errand.id || racers.length > 0) {
+        return;
+      }
+      // The sweep holds the errand row lock here and has not committed yet.
+      const send = (actor: Actor, to: string) =>
+        http()
+          .patch(`/api/v1/errands/${errand.id}/status`)
+          .set(bearer(actor.token))
+          .send({ to })
+          .then((r) => r);
+      racers.push(send(runner, 'RUNNER_EN_ROUTE'), send(admin, 'CANCELLED'));
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    expect(await app.get(ErrandsService).expireLapsedOffers()).toContain(errand.id);
+    const [accept, cancel] = await Promise.all(racers);
+    expect([accept.status, accept.body.code]).toEqual([409, 'illegal_transition']);
+    expect([cancel.status, cancel.body.code]).toEqual([409, 'illegal_transition']);
+    const fromAssigned = (await db().query(
+      `SELECT "toStatus" FROM "errand_status_history" WHERE "errandId" = $1 AND "fromStatus" = 'RUNNER_ASSIGNED'`,
+      [errand.id],
+    )) as { toStatus: string }[];
+    expect(fromAssigned).toEqual([{ toStatus: 'EXPIRED' }]);
+    const row = (await db().query('SELECT status FROM "errands" WHERE id = $1', [errand.id])) as { status: string }[];
+    expect(row[0].status).toBe('EXPIRED');
+    expect(await assignmentOf(errand.id)).toMatchObject({ status: 'expired' });
+    const reviews = (await db().query('SELECT trigger FROM "refund_reviews" WHERE "errandId" = $1', [
+      errand.id,
+    ])) as { trigger: string }[];
+    expect(reviews).toEqual([{ trigger: 'expired_after_payment' }]);
+  });
+
   it('an offer accepted in time is not expired by the sweep (row 141)', async () => {
     const { runner, errand } = await paidAndAssigned();
     await setStatus(runner, errand.id, 'RUNNER_EN_ROUTE');
+    const accepted = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(runner.token)).expect(200);
+    expect(accepted.body.assignment).toMatchObject({ status: 'accepted' });
     await lapse(errand.id);
     expect(await app.get(ErrandsService).expireLapsedOffers()).not.toContain(errand.id);
     const res = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(runner.token)).expect(200);
