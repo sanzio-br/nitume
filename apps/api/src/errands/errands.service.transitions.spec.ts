@@ -14,6 +14,7 @@ const build = (status: ErrandStatus) => {
   const repos = new Map<unknown, unknown>([
     [Errand, { findOne: vi.fn(() => Promise.resolve(errand)), save: vi.fn((e: Errand) => Promise.resolve(e)) }],
     [CustomerProfile, { findOne: vi.fn(() => Promise.resolve({ id: 'cust-1' })) }],
+    [ErrandAssignment, { update: vi.fn(() => Promise.resolve({ affected: 0 })) }],
     [
       ErrandStatusHistory,
       { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) },
@@ -484,5 +485,18 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 
     expect(await service.expireLapsedOffers(now)).toEqual([]);
     expect(assignmentRepo.update).not.toHaveBeenCalled();
     expect(errand.status).toBe(status);
+  });
+});
+
+describe('ErrandsService closes an open offer when the task ends before an accept (reviewer B1, row 183)', () => {
+  it.each([ErrandStatus.CANCELLED, ErrandStatus.EXPIRED])('RUNNER_ASSIGNED -> %s marks the open offer expired', async (to) => {
+    const built = build(ErrandStatus.RUNNER_ASSIGNED);
+    const assignments = built.manager.getRepository(ErrandAssignment) as { update: ReturnType<typeof vi.fn> };
+    const actor = to === ErrandStatus.CANCELLED ? { type: StatusHistoryActor.ADMIN, id: 'admin-1' } : { type: StatusHistoryActor.SYSTEM };
+    await built.service.transition('e-1', to, actor);
+    expect(assignments.update).toHaveBeenCalledWith(
+      { errandId: 'e-1', status: 'assigned' },
+      { status: 'expired', decidedAt: expect.any(Date) },
+    );
   });
 });

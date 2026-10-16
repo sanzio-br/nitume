@@ -720,12 +720,32 @@ export class ErrandsService {
     const summaries = await this.runners.publicSummaries(
       [...latest.values()].map((a) => a.runnerProfileId),
     );
+    // Row 183 (reviewer B1): for a customer, an assignment not marked
+    // `accepted` is shown only when the history proves the runner accepted
+    // (RUNNER_ASSIGNED -> RUNNER_EN_ROUTE; assignments accepted before
+    // round 7 stayed `assigned`). Never because the task merely moved on
+    // (cancelled or expired before any accept).
+    const unproven = customer
+      ? [...latest.values()].filter((a) => a.status !== AssignmentStatus.ACCEPTED).map((a) => a.errandId)
+      : [];
+    const acceptedInHistory = new Set(
+      unproven.length === 0
+        ? []
+        : (
+            await this.history.find({
+              where: {
+                errandId: In(unproven),
+                fromStatus: ErrandStatus.RUNNER_ASSIGNED,
+                toStatus: ErrandStatus.RUNNER_EN_ROUTE,
+              },
+              select: { errandId: true },
+            })
+          ).map((h) => h.errandId),
+    );
     return errands.map((errand) => {
       const a = latest.get(errand.id);
       const assignment: ErrandAssignmentView | null =
-        // Assignments accepted before round 7 stayed `assigned`: past
-        // RUNNER_ASSIGNED the runner has accepted whatever the row says.
-        a && (!customer || a.status === AssignmentStatus.ACCEPTED || errand.status !== ErrandStatus.RUNNER_ASSIGNED)
+        a && (!customer || a.status === AssignmentStatus.ACCEPTED || acceptedInHistory.has(errand.id))
           ? toAssignmentView(a, summaries.get(a.runnerProfileId) ?? null)
           : null;
       return Object.assign(errand, {
@@ -1205,6 +1225,16 @@ export class ErrandsService {
       for (const hook of this.terminationHooks) {
         await hook(manager, { errandId, from: fromStatus, to, actor: actor.type, guard });
       }
+    }
+
+    // Reviewer B1 (row 183): a task leaving RUNNER_ASSIGNED for CANCELLED or
+    // EXPIRED closes its open offer as `expired` (the runner never declined),
+    // so no view or room keeps an unaccepted runner on an ended task. Runs
+    // after the termination hooks so they still see the task as it was.
+    if (fromStatus === ErrandStatus.RUNNER_ASSIGNED && (to === ErrandStatus.CANCELLED || to === ErrandStatus.EXPIRED)) {
+      await manager
+        .getRepository(ErrandAssignment)
+        .update({ errandId, status: AssignmentStatus.ASSIGNED }, { status: AssignmentStatus.EXPIRED, decidedAt: new Date() });
     }
 
     if (to === ErrandStatus.CONFIRMED) {

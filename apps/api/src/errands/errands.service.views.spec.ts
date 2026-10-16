@@ -36,6 +36,7 @@ const build = (opts: {
   items?: object[];
   quotes?: object[];
   latest?: ErrandAssignment[];
+  acceptedInHistory?: string[];
 }) => {
   const locationsRepo = { find: vi.fn(() => Promise.resolve(opts.locations ?? [])) };
   const quotesRepo = { find: vi.fn(() => Promise.resolve(opts.quotes ?? [])) };
@@ -72,12 +73,15 @@ const build = (opts: {
       ),
     ),
   };
+  const historyRepo = {
+    find: vi.fn(() => Promise.resolve((opts.acceptedInHistory ?? []).map((errandId) => ({ errandId })))),
+  };
   const service = new ErrandsService(
     {} as never,
     errandsRepo as never,
     locationsRepo as never,
     itemsRepo as never,
-    {} as never,
+    historyRepo as never,
     assignmentsRepo as never,
     {} as never,
     {} as never,
@@ -157,6 +161,18 @@ describe('ErrandsService errand views (A-4)', () => {
     expect((await open.service.getDetail('e-1', { role: 'runner', userId: 'u-r' })).assignment?.status).toBe(
       AssignmentStatus.ASSIGNED,
     );
+    // Reviewer B1: an ended task (cancelled before the accept) still shows no runner.
+    const cancelled = build({ errands: [errand('e-1')], assignments: [assignment({})] });
+    Object.assign(cancelled.service, {
+      getById: vi.fn(() => Promise.resolve(Object.assign(errand('e-1'), { status: ErrandStatus.CANCELLED }))),
+    });
+    expect((await cancelled.service.getDetail('e-1', customerViewer)).assignment).toBeNull();
+    // A pre-round-7 accept (row still `assigned`) shows once the history proves it.
+    const legacy = build({ errands: [errand('e-1')], assignments: [assignment({})], acceptedInHistory: ['e-1'] });
+    Object.assign(legacy.service, {
+      getById: vi.fn(() => Promise.resolve(Object.assign(errand('e-1'), { status: ErrandStatus.ARRIVED }))),
+    });
+    expect((await legacy.service.getDetail('e-1', customerViewer)).assignment?.runner?.id).toBe('runner-1');
     const accepted = build({ errands: [errand('e-1')], assignments: [assignment({ status: AssignmentStatus.ACCEPTED })] });
     Object.assign(accepted.service, {
       getById: vi.fn(() => Promise.resolve(Object.assign(errand('e-1'), { status: ErrandStatus.RUNNER_EN_ROUTE }))),

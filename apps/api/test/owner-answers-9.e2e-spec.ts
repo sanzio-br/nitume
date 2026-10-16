@@ -790,6 +790,24 @@ describe('Owner answers 9 (e2e)', () => {
       expect(after.body.assignment).toMatchObject({ status: 'accepted', runner: expect.objectContaining({ id: runner.profileId }) });
     });
 
+    it('a task cancelled before the accept never shows the offered runner to the customer (reviewer B1)', async () => {
+      const { customer, admin, runner, errand } = await paidAndAssigned();
+      await setStatus(admin, errand.id, 'CANCELLED');
+      const detail = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
+      expect([detail.body.status, detail.body.assignment]).toEqual(['CANCELLED', null]);
+      const list = await http().get('/api/v1/errands?limit=100').set(bearer(customer.token)).expect(200);
+      const item = list.body.items.find((e: { id: string }) => e.id === errand.id);
+      expect(item.assignment).toBeNull();
+      expect(JSON.stringify(detail.body)).not.toContain(runner.profileId as string);
+      const [row] = await db().query(
+        `SELECT status::text AS status, "decidedAt" FROM "errand_assignments" WHERE "errandId" = $1`,
+        [errand.id],
+      );
+      expect(row).toMatchObject({ status: 'expired', decidedAt: expect.any(Date) });
+      const adminView = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(admin.token)).expect(200);
+      expect(adminView.body.lastAssignment).toMatchObject({ status: 'expired' });
+    });
+
     it('a runner who declined or let the offer lapse cannot be offered the task again (row 178)', async () => {
       const { admin, runner, errand } = await paidAndAssigned();
       await db().query('UPDATE "runner_profiles" SET "maxPurchaseAdvance" = 100 WHERE id = $1', [runner.profileId]);
