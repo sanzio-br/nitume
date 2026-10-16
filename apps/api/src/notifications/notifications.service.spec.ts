@@ -144,13 +144,25 @@ describe('errand.EXPIRED customer notification (row 158)', () => {
 describe('NotificationsService queue fan-out (row 26)', () => {
   it('only enqueues on a status change (no inline write)', async () => {
     const { service, queue, notifications } = build();
-    await service.onStatusChanged({ errandId: 'e-1', status: ErrandStatus.RUNNER_ASSIGNED, actor: 'admin' });
+    await service.onStatusChanged({ errandId: 'e-1', status: ErrandStatus.RUNNER_EN_ROUTE, actor: 'runner' });
     expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
       kind: 'errand_status',
       errandId: 'e-1',
-      status: ErrandStatus.RUNNER_ASSIGNED,
+      status: ErrandStatus.RUNNER_EN_ROUTE,
     });
     expect(notifications.save).not.toHaveBeenCalled();
+  });
+
+  it('sends the customer nothing on RUNNER_ASSIGNED; "Runner assigned" once accepted (rows 182-184)', async () => {
+    const { service, queue } = build();
+    await service.onStatusChanged({ errandId: 'e-1', status: ErrandStatus.RUNNER_ASSIGNED, actor: 'admin' });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.RUNNER_ASSIGNED })).toBeNull();
+    expect(copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.RUNNER_EN_ROUTE })).toEqual({
+      eventType: 'errand.RUNNER_EN_ROUTE',
+      title: 'Runner assigned · Runner En Route',
+      body: 'A runner accepted your task and is on the way.',
+    });
   });
 
   it('queues a refund feed job unless the change is admin-only (AQ-9, row 100)', async () => {
@@ -172,12 +184,12 @@ describe('NotificationsService queue fan-out (row 26)', () => {
 
   it('feed job writes the row for the owner and queues one push job per row', async () => {
     const { service, notifications, queue } = build();
-    await service.deliverFeed({ kind: 'errand_status', errandId: 'e-1', status: ErrandStatus.RUNNER_ASSIGNED });
+    await service.deliverFeed({ kind: 'errand_status', errandId: 'e-1', status: ErrandStatus.RUNNER_EN_ROUTE });
     expect(notifications.create).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'u-1',
         errandId: 'e-1',
-        eventType: NotificationEventType.ERRAND_RUNNER_ASSIGNED,
+        eventType: NotificationEventType.ERRAND_RUNNER_EN_ROUTE,
       }),
     );
     expect(queue.add).toHaveBeenCalledWith(PUSH_JOB, { notificationId: 'n-1' }, { jobId: 'push-n-1' });

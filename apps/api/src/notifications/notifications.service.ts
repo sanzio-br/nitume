@@ -172,7 +172,8 @@ export class NotificationsService {
   @OnEvent(ERrandStatusChangedEvent, { async: true })
   async onStatusChanged(event: StatusChangedEvent): Promise<void> {
     // EXPIRED is queued from `errand.expired`, once the refund review is known.
-    if (!notificationEventTypeFor(event.status) || event.status === ErrandStatus.EXPIRED) {
+    // Statuses without customer copy (RUNNER_ASSIGNED, rows 182, 183) send nothing.
+    if (!notificationEventTypeFor(event.status) || event.status === ErrandStatus.EXPIRED || !statusCopy(event.status)) {
       return;
     }
     await this.enqueue({ kind: 'errand_status', errandId: event.errandId, status: event.status });
@@ -523,10 +524,10 @@ const statusCopy = (status: ErrandStatus): { title: string; body: string } | nul
       };
     case ErrandStatus.QUOTED:
       return { title: 'Your task has a quote', body: 'A runner can now accept your task. Review the price to continue.' };
-    case ErrandStatus.RUNNER_ASSIGNED:
-      return { title: 'Runner assigned', body: 'A runner has been assigned to your task.' };
+    // Rows 182, 184 (owner, 2026-10-16): nothing on RUNNER_ASSIGNED (only an
+    // offer exists, row 183); "Runner assigned" once the runner accepts.
     case ErrandStatus.RUNNER_EN_ROUTE:
-      return { title: 'Runner en route', body: 'Your runner is on the way to complete the task.' };
+      return { title: 'Runner assigned', body: 'A runner accepted your task and is on the way.' };
     case ErrandStatus.ARRIVED:
       return { title: 'Runner arrived', body: 'Your runner has reached the location.' };
     case ErrandStatus.IN_PROGRESS:

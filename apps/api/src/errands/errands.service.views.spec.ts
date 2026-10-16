@@ -146,6 +146,27 @@ describe('ErrandsService errand views (A-4)', () => {
     expect(view.lastAssignment).toMatchObject({ id: 'asg-0', status: AssignmentStatus.DECLINED });
   });
 
+  it('a customer sees no runner until the offer is accepted (row 183)', async () => {
+    const customerViewer = { role: 'customer', userId: 'u-1' };
+    const open = build({ errands: [errand('e-1')], assignments: [assignment({})] });
+    Object.assign(open.service, { getById: vi.fn(() => Promise.resolve(errand('e-1'))) });
+    expect((await open.service.getDetail('e-1', customerViewer)).assignment).toBeNull();
+    // Admin and runner views still carry the open offer.
+    expect((await open.service.getDetail('e-1', admin)).assignment?.status).toBe(AssignmentStatus.ASSIGNED);
+    Object.assign(open.service, { getById: vi.fn(() => Promise.resolve(errand('e-1'))) });
+    expect((await open.service.getDetail('e-1', { role: 'runner', userId: 'u-r' })).assignment?.status).toBe(
+      AssignmentStatus.ASSIGNED,
+    );
+    const accepted = build({ errands: [errand('e-1')], assignments: [assignment({ status: AssignmentStatus.ACCEPTED })] });
+    Object.assign(accepted.service, {
+      getById: vi.fn(() => Promise.resolve(Object.assign(errand('e-1'), { status: ErrandStatus.RUNNER_EN_ROUTE }))),
+    });
+    expect((await accepted.service.getDetail('e-1', customerViewer)).assignment).toMatchObject({
+      status: AssignmentStatus.ACCEPTED,
+      runner: expect.objectContaining({ id: 'runner-1' }),
+    });
+  });
+
   it('non-admin detail carries no assignment history', async () => {
     const { service } = build({ errands: [errand('e-1')], assignments: [assignment({})] });
     Object.assign(service, { getById: vi.fn(() => Promise.resolve(errand('e-1'))) });

@@ -116,7 +116,20 @@ describe('Owner answers 9 (e2e)', () => {
       for (const { table_name } of tables) {
         await ds.query(`DELETE FROM "${table_name}" WHERE "errandId" = ANY($1)`, [errandIds]);
       }
-      await ds.query('DELETE FROM "errands" WHERE id = ANY($1)', [errandIds]);
+      // A queued feed job (this or another API process sharing Redis) may
+      // still write a notification for these errands: clear and retry.
+      for (let attempt = 0; ; attempt += 1) {
+        await ds.query('DELETE FROM "notifications" WHERE "errandId" = ANY($1)', [errandIds]);
+        try {
+          await ds.query('DELETE FROM "errands" WHERE id = ANY($1)', [errandIds]);
+          break;
+        } catch (err) {
+          if (attempt >= 5) {
+            throw err;
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
     }
     if (userIds.length > 0) {
       await ds.query('DELETE FROM "notifications" WHERE "userId" = ANY($1)', [userIds]);
@@ -716,6 +729,95 @@ describe('Owner answers 9 (e2e)', () => {
       const over = await requestPayout(runner, 600, undefined, 400);
       expect(over.body).toMatchObject({ code: 'payout_exceeds_available', availableAmount: '800.00', requestableAmount: '500.00' });
       await requestPayout(runner, 500);
+    });
+  });
+
+  describe('rows 178, 182-184: offers stay private until accepted; no re-offer', () => {
+    it('the customer sees no runner and gets no notice until the runner accepts; then "Runner assigned"', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN, 'Dispatch');
+      const runner = await makeUser(UserRole.RUNNER);
+      const errand = await createErrand(customer, buyForMe);
+      await submitAndQuote(customer, admin, errand.id);
+      await setStatus(customer, errand.id, 'ACCEPTED');
+      await pay(customer, errand.id, { merchantRoute: 'send_to_runner' });
+      const queue = app.get<Queue>(getQueueToken(NOTIFICATIONS_QUEUE));
+      const original = queue.add.bind(queue);
+      const captured: FeedJob[] = [];
+      const spy = vi.spyOn(queue, 'add').mockImplementation(((name: string, data: FeedJob, opts?: unknown) => {
+        if (name === FEED_JOB && data.errandId === errand.id) {
+          captured.push(data);
+          return Promise.resolve({ id: 'captured' } as never);
+        }
+        return original(name, data, opts as never);
+      }) as never);
+      try {
+        await http()
+          .post(`/api/v1/errands/${errand.id}/assign`)
+          .set(bearer(admin.token))
+          .send({ runnerProfileId: runner.profileId })
+          .expect(201);
+        await new Promise((r) => setTimeout(r, 300));
+        expect(captured).toEqual([]);
+
+        const mine = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
+        expect([mine.body.status, mine.body.assignment]).toEqual(['RUNNER_ASSIGNED', null]);
+        const list = await http().get('/api/v1/errands?limit=100').set(bearer(customer.token)).expect(200);
+        expect(list.body.items.find((e: { id: string }) => e.id === errand.id).assignment).toBeNull();
+        const tracking = await http().get(`/api/v1/errands/${errand.id}/tracking`).set(bearer(customer.token)).expect(200);
+        expect(tracking.body).toMatchObject({ live: false, runner: null, runnerLocation: null });
+        const runnerView = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(runner.token)).expect(200);
+        expect(runnerView.body.assignment).toMatchObject({ status: 'assigned' });
+        const adminView = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(admin.token)).expect(200);
+        expect(adminView.body.assignment).toMatchObject({ status: 'assigned', runner: expect.objectContaining({ id: runner.profileId }) });
+
+        await setStatus(runner, errand.id, 'RUNNER_EN_ROUTE');
+        for (let i = 0; i < 30 && captured.length === 0; i += 1) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      } finally {
+        spy.mockRestore();
+      }
+      expect(captured).toEqual([{ kind: 'errand_status', errandId: errand.id, status: 'RUNNER_EN_ROUTE' }]);
+      await app.get(NotificationsService).deliverFeed(captured[0]);
+      const [row] = await db().query(
+        `SELECT title, body FROM "notifications" WHERE "userId" = $1 AND "errandId" = $2 AND "eventType" = 'errand.RUNNER_EN_ROUTE'`,
+        [customer.id, errand.id],
+      );
+      expect(row).toEqual({ title: 'Runner assigned · Runner En Route', body: 'A runner accepted your task and is on the way.' });
+      const after = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
+      expect(after.body.assignment).toMatchObject({ status: 'accepted', runner: expect.objectContaining({ id: runner.profileId }) });
+    });
+
+    it('a runner who declined or let the offer lapse cannot be offered the task again (row 178)', async () => {
+      const { admin, runner, errand } = await paidAndAssigned();
+      await db().query('UPDATE "runner_profiles" SET "maxPurchaseAdvance" = 100 WHERE id = $1', [runner.profileId]);
+      await http()
+        .post(`/api/v1/errands/${errand.id}/assignment/decline`)
+        .set(bearer(runner.token))
+        .send({ reason: 'over_purchase_limit' })
+        .expect(200);
+      const again = await http()
+        .post(`/api/v1/errands/${errand.id}/assign`)
+        .set(bearer(admin.token))
+        .send({ runnerProfileId: runner.profileId })
+        .expect(409);
+      expect(again.body).toMatchObject({ code: 'runner_already_offered', runnerProfileId: runner.profileId, previousStatus: 'declined' });
+
+      const second = await makeUser(UserRole.RUNNER);
+      await http().post(`/api/v1/errands/${errand.id}/assign`).set(bearer(admin.token)).send({ runnerProfileId: second.profileId }).expect(201);
+      await db().query(
+        `UPDATE "errand_assignments" SET "offerExpiresAt" = now() - interval '1 second' WHERE "errandId" = $1 AND status = 'assigned'`,
+        [errand.id],
+      );
+      const lapsed = await http()
+        .post(`/api/v1/errands/${errand.id}/assign`)
+        .set(bearer(admin.token))
+        .send({ runnerProfileId: second.profileId })
+        .expect(409);
+      expect(lapsed.body).toMatchObject({ code: 'runner_already_offered', previousStatus: 'expired' });
+      const third = await makeUser(UserRole.RUNNER);
+      await http().post(`/api/v1/errands/${errand.id}/assign`).set(bearer(admin.token)).send({ runnerProfileId: third.profileId }).expect(201);
     });
   });
 });

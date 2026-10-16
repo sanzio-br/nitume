@@ -26,7 +26,14 @@ const build = (status: ErrandStatus, assignments: Partial<ErrandAssignment>[] = 
     [
       ErrandAssignment,
       {
-        findOne: vi.fn(() => Promise.resolve(active().at(-1) ?? null)),
+        findOne: vi.fn(({ where }: { where: { runnerProfileId?: string; status?: { value?: string[] } } }) =>
+          Promise.resolve(
+            where.runnerProfileId
+              ? (rows.filter((r) => r.runnerProfileId === where.runnerProfileId && where.status?.value?.includes(r.status)).at(-1) ??
+                  null)
+              : (active().at(-1) ?? null),
+          ),
+        ),
         count: vi.fn(() => Promise.resolve(active().length)),
         update: vi.fn((id: string, patch: object) => {
           Object.assign(rows.find((r) => r.id === id) ?? {}, patch);
@@ -142,6 +149,28 @@ describe('ErrandsService.assign after a decline or an expired offer (rows 108, 1
     expect(out.assignment).toMatchObject({ runnerProfileId: 'rp-2', status: AssignmentStatus.ASSIGNED });
     await tick();
     expect(emit).toHaveBeenCalledWith('errand.access_changed', { errandId: 'e-1' });
+  });
+
+  it.each([
+    ['declined', AssignmentStatus.DECLINED],
+    ['let the offer lapse', AssignmentStatus.EXPIRED],
+  ])('refuses to re-offer the task to a runner who %s (row 178)', async (_label, status) => {
+    const { service, rows } = build(ErrandStatus.RUNNER_ASSIGNED, [{ runnerProfileId: 'rp-1', status }]);
+    await expect(service.assign('e-1', 'rp-1', { type: StatusHistoryActor.ADMIN, id: 'admin-1' })).rejects.toMatchObject({
+      status: 409,
+      code: 'runner_already_offered',
+    });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('refuses the runner whose open offer just lapsed, after expiring it (row 178)', async () => {
+    const { service, rows } = build(ErrandStatus.RUNNER_ASSIGNED, [
+      { runnerProfileId: 'rp-1', status: AssignmentStatus.ASSIGNED, offerExpiresAt: new Date(Date.now() - 1_000) },
+    ]);
+    await expect(service.assign('e-1', 'rp-1', { type: StatusHistoryActor.ADMIN, id: 'admin-1' })).rejects.toMatchObject({
+      code: 'runner_already_offered',
+    });
+    expect(rows).toHaveLength(1);
   });
 
   it('first assignment still moves PAYMENT_CONFIRMED -> RUNNER_ASSIGNED', async () => {
