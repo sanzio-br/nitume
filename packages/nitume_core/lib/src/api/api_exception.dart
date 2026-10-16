@@ -73,8 +73,15 @@ class NitumeApiException implements Exception {
   String? get availableAmount => decimalDetail('availableAmount');
 
   /// HTTP 413: the upload is above the server's size limit (e.g. an ID image
-  /// over 10 MB, row 163). Sent without a [code].
+  /// over 10 MB, row 163). Newer APIs send
+  /// [ApiErrorCodes.verificationDocumentTooLarge] with `maxBytes`; older
+  /// ones (and the upload middleware) send a 413 without a [code], so check
+  /// this rather than the code.
   bool get isPayloadTooLarge => statusCode == 413;
+
+  /// `maxBytes` of a [ApiErrorCodes.verificationDocumentTooLarge] error;
+  /// `null` when absent (fall back to `VerificationDocumentRules.maxBytes`).
+  int? get maxBytes => intDetail('maxBytes');
 
   /// `offerExpiresAt` of an [ApiErrorCodes.offerExpired] error, when sent.
   DateTime? get offerExpiresAt {
@@ -403,4 +410,10 @@ abstract final class ApiErrorCodes {
   /// `cap`, `itemPaidToNitume`, `maxPurchaseAdvance` (decimal strings; read
   /// with [NitumeApiException.decimalDetail]).
   static const reimbursementExceedsCap = 'reimbursement_exceeds_cap';
+
+  /// `POST /runners/me/verifications/documents`: the image is above the
+  /// size limit (413, row 163). Details: `maxBytes`
+  /// ([NitumeApiException.maxBytes]). Older APIs send the 413 without this
+  /// code; [NitumeApiException.isPayloadTooLarge] covers both.
+  static const verificationDocumentTooLarge = 'verification_document_too_large';
 }

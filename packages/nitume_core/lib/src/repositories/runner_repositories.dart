@@ -74,7 +74,8 @@ class RunnerAccountRepository {
   /// 163), or [contentType] is not an accepted image type. API errors
   /// (`NitumeApiException.code`): `verification_type_not_uploadable`,
   /// `verification_document_type_invalid`, `verification_document_empty`;
-  /// a 413 (`NitumeApiException.isPayloadTooLarge`) above the server limit.
+  /// a 413 above the server limit (`NitumeApiException.isPayloadTooLarge`;
+  /// code `verification_document_too_large` with `maxBytes` when sent).
   Future<RunnerVerification> uploadVerificationDocument(
     RunnerVerificationType type, {
     required Uint8List bytes,

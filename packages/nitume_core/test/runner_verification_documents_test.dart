@@ -245,5 +245,45 @@ void main() {
         ),
       );
     });
+
+    test('413 with verification_document_too_large and maxBytes', () async {
+      final a = _Adapter(413, {
+        'statusCode': 413,
+        'code': 'verification_document_too_large',
+        'message': 'The image is larger than 10 MB',
+        'maxBytes': 10485760,
+      });
+      await expectLater(
+        _repo(a).uploadVerificationDocument(
+          RunnerVerificationType.selfie,
+          bytes: Uint8List.fromList([1]),
+          contentType: 'image/jpeg',
+        ),
+        throwsA(
+          isA<NitumeApiException>()
+              .having((e) => e.isPayloadTooLarge, 'isPayloadTooLarge', true)
+              .having(
+                (e) => e.code,
+                'code',
+                ApiErrorCodes.verificationDocumentTooLarge,
+              )
+              .having((e) => e.maxBytes, 'maxBytes', 10485760),
+        ),
+      );
+    });
+
+    test('maxBytes is null on a bare 413', () async {
+      final a = _Adapter(413, {'statusCode': 413, 'message': 'File too large'});
+      await expectLater(
+        _repo(a).uploadVerificationDocument(
+          RunnerVerificationType.selfie,
+          bytes: Uint8List.fromList([1]),
+          contentType: 'image/jpeg',
+        ),
+        throwsA(
+          isA<NitumeApiException>().having((e) => e.maxBytes, 'maxBytes', null),
+        ),
+      );
+    });
   });
 }
