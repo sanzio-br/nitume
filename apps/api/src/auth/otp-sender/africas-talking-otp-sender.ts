@@ -18,6 +18,11 @@ export class AfricasTalkingOtpSender extends OtpSender {
     super();
   }
 
+  /** OTP SMS body; the minutes come from `otp.ttlSeconds` (300 s -> 5 minutes). */
+  static otpText(code: string, ttlSeconds: number): string {
+    return `Nitume verification code: ${code}. Your verification code expires in ${otpExpiryPhrase(ttlSeconds)}. Do not share it.`;
+  }
+
   async send(phone: string, code: string): Promise<void> {
     const apiKey = this.config.get<string>('atsms.apiKey');
     const username = this.config.get<string>('atsms.username');
@@ -31,9 +36,10 @@ export class AfricasTalkingOtpSender extends OtpSender {
     const form = new URLSearchParams({
       username,
       to: phone,
-      message: `Nitume verification code: ${code}. Expires in ${otpExpiryPhrase(
+      message: AfricasTalkingOtpSender.otpText(
+        code,
         this.config.get<number>('otp.ttlSeconds', DEFAULT_OTP_TTL_SECONDS),
-      )}. Do not share it.`,
+      ),
       ...(senderId ? { from: senderId } : {}),
     });
     const response = await fetch(
