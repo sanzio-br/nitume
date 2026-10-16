@@ -1,4 +1,4 @@
-import { ConflictException, Logger } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../common/api-error';
 import { ErrandStatus, StatusHistoryActor, UserRole } from '../common/enums';
@@ -392,9 +392,19 @@ describe('ErrandsService offer deadline (row 141)', () => {
     await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner);
     expect(errand.status).toBe(ErrandStatus.RUNNER_EN_ROUTE);
   });
+
+  it('still answers 409 offer_expired once the sweep has marked the offer expired (row 157)', async () => {
+    const deadline = new Date(Date.now() - 60_000);
+    const { service, errand, offer } = withOffer(deadline);
+    offer.status = 'expired';
+    const err = await service.transition('e-1', ErrandStatus.RUNNER_EN_ROUTE, runner).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, code: 'offer_expired' });
+    expect((err as ApiError).getResponse()).toMatchObject({ offerExpiresAt: deadline.toISOString() });
+    expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+  });
 });
 
-describe('ErrandsService.expireLapsedOffers re-checks under the lock (row 141)', () => {
+describe('ErrandsService.expireLapsedOffers re-checks under the lock (rows 141, 157)', () => {
   const now = new Date('2026-10-16T10:00:00Z');
   const past = new Date('2026-10-16T09:59:00Z');
 
@@ -419,6 +429,7 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (row 141)',
       qb[m] = vi.fn(() => qb);
     }
     qb.getRawMany = vi.fn(() => Promise.resolve([{ id: 'e-1' }]));
+    const emit = vi.fn();
     const service = new ErrandsService(
       { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
       { createQueryBuilder: vi.fn(() => qb) } as never,
@@ -428,37 +439,32 @@ describe('ErrandsService.expireLapsedOffers re-checks under the lock (row 141)',
       {} as never,
       {} as never,
       {} as never,
-      { emit: vi.fn() } as never,
+      { emit } as never,
       {} as never,
       {} as never,
     );
-    return { service, errand, assignmentRepo, errandRepo };
+    return { service, errand, assignmentRepo, errandRepo, history, emit };
   };
 
-  it('logs a skipped errand with its error code instead of failing the job', async () => {
-    const { service, errandRepo } = sweep({
-      status: ErrandStatus.RUNNER_ASSIGNED,
-      offer: { status: 'assigned', offerExpiresAt: past },
-    });
-    errandRepo.save.mockRejectedValueOnce(new Error('row changed'));
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    expect(await service.expireLapsedOffers(now)).toEqual([]);
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/e-1: concurrent_modification/));
-    warn.mockRestore();
-  });
-
-  it('expires a lapsed open offer: assignment expired, task EXPIRED', async () => {
-    const { service, errand, assignmentRepo } = sweep({
+  it('expires a lapsed open offer: assignment expired, task stays RUNNER_ASSIGNED, runner loses access (row 157)', async () => {
+    const { service, errand, assignmentRepo, errandRepo, history, emit } = sweep({
       status: ErrandStatus.RUNNER_ASSIGNED,
       offer: { status: 'assigned', offerExpiresAt: past },
     });
     expect(await service.expireLapsedOffers(now)).toEqual(['e-1']);
+    expect(errandRepo.findOne).toHaveBeenCalledWith({ where: { id: 'e-1' }, lock: { mode: 'pessimistic_write' } });
     expect(assignmentRepo.update).toHaveBeenCalledWith('a-1', { status: 'expired', decidedAt: now });
-    expect(errand.status).toBe(ErrandStatus.EXPIRED);
+    expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+    expect(errandRepo.save).not.toHaveBeenCalled();
+    expect(history.save).not.toHaveBeenCalled();
+    await new Promise((r) => setImmediate(r));
+    expect(emit).toHaveBeenCalledWith('errand.access_changed', { errandId: 'e-1' });
+    expect(emit).not.toHaveBeenCalledWith('errand.status_changed', expect.anything());
   });
 
   it.each([
     ['the task moved on (accepted)', ErrandStatus.RUNNER_EN_ROUTE, { status: 'accepted', offerExpiresAt: past }],
+    ['the task was cancelled meanwhile', ErrandStatus.CANCELLED, { status: 'assigned', offerExpiresAt: past }],
     ['the offer was declined (no open assignment)', ErrandStatus.RUNNER_ASSIGNED, null],
     ['the offer was accepted but the status not yet read', ErrandStatus.RUNNER_ASSIGNED, { status: 'accepted', offerExpiresAt: past }],
     ['the deadline was pushed out (reassigned)', ErrandStatus.RUNNER_ASSIGNED, {

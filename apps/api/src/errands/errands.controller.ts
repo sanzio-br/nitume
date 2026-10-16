@@ -199,8 +199,9 @@ export class ErrandsController {
    *
    * Runner accept = RUNNER_ASSIGNED -> RUNNER_EN_ROUTE (rows 113, 141): the
    * assignment becomes `accepted`. After `assignment.offerExpiresAt` it is
-   * refused with 409 `{ code: 'offer_expired', offerExpiresAt }` (ISO), even
-   * before the expiry job has moved the task to EXPIRED.
+   * refused with 409 `{ code: 'offer_expired', offerExpiresAt }` (ISO), before
+   * and after the expiry job has marked the offer `expired` (row 157; the
+   * task itself stays RUNNER_ASSIGNED).
    */
   @Patch(':id/status')
   @HttpCode(200)

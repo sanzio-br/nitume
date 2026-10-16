@@ -28,6 +28,10 @@ const build = (status: ErrandStatus, assignments: Partial<ErrandAssignment>[] = 
       {
         findOne: vi.fn(() => Promise.resolve(active().at(-1) ?? null)),
         count: vi.fn(() => Promise.resolve(active().length)),
+        update: vi.fn((id: string, patch: object) => {
+          Object.assign(rows.find((r) => r.id === id) ?? {}, patch);
+          return Promise.resolve();
+        }),
         create: vi.fn((a: object) => a),
         save: vi.fn((a: ErrandAssignment) => {
           if (!rows.includes(a)) {
@@ -98,7 +102,7 @@ describe('ErrandsService.declineAssignment (row 108)', () => {
   });
 });
 
-describe('ErrandsService.assign after a decline (row 108)', () => {
+describe('ErrandsService.assign after a decline or an expired offer (rows 108, 157)', () => {
   it('reassigns a RUNNER_ASSIGNED errand with no active runner without a status change', async () => {
     const { service, errand, rows } = build(ErrandStatus.RUNNER_ASSIGNED, [
       { runnerProfileId: 'rp-1', status: AssignmentStatus.DECLINED },
@@ -115,6 +119,29 @@ describe('ErrandsService.assign after a decline (row 108)', () => {
     await expect(
       service.assign('e-1', 'rp-2', { type: StatusHistoryActor.ADMIN, id: 'admin-1' }),
     ).rejects.toMatchObject({ code: 'illegal_transition' });
+  });
+
+  it('reassigns after an expired offer the same way (row 157)', async () => {
+    const { service, errand, rows } = build(ErrandStatus.RUNNER_ASSIGNED, [
+      { runnerProfileId: 'rp-1', status: AssignmentStatus.EXPIRED, offerExpiresAt: new Date(Date.now() - 1_000) },
+    ]);
+    const out = await service.assign('e-1', 'rp-2', { type: StatusHistoryActor.ADMIN, id: 'admin-1' });
+    expect(out.history).toBeNull();
+    expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+    expect(rows.map((r) => r.status)).toEqual([AssignmentStatus.EXPIRED, AssignmentStatus.ASSIGNED]);
+  });
+
+  it('expires an open offer past its deadline that the sweep has not reached, then reassigns (row 157)', async () => {
+    const { service, errand, rows, emit } = build(ErrandStatus.RUNNER_ASSIGNED, [
+      { runnerProfileId: 'rp-1', status: AssignmentStatus.ASSIGNED, offerExpiresAt: new Date(Date.now() - 1_000) },
+    ]);
+    const out = await service.assign('e-1', 'rp-2', { type: StatusHistoryActor.ADMIN, id: 'admin-1' });
+    expect(out.history).toBeNull();
+    expect(errand.status).toBe(ErrandStatus.RUNNER_ASSIGNED);
+    expect(rows[0]).toMatchObject({ status: AssignmentStatus.EXPIRED, decidedAt: expect.any(Date) });
+    expect(out.assignment).toMatchObject({ runnerProfileId: 'rp-2', status: AssignmentStatus.ASSIGNED });
+    await tick();
+    expect(emit).toHaveBeenCalledWith('errand.access_changed', { errandId: 'e-1' });
   });
 
   it('first assignment still moves PAYMENT_CONFIRMED -> RUNNER_ASSIGNED', async () => {

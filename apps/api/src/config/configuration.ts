@@ -264,7 +264,8 @@ export const configuration = (): AppConfig => ({
     minimumRequestAmount: Number.parseFloat(process.env.RUNNER_PAYOUT_REQUEST_MINIMUM_KES ?? '0') || 0,
   },
   // Row 114 (owner, 2026-10-13): admin-created offers stay open 10 minutes.
-  // Row 141: an offer not accepted by then expires and the task goes EXPIRED.
+  // Row 157: an offer not accepted by then expires; the task stays
+  // RUNNER_ASSIGNED for the admin to offer it to another runner.
   matching: {
     adminOfferWindowSeconds: int(process.env.MATCHING_ADMIN_OFFER_WINDOW_SECONDS, 600),
   },
@@ -290,7 +291,7 @@ export const configuration = (): AppConfig => ({
     disputeSweepIntervalSeconds: int(process.env.ERRANDS_DISPUTE_SWEEP_INTERVAL_SECONDS, 300),
     // How often TIMEOUT STK payments are resolved by STK Query.
     stkReconcileIntervalSeconds: int(process.env.PAYMENTS_STK_RECONCILE_INTERVAL_SECONDS, 60),
-    // How often lapsed offers are expired (RUNNER_ASSIGNED -> EXPIRED, row 141).
+    // How often lapsed offers are marked expired (task stays RUNNER_ASSIGNED, row 157).
     offerExpirySweepIntervalSeconds: int(process.env.MATCHING_OFFER_EXPIRY_SWEEP_INTERVAL_SECONDS, 30),
   },
   // FCM push (row 31). All three set -> firebase-admin; otherwise a no-op.

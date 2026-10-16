@@ -528,13 +528,12 @@ describe('Owner answers 8 (e2e)', () => {
       return [];
     };
 
-    it('a paid task that expires tells the customer a refund is being reviewed', async () => {
+    it('a paid task that expires tells the customer (row 157: driven by the system step)', async () => {
       const { customer, errand } = await paidAndAssigned();
-      await db().query(
-        `UPDATE "errand_assignments" SET "offerExpiresAt" = now() - interval '1 second' WHERE "errandId" = $1`,
-        [errand.id],
-      );
-      expect(await app.get(ErrandsService).expireLapsedOffers()).toContain(errand.id);
+      // Row 157: no automatic trigger exists yet; drive the system step directly.
+      await app
+        .get(ErrandsService)
+        .transition(errand.id, ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM }, 'No further runner can be assigned');
       const feed = await feedOf(customer.id);
       expect(feed).toEqual([
         {
@@ -543,6 +542,11 @@ describe('Owner answers 8 (e2e)', () => {
           body: "No runner accepted your task in time, so it has ended. We're reviewing a refund and will let you know the outcome. You can start a new task whenever you're ready.",
         },
       ]);
+      // The refund review still opens for ops (row 102).
+      const reviews = (await db().query('SELECT trigger FROM "refund_reviews" WHERE "errandId" = $1', [errand.id])) as {
+        trigger: string;
+      }[];
+      expect(reviews).toEqual([{ trigger: 'expired_after_payment' }]);
       const api = await http().get('/api/v1/notifications').set(bearer(customer.token)).expect(200);
       const items = (api.body.items ?? api.body) as { eventType: string; errandId: string; readAt: unknown }[];
       expect(items).toEqual(

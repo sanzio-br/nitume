@@ -59,7 +59,7 @@ export class MaintenanceProcessor extends WorkerHost {
     return { paymentId, state };
   }
 
-  /** Lapsed offers: RUNNER_ASSIGNED -> EXPIRED at the deadline (row 141). */
+  /** Lapsed offers: the assignment expires, the task stays RUNNER_ASSIGNED (row 157). */
   async offerExpiry(): Promise<{ expired: string[] }> {
     const expired = await this.errands.expireLapsedOffers();
     if (expired.length > 0) {
