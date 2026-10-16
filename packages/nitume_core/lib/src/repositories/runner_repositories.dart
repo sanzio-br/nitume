@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart' show DioMediaType, FormData, MultipartFile;
 
+import '../api/api_exception.dart';
 import '../api/nitume_api_client.dart';
 import '../models/enums.dart';
 import '../models/errand.dart';
@@ -13,29 +14,45 @@ import '../models/runner_account.dart';
 import 'errand_activity_repositories.dart';
 import 'errand_repository.dart';
 
-/// R-19. The signed-in runner's account (`/runners/me*`), endpoints that
-/// exist on `main`.
+/// R-19. The signed-in runner's account (`/runners/me*`, service areas).
 ///
-/// Not here yet: job offers / decline (RA-1, owner row 113). The payout
+/// Offers, accept and decline are on [RunnerJobsRepository]. The payout
 /// ledger and payout requests are on `RunnerPayoutRepository`.
 class RunnerAccountRepository {
   RunnerAccountRepository(this._api);
 
   final NitumeApiClient _api;
 
-  /// `GET /runners/me`.
+  /// `GET /runners/me`: the runner's own view (RA-18). 404 without a
+  /// runner profile.
   Future<RunnerMe> me() => _api.getMap('/runners/me').then(RunnerMe.fromJson);
 
-  /// `PATCH /runners/me/availability`. Send only [RunnerAvailability.online]
-  /// or [RunnerAvailability.offline]; `busy` is meant to be server-set
-  /// (RA-20). The API does not yet refuse unverified runners (RA-8): the
-  /// screen must still gate the switch.
-  Future<RunnerMe> setAvailability(RunnerAvailability availability) => _api
-      .patchMap(
-        '/runners/me/availability',
-        data: {'availability': availability.wire},
-      )
-      .then(RunnerMe.fromJson);
+  /// `PATCH /runners/me/availability` `{ availability }` → the updated
+  /// [RunnerMe] (RA-8, RA-20). Only [RunnerAvailability.online] or
+  /// [RunnerAvailability.offline]: `busy` is server-set and throws
+  /// [ArgumentError] before sending. Sending `online` while busy changes
+  /// nothing.
+  ///
+  /// API errors (`NitumeApiException.code`):
+  /// - 400 [ApiErrorCodes.availabilityServerManaged] (`allowed`);
+  /// - 403 [ApiErrorCodes.runnerNotVerified]: going online before every
+  ///   required check is approved (`NitumeApiException.verificationSummary`);
+  /// - 409 [ApiErrorCodes.runnerOnActiveJob]: going offline while busy.
+  Future<RunnerMe> setAvailability(RunnerAvailability availability) {
+    if (availability == RunnerAvailability.busy) {
+      throw ArgumentError.value(
+        availability,
+        'availability',
+        'Busy is set by the server',
+      );
+    }
+    return _api
+        .patchMap(
+          '/runners/me/availability',
+          data: {'availability': availability.wire},
+        )
+        .then(RunnerMe.fromJson);
+  }
 
   /// `GET /runners/me/verifications`, newest first.
   Future<List<RunnerVerification>> verifications() async =>
@@ -137,26 +154,65 @@ class RunnerAccountRepository {
         _ => '.jpg',
       };
 
-  /// `PUT /runners/me/skills` (1–20). Returns the saved skills. The skill
-  /// vocabulary is RQ-3 (open).
+  /// Most skills `PUT /runners/me/skills` takes (row 115).
+  static const maxSkills = 5;
+
+  /// Most service areas `PUT /runners/me/service-areas` takes.
+  static const maxServiceAreas = 50;
+
+  /// `PUT /runners/me/skills` `{ skills }`: replaces the runner's skills
+  /// with 1–[maxSkills] distinct values (row 115). Returns the saved skills
+  /// in category order. Throws [ArgumentError] before sending when there
+  /// are none or more than [maxSkills].
+  ///
+  /// API error: 400 [ApiErrorCodes.skillNotOffered] for a skill outside
+  /// [RunnerSkill.offered] (`refused`, `allowed`).
   Future<List<RunnerSkill>> setSkills(List<RunnerSkill> skills) async {
+    final unique = skills.toSet();
+    if (unique.isEmpty || unique.length > maxSkills) {
+      throw ArgumentError.value(
+        skills,
+        'skills',
+        'Choose 1 to $maxSkills skills',
+      );
+    }
     final data = await _api.put(
       '/runners/me/skills',
       data: {
-        'skills': [for (final s in skills) s.wire],
+        'skills': [for (final s in unique) s.wire],
       },
     );
     return RunnerSkill.listFromWire(data);
   }
 
-  /// `PUT /runners/me/service-areas` (≤ 50, each ≤ 64 characters). Returns
-  /// the saved, de-duplicated areas. The area list is RQ-4 (open).
-  Future<List<String>> setServiceAreas(List<String> areas) async {
+  /// `GET /runners/service-areas`: the ops-configured areas, by name (row
+  /// 116). Offer these in the area picker.
+  Future<List<ServiceAreaOption>> serviceAreas() async {
+    final data = await _api.getMap('/runners/service-areas');
+    return ServiceAreaOption.listFromJson(data['items']);
+  }
+
+  /// `PUT /runners/me/service-areas` `{ areas: ids }`: replaces the runner's
+  /// areas with 0–[maxServiceAreas] [ServiceAreaOption.id]s from
+  /// [serviceAreas]. Returns the saved areas by name. Throws [ArgumentError]
+  /// before sending above [maxServiceAreas].
+  ///
+  /// API error: 400 [ApiErrorCodes.serviceAreaUnknown] for an id not on the
+  /// list (`NitumeApiException.unknownServiceAreas`).
+  Future<List<ServiceAreaOption>> setServiceAreas(List<String> areaIds) async {
+    final unique = areaIds.toSet().toList();
+    if (unique.length > maxServiceAreas) {
+      throw ArgumentError.value(
+        areaIds,
+        'areaIds',
+        'At most $maxServiceAreas areas',
+      );
+    }
     final data = await _api.put(
       '/runners/me/service-areas',
-      data: {'areas': areas},
+      data: {'areas': unique},
     );
-    return [for (final a in (data as List? ?? const [])) '$a'];
+    return ServiceAreaOption.listFromJson(data);
   }
 }
 

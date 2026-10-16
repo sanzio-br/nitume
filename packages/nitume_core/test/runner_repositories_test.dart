@@ -72,7 +72,7 @@ Map<String, dynamic> _errand([Map<String, dynamic>? extra]) => {
 
 void main() {
   group('RunnerAccountRepository', () {
-    test('me parses the raw profile; trust score is not exposed', () async {
+    test('me tolerates a profile without the self-view fields', () async {
       final a = _Adapter({'GET /runners/me': (200, _profile)});
       final me = await RunnerAccountRepository(_client(a)).me();
       expect(me.id, 'rp1');
@@ -80,20 +80,12 @@ void main() {
       expect(me.isOnline, isTrue);
       expect(me.completionRate, '98.70');
       expect(me.maxPurchaseAdvance, '3000.00');
-      expect(me.skills, isNull);
+      expect(me.skills, isEmpty);
+      expect(me.serviceAreas, isEmpty);
       expect(me.shortName, isNull);
-    });
-
-    test('me reads skills, areas and shortName when present (RA-10/18)', () {
-      final me = RunnerMe.fromJson({
-        ..._profile,
-        'shortName': 'Brian K.',
-        'skills': ['inspection', 'shopping'],
-        'serviceAreas': ['Nyali'],
-      });
-      expect(me.shortName, 'Brian K.');
-      expect(me.skills, [RunnerSkill.checkItForMe]);
-      expect(me.serviceAreas, ['Nyali']);
+      expect(me.displayName, isNull);
+      expect(me.isVerified, isFalse);
+      expect(me.verification.checks, isEmpty);
     });
 
     test('setAvailability patches the wire value', () async {
@@ -170,16 +162,26 @@ void main() {
     test('skills and areas use PUT', () async {
       final a = _Adapter({
         'PUT /runners/me/skills': (200, ['inspection', 'buy_for_me']),
-        'PUT /runners/me/service-areas': (200, ['Nyali']),
+        'PUT /runners/me/service-areas': (
+          200,
+          [
+            {'id': 'nyali', 'name': 'Nyali'},
+          ],
+        ),
       });
       final repo = RunnerAccountRepository(_client(a));
       expect(
         await repo.setSkills([RunnerSkill.checkItForMe, RunnerSkill.buyForMe]),
         [RunnerSkill.buyForMe, RunnerSkill.checkItForMe],
       );
-      expect(await repo.setServiceAreas(['Nyali', 'Nyali']), ['Nyali']);
+      expect(await repo.setServiceAreas(['nyali', 'nyali']), [
+        const ServiceAreaOption(id: 'nyali', name: 'Nyali'),
+      ]);
       expect(a.bodies.first, {
         'skills': ['inspection', 'buy_for_me'],
+      });
+      expect(a.bodies.last, {
+        'areas': ['nyali'],
       });
     });
   });

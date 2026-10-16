@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../models/enums.dart';
+import '../models/runner_account.dart';
 
 /// A normalised API failure, safe to show to a user.
 ///
@@ -97,6 +98,34 @@ class NitumeApiException implements Exception {
     final v = details['offerExpiresAt'];
     return v is String ? DateTime.tryParse(v) : null;
   }
+
+  /// A list detail as strings (e.g. `unknown`, `refused`); `null` when
+  /// absent or not a list.
+  List<String>? stringListDetail(String key) {
+    final v = details[key];
+    return v is List ? [for (final e in v) '$e'] : null;
+  }
+
+  /// `verification` of an [ApiErrorCodes.runnerNotVerified] error: which
+  /// required checks are still missing, pending or rejected. `null` when
+  /// absent.
+  RunnerVerificationSummary? get verificationSummary {
+    final v = details['verification'];
+    return v is Map
+        ? RunnerVerificationSummary.fromJson(v.cast<String, dynamic>())
+        : null;
+  }
+
+  /// `refused` of an [ApiErrorCodes.skillNotOffered] error (unknown wire
+  /// values skipped); `null` when absent.
+  List<RunnerSkill>? get refusedSkills {
+    final v = details['refused'];
+    return v is List ? RunnerSkill.listFromWire(v) : null;
+  }
+
+  /// `unknown` of an [ApiErrorCodes.serviceAreaUnknown] error: the area ids
+  /// not on the ops list; `null` when absent.
+  List<String>? get unknownServiceAreas => stringListDetail('unknown');
 
   /// `from` of an [ApiErrorCodes.illegalTransition] error: the task's
   /// committed state; `null` when absent or unknown.
@@ -431,4 +460,27 @@ abstract final class ApiErrorCodes {
   /// ([NitumeApiException.maxBytes]). Older APIs send the 413 without this
   /// code; [NitumeApiException.isPayloadTooLarge] covers both.
   static const verificationDocumentTooLarge = 'verification_document_too_large';
+
+  /// `PATCH /runners/me/availability` with `busy` (400, RA-20): busy is set
+  /// by the server while the runner holds a job. Details: `allowed`.
+  static const availabilityServerManaged = 'availability_server_managed';
+
+  /// Going online, listing offers or accepting before every required check
+  /// is approved (403, RA-8, row 126). Details: `verification`
+  /// ([NitumeApiException.verificationSummary]).
+  static const runnerNotVerified = 'runner_not_verified';
+
+  /// `PATCH /runners/me/availability` `offline` while busy on a job (409,
+  /// RA-20). Finish the job first.
+  static const runnerOnActiveJob = 'runner_on_active_job';
+
+  /// `PUT /runners/me/skills` with a skill not offered in the MVP (400,
+  /// OA-18: Business Tasks). Details: `refused`
+  /// ([NitumeApiException.refusedSkills]), `allowed`.
+  static const skillNotOffered = 'skill_not_offered';
+
+  /// `PUT /runners/me/service-areas` with an id not on the ops list (400,
+  /// row 116). Details: `unknown`
+  /// ([NitumeApiException.unknownServiceAreas]). Reload the list.
+  static const serviceAreaUnknown = 'service_area_unknown';
 }
