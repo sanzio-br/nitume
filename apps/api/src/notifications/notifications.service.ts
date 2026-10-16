@@ -18,6 +18,8 @@ import { DevicesService } from '../users/devices.service';
 import { UsersService } from '../users/users.service';
 import {
   ASSIGNMENT_DECLINED_EVENT,
+  TASK_DEADLINE_EXPIRED_EVENT,
+  TaskDeadlineExpiredEvent,
   ASSIGNMENT_EXPIRED_EVENT,
   AssignmentDeclinedEvent,
   AssignmentExpiredEvent,
@@ -91,10 +93,17 @@ export type FeedJob =
   /** Admin-facing (row 108): the runner declined; the task needs another runner. */
   | { kind: 'assignment_declined'; errandId: string; reference: string; overPurchaseLimit?: boolean }
   /** Admin-facing (row 157): an admin offer lapsed; the task needs another runner. */
-  | { kind: 'assignment_expired'; errandId: string; reference: string };
+  | { kind: 'assignment_expired'; errandId: string; reference: string }
+  /** Admin-facing (row 185): a RUNNER_ASSIGNED task expired at its customer deadline. */
+  | { kind: 'deadline_passed'; errandId: string; reference: string };
 
 /** Feed jobs whose recipients are the admins, not the errand's customer. */
-const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>(['quote_requested', 'assignment_declined', 'assignment_expired']);
+const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>([
+  'quote_requested',
+  'assignment_declined',
+  'assignment_expired',
+  'deadline_passed',
+]);
 
 export const FEED_JOB = 'feed';
 export const PUSH_JOB = 'push';
@@ -284,6 +293,15 @@ export class NotificationsService {
     await this.enqueue({ kind: 'assignment_expired', errandId: event.errandId, reference: event.reference });
   }
 
+  /**
+   * Row 185: the task expired at its deadline -> admin feed `deadline_passed`.
+   * The customer's `errand.EXPIRED` comes from the status change as usual.
+   */
+  @OnEvent(TASK_DEADLINE_EXPIRED_EVENT, { async: true })
+  async onTaskDeadlineExpired(event: TaskDeadlineExpiredEvent): Promise<void> {
+    await this.enqueue({ kind: 'deadline_passed', errandId: event.errandId, reference: event.reference });
+  }
+
   private async enqueue(job: FeedJob): Promise<void> {
     try {
       await this.queue.add(FEED_JOB, job);
@@ -466,6 +484,12 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
           job.overPurchaseLimit === false
             ? `The runner declined ${job.reference}. Assign another runner.`
             : `The runner declined ${job.reference}: the purchase is above their limit. Assign another runner.`,
+      };
+    case 'deadline_passed':
+      return {
+        eventType: NotificationEventType.DEADLINE_PASSED,
+        title: 'Deadline passed',
+        body: `The customer's deadline for ${job.reference} passed before any runner accepted. The task has expired.`,
       };
     case 'assignment_expired':
       return {
