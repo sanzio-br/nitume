@@ -322,7 +322,8 @@ describe('Owner answers 9 (e2e)', () => {
         .send({ reason: 'Too short' })
         .expect(400);
       expect(missing.body).toMatchObject({ code: 'cancellation_reason_invalid', minLength: 10, maxLength: 500 });
-      await http().post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`).set(bearer(admin.token)).send({}).expect(400);
+      const none = await http().post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`).set(bearer(admin.token)).send({}).expect(400);
+      expect(none.body).toMatchObject({ code: 'cancellation_reason_invalid' });
       const blank = await http()
         .post(`/api/v1/runner-payout-requests/${created.body.id}/cancel`)
         .set(bearer(admin.token))

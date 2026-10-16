@@ -289,9 +289,14 @@ export class RejectPayoutRequestDto {
   note: string;
 }
 
-/** POST /runner-payout-requests/:id/cancel (row 166): mandatory ops reason (10-500, checked by the service). */
+/**
+ * POST /runner-payout-requests/:id/cancel (rows 166, 169): mandatory ops
+ * reason, 10-500 after trim. Checked by the service so a missing, blank,
+ * short or long reason all answer 400 cancellation_reason_invalid.
+ */
 export class CancelPayoutRequestDto {
+  @IsOptional()
   @IsString()
-  @MaxLength(1000)
-  reason: string;
+  @MaxLength(2000)
+  reason?: string;
 }

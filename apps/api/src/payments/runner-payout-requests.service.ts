@@ -18,7 +18,7 @@ const money = (v: string | number | null | undefined): string => Number(v ?? 0).
 export const DEFAULT_MIN_RUNNER_PAYOUT_REQUEST = 500;
 export const REJECT_NOTE_MIN = 5;
 export const REJECT_NOTE_MAX = 300;
-/** Row 166: ops cancel reason length (10-500, proposed by the spec, pending the owner, AQ-14). */
+/** Rows 166, 169 (decided): ops cancel reason, 10-500 characters after trimming. */
 export const CANCEL_REASON_MIN = 10;
 export const CANCEL_REASON_MAX = 500;
 /** How long an Idempotency-Key on a payout request is remembered. */
@@ -404,14 +404,16 @@ export class RunnerPayoutRequestsService {
 
   /**
    * POST /runner-payout-requests/:id/cancel `{ reason }` (row 166): ops only,
-   * an open (`requested`) request only, mandatory reason (10-500, AQ-14). Final: no reopening; `requestedAmount` unchanged. No lines
+   * an open (`requested`) request only, mandatory reason (10-500 after trim,
+   * row 169; missing, blank, short or long -> 400 cancellation_reason_invalid).
+   * The reason is ops-only: never in a runner view or notification (row 168). Final: no reopening; `requestedAmount` unchanged. No lines
    * are linked to an open request, so the runner's available amount is
    * unchanged and a new request can be made at once. Errors: 409
    * payout_request_not_open (`status`); 400 cancellation_reason_invalid
    * (`minLength`, `maxLength`).
    */
-  async cancel(id: string, reasonInput: string, adminUserId: string): Promise<AdminRunnerPayoutRequestView> {
-    const reason = reasonInput?.trim() ?? '';
+  async cancel(id: string, reasonInput: string | undefined, adminUserId: string): Promise<AdminRunnerPayoutRequestView> {
+    const reason = typeof reasonInput === 'string' ? reasonInput.trim() : '';
     if (reason.length < CANCEL_REASON_MIN || reason.length > CANCEL_REASON_MAX) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'cancellation_reason_invalid', 'Say why the request is cancelled', {
         minLength: CANCEL_REASON_MIN,
