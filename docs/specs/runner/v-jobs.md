@@ -17,7 +17,7 @@ Home tab. The runner switches availability on or off and sees the job offers add
 - Verification card (not verified) → `v-onboard-pending`.
 
 ## Task states
-Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it lapses the task moves to EXPIRED (row 141 pending: at once or after re-offers) and the card disappears. Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
+Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it reaches its acceptance deadline unaccepted the offer expires and the task moves to EXPIRED at once (row 141, decided 2026-10-16: no re-offer first, no runner acceptance after expiry) and the card disappears. An accept that arrives after `expiresAt` is refused (`offer_expired`). Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
 
 ## Layout (top to bottom)
 1. C-09 top bar: title `Nearby jobs` (21/700) + C-11 bell (36, white, slate-line; red 7px unread dot from `GET /notifications/unread-count`).
@@ -86,10 +86,11 @@ Proposed:
 
 ## Decisions (owner, 2026-10-13)
 - Row 113 (RQ-1): offers inside RUNNER_ASSIGNED; accept → RUNNER_EN_ROUTE; decline → stays RUNNER_ASSIGNED and is reassigned; lapse → EXPIRED; accept above the limit refused; over-limit decline not penalised.
+- Row 141 (RQ-22, owner 2026-10-16): "at the acceptance deadline with no acceptance the offer expires and the task goes EXPIRED at once; no runner acceptance after expiry." The app removes the card at `expiresAt` (client clock, then confirmed by the server event) and never sends an accept after it.
 - Row 114 (RQ-2): admin offers 10 min, auto-offers 90 s (configurable).
 - Row 116 (RQ-4): service areas from an ops-configured list.
 - Row 120 (RQ-8): no estimated duration on cards; generic evidence line `Photos required`.
 - Row 123 (RQ-11): 30 s pings while online without a job; none offline.
 
 ## Questions
-- RQ-22, BOARD row 141 pending (state machine, rows 113/114): when one offer lapses, does the task go straight to EXPIRED (literal reading, specced), or may ops re-offer first and EXPIRED only follows an overall deadline? The runner screens are the same either way.
+- None open on this screen. RQ-22 (row 141) decided 2026-10-16, see Decisions.
