@@ -418,7 +418,7 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
       const eventType = notificationEventTypeFor(job.status);
       const copy = statusCopy(job.status);
       return eventType && copy
-        ? { eventType, title: `${copy.title} · ${humanStatus(job.status)}`, body: copy.body }
+        ? { eventType, title: copy.exactTitle ? copy.title : `${copy.title} · ${humanStatus(job.status)}`, body: copy.body }
         : null;
     }
     case 'price_change':
@@ -513,13 +513,19 @@ const refundCopy = (status: string, amount: string | null): FeedCopy | null => {
   }
 };
 
-const statusCopy = (status: ErrandStatus): { title: string; body: string } | null => {
+/**
+ * Customer copy per status. Titles get the " · {Status}" suffix unless
+ * `exactTitle` (row 188: the owner set "No runner available" and "Runner
+ * assigned" exactly; the other titles keep the builder pattern).
+ */
+const statusCopy = (status: ErrandStatus): { title: string; body: string; exactTitle?: boolean } | null => {
   switch (status) {
     case ErrandStatus.EXPIRED:
       // Owner wording, row 158. No refund sentence: an opened refund review
       // is not a refund found due. Title kept from the round-8 builder.
       return {
         title: 'No runner available',
+        exactTitle: true,
         body: 'Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.',
       };
     case ErrandStatus.QUOTED:
@@ -527,7 +533,7 @@ const statusCopy = (status: ErrandStatus): { title: string; body: string } | nul
     // Rows 182, 184 (owner, 2026-10-16): nothing on RUNNER_ASSIGNED (only an
     // offer exists, row 183); "Runner assigned" once the runner accepts.
     case ErrandStatus.RUNNER_EN_ROUTE:
-      return { title: 'Runner assigned', body: 'A runner accepted your task and is on the way.' };
+      return { title: 'Runner assigned', body: 'A runner accepted your task and is on the way.', exactTitle: true };
     case ErrandStatus.ARRIVED:
       return { title: 'Runner arrived', body: 'Your runner has reached the location.' };
     case ErrandStatus.IN_PROGRESS:

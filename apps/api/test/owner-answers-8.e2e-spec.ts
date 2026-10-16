@@ -547,7 +547,7 @@ describe('Owner answers 8 (e2e)', () => {
       expect(await feedOf(customer.id)).toEqual([
         {
           errandId: errand.id,
-          title: 'No runner available · Expired',
+          title: 'No runner available',
           body: 'Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.',
         },
       ]);

@@ -122,7 +122,7 @@ describe('errand.EXPIRED customer notification (row 158)', () => {
     const copy = copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.EXPIRED });
     expect(copy).toEqual({
       eventType: 'errand.EXPIRED',
-      title: 'No runner available · Expired',
+      title: 'No runner available',
       body: 'Your task has expired because no runner was available to accept it within the required time. You can submit a new request if you still need this service.',
     });
     expect(copy?.body).not.toMatch(/refund/i);
@@ -160,7 +160,7 @@ describe('NotificationsService queue fan-out (row 26)', () => {
     expect(copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.RUNNER_ASSIGNED })).toBeNull();
     expect(copyFor({ kind: 'errand_status', errandId: 'e', status: ErrandStatus.RUNNER_EN_ROUTE })).toEqual({
       eventType: 'errand.RUNNER_EN_ROUTE',
-      title: 'Runner assigned · Runner En Route',
+      title: 'Runner assigned',
       body: 'A runner accepted your task and is on the way.',
     });
   });

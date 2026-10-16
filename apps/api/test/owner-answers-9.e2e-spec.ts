@@ -801,7 +801,7 @@ describe('Owner answers 9 (e2e)', () => {
         `SELECT title, body FROM "notifications" WHERE "userId" = $1 AND "errandId" = $2 AND "eventType" = 'errand.RUNNER_EN_ROUTE'`,
         [customer.id, errand.id],
       );
-      expect(row).toEqual({ title: 'Runner assigned · Runner En Route', body: 'A runner accepted your task and is on the way.' });
+      expect(row).toEqual({ title: 'Runner assigned', body: 'A runner accepted your task and is on the way.' });
       const after = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(customer.token)).expect(200);
       expect(after.body.assignment).toMatchObject({ status: 'accepted', runner: expect.objectContaining({ id: runner.profileId }) });
     });
