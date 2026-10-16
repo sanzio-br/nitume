@@ -49,7 +49,7 @@ Errors and states: as the customer spec (wrong code with attempts left, expired 
 - `POST /api/v1/auth/otp/verify` `{ phone, code, role: 'runner' }` (exists; a new phone creates a runner user + `runner_profiles` row). An existing customer phone signs in **as a customer** today: the app must refuse it client-side (role check) and drop the tokens; RA-9 asks the API for an explicit `role_mismatch` refusal so no customer session is issued to the runner app.
 - `GET /users/me` (displayName), `GET /runners/me` + `GET /runners/me/verifications` (routing, exist).
 - `POST /auth/otp/request` for resend (exists).
-- OTP message copy (owner, 2026-10-16): the code is valid 5 minutes (TTL 300 s) and any message stating the period says so; see customer `v-auth-otp.md` Data (email `Your verification code expires in 5 minutes.`; SMS today says `Valid 10 minutes`, needs api-contract). The screen states no duration.
+- OTP message copy (owner, 2026-10-16): the code is valid 5 minutes (TTL 300 s). SMS, owner wording word for word (row 158): `Your Nitume verification code is {{code}}. It expires in 5 minutes. Do not share this code with anyone.` Built SMS (`africas-talking-otp-sender.ts:23` on `main`) still says `Nitume verification code: {code}. Your verification code expires in 5 minutes. Do not share it.`, needs api-contract. Email: see customer `v-auth-otp.md` Data. The screen states no duration.
 - No socket events (the socket connects after routing).
 
 ## Accessibility and mobile

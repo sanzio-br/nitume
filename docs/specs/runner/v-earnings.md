@@ -10,7 +10,7 @@ Show what Nitume owes the runner (the `Available balance`, computed from the pay
 
 ## Entry / exit
 - Entry: tab bar `Earnings`; push `payout sent` / correction / reversal.
-- `Request payout` → `v-payout` (row 117; disabled when `availableAmount` is below the minimum; with an open request it still opens `v-payout`, which shows the open request). Until RA-15 is built the builder hides the button and `Payout history` takes the full width.
+- `Request payout` → `v-payout` (row 117; disabled when `availableAmount` is below `minimumAmount`, KES 500, row 159; with an open request it still opens `v-payout`, which shows the open request). RA-15 is built on `main`. When disabled for the minimum, a caption 11.5 blue-050 under the card actions: `Payouts start at KSh 500.` (`minimumAmount` from `GET /runners/me/payout-requests/summary`, Fira Code span; proposed).
 - `Payout history` → `x-payout-history` (not drawn; the mockup button has no target).
 - Ledger row tap: job lines and adjustments (they carry `errandId`) → `v-job-summary` for that errand; `payout` entries → `x-payout-history` (proposed).
 
@@ -22,7 +22,7 @@ Any (ledger). Lines are created when a task reaches CONFIRMED (runner fee `payab
 2. R-08 balance card (margin 0 20 16): label `Available balance`; amount Fira Code 30/600 white (`availableAmount`); sub-line (proposed, Fira Code 11.5 blue-050) `KSh 2,450 pending confirmation` when `pendingAmount` > 0, and `KSh 5,000 on hold` when `onHoldAmount` > 0 (two lines max); actions: C-03 small `Request payout`, C-03 small `Payout history` (mockup: translucent white buttons, replaced, `_shared.md` §2).
    - Info icon button (48 hit) next to the label → C-35 info dialog (proposed): title `Available balance`; body `What Nitume owes you for confirmed tasks, minus payouts already sent. Runner fees and item reimbursements become available when the customer confirms and the review window closes.`; button `OK`.
 3. R-11 weekly chart card (margin 0 20 16): C-08 `This week` (padding 0 0 2) + total Fira Code 13/600 right-aligned (proposed `KSh 4,470`), 7 bars Mon–Sun (EAT week, R-18), bar height = the day's **runner-fee** earnings relative to the week's max; today's bar blue, others blue-050; labels `M T W T F S S`.
-4. C-08 `Recent payouts` (mockup label kept, row 133). An open payout request (RA-15) shows first as an R-12 row `Payout requested` / `Requested Mon, 10:03 AM` / `KSh 6,000` (no sign: nothing has moved yet) with a C-05 `Requested` chip (pending tone). Status only: no expected payout time (row 143).
+4. C-08 `Recent payouts` (mockup label kept, row 133). An open payout request (RA-15) shows first as an R-12 row `Payout requested` / `Requested Mon, 10:03 AM` / `KSh 6,000` (no sign: nothing has moved yet) with a C-05 `Requested` chip (pending tone). Status only: no expected payout time (row 143). A request that ops cancel (row 166) or reject leaves this list; the runner learns it from the notification and sees it in `x-payout-history`.
 5. R-12 ledger rows (margin 0 20 8), newest first, max 10, then C-04 `See all` → `x-payout-history`:
    | Feed `kind` (API) | Title | Caption | Amount (signed `amount` from the API) |
    |---|---|---|---|
@@ -87,6 +87,8 @@ Built on `feat/api-owner-answers-6` @ `10b6019` (row 107, table `runner_payout_l
 - Row 142: an item line approved above the purchase limit through the ops override shows like any approved line (amount as approved, no extra caption).
 - Row 152 (2026-10-16): the `over_purchase_limit` caption refers to the limit stored on the line when it was created; a later limit change does not move a line out of review. The screen shows no limit figure on ledger rows.
 - Row 153 (2026-10-16): payout request table approved with `requestedAmount` and `paidAmount` separate (no longer pending).
+
+- Row 159: `Request payout` disabled below the KES 500 minimum, with the caption above. Row 166: cancelled requests are not listed here (history only).
 
 ## Questions
 - None new.

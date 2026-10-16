@@ -32,13 +32,13 @@ Exact, from the mockup:
 - Drop zone: `Center your face in the frame`
 - Button: `Submit for review →`
 
-Proposed: privacy line 11.5 slate-600 under the hint (row 154) `We keep your selfie only as long as needed, then delete it.` (no fixed period: retention is configurable); `Retake`; upload error `Not uploaded` + `Retry`; submit error C-40 `We couldn't submit your application. Try again.`; hint 11.5 slate-600 `Face the light, remove sunglasses or a hat.`
+Proposed: privacy line 11.5 slate-600 under the hint, the same as `v-onboard-id` (row 158, shortened owner wording, **proposal flagged for the owner**): `Your ID and selfie are stored privately and only authorised Nitume personnel can see them.` + C-04 link `Privacy Policy` (hidden when `AppConfig.privacyLink` is not configured; full sentence on `v-onboard-pending`). Replaces the round-8 `We keep your selfie only as long as needed, then delete it.` File too large (row 163; checked before upload, also on an API 413): C-40 `This photo is larger than 10 MB. Take it again.` (proposed; `10 MB` Fira Code; front camera only, so no gallery wording); `Retake`; upload error `Not uploaded` + `Retry`; submit error C-40 `We couldn't submit your application. Try again.`; hint 11.5 slate-600 `Face the light, remove sunglasses or a hat.`
 
 ## Numeric fields (Fira Code)
 - `Step 2 of 2`.
 
 ## Data
-- Selfie upload to restricted storage (RA-7, rows 125, 154: private object on the existing storage provider, signed admin-authorised access only, logged; config-driven retention, initially 12 months after the last relevant verification/activity event; daily purge), then `POST /runners/me/verifications` `{ verificationType: 'selfie', documentKeys: [key] }`.
+- Selfie upload to restricted storage, built on `main` (RA-7, rows 125, 154, 161–163): `POST /runners/me/verifications/documents` multipart `file` + `verificationType: 'selfie'` → a `pending` verification (no key returned); errors as `v-onboard-id.md` Data (413 above 10 MB). Private object under a separate restricted credential, signed admin-authorised access only, logged; retention config-driven (initially 12 months), restarted by a new/replacement selfie (row 161), never by a view; daily purge keeps only minimum audit metadata.
 - Submit for review: proposed `POST /runners/me/verifications/submit` (RA-8) creates/ensures `phone` (approved from the OTP sign-in) and `payment_identity` (`pending`, for the ops M-Pesa name match) and notifies ops. Today none of this exists: phone and payment-identity records are never created automatically.
 - No socket events.
 
@@ -54,5 +54,7 @@ Proposed: privacy line 11.5 slate-600 under the hint (row 154) `We keep your sel
 - Row 126 (RQ-14): manual review of ID, selfie, M-Pesa name and every other required check; verified only when all are approved. No automated liveness vendor.
 - Row 124 (RQ-12): camera packages approved.
 
+- Rows 158, 161, 162, 163 (owner 2026-10-16): as `v-onboard-id.md` Decisions.
+
 ## Questions
-- None open. RQ-25 (row 144) decided 2026-10-16, see Decisions.
+- Owner: the shortened privacy line and the missing Privacy Policy URL, as `v-onboard-id.md`.

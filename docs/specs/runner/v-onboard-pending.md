@@ -23,6 +23,7 @@ None.
    - `Phone number`, `National ID`, `Selfie / liveness check`, `M-Pesa identity match`.
    - Rejected rows add, under the label, a C-04 link `Upload again` (ID) / `Retake selfie` (selfie).
 3. Body 12.5 slate-600, padding 14 20 0 (copy below, changes with the overall state).
+3a. Privacy paragraph (row 158), 11.5 slate-600 Fira Sans, padding 12 20 0: the owner's full sentence (Copy), then on its own line a C-04 link `Privacy Policy` (48 dp hit area) → `AppConfig.privacyLink`, opened externally; the link is hidden when no URL is configured. Shown in every overall state.
 4. Fixed bottom C-03 outline `Back to app` (pill; mockup `.cta-outline` radius 14).
 
 ## Status chips
@@ -48,6 +49,7 @@ Exact, from the mockup:
 - Chips `Verified`, `In review`
 - Body: `Verification usually takes under 24 hours. We'll notify you the moment you're approved to start accepting jobs.`
 - Button: `Back to app`
+- Privacy paragraph (owner wording, row 158, word for word): `Your ID and selfie are securely stored in private storage and are only accessible to authorised Nitume personnel for verification, security, and compliance purposes. Access is logged and the files are deleted according to Nitume's retention policy.` Link label `Privacy Policy` (from the sign-in legal line).
 
 Never shown: the reviewer's internal note (unless RA-7 adds a runner-safe reason), the reviewer's name, the ID images.
 
@@ -66,5 +68,7 @@ Rows read as `National ID, verified`; chips are not colour-only (text label). CT
 ## Decisions (owner, 2026-10-13)
 - Row 126 (RQ-14): verified only when every required check (phone, ID, selfie, M-Pesa name) is approved; ops do the M-Pesa name match manually.
 
+- Row 158 (owner, 2026-10-16): the full privacy statement appears here (this is the screen behind Profile → `Verification documents`); the capture screens carry the short line.
+
 ## Questions
-- None new.
+- Owner: the Privacy Policy URL does not exist yet (`NITUME_PRIVACY_URL` empty; customer `x-legal.md` Q1).

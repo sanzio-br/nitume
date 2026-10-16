@@ -17,7 +17,7 @@ Home tab. The runner switches availability on or off and sees the job offers add
 - Verification card (not verified) → `v-onboard-pending`.
 
 ## Task states
-Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it reaches its acceptance deadline unaccepted the **offer** expires and the card disappears (no runner acceptance after expiry, row 141). What happens to the task is not this runner's concern and is never shown (runner `_shared.md` §6 "Offer outcomes"): an auto-offer passes to the next eligible runner and the task goes EXPIRED only when none remain (row 150); an admin offer sends the task to EXPIRED at once as built (row 141), pending row 157. Offers made before the deadline change have `offerExpiresAt = null` (row 156): no countdown, and the client never removes the card on its own (only `job:offer_withdrawn`, a refused accept or a refresh that no longer returns it removes it). An accept that arrives after `offerExpiresAt` is refused (`offer_expired`). Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
+Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (row 113). An offer lasts 10 minutes when an admin made it (90 s for auto-offers, row 114); when it reaches its acceptance deadline unaccepted the **offer** expires and the card disappears (no runner acceptance after expiry, row 141). What happens to the task is not this runner's concern and is never shown (runner `_shared.md` §6 "Offer outcomes"): an auto-offer passes to the next eligible runner (row 150); after an admin offer lapses the task stays RUNNER_ASSIGNED and an admin offers it to another runner (row 157); the task goes EXPIRED only when no further runner can be assigned. Offers made before the deadline change have `offerExpiresAt = null` (row 156): no countdown, and the client never removes the card on its own (only `job:offer_withdrawn`, a refused accept or a refresh that no longer returns it removes it). An accept that arrives after `offerExpiresAt` is refused (`offer_expired`). Accepted jobs (now RUNNER_EN_ROUTE) leave this list and appear on `v-active`.
 
 ## Layout (top to bottom)
 1. C-09 top bar: title `Nearby jobs` (21/700) + C-11 bell (36, white, slate-line; red 7px unread dot from `GET /notifications/unread-count`).
@@ -86,7 +86,8 @@ Proposed:
 
 ## Decisions (owner, 2026-10-13)
 - Row 113 (RQ-1): offers inside RUNNER_ASSIGNED; accept → RUNNER_EN_ROUTE; decline → stays RUNNER_ASSIGNED and is reassigned; lapse → the offer expires (task outcome: rows 150, 155, 157); accept above the limit refused; over-limit decline not penalised.
-- Row 141 (RQ-22, owner 2026-10-16): "at the acceptance deadline with no acceptance the offer expires […]; no runner acceptance after expiry." "The task goes EXPIRED at once" now covers admin offers only (as built, pending row 157).
+- Row 141 (RQ-22, owner 2026-10-16): "at the acceptance deadline with no acceptance the offer expires […]; no runner acceptance after expiry." Its "the task goes EXPIRED at once" is superseded by rows 150 and 157.
+- Row 157 (owner 2026-10-16): an admin offer that lapses expires; the task stays RUNNER_ASSIGNED so the admin can offer it to another runner; EXPIRED only when no further runner can be assigned. No change to this screen: the card disappears at `offerExpiresAt`.
 - Row 150 (owner 2026-10-16): an auto-offer expires at its window end, then the system offers the next eligible runner; EXPIRED only when no eligible runners remain.
 - Row 155 (owner 2026-10-16): a decline starts or changes no deadline; the task stays RUNNER_ASSIGNED while eligible runners remain (matches the decline dialog `We'll offer it to another runner.`).
 - Row 156: offers without a deadline (pre-change) stay as they are: `offerExpiresAt = null` → no countdown and no client-side removal. Otherwise the app removes the card at `offerExpiresAt` (client clock, then confirmed by the server event) and never sends an accept after it.
@@ -96,4 +97,4 @@ Proposed:
 - Row 123 (RQ-11): 30 s pings while online without a job; none offline.
 
 ## Questions
-- Row 150 answered the auto-offer question (fall-through to the next eligible runner). Row 157 (open): admin-offer lapse, EXPIRED at once (as built) or re-offer. No screen change either way: the card disappears at `offerExpiresAt`.
+- None for this screen. Rows 150 and 157 settle what happens after a lapse; the remaining open point (the EXPIRED trigger, "no further runner can be assigned") changes nothing the runner sees.
