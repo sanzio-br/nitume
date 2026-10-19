@@ -37,6 +37,8 @@ None.
 
 Overall state:
 - Any `pending`, none rejected → body copy from the mockup.
+- None rejected and the ID or the selfie `Not started` (opened from Profile before finishing onboarding) → `Upload your ID and a selfie to start accepting jobs.` (the `v-jobs` copy; ruling 2026-10-19). Only `M-Pesa identity match` `Not started`, the rest approved or in review → the mockup body (ops create and decide that check meanwhile, row 218).
+- Load error: C-33 error with the app's generic error copy and `Try again` (builder, accepted 2026-10-19).
 - Any `rejected` → `Some checks weren't approved. Fix them below and we'll review again.` (proposed)
 - All four `approved` → body `You're verified. You can go online and accept jobs.` (proposed), CTA becomes C-01 `Start accepting jobs` → `v-jobs`.
 

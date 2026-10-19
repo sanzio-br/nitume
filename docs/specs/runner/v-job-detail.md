@@ -48,7 +48,7 @@ Offered: RUNNER_ASSIGNED with this runner's assignment `offered` (row 113); offe
 ## Copy
 Exact, from the mockup: `Job offer`, `Distance`, `Payout` (`Estimated time` dropped, row 120), `Decline`, `Accept job`; sample description `Video the compound, both bedrooms and the bathroom. Speak to the caretaker about the reported water leak.` (customer-written; the app shows the real `description`).
 
-Proposed: the decline dialog copy (`v-jobs.md`), `Deadline`, `Items`, `Item amount`, `How it's paid`, `Pickup`, `Drop-off`, `Task location`, the over-limit notice, the reimbursement note, `This offer is no longer available.`, `Back to jobs`, accept errors (`This job is above your purchase limit.`, `That offer is no longer available.`, `You already have an active job.`).
+Proposed: `Distance` value `Distance unavailable` (Sans) when the device has no fix (builder, accepted 2026-10-19); the decline dialog copy (`v-jobs.md`), `Deadline`, `Items`, `Item amount`, `How it's paid`, `Pickup`, `Drop-off`, `Task location`, the over-limit notice, the reimbursement note, `This offer is no longer available.`, `Back to jobs`, accept errors (`This job is above your purchase limit.`, `That offer is no longer available.`, `You already have an active job.`).
 
 ## Numeric fields (Fira Code)
 - Pay; `Distance`; offer time left; `Deadline`; `Payout`; `Item amount`; limit and item amounts inside the notice; item quantities.

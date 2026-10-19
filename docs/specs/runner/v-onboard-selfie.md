@@ -32,6 +32,8 @@ Exact, from the mockup:
 - Drop zone: `Center your face in the frame`
 - Button: `Submit for review →`
 
+Proposed (builder, accepted 2026-10-19): hint under the capture area, 11.5 slate-600, `Face the light, remove sunglasses or a hat.`
+
 Privacy line 11.5 slate-600 under the hint, the same as `v-onboard-id` (row 158 shortened, **approved, row 172**): `Your ID and selfie are stored privately and only authorised Nitume personnel can see them.` + C-04 link `Privacy Policy` (hidden until `NITUME_PRIVACY_URL` holds the real URL, no placeholder, row 173; full sentence on `v-onboard-pending`). Replaces the round-8 `We keep your selfie only as long as needed, then delete it.` File too large (row 163; checked before upload, also on an API 413): C-40 `This photo is larger than 10 MB. Take it again.` (proposed; `10 MB` Fira Code; front camera only, so no gallery wording); `Retake`; upload error `Not uploaded` + `Retry`; submit error C-40 `We couldn't submit your application. Try again.`; hint 11.5 slate-600 `Face the light, remove sunglasses or a hat.`
 
 ## Numeric fields (Fira Code)
