@@ -58,6 +58,12 @@ class Errand {
 
   /// Authoritative deadline (Q19, decided). Urgency for display is derived
   /// from it by the screen when needed; [urgency] is the API value.
+  ///
+  /// `null` before payment for a `Flexible` task (rows 235, 239 (a)): its
+  /// deadline is set at PAYMENT_CONFIRMED (payment time +
+  /// `ErrandDefaults.defaultDeadline`). Before payment a non-null value is
+  /// always the customer's choice. See [hasNoDeadlineYet] and
+  /// [deadlinePassedBeforePayment].
   final DateTime? deadlineAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -119,6 +125,21 @@ class Errand {
 
   /// True while a "Request a new quote" is waiting for an admin re-quote.
   bool get quoteRequestPending => quoteRequestedAt != null;
+
+  /// A `Flexible` task before payment: no deadline yet, its clock starts
+  /// when payment is confirmed (rows 235, 239 (a)). Show `No deadline yet`
+  /// rather than a time.
+  bool get hasNoDeadlineYet => deadlineAt == null && status.isBeforePayment;
+
+  /// True when, before payment, the customer's chosen deadline is at or
+  /// before [now] (row 237): payment is refused
+  /// (`ApiErrorCodes.deadlinePassedBeforePayment`) until the customer sets a
+  /// new one with `ErrandRepository.setDeadline`. Always false for a
+  /// `Flexible` task and once paid.
+  bool deadlinePassedBeforePayment(DateTime now) {
+    final d = deadlineAt;
+    return d != null && status.isBeforePayment && !now.isBefore(d);
+  }
 
   /// First pickup point in [locations], if any.
   ErrandLocation? get pickup => _point(ErrandPointType.pickup);

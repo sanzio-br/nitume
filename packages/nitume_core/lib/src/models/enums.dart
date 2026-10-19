@@ -108,6 +108,13 @@ enum ErrandStatus {
   bool get isTerminal => this == cancelled || this == failed || this == expired;
 
   bool get isActive => !isTerminal && this != settled;
+
+  /// DRAFT, REQUESTED, QUOTED or ACCEPTED: the task is not paid yet. Here a
+  /// `Flexible` task has no `deadlineAt` (rows 235, 239 (a)), a non-null
+  /// `deadlineAt` is always the customer's choice (rows 239, 240), and the
+  /// customer may change it (`ErrandRepository.setDeadline`, row 237).
+  bool get isBeforePayment =>
+      this == draft || this == requested || this == quoted || this == accepted;
 }
 
 enum ErrandUrgency {
