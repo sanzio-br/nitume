@@ -813,7 +813,7 @@ The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are clos
 ### API items for api-contract (numbered)
 1. **Row 233, at create**:
    - `POST /errands` refuses a task whose first point (task site, else pickup, else drop-off; row 213) is inside no area of `RUNNER_SERVICE_AREAS`. Proposed: 422 (or 400) `location_outside_service_area` with the point type; api-contract names it.
-   - Skip the check while the area list is empty.
+   - Skip the check while the area list is empty (design-auditor reading of rows 177 and 179, not the owner's words: with no areas configured every task would be refused).
    - Also check on submit (DRAFT → REQUESTED) if the draft could have been created before areas were configured.
 2. **Row 233, at quote**:
    - `POST /errands/:id/quote` (first quote and re-quote) refuses the same task with the same code.
@@ -824,7 +824,7 @@ The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are clos
    - The value before payment, while the column is NOT NULL (row 221), is your design, for example a provisional `createdAt + 24 h` overwritten at payment. If you need a way to tell a defaulted deadline from a chosen one, and that needs a new column, that is a schema change: ask the owner first (§3).
    - The urgency derived from `deadlineAt` (row 51) is recomputed at payment.
    - The default value exposed for the customer caption (§16 item 3) stays 24 h.
-4. **Rows 221, 235 backfill**: the row-221 backfill rule stands for existing rows. A live paid task with no deadline is best given its PAYMENT_CONFIRMED time + 24 h, consistent with row 235. If the dev data has such rows, say which rule you used in your HANDOFF.
+4. **Backfill**: the row-221 backfill stands as built (migration `1790103300000`: open tasks `createdAt` + 24 h, closed tasks their closing time). Row 235 changes only the default for new tasks. Nothing to build.
 5. **Row 234**: nothing to build (no feed item, as built).
 
 ### core-ui, flutter-customer, web-parity needs
@@ -835,8 +835,10 @@ The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are clos
 - web-parity: admin finding 33 (quote refusal copy, `drawer-task-requote.md`).
 
 ### New questions for the owner
-- **AQ-33 (row 233 follow-up)**: a task already REQUESTED or QUOTED that is refused at quote (created before the check, or after the areas changed) cannot be cancelled by ops: §3.3 lets only the customer cancel before payment. Options:
+- **AQ-33 (row 233 follow-up; BOARD row 236, open)**: a task already REQUESTED or QUOTED that is refused at quote (created before the check, or after the areas changed) cannot be cancelled by ops: §3.3 lets only the customer cancel before payment. Options:
   - (a) tell the customer through a notification and let them cancel;
   - (b) add an admin REQUESTED/QUOTED → CANCELLED for this case (a state-machine change).
   Recommended (a) for MVP, since it needs no new transition. The copy would come in a later round.
-- **AQ-34 (row 235 reviewer note)**: payment is not refused after a deadline **the customer chose** has passed (for example `Today`, with the quote accepted the next day). Such a task reaches PAYMENT_CONFIRMED already past its deadline and can then only be expired by ops (row 201). Should the API refuse to start payment once the chosen deadline has passed, and ask the customer to pick a new one? Recommended yes. This is a payment-flow decision.
+- **AQ-34 (row 235 reviewer note; BOARD row 237, open)**:
+- **Proposed question (not yet on the BOARD)**: row 221's backfill (built) gives an existing paid, open task with no deadline `createdAt` + 24 h, which may already be in the past, so it lands in `Deadline passed` at once. Should such tasks instead get their PAYMENT_CONFIRMED time + 24 h, consistent with row 235? Recommended: only if live (non-dev) paid tasks exist; otherwise keep row 221 as built.
+ payment is not refused after a deadline **the customer chose** has passed (for example `Today`, with the quote accepted the next day). Such a task reaches PAYMENT_CONFIRMED already past its deadline and can then only be expired by ops (row 201). Should the API refuse to start payment once the chosen deadline has passed, and ask the customer to pick a new one? Recommended yes. This is a payment-flow decision.

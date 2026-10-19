@@ -107,7 +107,7 @@ Customer-side answers OA-1 … OA-21 and rows 1–102 apply where they concern s
 | rows 202, 203, 208 (owner, 2026-10-19) | Admin `Expire task — no runner available` rule and required 10–500 reason approved; RUNNER_ASSIGNED → EXPIRED by System or Admin. The action needs no open offer, so no runner sees anything | §6 (no runner copy) |
 | row 204 (owner, 2026-10-19) | Offline or busy runners do not block exhaustion; only eligible online runners count | §6 (no runner copy) |
 | row 205 (owner, 2026-10-19) | An open offer ends at once when `deadlineAt` passes; `offerExpiresAt` never beyond the deadline | §6, v-jobs, v-job-detail |
-| row 206 (owner, 2026-10-19) | Every task has a `deadlineAt` (default when the customer gives none: 24 h from payment confirmation, rows 221, 235, decided 2026-10-19; a task inside no configured service area is refused at create, row 233, so it never reaches a runner) | v-job-detail (`Deadline` row always shown) |
+| row 206 (owner, 2026-10-19) | Every task has a `deadlineAt` (default when the customer gives none: 24 h from payment confirmation, rows 221, 235, decided 2026-10-19) | v-job-detail (`Deadline` row always shown) |
 | row 209 (owner, 2026-10-19) | National ID row: `Verified` only if both sides are approved; `Not approved` if either side is rejected; otherwise `In review` if either side is pending. "Newest record wins" across the sides is dropped | §9, v-onboard-pending, v-onboard-id, R-19 |
 | row 210 (owner, 2026-10-19) | Decline reasons `over_purchase_limit`, `too_far`, `not_available`, `other` (schema change approved); an explicit reason picker | v-jobs, v-job-detail, R-19, R-23 |
 | row 211 (owner, 2026-10-19) | Only RUNNER_EN_ROUTE, ARRIVED and IN_PROGRESS make a runner busy; AWAITING_CUSTOMER and DISPUTED free them for new offers | §6, v-jobs, v-active |
@@ -118,6 +118,7 @@ Customer-side answers OA-1 … OA-21 and rows 1–102 apply where they concern s
 | row 218 (owner, 2026-10-19) | Automatic `payment_identity` check and `POST /runners/me/verifications/submit` deferred (tracked, row 222); meanwhile the app records payment identity with `POST /runners/me/verifications` | §9, v-onboard-selfie |
 | row 227 (owner, 2026-10-19) | A task never offered to anyone is not "exhausted"; exhaustion needs at least one offer made (no runner copy) | §6 |
 | row 229 (owner, 2026-10-19) | The runner must pick a decline reason; `Other reason` without a free-text box | v-jobs, v-job-detail, R-23 |
+| row 233 (owner, 2026-10-19) | A task inside no configured service area is refused at create and quote, so it never reaches a runner (no runner copy) | none |
 
 ## 1. Navigation model
 

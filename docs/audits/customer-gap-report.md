@@ -901,9 +901,9 @@ Spec-only update; no screen re-audited.
 
 ## Owner answers round 14 (rows 233, 235, 2026-10-19), applied on `docs/owner-answers-14-specs`
 
-- **Row 235**: the `Flexible` default counts 24 h from payment confirmation. The caption in finding C-12-1 is reworded to `No fixed time. Once your payment is confirmed, we have {duration} to find you a runner.` (proposed). It still waits for the API value and the core accessor. Status stays `partial`.
+- **Row 235**: the `Flexible` default counts 24 h from payment confirmation. The caption in finding C-12-1 is reworded to `No fixed time. Your task's deadline is {duration} after your payment is confirmed.` (proposed). It still waits for the API value and the core accessor. Status stays `partial`.
 - **Row 233**: finding C-14-1 (**minor**), `apps/customer_app/lib/src/screens/wizard/review_screen.dart` (submit error handling).
   - Design: on `location_outside_service_area` from `POST /errands`, show the notice `We don't cover this location yet. Choose a place inside the areas we serve.` and a `Change location` button back to `v-new-details` (all proposed).
   - Code: none (the generic snackbar is shown).
   - Fix: after api-contract §18 item 1 and the core error code. Status: `v-new-review` → `partial`.
-- New owner questions AQ-33 and AQ-34: `runner-gap-report.md` §18.
+- New owner questions AQ-33 (BOARD row 236) and AQ-34 (BOARD row 237), both open: `runner-gap-report.md` §18.

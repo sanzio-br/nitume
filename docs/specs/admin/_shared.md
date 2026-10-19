@@ -335,7 +335,8 @@ Answered 2026-10-19 (round 14): AQ-32 (row 233, refuse at quote/create), row 234
 Open:
 | AQ | Question | Default |
 |---|---|---|
-| — | none open for these specs | — |
+| AQ-33 (BOARD row 236) | A task already REQUESTED or QUOTED that is refused at quote (outside every service area, row 233) cannot be cancelled by ops (§3.3: customer-only cancel before payment). Notify the customer and let them cancel, or add an admin cancel? | proposed: notify the customer, no new transition |
+| AQ-34 (BOARD row 237) | Refuse to start payment once a customer-chosen deadline has passed, and ask for a new deadline? | proposed yes |
 
 Answered 2026-10-16 (round 11, §1): row 185 (deadline path), 186 (purchase limit in the pool), 187 (empty online pool, no PAYMENT_CONFIRMED → EXPIRED, busy runners ineligible, admin expire action), 188–200.
 
