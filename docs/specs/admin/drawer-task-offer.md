@@ -36,7 +36,7 @@ So ops need to see the customer deadline, how many eligible runners are left, an
 ## Layout: `Runner` section (drawer-task, after Locations, before Quote)
 `.drawer-label` `Runner`, then one `.drawer-card`:
 1. Runner row (mockup): avatar (initials, `.verif-avatar`), short name 13.5/600, caption Fira Code 11 slate-600 `Verified · 4.9 · 137 tasks` (from the runner summary). Hidden when the task was never offered (PAYMENT_CONFIRMED).
-2. `Deadline` row: `.drawer-row` `Deadline` → `deadlineAt` (12-hour EAT, Fira Code). Shown in every PAYMENT_CONFIRMED, RUNNER_ASSIGNED and EXPIRED sub-state. Every task has a deadline (row 206); `No deadline` (Fira Sans) shows only on legacy tasks created without one, until the NOT NULL backfill (row 221, decided: open tasks get `createdAt` + 24 h, closed tasks their closing time).
+2. `Deadline` row: `.drawer-row` `Deadline` → `deadlineAt` (12-hour EAT, Fira Code). Shown in every PAYMENT_CONFIRMED, RUNNER_ASSIGNED and EXPIRED sub-state; from PAYMENT_CONFIRMED on every task has one (rows 206, 235, 239). Before payment the drawer summary shows the same `Deadline` row: the chosen time, or `No deadline yet` (Fira Sans, proposed) when `deadlineAt` is null (the customer chose `Flexible`; set at payment, row 239 (a)). A CANCELLED task without one shows no row.
 3. State line, by sub-state:
    | Sub-state | Chip (A-02, §6.1) | `.drawer-row`s | Caption 12 slate-600 |
    |---|---|---|---|
@@ -242,7 +242,7 @@ No copy says the task expired after a single lapse or decline. No copy mentions 
 - **Still needed (api-contract; `docs/audits/runner-gap-report.md` §16)**, all unblocked by the 2026-10-19 answers:
   - Row 201 + 225 + 226: PAYMENT_CONFIRMED → EXPIRED, actor A only, through the same `POST /errands/:id/expire` (server picks the transition by status) or its own route, api-contract's choice; guard: status PAYMENT_CONFIRMED and `deadlineAt` passed (409 `expiry_not_allowed` `{ reason: 'deadline_not_passed' | 'not_payment_confirmed' }`); reason required 10–500; history with admin and reason; side effects: customer `errand.EXPIRED` and refund review `expired_after_payment` (N-16 extended to this from-state); no admin feed item (row 234, decided; as built); `canExpire.deadlinePassed` turns true when allowed.
   - Row 201 + 220: one `deadline_passed` feed item per PAYMENT_CONFIRMED task when its deadline passes (no state change, idempotent per task), owner copy above.
-  - Rows 221, 235: when the customer gives no deadline, `deadlineAt` = PAYMENT_CONFIRMED time + 24 h (row 235; a provisional value before payment is api-contract's design, a new column needs the owner); backfill and NOT NULL as row 221; expose the 24 h for the customer caption.
+  - Rows 221, 235: when the customer gives no deadline, `deadlineAt` = PAYMENT_CONFIRMED time + 24 h (row 235); NULL before payment and on CANCELLED, CHECK-enforced (row 239 (a)); backfill as built (rows 221, 238); expose the 24 h for the customer caption.
   - Row 227: when exhaustion is built, a task never offered is not exhausted.
 - **Matching exhausted (rows 167, 177–179, 186, 187, 204; to build, api-contract N-20)**:
   - **Eligible pool per task** (System Design §3.3 "Pool"):

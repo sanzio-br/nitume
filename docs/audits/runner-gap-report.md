@@ -817,11 +817,11 @@ The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are clos
    - Also check on submit (DRAFT → REQUESTED) if the draft could have been created before areas were configured.
 2. **Row 233, at quote**:
    - `POST /errands/:id/quote` (first quote and re-quote) refuses the same task with the same code.
-   - Tasks created before the check exist and stay REQUESTED/QUOTED. See AQ-33 for how they end.
+   - Tasks created before the check exist and stay REQUESTED/QUOTED/ACCEPTED. They end by the customer's cancel after the notification (row 236, §18.1).
 3. **Row 235**:
    - When the customer sends no `deadlineAt`, set `deadlineAt` = the PAYMENT_CONFIRMED time + 24 h, in the same transaction as ACCEPTED → PAYMENT_CONFIRMED.
    - Never move a deadline the customer chose.
-   - The value before payment, while the column is NOT NULL (row 221), is your design, for example a provisional `createdAt + 24 h` overwritten at payment. If you need a way to tell a defaulted deadline from a chosen one, and that needs a new column, that is a schema change: ask the owner first (§3).
+   - **Storage (decided, owner 2026-10-19, row 239 (a))**: a task with no customer deadline keeps `deadlineAt` NULL until payment; the NOT NULL of row 221 is relaxed to a CHECK that allows NULL only before payment (DRAFT, REQUESTED, QUOTED, ACCEPTED) and on CANCELLED; at ACCEPTED → PAYMENT_CONFIRMED the API sets `deadlineAt` = payment time + 24 h. So "chosen" = `deadlineAt` non-null before payment; no new column and no `deadlineChosen` field.
    - The urgency derived from `deadlineAt` (row 51) is recomputed at payment.
    - The default value exposed for the customer caption (§16 item 3) stays 24 h.
 4. **Backfill**: the row-221 backfill stands as built (migration `1790103300000`: open tasks `createdAt` + 24 h, closed tasks their closing time). Row 235 changes only the default for new tasks. Nothing to build.
@@ -852,19 +852,28 @@ The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are clos
 
 API items (continuing §18):
 6. **Row 236**:
-   - When a quote is refused for `location_outside_service_area`, send the customer a notification (proposed event `errand.outside_service_area`; copy in `v-notifications.md`, proposed), once per task.
+   - When a quote is refused for `location_outside_service_area`, send the customer a notification through the notifications queue (BullMQ), once per task. Built so on the api branch, with event `service_area.outside`. Copy: BOARD row 241 (open: API wording vs the spec's proposed wording).
    - Expose `outsideServiceArea: true` on the customer errand view (proposed field) so `x-awaiting-quote` shows the cancel state.
    - No state change and no admin cancel.
 7. **Row 237**:
-   - `POST /payments/:errandId/initiate` answers 409 (proposed `deadline_passed_before_payment`) when `deadlineAt` was chosen by the customer and has passed. No STK.
-   - The customer sets a new deadline before payment (QUOTED or ACCEPTED, customer only). Proposed: `PATCH /errands/:id/deadline` `{ deadlineAt? }`; omitted = the 24 h default from payment (row 235). Refuse a past value.
-   - Expose whether the deadline was chosen (proposed `deadlineChosen`). If that needs a column, it is the same schema question as §18 item 3: ask the owner first.
-   - The quote stands (proposed; no pricing uses urgency yet).
+   - `POST /payments/:errandId/initiate` answers 409 (proposed `deadline_passed_before_payment`) when `deadlineAt` is non-null (= chosen, row 239) and has passed. No STK.
+   - The customer sets a new deadline before payment (QUOTED or ACCEPTED) with `PATCH /errands/:id` `{ deadlineAt }` (built on the api branch). `null` = `Flexible`, so the 24 h starts at payment (rows 235, 239). Refuse a past value.
+   - Who may edit the deadline: built for the customer and admins, with no history row. That is open as BOARD row 243 (recommended: customer only).
+   - The quote stands: built that way; open as BOARD row 242 (recommended: keep).
 8. **Row 238**: nothing to build.
 
 Needs:
-- core-ui: the new codes and fields (`deadline_passed_before_payment`, `outsideServiceArea`, `deadlineChosen`) and `ErrandRepository.setDeadline`.
+- core-ui: the new codes and fields (`deadline_passed_before_payment`, `outsideServiceArea`) and `ErrandRepository.setDeadline` (`PATCH /errands/:id` `{ deadlineAt }`); `Errand.deadlineAt` nullable before payment (row 239).
 - flutter-customer: C-14-2 (`x-awaiting-quote` outside-area state, row 236), C-14-3 (`x-awaiting-quote` new-deadline step and `v-payment` refusal, row 237), the routing for the notification.
 - web-parity: finding 33's copy is now complete (row 236).
 
-No new owner questions.
+Open owner rows (2026-10-19):
+- 240: existing backfilled unpaid tasks keep their deadline? Proposed: keep.
+- 241: out-of-area notification copy, API wording or spec wording? Recommended: the spec wording.
+- 242: keep the quote after a deadline change? Built and recommended: keep.
+- 243: deadline edits customer only, or admins too (then with a history row)? Built: customer and admin, no history row. Recommended: customer only.
+
+### 18.2 Owner answer row 239 (2026-10-19)
+- (a) decided: **Storage (decided, owner 2026-10-19, row 239 (a))**: a task with no customer deadline keeps `deadlineAt` NULL until payment; the NOT NULL of row 221 is relaxed to a CHECK that allows NULL only before payment (DRAFT, REQUESTED, QUOTED, ACCEPTED) and on CANCELLED; at ACCEPTED → PAYMENT_CONFIRMED the API sets `deadlineAt` = payment time + 24 h. So "chosen" = `deadlineAt` non-null before payment; no new column and no `deadlineChosen` field.
+- Screens: before payment, a task with no customer deadline shows `No deadline yet` (proposed) on the customer checkout (`x-awaiting-quote`) and in the admin task drawer (`drawer-task-offer.md` `Deadline` row).
+- Still open: rows 240–243 (§18.1 list).
