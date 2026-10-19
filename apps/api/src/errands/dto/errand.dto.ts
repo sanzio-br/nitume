@@ -247,3 +247,15 @@ export class MerchantDetailsDto {
   @MaxLength(40)
   accountReference?: string;
 }
+
+/**
+ * POST /errands/:id/expire (rows 187, 203). `reason` is checked by the
+ * service after trimming (10–500, 400 expiry_reason_invalid), so a missing
+ * or short reason gets the coded error rather than a generic one.
+ */
+export class ExpireErrandDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reason?: string;
+}
