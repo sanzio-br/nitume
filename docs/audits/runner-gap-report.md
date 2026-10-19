@@ -708,3 +708,41 @@ Admin findings 29–32 in `docs/audits/admin-gap-report.md` (round 12).
 - AQ-30 (BOARD row 227): is a task never offered, with no eligible runner online, "exhausted"? Proposed no (exhaustion needs at least one offer made).
 - AQ-31 (BOARD row 228): offline runners in the Reassign dialog as a collapsed, selectable group? Proposed yes.
 - RQ-32 (BOARD row 229): must the runner pick a decline reason (UI), and is `Other reason` without text enough? Proposed yes to both.
+
+## 15.1 Audit 2026-10-19: core R-23 and the combined National ID status (`feat/core-owner-answers-12` @ `b44da01`)
+
+Specs: runner `_shared.md` R-19, R-23, §9; `v-jobs.md` "Decline reason picker" with the `cd31855` rulings; `v-job-detail.md`; `v-onboard-pending.md`; `v-profile.md`. Golden `packages/nitume_core/test/goldens/decline_reason_dialog.png` checked by eye. `flutter test` (decline dialog, verification documents, goldens): 69 pass; `flutter analyze` on `nitume_core`: no issues.
+
+### R-23 `DeclineReasonDialog` (`lib/src/widgets/decline_reason_dialog.dart`): PASS
+- Structure: the C-35 `NitumeDialog` shell is unchanged (the large radius, the C-35 body style, the 335 max width). The title, the body with its over-limit variant, the label `Why are you declining?`, and one C-16 `NitumeRadioRow` group with a gap of 8. `Above my purchase limit` is listed first and pre-selected only when over the limit. Actions: outline `Decline`, then primary `Keep offer`.
+- States: `Decline` stays disabled until a reason is chosen. This is behind `reasonRequired` (default true), so it can follow row 229 either way. `purchase_within_limit` drops the row, clears the choice and shows the inline error, and the body follows the shown rows. `decline_reason_invalid` and other errors show inline. `offer_expired`, `assignment_not_declinable` and 404 close the dialog as `offerUnavailable` (ruling `cd31855`). The dialog cannot be dismissed while busy.
+- Copy: every string matches `v-jobs.md` word for word and is kept in one `DeclineReasonCopy` class (all proposed).
+- Tokens and typography: no literal colours; theme tokens only. Fira Sans throughout; there are no numbers.
+- Contrast: the selected row is a blue fill with white text. `Keep offer` is green with white text (primary). `Decline` is outline, never red or green.
+- Reuse: built from C-35 and C-16. The new `NitumeDialog.autofocusTitle` is opt-in and off by default, so other dialogs are unchanged (tested).
+- Accessibility: the title gets initial focus; the disabled `Decline` announces `Choose a reason first`; the rows are a mutually exclusive group with 48 dp targets.
+- Minor (no fix needed): the golden's rows are 48 high. That is the C-16 hit area drawn as the pill, so it is the existing `NitumeRadioRow` look, not an R-23 deviation.
+
+### Combined National ID status (`lib/src/models/runner_account.dart`, `RunnerVerificationDocuments.nationalIdStatus`, `idRejectedSides`): PASS
+- Row 209 rule exactly: approved only if both sides are approved, rejected if either side is rejected, otherwise pending if either side is pending, otherwise `missing` (the screens' proposed `Not started`). The newest record counts per side. A legacy record with no side does not count (proposed, as specced).
+- `government_id` is left out of the per-type "newest record" map, so no screen can show one side as the whole ID.
+- `idRejectedSides` (front first) drives the `Front` / `Back` / `Both photos not approved` caption and the side that `Upload again` selects.
+
+Verdict: **PASS**, no findings. core-ui §15 items 1–3 are met on this branch. Item 4 (the payment-identity call) was not part of this audit.
+
+## 15.2 Check 2026-10-19: eligible pool on `feat/api-owner-answers-12` @ `b47d9f2`
+
+Read-only check of `apps/api/src/runners/runners.service.ts` `poolFor` and `apps/api/src/matching/candidates.service.ts` against `drawer-task-offer.md` Data and System Design §3.3 "Pool".
+
+1. **Runners with no matching skill, or no service area while areas are configured, are not listed.** This **matches** the spec: the category must be in `skills` (row 115), and the runner must be inside a service area once areas exist (rows 116, 212, 213). Without configured areas (`RUNNER_SERVICE_AREAS` empty), or with no task point, the area filter is skipped. That also matches "once areas exist".
+2. **A task whose first point is inside no configured area gets an empty pool.** This **matches** the rule as written (rows 213, 177): no runner can be in the pool. Effects:
+   - The Reassign dialog shows `No eligible runners are available right now.`
+   - Offline runners are not offered as a fallback either, because offline candidates also come from the pool.
+   - An admin can still assign by hand: assign checks only verification, busy and purchase limit, not skill or area.
+   - The task never expires by exhaustion while AQ-30 (row 227) is open, and with row 179 in force. It expires at its deadline (row 185), or ops cancel or expire it.
+   - This does not block anything. It does raise a product question the documents do not answer, so it goes to the owner as **AQ-32**: should a task be accepted at creation when its location is inside no service area? Proposed: refuse at quote or create with a clear customer message. Until the owner answers, ops handle it by hand (assign, cancel, or expire).
+3. **Business tasks always get an empty pool** because `business` is not a skill a runner can pick. This **matches**: Business Tasks are out of MVP (OA-18; `v-edit-skills.md`: `business` refused from the app), and the customer app offers 5 categories. No question now. When Business Tasks enter scope, the skill must become selectable or business tasks must be matched another way; record that with the Business scope decision.
+
+Also seen, and matching the spec: busy runners are not listed (`availability = busy` plus the holders of another job, rows 187 (c), 211); offline runners are flagged `offline`, kept out of `eligibleRemaining` and counted in `offlineCount` (row 215); tried runners are marked `declined | expired` (row 178); over-limit runners are marked `ineligibleReason: over_purchase_limit` (rows 186, 207); the first point is taken in the order task site, pickup, drop-off (row 213); the candidates read changes no state.
+
+New owner question: **AQ-32**, tasks located outside every configured service area (above).
