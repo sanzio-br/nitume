@@ -28,6 +28,7 @@ const build = (status: ErrandStatus) => {
       {
         update: vi.fn(() => Promise.resolve({ affected: 0 })),
         findOne: vi.fn(() => Promise.resolve(null)),
+        find: vi.fn(() => Promise.resolve([] as unknown[])),
       },
     ],
     [
@@ -738,6 +739,25 @@ describe('ErrandsService closes an open offer when the task ends before an accep
       );
     },
   );
+  it.each([
+    [ErrandStatus.CANCELLED, 'cancelled'],
+    [ErrandStatus.EXPIRED, 'expired'],
+  ])('RUNNER_ASSIGNED -> %s tells the offered runner after commit (RA-5)', async (to, reason) => {
+    const built = build(ErrandStatus.RUNNER_ASSIGNED);
+    const assignments = built.manager.getRepository(ErrandAssignment) as { find: ReturnType<typeof vi.fn> };
+    assignments.find.mockResolvedValueOnce([{ id: 'a-1', runnerProfileId: 'rp-1' }]);
+    const actor =
+      to === ErrandStatus.CANCELLED ? { type: StatusHistoryActor.ADMIN, id: 'admin-1' } : { type: StatusHistoryActor.SYSTEM };
+    await built.service.transition('e-1', to, actor);
+    await new Promise((r) => setImmediate(r));
+    expect(built.emit).toHaveBeenCalledWith('assignment.offer_withdrawn', {
+      errandId: 'e-1',
+      assignmentId: 'a-1',
+      runnerProfileId: 'rp-1',
+      reason,
+      at: expect.any(String),
+    });
+  });
 });
 
 describe('runner accept checks and busy (RA-3, RA-8, RA-20, row 185)', () => {

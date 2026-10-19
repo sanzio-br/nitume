@@ -432,6 +432,44 @@ export interface AssignmentExpiredEvent {
   offerExpiresAt: string;
 }
 
+/**
+ * RA-5: an offer was made to a runner (admin assign, rows 113, 137).
+ * Emitted after the offer has committed; the realtime gateway pushes
+ * `job:offered` to that runner's own room.
+ */
+export const OFFER_MADE_EVENT = 'assignment.offer_made';
+
+export interface OfferMadeEvent {
+  errandId: string;
+  assignmentId: string;
+  runnerProfileId: string;
+  /** ISO; null only on pre-row-141 offers (row 156), never on a new one. */
+  offerExpiresAt: string | null;
+  offeredAt: string;
+}
+
+/**
+ * Why an open offer ended without the runner accepting it (RA-5). The
+ * customer deadline (row 185/205) and an offer lapse (rows 150, 157) both
+ * read `expired`: the runner is never told which (`_shared.md` §6).
+ */
+export type OfferWithdrawnReason = 'expired' | 'declined' | 'cancelled';
+
+/**
+ * RA-5: an open offer ended (lapse, deadline, decline, admin cancel).
+ * Emitted after commit; the gateway pushes `job:offer_withdrawn` to the
+ * runner's room.
+ */
+export const OFFER_WITHDRAWN_EVENT = 'assignment.offer_withdrawn';
+
+export interface OfferWithdrawnEvent {
+  errandId: string;
+  assignmentId: string;
+  runnerProfileId: string;
+  reason: OfferWithdrawnReason;
+  at: string;
+}
+
 export interface AssignmentDeclinedEvent {
   errandId: string;
   reference: string;
@@ -591,6 +629,8 @@ export type EligibleRemainingCounter = (manager: EntityManager | undefined, erra
 @Injectable()
 export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
+  /** Other domain events queued inside a transaction, emitted after it commits (see inTx). */
+  private readonly afterCommitEvents = new WeakMap<EntityManager, { name: string; payload: unknown }[]>();
   private eligibleCounter: EligibleRemainingCounter | null = null;
   private readonly terminationHooks: TerminationHook[] = [];
   private readonly confirmationHooks: ConfirmationHook[] = [];
@@ -992,6 +1032,23 @@ export class ErrandsService {
   /** Pickup / drop-off / task-site points of an errand (no access check). */
   async locationsFor(errandId: string): Promise<ErrandLocation[]> {
     return this.locations.find({ where: { errandId } });
+  }
+
+  /**
+   * §4.3 geofence: whether (lat, lng) is within `meters` of one errand
+   * point (PostGIS `ST_DWithin` on geography, metres). No access check.
+   */
+  async isWithinPoint(locationId: string, lat: number, lng: number, meters: number): Promise<boolean> {
+    const rows: unknown[] = await this.locations
+      .createQueryBuilder('l')
+      .select('1', 'hit')
+      .where('l.id = :id', { id: locationId })
+      .andWhere(
+        'ST_DWithin(l.coordinates, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :meters)',
+        { lng, lat, meters },
+      )
+      .getRawMany();
+    return rows.length > 0;
   }
 
   /**
@@ -1787,9 +1844,23 @@ export class ErrandsService {
     // so no view or room keeps an unaccepted runner on an ended task. Runs
     // after the termination hooks so they still see the task as it was.
     if (fromStatus === ErrandStatus.RUNNER_ASSIGNED && (to === ErrandStatus.CANCELLED || to === ErrandStatus.EXPIRED)) {
+      const open = await manager
+        .getRepository(ErrandAssignment)
+        .find({ where: { errandId, status: AssignmentStatus.ASSIGNED } });
+      const closedAt = new Date();
       await manager
         .getRepository(ErrandAssignment)
-        .update({ errandId, status: AssignmentStatus.ASSIGNED }, { status: AssignmentStatus.EXPIRED, decidedAt: new Date() });
+        .update({ errandId, status: AssignmentStatus.ASSIGNED }, { status: AssignmentStatus.EXPIRED, decidedAt: closedAt });
+      // RA-5: the offered runner's card goes (deadline expiry included, row 205).
+      for (const offer of open) {
+        this.emitAfterCommit(manager, OFFER_WITHDRAWN_EVENT, {
+          errandId,
+          assignmentId: offer.id,
+          runnerProfileId: offer.runnerProfileId,
+          reason: to === ErrandStatus.CANCELLED ? 'cancelled' : 'expired',
+          at: closedAt.toISOString(),
+        } satisfies OfferWithdrawnEvent);
+      }
     }
 
     if (to === ErrandStatus.CONFIRMED) {
@@ -1819,13 +1890,25 @@ export class ErrandsService {
       return fn(manager);
     });
     const queued = used ? (this.afterCommit.get(used) ?? []) : [];
+    const others = used ? (this.afterCommitEvents.get(used) ?? []) : [];
     if (used) {
       this.afterCommit.delete(used);
+      this.afterCommitEvents.delete(used);
     }
     for (const event of queued) {
       setImmediate(() => this.events.emit('errand.status_changed', event));
     }
+    for (const { name, payload } of others) {
+      setImmediate(() => this.events.emit(name, payload));
+    }
     return result;
+  }
+
+  /** Queues a domain event on `manager`'s transaction; inTx emits it once that commits. */
+  private emitAfterCommit(manager: EntityManager, name: string, payload: unknown): void {
+    const list = this.afterCommitEvents.get(manager) ?? [];
+    list.push({ name, payload });
+    this.afterCommitEvents.set(manager, list);
   }
 
   /**
@@ -2095,6 +2178,13 @@ export class ErrandsService {
           this.events.emit('errand.access_changed', { errandId: id });
           // Admin feed item (N-20); the customer is not told: the task did not change.
           this.events.emit(ASSIGNMENT_EXPIRED_EVENT, event);
+          this.events.emit(OFFER_WITHDRAWN_EVENT, {
+            errandId: id,
+            assignmentId: event.assignmentId,
+            runnerProfileId: event.runnerProfileId,
+            reason: 'expired',
+            at: now.toISOString(),
+          } satisfies OfferWithdrawnEvent);
         });
       }
     }
@@ -2459,7 +2549,7 @@ export class ErrandsService {
     actor: ActorReference,
     note?: string,
   ): Promise<{ errand: Errand; history: ErrandStatusHistory | null; assignment: ErrandAssignment }> {
-    let lapsed = false;
+    let lapsed: ErrandAssignment | null = null;
     const result = await this.inTx(async (manager) => {
       const runner = await manager
         .getRepository(RunnerProfile)
@@ -2479,8 +2569,9 @@ export class ErrandsService {
           deadlineAt: (locked.deadlineAt as Date).toISOString(),
         });
       }
-      if (locked?.status === ErrandStatus.RUNNER_ASSIGNED && (await this.expireLapsedOfferIn(manager, errandId, new Date()))) {
-        lapsed = true; // The admin is acting on it already: no feed item.
+      if (locked?.status === ErrandStatus.RUNNER_ASSIGNED) {
+        // The admin is acting on it already: no feed item.
+        lapsed = await this.expireLapsedOfferIn(manager, errandId, new Date());
       }
       // Reassignment after a decline (row 108) or an expired offer (row 157):
       // the errand stays RUNNER_ASSIGNED (no transition, §3.3) and gets a new
@@ -2524,10 +2615,28 @@ export class ErrandsService {
       );
       return { errand: done.errand, history: done.history, assignment };
     });
-    if (lapsed) {
+    const previousOffer = lapsed as ErrandAssignment | null;
+    if (previousOffer) {
       // The previous runner loses access: the realtime gateway re-checks the room.
-      setImmediate(() => this.events.emit('errand.access_changed', { errandId }));
+      setImmediate(() => {
+        this.events.emit('errand.access_changed', { errandId });
+        this.events.emit(OFFER_WITHDRAWN_EVENT, {
+          errandId,
+          assignmentId: previousOffer.id,
+          runnerProfileId: previousOffer.runnerProfileId,
+          reason: 'expired',
+          at: new Date().toISOString(),
+        } satisfies OfferWithdrawnEvent);
+      });
     }
+    const made: OfferMadeEvent = {
+      errandId,
+      assignmentId: result.assignment.id,
+      runnerProfileId: result.assignment.runnerProfileId,
+      offerExpiresAt: result.assignment.offerExpiresAt?.toISOString() ?? null,
+      offeredAt: (result.assignment.createdAt ?? new Date()).toISOString(),
+    };
+    setImmediate(() => this.events.emit(OFFER_MADE_EVENT, made));
     return result;
   }
 
@@ -2607,12 +2716,19 @@ export class ErrandsService {
       };
       return out;
     });
-    const declined = event;
+    const declined = event as AssignmentDeclinedEvent | null;
     setImmediate(() => {
       // The runner loses access: the realtime gateway re-checks the room.
       this.events.emit('errand.access_changed', { errandId });
       if (declined) {
         this.events.emit(ASSIGNMENT_DECLINED_EVENT, declined);
+        this.events.emit(OFFER_WITHDRAWN_EVENT, {
+          errandId,
+          assignmentId: declined.assignmentId,
+          runnerProfileId: declined.runnerProfileId,
+          reason: 'declined',
+          at: now.toISOString(),
+        } satisfies OfferWithdrawnEvent);
       }
     });
     return saved;
