@@ -107,5 +107,6 @@ export 'src/widgets/status_chip.dart';
 export 'src/widgets/status_presentation.dart';
 export 'src/widgets/status_timeline.dart';
 export 'src/widgets/step_progress_bar.dart';
+export 'src/widgets/success_mark.dart';
 export 'src/widgets/task_rows.dart';
 export 'src/widgets/weekly_bar_chart.dart';
