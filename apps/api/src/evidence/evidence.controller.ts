@@ -1,3 +1,4 @@
+import { Idempotent } from '../common/interceptors/idempotency.interceptor';
 import {
   Body,
   Controller,
@@ -23,7 +24,12 @@ import { EvidenceService, EvidenceView } from './evidence.service';
 export class EvidenceController {
   constructor(private readonly evidence: EvidenceService) {}
 
+  /**
+   * Optional `Idempotency-Key` (RA-17): a replayed upload returns the first
+   * evidence row and stores nothing new.
+   */
   @Post()
+  @Idempotent('evidence-upload')
   upload(
     @Param() params: UploadEvidenceParamsDto,
     @Body() dto: CreateEvidenceDto,

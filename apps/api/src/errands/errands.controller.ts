@@ -1,3 +1,4 @@
+import { Idempotent } from '../common/interceptors/idempotency.interceptor';
 import {
   Body,
   Controller,
@@ -129,9 +130,13 @@ export class ErrandsController {
     });
   }
 
-  /** Assigned runner writes the notes shown on the customer's evidence review. */
+  /**
+   * Assigned runner writes the notes shown on the customer's evidence review.
+   * Optional `Idempotency-Key` (RA-17): a replay returns the first result.
+   */
   @Patch(':id/runner-notes')
   @Roles(UserRole.RUNNER)
+  @Idempotent('errand-runner-notes')
   runnerNotes(
     @Param('id') id: string,
     @CurrentUser() user: AuthContext,
@@ -224,9 +229,13 @@ export class ErrandsController {
    * refused with 409 `{ code: 'offer_expired', offerExpiresAt }` (ISO), before
    * and after the expiry job has marked the offer `expired` (row 157; the
    * task itself stays RUNNER_ASSIGNED).
+   *
+   * Optional `Idempotency-Key` (RA-17, the offline queue's action id): a
+   * replay returns the first result and makes no second transition.
    */
   @Patch(':id/status')
   @HttpCode(200)
+  @Idempotent('errand-status')
   transition(
     @Param('id') id: string,
     @CurrentUser() user: AuthContext,
