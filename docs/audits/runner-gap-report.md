@@ -739,7 +739,7 @@ Read-only check of `apps/api/src/runners/runners.service.ts` `poolFor` and `apps
    - The Reassign dialog shows `No eligible runners are available right now.`
    - Offline runners are not offered as a fallback either, because offline candidates also come from the pool.
    - An admin can still assign by hand: assign checks only verification, busy and purchase limit, not skill or area.
-   - The task never expires by exhaustion because it was never offered (row 227, decided 2026-10-19: exhaustion needs at least one offer), and with row 179 in force. It expires at its deadline (row 185), or ops cancel or expire it.
+   - Unless an admin offered it by hand, the task is never offered, so it is never exhausted (row 227, decided 2026-10-19: exhaustion needs at least one offer); row 179 holds exhaustion back anyway. It expires at its deadline (row 185), or ops cancel or expire it.
    - This does not block anything. It does raise a product question the documents do not answer, so it goes to the owner as **AQ-32**: should a task be accepted at creation when its location is inside no service area? Proposed: refuse at quote or create with a clear customer message. Until the owner answers, ops handle it by hand (assign, cancel, or expire).
 3. **Business tasks always get an empty pool** because `business` is not a skill a runner can pick. This **matches**: Business Tasks are out of MVP (OA-18; `v-edit-skills.md`: `business` refused from the app), and the customer app offers 5 categories. No question now. When Business Tasks enter scope, the skill must become selectable or business tasks must be matched another way; record that with the Business scope decision.
 
