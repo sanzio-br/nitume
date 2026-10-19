@@ -177,7 +177,8 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
             errand.merchantDetailsAvailable ||
         old?.errand.quoteRequestedAt != errand.quoteRequestedAt ||
         old?.errand.quoteExpiresAt != errand.quoteExpiresAt ||
-        old?.errand.deadlineAt != errand.deadlineAt;
+        old?.errand.deadlineAt != errand.deadlineAt ||
+        old?.errand.outsideServiceArea != errand.outsideServiceArea;
     if (was == errand.status && !changed && !force) return;
     // A new deadline (possibly set on another device) ends the refusal.
     if (old != null && old.errand.deadlineAt != errand.deadlineAt) {
@@ -290,6 +291,17 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     }
     final at = d.errand.quoteExpiresAt ?? d.quote?.expiresAt;
     return _expiredByApi || (at != null && at.isBefore(DateTime.now()));
+  }
+
+  /// Row 236 (C-14-2): the API flags the task as inside no service area
+  /// (`outsideServiceArea`, sent only by `GET /errands/:id`, which every
+  /// load and refresh here uses). REQUESTED, QUOTED or ACCEPTED only.
+  static bool _outsideArea(_QuoteData d) {
+    final s = d.errand.status;
+    return d.errand.outsideServiceArea &&
+        (s == ErrandStatus.requested ||
+            s == ErrandStatus.quoted ||
+            s == ErrandStatus.accepted);
   }
 
   /// Row 237: a deadline the customer chose has passed before payment (a
@@ -422,6 +434,14 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
       );
     } else if (data == null) {
       body = const SkeletonList();
+    } else if (_outsideArea(data)) {
+      // Row 236: refused at quote; the customer may cancel (nothing paid).
+      body = _Waiting(
+        errand: data.errand,
+        outsideArea: true,
+        cancelling: _cancelling,
+        onCancel: _cancel,
+      );
     } else if (data.errand.status == ErrandStatus.requested) {
       body = _Waiting(
         errand: data.errand,
@@ -490,6 +510,7 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
           key: ValueKey((
             data?.errand.status,
             data != null && _newQuoteRequested(data),
+            data != null && _outsideArea(data),
           )),
           child: body,
         ),
@@ -505,9 +526,13 @@ class _Waiting extends StatelessWidget {
     required this.cancelling,
     required this.onCancel,
     this.requestedAt,
+    this.outsideArea = false,
   });
 
   final Errand errand;
+
+  /// Row 236: `We can't take this task`, `Cancel task` as the primary.
+  final bool outsideArea;
 
   /// Set for the "New quote requested" variant (row 68).
   final DateTime? requestedAt;
@@ -516,23 +541,62 @@ class _Waiting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final again = requestedAt != null;
+    final again = requestedAt != null && !outsideArea;
+    final String heading;
+    final String body;
+    if (outsideArea) {
+      // Owner copy, row 241 (same words as the notification).
+      heading = "We can't take this task";
+      body =
+          'Its location is outside the areas we serve. You can cancel it; '
+          "you haven't paid anything.";
+    } else if (again) {
+      heading = 'Preparing a new quote';
+      body = "You asked for a new quote. We'll notify you when it's ready.";
+    } else {
+      heading = 'Preparing your quote';
+      body =
+          "We're pricing your task. This usually takes a few minutes, and "
+          "we'll notify you when it's ready.";
+    }
+    final cancel = outsideArea
+        ? NitumeButton.primary(
+            label: 'Cancel task',
+            loading: cancelling,
+            onPressed: onCancel,
+          )
+        : NitumeButton.text(
+            label: 'Cancel task',
+            destructive: true,
+            loading: cancelling,
+            onPressed: onCancel,
+          );
+    final home = NitumeButton.outline(
+      label: 'Back to Home',
+      onPressed: () => Nav.resetTo(context, ShellTab.home),
+    );
     return ListView(
       children: [
         const SizedBox(height: 32),
-        Center(
-          child: PulsingDots(
-            semanticLabel: again
-                ? 'Waiting for your new quote'
-                : 'Waiting for your quote',
+        // Nothing is being prepared for a refused task: no waiting dots.
+        if (!outsideArea) ...[
+          Center(
+            child: PulsingDots(
+              semanticLabel: again
+                  ? 'Waiting for your new quote'
+                  : 'Waiting for your quote',
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          again ? 'Preparing a new quote' : 'Preparing your quote',
-          textAlign: TextAlign.center,
-          style: NitumeTextStyles.dialogTitle.copyWith(
-            fontWeight: FontWeight.w700,
+          const SizedBox(height: 20),
+        ],
+        Semantics(
+          liveRegion: outsideArea,
+          child: Text(
+            heading,
+            textAlign: TextAlign.center,
+            style: NitumeTextStyles.dialogTitle.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -540,11 +604,7 @@ class _Waiting extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 260),
             child: Text(
-              again
-                  ? "You asked for a new quote. We'll notify you when it's "
-                        'ready.'
-                  : "We're pricing your task. This usually takes a few "
-                        "minutes, and we'll notify you when it's ready.",
+              body,
               textAlign: TextAlign.center,
               style: NitumeTextStyles.muted,
             ),
@@ -559,25 +619,22 @@ class _Waiting extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 22),
-        // No chip while a new quote is requested (no invented label).
-        TaskSummaryCard(errand: errand, showChip: !again),
+        // No chip while a new quote is requested, nor on a refused QUOTED /
+        // ACCEPTED task (`Quote ready` / `Awaiting payment` would no longer
+        // be true; the UI never invents a label).
+        TaskSummaryCard(
+          errand: errand,
+          showChip:
+              !again &&
+              (!outsideArea || errand.status == ErrandStatus.requested),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              NitumeButton.outline(
-                label: 'Back to Home',
-                onPressed: () => Nav.resetTo(context, ShellTab.home),
-              ),
-              const SizedBox(height: 10),
-              NitumeButton.text(
-                label: 'Cancel task',
-                destructive: true,
-                loading: cancelling,
-                onPressed: onCancel,
-              ),
-            ],
+            children: outsideArea
+                ? [cancel, const SizedBox(height: 10), home]
+                : [home, const SizedBox(height: 10), cancel],
           ),
         ),
       ],
