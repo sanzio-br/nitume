@@ -378,6 +378,43 @@ void main() {
     );
   });
 
+  testWidgets('notice tones (C3)', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        SizedBox(
+          width: 375,
+          child: Column(
+            children: [
+              const NitumeNotice(message: 'Go online to accept this offer.'),
+              const SizedBox(height: 10),
+              NitumeNotice(
+                message:
+                    'This photo is larger than 10 MB. Take it again or choose '
+                    'a smaller photo.',
+                richMessage: TextSpan(
+                  children: [
+                    const TextSpan(text: 'This photo is larger than '),
+                    const NumSpan('10 MB'),
+                    const TextSpan(
+                      text: '. Take it again or choose a smaller photo.',
+                    ),
+                  ],
+                ),
+                tone: NitumeNoticeTone.danger,
+              ),
+            ],
+          ),
+        ),
+      ),
+      surfaceSize: const Size(420, 220),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/notice_tones.png'),
+    );
+  });
+
   testWidgets('capture states (C1, C2)', (tester) async {
     final photo = MemoryImage(_png);
     await pumpThemed(

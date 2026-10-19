@@ -10,6 +10,11 @@ import 'num_text.dart';
 /// icon and an optional trailing [action] (a small `NitumeButton.outline`,
 /// e.g. Track's item-payment notice). No coloured fill. Margin is the
 /// caller's.
+///
+/// [tone] [NitumeNoticeTone.danger] (a failed action: `This photo is larger
+/// than 10 MB.`) swaps the icon for a red error icon, always shown. Red
+/// stays a small accent (design system: never a surface larger than a
+/// chip); the card, border and text are unchanged.
 class NitumeNotice extends StatelessWidget {
   const NitumeNotice({
     super.key,
@@ -17,6 +22,7 @@ class NitumeNotice extends StatelessWidget {
     this.richMessage,
     this.showIcon = true,
     this.action,
+    this.tone = NitumeNoticeTone.info,
   });
 
   /// Plain-text message. Also the accessible label when [richMessage] is
@@ -29,10 +35,14 @@ class NitumeNotice extends StatelessWidget {
   final bool showIcon;
   final Widget? action;
 
+  /// Info (default) or the danger accent.
+  final NitumeNoticeTone tone;
+
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(NitumeDesignChoices.cardRadius);
     final style = NitumeTextStyles.muted.copyWith(fontSize: 13);
+    final danger = tone == NitumeNoticeTone.danger;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -43,7 +53,16 @@ class NitumeNotice extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          if (showIcon) ...[
+          if (danger)
+            const Padding(
+              padding: EdgeInsets.only(right: 10),
+              child: Icon(
+                Icons.error_outline_rounded,
+                size: 18,
+                color: NitumeColors.red,
+              ),
+            )
+          else if (showIcon) ...[
             const Icon(
               Icons.info_outline_rounded,
               size: 18,
@@ -68,4 +87,13 @@ class NitumeNotice extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Accent of a [NitumeNotice].
+enum NitumeNoticeTone {
+  /// Slate-600 info icon (or none).
+  info,
+
+  /// Red error icon (the danger status accent, `--red`).
+  danger,
 }
