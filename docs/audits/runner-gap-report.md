@@ -819,7 +819,7 @@ Build health:
   - The disabled availability card stays for an unverified runner: accepted, and the spec wording is fixed (the card replaces items 3–4).
   - 20 s polling instead of the RA-5 socket: accepted (the spec's own fallback). No `Reconnecting…` notice without a socket: accepted.
   - The bell does nothing until `v-notifications` exists: accepted interim. It must route to `v-notifications` in that build.
-  - `Photos required` left out of the meta line: **not accepted**. Row 120 (RQ-8) decided a generic evidence line `Photos required`. Every task's generic checklist requires photos, so it is a constant meta part, not an API field. See F-1.
+  - `Photos required` left out of the meta line: **not accepted**. `Photos required` is proposed copy applying row 120 (RQ-8, generic evidence checklist). Every task's generic checklist requires photos, so it is a constant meta part, not an API field. See F-1.
 - **(d) `v-job-detail` items `qty × name unit`**: accepted. It matches the spec example `2 × Milk 500 ml`; the quantity is in Fira Code.
 - **(e) Interim stand-ins for missing core pieces**: all acceptable interim. None is a FAIL, because each keeps the spec's information, uses only core tokens, and is marked `TODO(core-ui)` where code exists. core-ui needs:
   - C1 R-15 `CaptureThumbnail` states:
@@ -870,7 +870,7 @@ Build health:
 
 #### v-jobs: FAIL (1 minor)
 F-1 **minor**: `screens/jobs/offer_presentation.dart:63-72` (`offerMeta`).
-- Design: the meta line includes `Photos required` (row 120, decided; mockup meta).
+- Design: the meta line includes `Photos required` (proposed copy applying row 120; mockup meta).
 - Code: no evidence part ("the offer view carries no evidence requirement").
 - Fix: append `Photos required` to every card's meta (after distance, before the purchase terms), as a constant. Update `jobs_test.dart`.
 
@@ -908,7 +908,7 @@ Everything else passes:
 Build health: `flutter analyze` clean; `flutter test` 66 pass.
 
 - **v-jobs: PASS (F-1 closed)**, fixed in `b2beedb`.
-  - The meta line now reads `{distance} away · Photos required · Item KSh … · {how it's paid}`. `Photos required` is on every offer and the distance is left out without a device fix. That matches row 120 and the spec order.
+  - The meta line now reads `{distance} away · Photos required · Item KSh … · {how it's paid}`. `Photos required` is on every offer and the distance is left out without a device fix. That matches the spec (proposed copy applying row 120) and the spec order.
   - The copy is the constant `OfferCopy.photosRequired`, and the tests are updated.
 - **v-onboard-pending: PASS (m-5 closed)**, fixed in `f125ef9`.
   - Body order: rejected, then all approved, then ID or selfie `Not started` (`Upload your ID and a selfie to start accepting jobs.`), then the 24-hour mockup body.
@@ -916,3 +916,13 @@ Build health: `flutter analyze` clean; `flutter test` 66 pass.
   - Ruling: when only `M-Pesa identity match` is `Not started`, the 24-hour body stays. This matches the spec as amended in `f03be0e`. That record is created by the app at submit once S-1 is built, so the case is temporary. No change.
 
 Open from §17: S-1 (orchestrator), m-4 and C1–C6 (core-ui), the bell route (with `v-notifications`).
+
+### 17.2 Review minors (2026-10-19)
+- Labels: the `x-location-disclosure` OS strings and the `v-onboard-pending` additions are marked proposed. "None (OS permission)" is reworded to "No API data".
+- `Photos required` is attributed as "proposed copy applying row 120" (§17, §17.1, `v-jobs.md`).
+- `v-onboard-pending` now states that the M-Pesa-only 24-hour body is misleading until S-1 is built.
+- **New m-6 (minor), v-jobs meta typography**: `v-jobs.md` now asks for Fira Code only on the numeric parts of the meta line (design system wins over the mockup). The build renders the whole meta in Fira Code (core R-04 `JobOfferCard` `meta` is a plain Fira Code string).
+  - core-ui: let R-04 take a rich meta (spans), with `NumSpan` for numbers.
+  - flutter-runner: build the meta from spans in `offer_presentation.dart` `offerMeta`.
+  - This does not reopen the v-jobs PASS for F-1; m-6 is a follow-up minor. The same check applies to `v-job-detail` captions.
+- Still to correct after the B-1 fix lands: the claim that the captured file is deleted (§17 v-onboard-id; `v-onboard-id.md`, `v-onboard-selfie.md`).

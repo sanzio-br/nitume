@@ -34,8 +34,8 @@ Full-screen pushed (C-10 back), `.auth-wrap`-style centred column, padding 0 28:
 None.
 
 ## Data
-OS strings (builder, accepted 2026-10-19, taken from Body 1 and Body 2): iOS `NSLocationWhenInUseUsageDescription` `Nitume Runner uses your location to show you nearby jobs and to tell the customer when you're on the way and when you've arrived.`; `NSLocationAlwaysAndWhenInUseUsageDescription` `During a job Nitume Runner keeps sharing your location even when the app is closed, until you finish the task or go offline.`; camera and photo-library strings for ID, selfie and evidence.
-None (OS permission). Packages: `geolocator` + `permission_handler` (row 124).
+OS strings (proposed; builder copy accepted 2026-10-19, taken from Body 1 and Body 2): iOS `NSLocationWhenInUseUsageDescription` `Nitume Runner uses your location to show you nearby jobs and to tell the customer when you're on the way and when you've arrived.`; `NSLocationAlwaysAndWhenInUseUsageDescription` `During a job Nitume Runner keeps sharing your location even when the app is closed, until you finish the task or go offline.`; camera and photo-library strings for ID, selfie and evidence.
+No API data. Packages: `geolocator` + `permission_handler` (row 124).
 
 ## Accessibility and mobile
 Heading announced; buttons 48 dp; Android 14 foreground-service type `location` with a persistent notification during a job: title `Nitume Runner`, text `Sharing your location for your active job.` (final, `_shared.md` §10).
