@@ -916,6 +916,10 @@ tr.clickable:hover {
   display: block;
   margin-top: 2px;
 }
+/* Who made the change (actor type, admin name): words in Fira Sans. */
+.dt-actor {
+  font-family: var(--nitume-font-ui);
+}
 .drawer-actions {
   display: flex;
   gap: 10px;

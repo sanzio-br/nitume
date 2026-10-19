@@ -6,7 +6,7 @@ import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
 import { ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
-import type { QuoteErrandResult } from '../../../core/api-types';
+import type { ErrandStatusHistoryEntry, QuoteErrandResult } from '../../../core/api-types';
 import { formatDateTime, formatKsh, formatKshExact } from '../shared-format';
 import { QuoteConflict, QuoteDialogComponent } from './quote-dialog';
 import { QuoteSectionComponent } from './quote.section';
@@ -21,6 +21,18 @@ import { RunnerPayoutsLinkSectionComponent } from '../payouts/runner-payouts-lin
  */
 export function taskActions(status: string): { quote: boolean; assign: boolean } {
   return { quote: status === 'REQUESTED', assign: status === 'PAYMENT_CONFIRMED' };
+}
+
+/**
+ * `Status history` caption actor: `Admin · {admin name}` when the API names
+ * the admin (`actor.displayName`, admin viewers), else the actor type as
+ * built (`Admin`, `System`, `Runner`, `Customer`).
+ */
+export function historyActor(entry: ErrandStatusHistoryEntry): string {
+  const type = entry.actorType.replace(/_/g, ' ');
+  const label = type.charAt(0).toUpperCase() + type.slice(1);
+  const name = entry.actor?.displayName?.trim();
+  return entry.actorType === 'admin' && name ? `${label} · ${name}` : label;
 }
 
 /**
@@ -164,7 +176,8 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
                 }}{{ statusLabel(entry.toStatus) }}</b
               >
               <span class="dt-time"
-                >{{ title(entry.actorType) }} · {{ timeAgo(entry.createdAt) }}</span
+                ><span class="dt-actor">{{ historyActor(entry) }}</span> ·
+                {{ timeAgo(entry.createdAt) }}</span
               >
               @if (entry.note) {
                 <span class="dt-time">“{{ entry.note }}”</span>
@@ -332,4 +345,5 @@ export class TaskDrawerComponent implements OnInit {
   protected readonly formatKshExact = formatKshExact;
   protected readonly formatDateTime = formatDateTime;
   protected readonly statusLabel = statusLabel;
+  protected readonly historyActor = historyActor;
 }
