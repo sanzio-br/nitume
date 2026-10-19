@@ -136,8 +136,9 @@ class NitumeApiException implements Exception {
     return v is String && v.isNotEmpty ? v : null;
   }
 
-  /// `deadlineAt` (the task deadline) of an [ApiErrorCodes.offerExpired] or
-  /// [ApiErrorCodes.taskDeadlinePassed] error, when sent.
+  /// `deadlineAt` (the task deadline) of an [ApiErrorCodes.offerExpired],
+  /// [ApiErrorCodes.taskDeadlinePassed] or
+  /// [ApiErrorCodes.deadlinePassedBeforePayment] error, when sent.
   DateTime? get deadlineAt {
     final v = details['deadlineAt'];
     return v is String ? DateTime.tryParse(v) : null;
@@ -166,6 +167,31 @@ class NitumeApiException implements Exception {
 
   /// `to` of an [ApiErrorCodes.illegalTransition] error.
   ErrandStatus? get transitionTo => ErrandStatus.tryFromWire(details['to']);
+
+  /// `status` detail as a typed state, e.g. on
+  /// [ApiErrorCodes.deadlineNotEditable]; `null` when absent or unknown.
+  ErrandStatus? get statusDetail => ErrandStatus.tryFromWire(details['status']);
+
+  /// `pointType` of an [ApiErrorCodes.locationOutsideServiceArea] error: the
+  /// point that was checked (task site, else pickup, else drop-off; row
+  /// 213). `null` when absent or unknown.
+  ErrandPointType? get pointTypeDetail {
+    final v = details['pointType'];
+    for (final t in ErrandPointType.values) {
+      if (t.wire == v) return t;
+    }
+    return null;
+  }
+
+  /// True for [ApiErrorCodes.locationOutsideServiceArea] (row 233).
+  bool get isLocationOutsideServiceArea =>
+      code == ApiErrorCodes.locationOutsideServiceArea;
+
+  /// Typed reading of the deadline error codes (rows 237, 243, 244); `null`
+  /// for any other error. The time of a
+  /// [DeadlineProblem.passedBeforePayment] is [deadlineAt]; the state of a
+  /// [DeadlineProblem.notEditable] is [statusDetail].
+  DeadlineProblem? get deadlineProblem => DeadlineProblem.fromCode(code);
 
   /// Session-level 401 (no [code]): the app signs the user out. Coded 401s
   /// such as `otp_incorrect` are not session failures.
@@ -558,4 +584,60 @@ abstract final class ApiErrorCodes {
   /// Offering or reassigning a RUNNER_ASSIGNED task past its deadline (409,
   /// row 185). Details: `deadlineAt` ([NitumeApiException.deadlineAt]).
   static const taskDeadlinePassed = 'task_deadline_passed';
+
+  /// `POST /errands` (create, submit) or a quote: the task's first point
+  /// (task site, else pickup, else drop-off) is inside no service area
+  /// (422, rows 233, 236). Details: `pointType`
+  /// ([NitumeApiException.pointTypeDetail]). Not sent while no area is
+  /// configured.
+  static const locationOutsideServiceArea = 'location_outside_service_area';
+
+  /// `POST /payments/:errandId/initiate`: the customer's chosen deadline has
+  /// passed (409, row 237); no STK is sent. Details: `deadlineAt`
+  /// ([NitumeApiException.deadlineAt]). Set a new one with
+  /// `ErrandRepository.setDeadline`, then pay.
+  static const deadlinePassedBeforePayment = 'deadline_passed_before_payment';
+
+  /// `PATCH /errands/:id` `deadlineAt` after payment (409). Details:
+  /// `status` ([NitumeApiException.statusDetail]). Reload the task.
+  static const deadlineNotEditable = 'deadline_not_editable';
+
+  /// `POST /errands` or `PATCH /errands/:id` with a `deadlineAt` that is not
+  /// in the future (400).
+  static const deadlineInPast = 'deadline_in_past';
+
+  /// `PATCH /errands/:id` `deadlineAt` by anyone but the customer (403, row
+  /// 243).
+  static const deadlineCustomerOnly = 'deadline_customer_only';
+}
+
+/// The deadline error codes as one typed value
+/// ([NitumeApiException.deadlineProblem]). Switch with a wildcard or a
+/// `null` arm: more may be added.
+enum DeadlineProblem {
+  /// [ApiErrorCodes.deadlinePassedBeforePayment] (409): ask for a new
+  /// deadline.
+  passedBeforePayment(ApiErrorCodes.deadlinePassedBeforePayment),
+
+  /// [ApiErrorCodes.deadlineNotEditable] (409): the task is paid; reload.
+  notEditable(ApiErrorCodes.deadlineNotEditable),
+
+  /// [ApiErrorCodes.deadlineInPast] (400): pick a later time.
+  inPast(ApiErrorCodes.deadlineInPast),
+
+  /// [ApiErrorCodes.deadlineCustomerOnly] (403).
+  customerOnly(ApiErrorCodes.deadlineCustomerOnly);
+
+  const DeadlineProblem(this.code);
+
+  /// The API `code`.
+  final String code;
+
+  /// `null` for any other code.
+  static DeadlineProblem? fromCode(String? code) {
+    for (final p in values) {
+      if (p.code == code) return p;
+    }
+    return null;
+  }
 }
