@@ -796,3 +796,47 @@ Admin findings 29 (now unblocked: API items 1–2) and 31 (offline group, decide
 ### New questions for the owner
 - Row 234 (new, open): no admin feed item after the admin's PAYMENT_CONFIRMED `Expire task` either (design-auditor reading of row 232; recommended none).
 - Row 233 (AQ-32) is still open.
+
+## 18. Owner answers rows 233–235 (2026-10-19), applied on `docs/owner-answers-14-specs`
+
+Spec-only update; no screen re-audited.
+
+### Decisions applied
+| Row | Decision | Files |
+|---|---|---|
+| 233 | Refuse at quote and create a task whose location is inside no configured service area, with a clear customer message; until built, ops assign by hand, cancel or expire | System Design §2.2, §3.3; customer `v-new-review.md`, `_shared.md`; admin `drawer-task-requote.md`, `_shared.md`, `drawer-task-offer.md` |
+| 234 | No admin feed item after the admin's own PAYMENT_CONFIRMED `Expire task` (as built) | System Design §3.3; admin `drawer-task-offer.md`, `_shared.md` |
+| 235 | When the customer gives no deadline, the default 24 h starts at payment confirmation, not at creation | System Design §2.2, §3.3; customer `v-new-details.md`, `_shared.md`; admin `drawer-task-offer.md`; runner `_shared.md` |
+
+The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are closed by row 234.
+
+### API items for api-contract (numbered)
+1. **Row 233, at create**:
+   - `POST /errands` refuses a task whose first point (task site, else pickup, else drop-off; row 213) is inside no area of `RUNNER_SERVICE_AREAS`. Proposed: 422 (or 400) `location_outside_service_area` with the point type; api-contract names it.
+   - Skip the check while the area list is empty.
+   - Also check on submit (DRAFT → REQUESTED) if the draft could have been created before areas were configured.
+2. **Row 233, at quote**:
+   - `POST /errands/:id/quote` (first quote and re-quote) refuses the same task with the same code.
+   - Tasks created before the check exist and stay REQUESTED/QUOTED. See AQ-33 for how they end.
+3. **Row 235**:
+   - When the customer sends no `deadlineAt`, set `deadlineAt` = the PAYMENT_CONFIRMED time + 24 h, in the same transaction as ACCEPTED → PAYMENT_CONFIRMED.
+   - Never move a deadline the customer chose.
+   - The value before payment, while the column is NOT NULL (row 221), is your design, for example a provisional `createdAt + 24 h` overwritten at payment. If you need a way to tell a defaulted deadline from a chosen one, and that needs a new column, that is a schema change: ask the owner first (§3).
+   - The urgency derived from `deadlineAt` (row 51) is recomputed at payment.
+   - The default value exposed for the customer caption (§16 item 3) stays 24 h.
+4. **Rows 221, 235 backfill**: the row-221 backfill rule stands for existing rows. A live paid task with no deadline is best given its PAYMENT_CONFIRMED time + 24 h, consistent with row 235. If the dev data has such rows, say which rule you used in your HANDOFF.
+5. **Row 234**: nothing to build (no feed item, as built).
+
+### core-ui, flutter-customer, web-parity needs
+- core-ui: map the new error code (`location_outside_service_area`) in `nitume_core` `ApiErrorCodes`. The default-deadline accessor (§16 core-ui item 2) is unchanged.
+- flutter-customer:
+  - `v-new-review`: the out-of-area notice and `Change location` (finding C-14-1, customer gap report).
+  - `v-new-details`: the caption now says the window starts at payment (C-12-1, wording changed).
+- web-parity: admin finding 33 (quote refusal copy, `drawer-task-requote.md`).
+
+### New questions for the owner
+- **AQ-33 (row 233 follow-up)**: a task already REQUESTED or QUOTED that is refused at quote (created before the check, or after the areas changed) cannot be cancelled by ops: §3.3 lets only the customer cancel before payment. Options:
+  - (a) tell the customer through a notification and let them cancel;
+  - (b) add an admin REQUESTED/QUOTED → CANCELLED for this case (a state-machine change).
+  Recommended (a) for MVP, since it needs no new transition. The copy would come in a later round.
+- **AQ-34 (row 235 reviewer note)**: payment is not refused after a deadline **the customer chose** has passed (for example `Today`, with the quote accepted the next day). Such a task reaches PAYMENT_CONFIRMED already past its deadline and can then only be expired by ops (row 201). Should the API refuse to start payment once the chosen deadline has passed, and ask the customer to pick a new one? Recommended yes. This is a payment-flow decision.

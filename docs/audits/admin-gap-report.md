@@ -848,3 +848,18 @@ Build health:
 
 ### Verdict
 **PASS** for findings 26, 30 and 31 (closed). New minor m-14 (with finding 16). Still open for `drawer-task-offer`: 16, 17, 21, 24, 25, 29, 32 (and 27 folded into 29). Status stays `partial`.
+
+## Owner answers round 14 (rows 233–235, 2026-10-19), applied on `docs/owner-answers-14-specs`
+
+Spec-only update. Details and API items: `runner-gap-report.md` §18.
+- Row 234 closes the round-13 "pending BOARD row 234" notes: no admin feed item after the PAYMENT_CONFIRMED `Expire task` (as built).
+- Row 235 changes no admin screen. The `Deadline` row shows whatever `deadlineAt` the API sets (24 h from payment for defaulted tasks).
+
+### Findings against `main` (new)
+33. **minor**: `apps/admin/src/app/features/admin/drawers/quote-dialog.ts` (error mapping).
+    - Design (row 233, `drawer-task-requote.md` Errors): `location_outside_service_area` keeps the dialog open with `This task's location is outside every service area, so it can't be quoted. Contact the customer or wait for them to cancel.` (proposed).
+    - Code: none (the code is not built).
+    - Fix: after api-contract §18 item 2.
+
+### Questions for the owner (new)
+- AQ-33 (out-of-area tasks already REQUESTED/QUOTED: how they end) and AQ-34 (refuse payment after a chosen deadline has passed). See `runner-gap-report.md` §18.
