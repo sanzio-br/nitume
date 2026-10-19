@@ -16,6 +16,8 @@ export interface AppConfig {
   redis: {
     host: string;
     port: number;
+    /** Prefix on every app key (throttle, idempotency, caches); '' in dev/prod, `nitume_test:` in e2e (row 224). */
+    keyPrefix: string;
   };
   jwt: {
     accessSecret: string;
@@ -195,6 +197,9 @@ export const configuration = (): AppConfig => ({
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: int(process.env.REDIS_PORT, 6379),
+    // Row 224: e2e runs set REDIS_KEY_PREFIX=nitume_test: so their throttle
+    // and idempotency keys never share names with a dev server's.
+    keyPrefix: process.env.REDIS_KEY_PREFIX ?? '',
   },
   jwt: {
     accessSecret:

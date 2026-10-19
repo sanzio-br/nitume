@@ -121,3 +121,17 @@ describe('resolveIdCloudinary (row 162)', () => {
     ).toEqual({ cloudName: 'c', apiKey: 'ik', apiSecret: 'is' });
   });
 });
+
+describe('REDIS_KEY_PREFIX (row 224)', () => {
+  it('accepts unset, empty or a lowercase name ending in a colon', () => {
+    expect(() => validateEnv({ NODE_ENV: 'development' })).not.toThrow();
+    expect(() => validateEnv({ NODE_ENV: 'development', REDIS_KEY_PREFIX: '' })).not.toThrow();
+    expect(() => validateEnv({ NODE_ENV: 'development', REDIS_KEY_PREFIX: 'nitume_test:' })).not.toThrow();
+  });
+
+  it('refuses anything else', () => {
+    for (const bad of ['nitume_test', 'Nitume:', 'a:b:', '*:']) {
+      expect(() => validateEnv({ NODE_ENV: 'development', REDIS_KEY_PREFIX: bad })).toThrow(/REDIS_KEY_PREFIX/);
+    }
+  });
+});
