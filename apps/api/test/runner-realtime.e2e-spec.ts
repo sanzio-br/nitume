@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import Redis from 'ioredis';
 import { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
@@ -184,10 +185,15 @@ describe('Runner realtime (e2e)', () => {
   const accept = (runner: Actor, errandId: string) =>
     http().post(`/api/v1/errands/${errandId}/accept`).set(bearer(runner.token)).expect(200);
 
-  /** One ping, waiting out the throttle first. */
+  /** One ping; a `rate_limited` ack (throttle window still open) is retried, so no fixed wait is needed. */
   const ping = async (s: TestSocket, body: Record<string, unknown>) => {
-    await sleep(MIN_INTERVAL_MS + 50);
-    return s.emitWithAck<{ ok: boolean; error?: string; status?: string }>('location:ping', body);
+    for (let attempt = 0; ; attempt += 1) {
+      const ack = await s.emitWithAck<{ ok: boolean; error?: string; status?: string }>('location:ping', body);
+      if (ack.error !== 'rate_limited' || attempt >= 40) {
+        return ack;
+      }
+      await sleep(MIN_INTERVAL_MS / 3);
+    }
   };
 
   describe('RA-5: runner room', () => {
@@ -334,9 +340,20 @@ describe('Runner realtime (e2e)', () => {
       await sleep(200);
       expect(customerSocket.received.filter((r) => r.event === 'location:update').length).toBe(before);
 
-      // Redis only (row 247): live key set, nothing in PostgreSQL.
-      const live = JSON.parse((await app.get(RedisService).get(runnerLiveKey(runner.profileId as string))) as string) as Record<string, unknown>;
+      // Redis only (row 247): the 60 s live key, no GEO set (reviewer B1), nothing in PostgreSQL.
+      const redis = app.get(RedisService);
+      const live = JSON.parse((await redis.get(runnerLiveKey(runner.profileId as string))) as string) as Record<string, unknown>;
       expect(live).toMatchObject({ lat: -4.2, lng: 39.5, errandId: null });
+      const raw = new Redis({
+        host: app.get(ConfigService).get<string>('redis.host', 'localhost'),
+        port: app.get(ConfigService).get<number>('redis.port', 6379),
+      });
+      try {
+        // The prefixed name the old GEOADD wrote (row 224 test prefix), checked without ioredis prefixing.
+        expect(await raw.exists(redis.channel('runner:locations'))).toBe(0);
+      } finally {
+        await raw.quit();
+      }
       await sleep(300);
       const trail: unknown[] = await db().query('SELECT id FROM "runner_locations" WHERE "runnerProfileId" = $1', [runner.profileId]);
       expect(trail).toEqual([]);
