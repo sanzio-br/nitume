@@ -842,3 +842,29 @@ The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are clos
 - **AQ-34 (row 235 reviewer note; BOARD row 237, open)**:
 - **Backfill of paid tasks (BOARD row 238, open)**: row 221's backfill (built) gives an existing paid, open task with no deadline `createdAt` + 24 h, which may already be in the past, so it lands in `Deadline passed` at once. Should such tasks instead get their PAYMENT_CONFIRMED time + 24 h, consistent with row 235? Recommended: only if live (non-dev) paid tasks exist; otherwise keep row 221 as built.
  payment is not refused after a deadline **the customer chose** has passed (for example `Today`, with the quote accepted the next day). Such a task reaches PAYMENT_CONFIRMED already past its deadline and can then only be expired by ops (row 201). Should the API refuse to start payment once the chosen deadline has passed, and ask the customer to pick a new one? Recommended yes. This is a payment-flow decision.
+
+### 18.1 Owner answers rows 236–238 (2026-10-19)
+| Row | Decision | Files |
+|---|---|---|
+| 236 | A task refused at quote (outside every service area): notify the customer and let them cancel; no admin cancel transition | System Design §3.3; admin `drawer-task-requote.md`; customer `x-awaiting-quote.md`, `v-notifications.md` |
+| 237 | Refuse to start payment once a customer-chosen deadline has passed; ask for a new deadline | System Design §2.2; customer `x-awaiting-quote.md`, `v-payment.md` |
+| 238 | The row-221 backfill stays as built (`1790103300000`) | System Design §2.2 |
+
+API items (continuing §18):
+6. **Row 236**:
+   - When a quote is refused for `location_outside_service_area`, send the customer a notification (proposed event `errand.outside_service_area`; copy in `v-notifications.md`, proposed), once per task.
+   - Expose `outsideServiceArea: true` on the customer errand view (proposed field) so `x-awaiting-quote` shows the cancel state.
+   - No state change and no admin cancel.
+7. **Row 237**:
+   - `POST /payments/:errandId/initiate` answers 409 (proposed `deadline_passed_before_payment`) when `deadlineAt` was chosen by the customer and has passed. No STK.
+   - The customer sets a new deadline before payment (QUOTED or ACCEPTED, customer only). Proposed: `PATCH /errands/:id/deadline` `{ deadlineAt? }`; omitted = the 24 h default from payment (row 235). Refuse a past value.
+   - Expose whether the deadline was chosen (proposed `deadlineChosen`). If that needs a column, it is the same schema question as §18 item 3: ask the owner first.
+   - The quote stands (proposed; no pricing uses urgency yet).
+8. **Row 238**: nothing to build.
+
+Needs:
+- core-ui: the new codes and fields (`deadline_passed_before_payment`, `outsideServiceArea`, `deadlineChosen`) and `ErrandRepository.setDeadline`.
+- flutter-customer: C-14-2 (`x-awaiting-quote` outside-area state, row 236), C-14-3 (`x-awaiting-quote` new-deadline step and `v-payment` refusal, row 237), the routing for the notification.
+- web-parity: finding 33's copy is now complete (row 236).
+
+No new owner questions.

@@ -857,9 +857,12 @@ Spec-only update. Details and API items: `runner-gap-report.md` §18.
 
 ### Findings against `main` (new)
 33. **minor**: `apps/admin/src/app/features/admin/drawers/quote-dialog.ts` (error mapping).
-    - Design (row 233, `drawer-task-requote.md` Errors): `location_outside_service_area` keeps the dialog open with `This task's location is outside every service area, so it can't be quoted.` (proposed), with the second sentence pending BOARD row 236.
+    - Design (row 233, `drawer-task-requote.md` Errors): `location_outside_service_area` keeps the dialog open with `This task's location is outside every service area, so it can't be quoted. The customer is told and can cancel it.` (proposed; row 236 decided).
     - Code: none (the code is not built).
     - Fix: after api-contract §18 item 2.
 
 ### Questions for the owner (new)
 - AQ-33 (BOARD row 236, open: out-of-area tasks already REQUESTED/QUOTED: how they end) and AQ-34 (BOARD row 237, open: refuse payment after a chosen deadline has passed). See `runner-gap-report.md` §18.
+
+### Rows 236–238 (2026-10-19)
+- Finding 33's copy is complete: `This task's location is outside every service area, so it can't be quoted. The customer is told and can cancel it.` (proposed; row 236). Rows 237 and 238 change no admin screen.

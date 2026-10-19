@@ -907,3 +907,14 @@ Spec-only update; no screen re-audited.
   - Code: none (the generic snackbar is shown).
   - Fix: after api-contract §18 item 1 and the core error code. Status: `v-new-review` → `partial`.
 - New owner questions AQ-33 (BOARD row 236) and AQ-34 (BOARD row 237), both open: `runner-gap-report.md` §18.
+
+### Rows 236–238 (2026-10-19)
+- C-14-2 (**minor**), `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart`.
+  - Design (row 236): the outside-area state, with `We can't take this task`, the body and `Cancel task` as primary; the notification route.
+  - Code: none.
+  - Fix: after api `runner-gap-report.md` §18.1 item 6.
+- C-14-3 (**minor**), `awaiting_quote_screen.dart`, `payment_screen.dart`.
+  - Design (row 237): the new-deadline step (notice, `Choose a new deadline`, chip sheet), and the initiate refusal returning to it.
+  - Code: none.
+  - Fix: after api §18.1 item 7.
+- Status: `x-awaiting-quote` and `v-payment` → `partial`. Row 238 has no customer impact.

@@ -124,6 +124,9 @@
 | 233 | (2026-10-19) Refuse at quote and create a task whose location (first point, row 213) is inside no configured service area, with a clear customer message; until built, ops assign by hand, cancel or expire | drawer-task-requote (quote refusal), N-20 |
 | 234 | (2026-10-19) No admin feed item after the admin's own PAYMENT_CONFIRMED `Expire task` (as built) | drawer-task-offer |
 | 235 | (2026-10-19) When the customer gives no deadline, the default 24 h starts at payment confirmation, not at creation | drawer-task-offer (Data) |
+| 236 | (2026-10-19) A task refused at quote (outside every service area): notify the customer and let them cancel; no admin cancel transition | drawer-task-requote |
+| 237 | (2026-10-19) Refuse to start payment once a customer-chosen deadline has passed; the customer picks a new deadline | none (customer screens) |
+| 238 | (2026-10-19) The row-221 backfill stays as built | none |
 | 142 | (2026-10-16) "Ordinary approval is capped at min(verified item amount paid to Nitume, runner max_purchase_advance) and must not silently override the runner's limit. Paying above max_purchase_advance needs an explicit exceptional override with an auditable reason and actor." Not the earlier "raise the runner's limit first" | drawer-runner-payout (§5 2b), drawer-runner-purchase-limit, N-21 |
 | 143 | (2026-10-16) No payout-time promise/SLA anywhere; status only | p-payout-requests (and the runner copy it triggers) |
 | 144 | (2026-10-16) Runner ID/selfie images kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; never indefinitely; retention configurable; access restricted and logged throughout | p-runners-verification-documents |
@@ -335,8 +338,7 @@ Answered 2026-10-19 (round 14): AQ-32 (row 233, refuse at quote/create), row 234
 Open:
 | AQ | Question | Default |
 |---|---|---|
-| AQ-33 (BOARD row 236) | A task already REQUESTED or QUOTED that is refused at quote (outside every service area, row 233) cannot be cancelled by ops (§3.3: customer-only cancel before payment). Notify the customer and let them cancel, or add an admin cancel? | proposed: notify the customer, no new transition |
-| AQ-34 (BOARD row 237) | Refuse to start payment once a customer-chosen deadline has passed, and ask for a new deadline? | proposed yes |
+| — | none open for these specs (AQ-33 = row 236, AQ-34 = row 237 and row 238 answered 2026-10-19) | — |
 
 Answered 2026-10-16 (round 11, §1): row 185 (deadline path), 186 (purchase limit in the pool), 187 (empty online pool, no PAYMENT_CONFIRMED → EXPIRED, busy runners ineligible, admin expire action), 188–200.
 

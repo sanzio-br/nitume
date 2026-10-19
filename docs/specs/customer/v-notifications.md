@@ -20,6 +20,7 @@ In-app feed of task events (quote ready, runner en route, price change, completi
 | `errand.AWAITING_CUSTOMER` | `v-evidence-confirm` if still AWAITING_CUSTOMER, else `v-task-detail` |
 | `errand.COMPLETED`, `errand.CONFIRMED`, `errand.SETTLED`, `errand.CANCELLED`, `errand.FAILED`, `errand.DISPUTED` | `v-task-detail` |
 | `errand.EXPIRED` (new, owner 2026-10-16; needs api-contract) | `v-task-detail` (which shows `Start a new task`) |
+| `errand.outside_service_area` (row 236, proposed event name; needs api-contract): title `We can't take this task`, body `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.` (proposed) | `x-awaiting-quote` |
 | price change requested (type missing) | Track + `v-price-auth` modal if still pending |
 | payment confirmed / failed (types missing) | `v-task-detail` / `v-payment` |
 | item payment confirmed / failed, `send_to_runner` (types missing, row 42) | `x-merchant-payment` |
