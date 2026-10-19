@@ -1646,6 +1646,16 @@ export class ErrandsService {
       assertQuoteCurrent(acceptedQuote);
     }
 
+    // Row 235 (owner, 2026-10-19, option b): a task with no customer
+    // deadline gets its default window from payment confirmation, not from
+    // creation. A task reaching PAYMENT_CONFIRMED without a deadline gets
+    // now + errands.defaultDeadlineHours. (How a defaulted task is told
+    // apart before payment is pending the schema decision on row 235; with
+    // deadlineAt NOT NULL today this never fires.) Urgency is left as set
+    // at creation.
+    if (to === ErrandStatus.PAYMENT_CONFIRMED && !errand.deadlineAt) {
+      errand.deadlineAt = new Date(Date.now() + this.defaultDeadlineHours() * 3_600_000);
+    }
     errand.status = to;
     try {
       await manager.getRepository(Errand).save(errand);

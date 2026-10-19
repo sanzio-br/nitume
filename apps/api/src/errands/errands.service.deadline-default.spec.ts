@@ -91,3 +91,46 @@ describe('createDraft deadline (rows 206, 221)', () => {
     expect((err as ApiError).code).toBe('deadline_in_past');
   });
 });
+
+describe('deadline at payment confirmation (row 235)', () => {
+  const buildPaid = (deadlineAt: Date | null, config: Record<string, number> = {}) => {
+    const errand = { id: 'e-1', customerId: 'c-1', status: 'ACCEPTED', deadlineAt } as unknown as Errand;
+    const repos = new Map<unknown, unknown>([
+      [Errand, { findOne: vi.fn(() => Promise.resolve(errand)), save: vi.fn((e: Errand) => Promise.resolve(e)) }],
+      [ErrandStatusHistory, { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) }],
+    ]);
+    const manager = { getRepository: (entity: unknown) => repos.get(entity) };
+    const service = new ErrandsService(
+      { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      {} as never,
+      {} as never,
+      { get: vi.fn((key: string, def: unknown) => config[key] ?? def) } as never,
+    );
+    return { service, errand };
+  };
+  const SYSTEM = { type: StatusHistoryActor.SYSTEM };
+
+  it('a task without a deadline gets payment time + the default when payment is confirmed', async () => {
+    const { service, errand } = buildPaid(null, { 'errands.defaultDeadlineHours': 24 });
+    const before = Date.now();
+    await service.transition('e-1', 'PAYMENT_CONFIRMED' as never, SYSTEM, 'Payment confirmed via STK callback');
+    const ms = (errand.deadlineAt as Date).getTime() - before;
+    expect(ms).toBeGreaterThanOrEqual(24 * 3_600_000 - 50);
+    expect(ms).toBeLessThan(24 * 3_600_000 + 1_000);
+  });
+
+  it('a task with a deadline keeps it', async () => {
+    const at = new Date(Date.now() + 2 * 3_600_000);
+    const { service, errand } = buildPaid(at);
+    await service.transition('e-1', 'PAYMENT_CONFIRMED' as never, SYSTEM);
+    expect(errand.deadlineAt).toBe(at);
+  });
+});
