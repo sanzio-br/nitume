@@ -390,3 +390,24 @@ default deadline 24 h + NOT NULL migration 1790103300000 — not applied to dev 
 
 **Open:** owner rows 233 (tasks outside all service areas), 234 (no admin feed item on paid-task expire),
 235 (default deadline clock).
+
+## 2026-10-19 (later) — rows 233–239, runner batch 1
+
+**Merged to main (local, owner instruction):** feat/api-owner-answers-12/-13, feat/core-owner-answers-12,
+docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-12, fix/api-payment-type-seed
+(merged main: API 614, admin 250, core 477, customer 131, runner 26 unit tests green).
+
+**Reviewed, awaiting owner merge:**
+- feat/core-runner-batch-2: B-1 ID-copy fix (no gallery resize, CapturedImage.discard, lost captures), capture
+  widget states, NitumeFixedCta, front camera, payment-identity record, decline reason required, errand defaults.
+- feat/runner-batch-1 + docs/runner-batch-1-audit: runner onboarding (ID, selfie, status), location disclosure,
+  sign-in routing, jobs list and job detail. runner 67 tests.
+- docs/owner-answers-14-specs: owner rows 233–239.
+- feat/api-deadline-from-payment: out-of-area refusal (233), customer notice (236), payment refused after a
+  customer-chosen deadline + new-deadline update (237), Flexible deadline set at payment (235/239; migration
+  1790103400000). 634 unit, 107 e2e. Merge gated on row 241 copy.
+
+**Dev DB:** still at 1790103100000; apply round 12–14 migrations deliberately (past deadlines on old open tasks).
+
+**Open:** owner rows 240–244; PR push blocked by permissions (owner to push release/owner-merge-2026-10-19).
+
