@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 386–408 (`#v-new-review`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0; fees §8)
 - Implementation: `apps/customer_app/lib/src/screens/wizard/review_screen.dart` on branch `feat/customer-integrations`
-- Status: matches-design
+- Status: partial (round 14, row 233: the out-of-area refusal notice is new; waits for the API code; the rest matches-design)
 
 ## Purpose
 Submit the task for its authoritative quote. A **preview** of the price, clearly labelled as an estimate (OA-3), appears here only once real pricing rates exist (row 47); until then the screen shows no price at all. Payment does **not** happen here; it happens after the customer accepts the final quote on `x-awaiting-quote` (checkout).
@@ -60,6 +60,7 @@ States (proposed):
 - Submitting: CTA spinner, disabled; back disabled.
 - Submit error: snackbar `Couldn't send your task. Try again.`; CTA re-enabled. If the DRAFT was created but the submit call failed, retry only `POST /errands/:id/submit` with the same id (never create a second draft).
 - Validation error from the API (400): snackbar with the API message, and Back returns to step 2.
+- **Location outside every service area (row 233, decided 2026-10-19: refuse at create with a clear customer message)**: the API refuses `POST /errands` with `location_outside_service_area` (code proposed; not built). The screen shows a C-40 notice above the CTA instead of the snackbar: `We don't cover this location yet. Choose a place inside the areas we serve.` (proposed), and a C-03 outline `Change location` that returns to `v-new-details` with the first location field focused (task site, else pickup, else drop-off, row 213). `Submit task →` stays disabled until a location changes. No task is created.
 
 ## Numeric fields (Fira Code)
 - Every amount (item budget; estimated total in variant B).
