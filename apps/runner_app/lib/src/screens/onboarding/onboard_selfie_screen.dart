@@ -17,13 +17,18 @@ abstract final class OnboardSelfieCopy {
   static const hint = 'Face the light, remove sunglasses or a hat.';
   static const retake = 'Retake';
   static const cta = 'Submit for review →';
+
+  /// The interim payment-identity record failed (S-1; proposed copy).
+  static const submitError =
+      "Couldn't submit. Check your connection and try again.";
 }
 
 /// `v-onboard-selfie`: the selfie for the manual match with the ID (row
 /// 126), step 2 of 2, then `v-onboard-pending`.
 ///
-/// The interim payment-identity record at submit (row 218) is deferred by
-/// the orchestrator: `Submit for review →` only moves on.
+/// `Submit for review →` first makes sure the interim payment-identity
+/// record exists (rows 218, 222; S-1) for the ops M-Pesa name match, then
+/// replaces the onboarding stack with `v-onboard-pending`.
 class OnboardSelfieScreen extends StatefulWidget {
   const OnboardSelfieScreen({super.key});
 
@@ -37,6 +42,8 @@ class _OnboardSelfieScreenState extends State<OnboardSelfieScreen> {
   PhotoProblem? _problem;
   bool _loading = true;
   bool _capturing = false;
+  bool _submitting = false;
+  bool _submitFailed = false;
 
   AppServices get _s => AppScope.read(context);
 
@@ -124,7 +131,28 @@ class _OnboardSelfieScreenState extends State<OnboardSelfieScreen> {
     }
   }
 
-  Widget? _notice() => switch (_problem) {
+  Future<void> _submit() async {
+    setState(() {
+      _submitting = true;
+      _submitFailed = false;
+    });
+    try {
+      await _s.account.ensurePaymentIdentityVerification();
+      if (!mounted) return;
+      await Nav.replaceOnboardingWithPending(context);
+    } on Object {
+      // The selfie stays uploaded; only the submit is retried.
+      if (mounted) setState(() => _submitFailed = true);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Widget? _notice() => _submitFailed
+      ? const NitumeNotice(message: OnboardSelfieCopy.submitError)
+      : _photoNotice();
+
+  Widget? _photoNotice() => switch (_problem) {
     PhotoProblem.tooLarge => tooLargeNotice(
       tail: CaptureCopy.tooLargeSelfieTail,
     ),
@@ -221,9 +249,8 @@ class _OnboardSelfieScreenState extends State<OnboardSelfieScreen> {
         child: NitumeButton.primary(
           label: OnboardSelfieCopy.cta,
           expand: true,
-          onPressed: _state == CaptureState.uploaded
-              ? () => Nav.replaceOnboardingWithPending(context)
-              : null,
+          loading: _submitting,
+          onPressed: _state == CaptureState.uploaded ? _submit : null,
         ),
       ),
     );

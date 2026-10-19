@@ -290,6 +290,20 @@ class FakeRunnerAccount extends RunnerAccountRepository {
   /// Errors for the next uploads, in order (`null` = success).
   final uploadErrors = <Object?>[];
 
+  int paymentIdentityCalls = 0;
+  Object? paymentIdentityError;
+
+  @override
+  Future<RunnerVerification> ensurePaymentIdentityVerification() async {
+    paymentIdentityCalls++;
+    final e = paymentIdentityError;
+    if (e != null) throw e;
+    return verification(
+      RunnerVerificationType.paymentIdentity,
+      VerificationStatus.pending,
+    );
+  }
+
   /// Completes the next upload when set (to observe the uploading state).
   Completer<void>? uploadGate;
   int meCalls = 0;

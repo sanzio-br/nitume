@@ -371,8 +371,22 @@ void main() {
       expect(upload.$2, isNull);
       expect(find.text('Retake'), findsOneWidget);
 
+      // S-1: a failed payment-identity call keeps the runner here.
+      b.account.paymentIdentityError = networkError;
       await t.tap(cta);
       await t.pumpAndSettle();
+      expect(b.account.paymentIdentityCalls, 1);
+      expect(
+        find.text("Couldn't submit. Check your connection and try again."),
+        findsOneWidget,
+      );
+      expect(find.byType(OnboardPendingScreen), findsNothing);
+      expect(b.account.uploads, hasLength(1));
+
+      b.account.paymentIdentityError = null;
+      await t.tap(cta);
+      await t.pumpAndSettle();
+      expect(b.account.paymentIdentityCalls, 2);
       expect(find.byType(OnboardPendingScreen), findsOneWidget);
       expect(find.byType(OnboardSelfieScreen), findsNothing);
     });
