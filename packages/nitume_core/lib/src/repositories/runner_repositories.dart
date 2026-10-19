@@ -81,6 +81,27 @@ class RunnerAccountRepository {
         .then(RunnerVerification.fromJson);
   }
 
+  /// Interim payment-identity record (rows 218, 222; S-1): makes sure a
+  /// `payment_identity` verification is pending or approved so ops can do
+  /// the M-Pesa name match. Reads `GET /runners/me/verifications`; when the
+  /// newest `payment_identity` record is pending or approved it is returned
+  /// and nothing is sent, otherwise (none, or the newest was rejected)
+  /// `POST /runners/me/verifications` `{ verificationType:
+  /// 'payment_identity' }` creates a pending one. The API itself does not
+  /// de-duplicate, so always go through this call, never [addVerification].
+  ///
+  /// `v-onboard-selfie` calls it on `Submit for review →` (placement is the
+  /// screen's). Errors are the API's ([NitumeApiException]); a failed call
+  /// leaves the uploaded selfie as it is.
+  Future<RunnerVerification> ensurePaymentIdentityVerification() async {
+    final latest = RunnerVerification.latestByType(await verifications());
+    final current = latest[RunnerVerificationType.paymentIdentity];
+    if (current != null && current.status != VerificationStatus.rejected) {
+      return current;
+    }
+    return addVerification(RunnerVerificationType.paymentIdentity);
+  }
+
   /// `POST /runners/me/verifications/documents` (multipart: `file`,
   /// `verificationType` and, for an ID, `side`): stores one ID side or
   /// selfie in restricted storage and creates a `pending` record (rows 125,
