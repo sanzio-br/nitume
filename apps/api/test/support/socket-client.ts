@@ -68,7 +68,7 @@ export const connectSocket = (baseUrl: string, token: string | null, settleMs = 
     };
 
     ws.on('message', (raw: WebSocket.RawData) => {
-      const msg = raw.toString();
+      const msg = (Array.isArray(raw) ? Buffer.concat(raw) : Buffer.from(raw as ArrayBuffer)).toString('utf-8');
       if (msg.startsWith('0')) {
         ws.send(`40${JSON.stringify(token ? { token } : {})}`);
       } else if (msg === '2') {
@@ -92,7 +92,7 @@ export const connectSocket = (baseUrl: string, token: string | null, settleMs = 
       } else if (msg.startsWith('42')) {
         const [event, data] = JSON.parse(msg.replace(/^42\d*/, '')) as [string, unknown];
         received.push({ event, data });
-        for (const w of [...waiters]) {
+        for (const w of waiters.slice()) {
           if (w.event === event && w.match(data)) {
             waiters.splice(waiters.indexOf(w), 1);
             w.done(data);
