@@ -40,7 +40,7 @@ States:
 Owner: "add full enum over_purchase_limit, too_far, not_available, other (schema change approved); UI gets an explicit reason picker." The mockup draws no decline dialog; everything below is built from design-system patterns and every label is **proposed**.
 
 R-23 `DeclineReasonDialog` (NEW, core-ui; used by `v-jobs` and `v-job-detail`, one component):
-- Shell: C-35 `NitumeDialog` (white card, r 16, scrim blue 50%), title 17/600 `Decline this job?`, body 13 slate-600 (as Copy, by over-limit state).
+- Shell: C-35 `NitumeDialog` as built, unchanged (white card, r-l 20 from the design-system `--r-l` token, padding 20, scrim blue 50%), title 17/600 `Decline this job?`, body in the C-35 body style 13.5 slate-600 (ruling 2026-10-19: the earlier "r 16" and "13" were spec errors; the design-system component wins, R-23 adds no dialog styling of its own) (as Copy, by over-limit state).
 - Label 12/600 blue, margin-top 14: `Why are you declining?`
 - Reason list: C-16 `NitumeRadioRow` (exists in `nitume_core`, `nitume_choice_chip.dart`: full-width pill, slate fill, slate-line border, 12/600 blue label; selected = blue fill, white label), stacked with gap 8, one radio group:
   | Row label | Wire value | When |
@@ -51,7 +51,7 @@ R-23 `DeclineReasonDialog` (NEW, core-ui; used by `v-jobs` and `v-job-detail`, o
   | `Other reason` | `other` | Always. No text field: no free-text reason is stored (row 210 approves the enum only) |
 - Actions (core confirm convention): C-03 outline `Decline` (confirm) and C-01 primary `Keep offer`. `Decline` is disabled until a reason is selected (proposed: a reason is required in the UI; the API keeps it optional). Never red, never green for the decline itself.
 - Result: `POST /errands/:id/decline` `{ reason }` → the card is removed (no snackbar); on `v-job-detail`, back to `v-jobs`.
-- Errors: 409 `offer_expired` / 404 → close the dialog, remove the card, snackbar `That offer is no longer available.`; 409 `purchase_within_limit` (the limit was raised after the offer) → keep the dialog open, drop the `Above my purchase limit` row, inline 12.5 red `Your purchase limit now covers this job. Choose another reason.`; 400 `decline_reason_invalid` → inline `Choose a reason.`; other → inline `Couldn't decline. Try again.`
+- Errors: 409 `offer_expired`, 409 `assignment_not_declinable` (the task left RUNNER_ASSIGNED while the dialog was open, e.g. cancelled or expired: the offer is gone) / 404 → close the dialog, remove the card, snackbar `That offer is no longer available.`; 409 `purchase_within_limit` (the limit was raised after the offer) → keep the dialog open, drop the `Above my purchase limit` row, inline 12.5 red `Your purchase limit now covers this job. Choose another reason.`; 400 `decline_reason_invalid` → inline `Choose a reason.`; other → inline `Couldn't decline. Try again.`
 - Accessibility: the rows are one radio group (`inMutuallyExclusiveGroup`), 48 dp each; initial focus on the dialog title; the disabled `Decline` announces `Choose a reason first`.
 
 ## Offer card content (R-04)
