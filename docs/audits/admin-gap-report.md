@@ -779,7 +779,7 @@ Spec-only update; no screen re-audited. Full decision list and API items: `docs/
 Spec-only update; no screen re-audited. API state and items: `runner-gap-report.md` §16.
 
 ### What changed in `drawer-task-offer.md` and `_shared.md`
-- PAYMENT_CONFIRMED `Expire task`: the dialog and the required 10–500 reason are decided (row 225). The body now always includes `The customer is told no runner was available.` (row 226). Side effects: customer `errand.EXPIRED` and refund review, no admin feed item (rows 226, 232).
+- PAYMENT_CONFIRMED `Expire task`: the dialog and the required 10–500 reason are decided (row 225). The body now always includes `The customer is told no runner was available.` (row 226). Side effects: customer `errand.EXPIRED` and refund review (row 226); admin feed item pending BOARD row 234 (design-auditor reading of row 232; recommended none).
 - RUNNER_ASSIGNED `Expire task — no runner available`: no admin feed item (row 232).
 - Feed copy decided: the PAYMENT_CONFIRMED `Deadline passed` body (row 220); the plain decline body for `too_far`, `not_available`, `other` (row 231).
 - Offline runners group decided (row 228). A never-offered task is not exhausted (row 227). Default deadline and backfill (row 221).
@@ -797,4 +797,5 @@ Spec-only update; no screen re-audited. API state and items: `runner-gap-report.
 - web-parity: findings 16–26 and 28–32. Items 26, 30 and 31 can go now; 29 waits for api §16 items 1–2.
 
 ### Questions for the owner (new)
-None. Row 233 is still open.
+- Row 234 (new, open): no admin feed item after the admin's PAYMENT_CONFIRMED `Expire task` (design-auditor reading of row 232; recommended none).
+- Row 233 is still open.

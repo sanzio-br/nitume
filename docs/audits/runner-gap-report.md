@@ -739,7 +739,7 @@ Read-only check of `apps/api/src/runners/runners.service.ts` `poolFor` and `apps
    - The Reassign dialog shows `No eligible runners are available right now.`
    - Offline runners are not offered as a fallback either, because offline candidates also come from the pool.
    - An admin can still assign by hand: assign checks only verification, busy and purchase limit, not skill or area.
-   - The task never expires by exhaustion while AQ-30 (row 227) is open, and with row 179 in force. It expires at its deadline (row 185), or ops cancel or expire it.
+   - The task never expires by exhaustion because it was never offered (row 227, decided 2026-10-19: exhaustion needs at least one offer), and with row 179 in force. It expires at its deadline (row 185), or ops cancel or expire it.
    - This does not block anything. It does raise a product question the documents do not answer, so it goes to the owner as **AQ-32**: should a task be accepted at creation when its location is inside no service area? Proposed: refuse at quote or create with a clear customer message. Until the owner answers, ops handle it by hand (assign, cancel, or expire).
 3. **Business tasks always get an empty pool** because `business` is not a skill a runner can pick. This **matches**: Business Tasks are out of MVP (OA-18; `v-edit-skills.md`: `business` refused from the app), and the customer app offers 5 categories. No question now. When Business Tasks enter scope, the skill must become selectable or business tasks must be matched another way; record that with the Business scope decision.
 
@@ -762,14 +762,14 @@ Spec-only update; no screen re-audited. The API state was read on `feat/api-owne
 | 228 | Offline runners as a collapsed, selectable `Show offline runners ({n})` group | admin `drawer-task-offer.md` |
 | 229 | The runner must pick a decline reason; `Other reason` has no free-text box | System Design §2.2; runner `v-jobs.md`, `v-job-detail.md`, `_shared.md` |
 | 231 | Plain decline feed body also for `too_far`, `not_available`, `other` (already built that way) | System Design §4.4; admin `drawer-task-offer.md` |
-| 232 | No admin feed item after the admin's own `Expire task — no runner available` (already built that way). Read for the PAYMENT_CONFIRMED `Expire task` too: the admin acts there as well. This is a design-auditor reading; the owner's words name only the RUNNER_ASSIGNED action | System Design §3.3; admin specs |
+| 232 | No admin feed item after the admin's own `Expire task — no runner available` (already built that way). For the PAYMENT_CONFIRMED `Expire task` the feed rule is pending BOARD row 234 (design-auditor reading of row 232; recommended none); previously read here as: the admin acts there as well. This is a design-auditor reading; the owner's words name only the RUNNER_ASSIGNED action | System Design §3.3; admin specs |
 
 ### API items for api-contract (numbered; all unblocked)
 1. **Rows 201, 225, 226, 232**: PAYMENT_CONFIRMED → EXPIRED, actor A only.
    - Route: extend `POST /errands/:id/expire` (the server picks the transition by status), or use a sibling route; api-contract's choice.
    - Guard: PAYMENT_CONFIRMED and `deadlineAt ≤ now`. Otherwise 409 `expiry_not_allowed` `{ reason: 'deadline_not_passed' | 'not_payment_confirmed' }`.
    - Reason: required, 10–500 after trimming (400 `expiry_reason_invalid`). It becomes the history note.
-   - Side effects: the customer `errand.EXPIRED` (existing copy), and N-16 `expired_after_payment` extended to this from-state. No admin feed item.
+   - Side effects: the customer `errand.EXPIRED` (existing copy), and N-16 `expired_after_payment` extended to this from-state. Admin feed item: pending BOARD row 234 (design-auditor reading of row 232; recommended none). Build none; that is the safe default and does not block this item.
    - `canExpire.deadlinePassed` becomes true when the action is allowed; `expiry.fromStatus = PAYMENT_CONFIRMED`.
 2. **Rows 201, 220**: one `deadline_passed` admin feed item per PAYMENT_CONFIRMED task when its deadline passes. No state change, idempotent per task, owner copy (row 220).
 3. **Row 221**:
@@ -794,4 +794,5 @@ Spec-only update; no screen re-audited. The API state was read on `feat/api-owne
 Admin findings 29 (now unblocked: API items 1–2) and 31 (offline group, decided row 228). See `admin-gap-report.md` round 13.
 
 ### New questions for the owner
-None. Row 233 (AQ-32) is still open.
+- Row 234 (new, open): no admin feed item after the admin's PAYMENT_CONFIRMED `Expire task` either (design-auditor reading of row 232; recommended none).
+- Row 233 (AQ-32) is still open.
