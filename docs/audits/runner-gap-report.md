@@ -903,3 +903,16 @@ Everything else passes:
 - core-ui: C1–C6 above; §15 item 4 (payment-identity call, unblocks S-1).
 - api-contract: RA-4 (`location:ping`) and RA-5 (runner socket room), already listed; no new item.
 - Orchestrator: S-1 is the only path to a verified runner. Schedule it before onboarding is used with real runners.
+
+### 17.1 Re-audit 2026-10-19 (`feat/runner-batch-1` @ `f125ef9`)
+Build health: `flutter analyze` clean; `flutter test` 66 pass.
+
+- **v-jobs: PASS (F-1 closed)**, fixed in `b2beedb`.
+  - The meta line now reads `{distance} away · Photos required · Item KSh … · {how it's paid}`. `Photos required` is on every offer and the distance is left out without a device fix. That matches row 120 and the spec order.
+  - The copy is the constant `OfferCopy.photosRequired`, and the tests are updated.
+- **v-onboard-pending: PASS (m-5 closed)**, fixed in `f125ef9`.
+  - Body order: rejected, then all approved, then ID or selfie `Not started` (`Upload your ID and a selfie to start accepting jobs.`), then the 24-hour mockup body.
+  - The National ID counts as not started whenever its combined status is `missing`, including one side uploaded and the other not.
+  - Ruling: when only `M-Pesa identity match` is `Not started`, the 24-hour body stays. This matches the spec as amended in `f03be0e`. That record is created by the app at submit once S-1 is built, so the case is temporary. No change.
+
+Open from §17: S-1 (orchestrator), m-4 and C1–C6 (core-ui), the bell route (with `v-notifications`).
