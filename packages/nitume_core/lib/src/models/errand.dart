@@ -1,3 +1,4 @@
+import '../api/api_exception.dart' show ApiErrorCodes;
 import 'enums.dart';
 import 'errand_location.dart';
 import 'json_utils.dart';
@@ -38,6 +39,7 @@ class Errand {
     this.quoteExpiresAt,
     this.quoteRequestedAt,
     this.merchantDetailsUpdatedAt,
+    this.outsideServiceArea = false,
   });
 
   final String id;
@@ -123,6 +125,18 @@ class Errand {
   /// 80); `null` when never changed (the first entry does not set it).
   final DateTime? merchantDetailsUpdatedAt;
 
+  /// Customer views (row 236, C-14-2): the task is REQUESTED, QUOTED or
+  /// ACCEPTED and its location is inside no service area, so a quote is
+  /// refused ([ApiErrorCodes.locationOutsideServiceArea]); show the
+  /// `We can't take this task` state with `Cancel task`. The API works it
+  /// out on every read, so it can turn false again if the areas grow.
+  ///
+  /// Only `GET /errands/:id` and `GET /errands` send it. Missing reads as
+  /// `false`, and responses that don't send it (create, `PATCH /errands/:id`,
+  /// status transitions) always give `false`: read the task again with
+  /// `ErrandRepository.get` before relying on it.
+  final bool outsideServiceArea;
+
   /// True while a "Request a new quote" is waiting for an admin re-quote.
   bool get quoteRequestPending => quoteRequestedAt != null;
 
@@ -194,6 +208,7 @@ class Errand {
       quoteExpiresAt: _date(json['quoteExpiresAt']),
       quoteRequestedAt: _date(json['quoteRequestedAt']),
       merchantDetailsUpdatedAt: _date(json['merchantDetailsUpdatedAt']),
+      outsideServiceArea: json['outsideServiceArea'] == true,
     );
   }
 }
