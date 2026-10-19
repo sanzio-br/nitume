@@ -57,6 +57,23 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+### e2e database (BOARD rows 198, 199, 219)
+
+e2e suites run only against a dedicated test database, never the dev database.
+`vitest.config.e2e.ts` forces `DATABASE_NAME` to `nitume_test` (override with
+`NITUME_TEST_DATABASE_NAME`; the name must end in `_test`, otherwise the run
+refuses to start). The other connection settings come from `.env`.
+
+```bash
+# once, and after every new migration (the run refuses to start with pending migrations)
+$ DATABASE_NAME=nitume_test npm run migration:run
+```
+
+Before and after each run the global setup empties every table in the test
+database except `migrations`, `spatial_ref_sys` and `payment_type`, and
+deletes only `nitume_test:*` Redis keys. Files run one at a time. Append-only
+guard triggers are lifted only in that database, inside one transaction.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
