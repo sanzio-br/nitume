@@ -4,12 +4,26 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
 
+/// A capture that records [discard] calls (and still deletes the file).
+class _RecordingImage extends CapturedImage {
+  _RecordingImage(String path, this.log) : super(path: path);
+
+  final List<String> log;
+
+  @override
+  Future<void> discard() async {
+    log.add(path);
+    await super.discard();
+  }
+}
+
 class _Camera implements ImageCaptureSource {
   _Camera(this.dir);
 
   final Directory dir;
   bool cancel = false;
   int n = 0;
+  final discarded = <String>[];
 
   /// Simulates image_picker writing a compressed file to its cache.
   @override
@@ -19,8 +33,20 @@ class _Camera implements ImageCaptureSource {
     if (cancel) return null;
     final f = File('${dir.path}/picker_${n++}.jpg')
       ..writeAsBytesSync(List.filled(10, 7));
-    return CapturedImage(path: f.path);
+    return _RecordingImage(f.path, discarded);
   }
+}
+
+/// A store whose keep always fails (e.g. storage full).
+class _FailingStore implements EvidenceFileStore {
+  final discarded = <String>[];
+
+  @override
+  Future<String> keep(String sourcePath) async =>
+      throw FileSystemException('full', sourcePath);
+
+  @override
+  Future<void> discard(String path) async => discarded.add(path);
 }
 
 class _Fix implements PositionSource {
@@ -102,6 +128,34 @@ void main() {
     expect(calls.single.lat, -4.03);
     expect(kept(), isEmpty);
     expect(u.allSettled, isTrue);
+  });
+
+  test('B-1: the picker file is discarded once the copy is kept', () async {
+    final u = make();
+    failWith = const NitumeApiException(message: 'bad', statusCode: 422);
+    final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+    expect(camera.discarded, hasLength(1));
+    expect(camera.discarded.single, isNot(item!.path));
+    expect(File(camera.discarded.single).existsSync(), isFalse);
+    expect(cache.listSync(), isEmpty, reason: 'no camera file in the cache');
+    expect(kept(), hasLength(1), reason: 'the kept copy stays for retry');
+  });
+
+  test('keep fails: the picker file is the kept path and is not discarded '
+      'before upload', () async {
+    final store = _FailingStore();
+    final u = EvidenceUploader(
+      capture: camera,
+      upload: upload,
+      files: store,
+      clock: () => now,
+    );
+    final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+    expect(camera.discarded, isEmpty);
+    expect(item!.path, startsWith(cache.path));
+    expect(item.status, EvidenceUploadStatus.uploaded);
+    expect(calls.single.bytes, 10);
+    expect(store.discarded, [item.path], reason: 'released as a kept copy');
   });
 
   test('video is refused at runtime', () {

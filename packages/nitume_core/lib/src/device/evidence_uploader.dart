@@ -109,6 +109,9 @@ class EvidenceUploadItem extends ChangeNotifier {
 /// app storage ([EvidenceFileStore]) → `POST /errands/:id/evidence` with
 /// `capturedAt`, `lat`, `lon`; per-item state and retry.
 ///
+/// * Kept: once [EvidenceFileStore.keep] succeeds, the picker's file is
+///   deleted ([CapturedImage.discard], B-1). When keep fails, the picker
+///   file is the only copy and is used as the kept path.
 /// * Uploaded: the kept copy is deleted.
 /// * Temporary failure (offline, timeout, 5xx, 408, 429) with a [queue]:
 ///   the action is queued with the kept copy, which the queue's
@@ -172,7 +175,16 @@ class EvidenceUploader extends ChangeNotifier {
     String kept;
     try {
       kept = await files.keep(image.path);
+      // B-1: the app keeps its own copy, so the picker's file (and any
+      // scratch folder) goes at once.
+      try {
+        await image.discard();
+      } on Object {
+        // Best effort.
+      }
     } on FileSystemException {
+      // The picker file is the only copy: it is used and released like a
+      // kept copy.
       kept = image.path;
     }
     final fix = await _fix();
