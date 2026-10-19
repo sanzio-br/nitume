@@ -37,7 +37,7 @@ None.
 
 Overall state:
 - Any `pending`, none rejected → body copy from the mockup.
-- None rejected and the ID or the selfie `Not started` (opened from Profile before finishing onboarding) → `Upload your ID and a selfie to start accepting jobs.` (proposed: the `v-jobs` copy; ruling 2026-10-19). Only `M-Pesa identity match` `Not started`, the rest approved or in review → the mockup body (proposed). **Until S-1 is built this body is misleading**: it promises a decision within 24 hours, but no payment-identity record exists for ops to decide. That check only reaches ops once the app creates the pending record (`v-onboard-selfie.md`, row 218 interim call; not built in runner batch 1, see the runner gap report §17).
+- None rejected and the ID or the selfie `Not started` (opened from Profile before finishing onboarding) → `Upload your ID and a selfie to start accepting jobs.` (proposed: the `v-jobs` copy; ruling 2026-10-19). Only `M-Pesa identity match` `Not started`, the rest approved or in review → the mockup body (proposed). (S-1 is built on `feat/runner-batch-1` @ `28290b0`: `Submit for review →` creates the pending payment-identity record, so ops can decide it and the body holds; before that fix it was misleading.)
 - Load error: C-33 error with the app's generic error copy and `Try again` (proposed; builder copy, accepted 2026-10-19).
 - Any `rejected` → `Some checks weren't approved. Fix them below and we'll review again.` (proposed)
 - All four `approved` → body `You're verified. You can go online and accept jobs.` (proposed), CTA becomes C-01 `Start accepting jobs` → `v-jobs`.
