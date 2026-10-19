@@ -73,5 +73,5 @@ Proposed: the decline dialog copy (`v-jobs.md`), `Deadline`, `Items`, `Item amou
 - Rows 205, 206, 207, 210, 211 (owner 2026-10-19): the offer ends at the deadline (capped `offerExpiresAt`); every task has a deadline; no pre-offer purchase-limit exception; decline reason picker with four reasons; busy = RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS.
 
 ## Questions
-- RQ-32 (BOARD row 229, open; decline reason required in the UI; `Other reason` without text): see `v-jobs.md`.
+- RQ-32 decided (row 229): a decline reason is required in the app; `Other reason` has no text box (`v-jobs.md`).
 - Rows 157, 167, 185 and 205 (decided) change only when the offer ends (the earlier of `offerExpiresAt` and `deadlineAt`); no new copy. RQ-22 (row 141) decided 2026-10-16: at the deadline the offer expires; no acceptance after expiry. When the countdown reaches zero the screen switches to the `This offer is no longer available.` state and hides `Accept` without waiting for the server.
