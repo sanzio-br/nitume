@@ -127,6 +127,13 @@ describe('deadline at payment confirmation (row 235)', () => {
     expect(ms).toBeLessThan(24 * 3_600_000 + 1_000);
   });
 
+  it('derives urgency again from the new deadline', async () => {
+    const { service, errand } = buildPaid(null, { 'errands.defaultDeadlineHours': 2, 'errands.urgentWithinHours': 4 });
+    (errand as { urgency: string }).urgency = 'standard';
+    await service.transition('e-1', 'PAYMENT_CONFIRMED' as never, SYSTEM);
+    expect(errand.urgency).toBe('urgent');
+  });
+
   it('a task with a deadline keeps it', async () => {
     const at = new Date(Date.now() + 2 * 3_600_000);
     const { service, errand } = buildPaid(at);

@@ -1687,10 +1687,11 @@ export class ErrandsService {
     // creation. A task reaching PAYMENT_CONFIRMED without a deadline gets
     // now + errands.defaultDeadlineHours. (How a defaulted task is told
     // apart before payment is pending the schema decision on row 235; with
-    // deadlineAt NOT NULL today this never fires.) Urgency is left as set
-    // at creation.
+    // deadlineAt NOT NULL today this never fires.) Urgency is derived again
+    // from the new deadline.
     if (to === ErrandStatus.PAYMENT_CONFIRMED && !errand.deadlineAt) {
       errand.deadlineAt = new Date(Date.now() + this.defaultDeadlineHours() * 3_600_000);
+      errand.urgency = deriveUrgency(errand.deadlineAt, this.urgencyThresholds());
     }
     errand.status = to;
     try {
