@@ -85,28 +85,28 @@ class DeclineReasonDialog extends StatefulWidget {
     required this.overPurchaseLimit,
     required this.onDecline,
     this.reasonRequired = true,
-  });
+  }) : assert(reasonRequired, 'A decline reason is required (row 229)');
 
   /// The offer is over the runner's purchase limit
   /// (`RunnerJobView.overPurchaseLimit`): shows and pre-selects
   /// `Above my purchase limit` and the over-limit body.
   final bool overPurchaseLimit;
 
-  /// Sends the decline with the chosen reason (`null` only when
-  /// [reasonRequired] is false and none was chosen). Throw the API error to
-  /// keep the dialog open with an inline message.
-  final Future<void> Function(OfferDeclineReason? reason) onDecline;
+  /// Sends the decline with the chosen reason (always one, row 229). Throw
+  /// the API error to keep the dialog open with an inline message.
+  final Future<void> Function(OfferDeclineReason reason) onDecline;
 
-  /// When true (the spec's proposal; BOARD row 229 is open) `Decline` stays
-  /// disabled until a reason is chosen. When false the runner may decline
-  /// without one (a general decline; the API keeps the reason optional).
+  /// Always true: the owner settled row 229 (a reason is required; the API
+  /// refuses a decline without one). `Decline` stays disabled until a
+  /// reason is chosen. Kept only so existing callers that pass `true` still
+  /// compile; `false` fails an assert. Omit it in new code.
   final bool reasonRequired;
 
   /// Shows the dialog; resolves [DeclineReasonOutcome.kept] when dismissed.
   static Future<DeclineReasonOutcome> show(
     BuildContext context, {
     required bool overPurchaseLimit,
-    required Future<void> Function(OfferDeclineReason? reason) onDecline,
+    required Future<void> Function(OfferDeclineReason reason) onDecline,
     bool reasonRequired = true,
   }) async {
     final outcome = await NitumeDialog.show<DeclineReasonOutcome>(
@@ -139,8 +139,7 @@ class _DeclineReasonDialogState extends State<DeclineReasonDialog> {
     OfferDeclineReason.other,
   ];
 
-  bool get _canDecline =>
-      !_busy && (!widget.reasonRequired || _selected != null);
+  bool get _canDecline => !_busy && _selected != null;
 
   void _select(OfferDeclineReason reason) {
     if (_busy) return;
@@ -151,12 +150,14 @@ class _DeclineReasonDialogState extends State<DeclineReasonDialog> {
   }
 
   Future<void> _decline() async {
+    final reason = _selected;
+    if (reason == null) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await widget.onDecline(_selected);
+      await widget.onDecline(reason);
       if (mounted) Navigator.of(context).pop(DeclineReasonOutcome.declined);
     } on NitumeApiException catch (e) {
       if (!mounted) return;

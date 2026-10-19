@@ -5,8 +5,9 @@ import '../theme/nitume_design_choices.dart';
 import '../theme/nitume_typography.dart';
 import 'nitume_button.dart';
 
-/// C-33. Empty state: centred muted message and an optional primary action
-/// (`No tasks yet.` + `Start a new task`).
+/// C-33. Empty state: an optional [title] (card title, 15.5/600 blue), a
+/// centred muted message and an optional primary action (`No tasks yet.` +
+/// `Start a new task`; `No offers right now` / `We'll notify you…`).
 class NitumeEmptyState extends StatelessWidget {
   const NitumeEmptyState({
     super.key,
@@ -14,7 +15,11 @@ class NitumeEmptyState extends StatelessWidget {
     this.actionLabel,
     this.onAction,
     this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+    this.title,
   });
+
+  /// Heading above [message] (`You're offline`); `null` for none.
+  final String? title;
 
   final String message;
   final String? actionLabel;
@@ -28,7 +33,22 @@ class NitumeEmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(message, textAlign: TextAlign.center, style: NitumeTextStyles.muted),
+          if (title != null) ...[
+            Semantics(
+              header: true,
+              child: Text(
+                title!,
+                textAlign: TextAlign.center,
+                style: NitumeTextStyles.cardTitle,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: NitumeTextStyles.muted,
+          ),
           if (actionLabel != null) ...[
             const SizedBox(height: 16),
             NitumeButton.primary(label: actionLabel!, onPressed: onAction),
@@ -88,16 +108,16 @@ class SkeletonCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget bar(double widthFactor, double h) => FractionallySizedBox(
-          widthFactor: widthFactor,
-          alignment: Alignment.centerLeft,
-          child: Container(
-            height: h,
-            decoration: BoxDecoration(
-              color: NitumeColors.slate,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-        );
+      widthFactor: widthFactor,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        height: h,
+        decoration: BoxDecoration(
+          color: NitumeColors.slate,
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+    );
     return Semantics(
       label: 'Loading',
       child: Container(

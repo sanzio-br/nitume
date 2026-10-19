@@ -80,6 +80,7 @@ export 'src/widgets/nitume_checkbox.dart';
 export 'src/widgets/nitume_choice_chip.dart';
 export 'src/widgets/nitume_dialog.dart';
 export 'src/widgets/nitume_field.dart';
+export 'src/widgets/nitume_fixed_cta.dart';
 export 'src/widgets/nitume_list_item.dart';
 export 'src/widgets/nitume_notice.dart';
 export 'src/widgets/nitume_pushed_header.dart';

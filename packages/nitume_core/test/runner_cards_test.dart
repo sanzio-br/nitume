@@ -124,6 +124,67 @@ void main() {
       );
       expect(buttons.first.onPressed, isNull);
     });
+
+    testWidgets('richMeta: Sans line, numbers in Fira Code, meta spoken', (
+      tester,
+    ) async {
+      await pumpThemed(
+        tester,
+        JobOfferCard(
+          category: 'Check It For Me',
+          payAmount: 1750,
+          title: 'Check apartment',
+          meta: '1.2 km away · Photos required',
+          richMeta: const TextSpan(
+            children: [
+              NumSpan('1.2 km'),
+              TextSpan(text: ' away · Photos required'),
+            ],
+          ),
+          onAccept: () {},
+          onDecline: () {},
+        ),
+      );
+      final rich = tester.widget<RichText>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is RichText &&
+              w.text.toPlainText() == '1.2 km away · Photos required',
+        ),
+      );
+      final root = rich.text as TextSpan;
+      expect(root.style!.fontFamily, NitumeTypography.uiFamily);
+      expect(root.style!.fontSize, 11.5);
+      expect(root.style!.color, NitumeColors.slate600);
+      final parts = (root.children!.single as TextSpan).children!;
+      expect(
+        (parts[0] as TextSpan).style!.fontFamily,
+        NitumeTypography.numericFamily,
+      );
+      expect((parts[1] as TextSpan).style, isNull);
+      expect(
+        find.bySemanticsLabel(RegExp('1.2 km away · Photos required')),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('plain meta keeps the whole line in Fira Code', (tester) async {
+      await pumpThemed(
+        tester,
+        JobOfferCard(
+          category: 'Buy For Me',
+          payAmount: 720,
+          title: 'Grocery run',
+          meta: '0.8 km away',
+          onAccept: () {},
+          onDecline: () {},
+        ),
+      );
+      expect(
+        tester.widget<Text>(find.text('0.8 km away')).style!.fontFamily,
+        NitumeTypography.numericFamily,
+      );
+    });
   });
 
   group('NavigationChip (R-06)', () {
