@@ -1161,7 +1161,7 @@ Already built and reused as-is (no change): R-01, R-06, R-07, R-09 (= C-24 `Menu
     - (b) iOS asks only "While Using": the `location` background mode keeps a running job's updates going in the background and on a locked screen, with the blue indicator. The Always request and its `Info.plist` key are removed;
     - (c) a refusal never blocks a job: pings then run only while the app is open, and the runner sees a notice.
   - **Recommended: (a) + (b) + (c).** It asks for the least access that does the job, and avoids a second iOS prompt.
-  - The alternative to (b) is to keep Always on iOS with the accurate string (RQ-34). The alternative to (c) is to refuse accept without background access, which conflicts with the owner's "never blocking" spirit of row 123 and with store guidance.
+  - The alternative to (b) is to keep Always on iOS with the accurate string (RQ-34). The alternative to (c) is to refuse accept without background access: the customer always gets tracking, but a runner who refuses cannot work. No owner row decides this either way.
 - **RQ-34 (compliance: disclosure wording).** Approve the accurate wording:
   - Disclosure Body 2: `During a job we keep sharing it when you switch apps or lock your phone, until you finish the task or go offline. If you close the app completely, sharing stops until you open it again.`
   - Job-start dialog: `Keep sharing your location during jobs` / `While you're on a job, Nitume Runner shares your location with the customer, also when you switch apps or lock your phone. It stops when you finish the task or go offline. If you close the app completely, sharing stops until you open it again.`
