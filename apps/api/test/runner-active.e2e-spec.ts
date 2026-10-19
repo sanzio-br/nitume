@@ -268,6 +268,22 @@ describe('Runner active job API (e2e)', () => {
     await setStatus(runner, errand.id, 'AWAITING_CUSTOMER');
     expect((await evidence(runner, errand.id, 'photo').expect(409)).body.code).toBe('evidence_not_allowed');
     await evidence(runner, errand.id, 'receipt').expect(201);
+    // RA-6 / A9: the customer's confirm reaches the runner's feed.
+    await setStatus(customer, errand.id, 'COMPLETED');
+    let row: { title: string; body: string } | undefined;
+    for (let i = 0; i < 40 && !row; i += 1) {
+      [row] = (await db().query(
+        `SELECT title, body FROM "notifications" WHERE "userId" = $1 AND "errandId" = $2 AND "eventType" = 'errand.COMPLETED'`,
+        [runner.id, errand.id],
+      )) as { title: string; body: string }[];
+      if (!row) {
+        await sleep(250);
+      }
+    }
+    expect(row).toEqual({
+      title: 'Customer confirmed the job',
+      body: 'Check It For Me. Your runner fee becomes payable when the review window closes.',
+    });
   });
 
   it('A10: receipts and claims within 24 h after FAILED, then reimbursement_window_closed', async () => {
