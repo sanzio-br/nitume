@@ -924,4 +924,7 @@ Spec-only update; no screen re-audited.
   - Design: the new-deadline sheet with `Today`, `Tomorrow`, `Flexible` (`Flexible` clears the deadline, row 244); the checkout `Deadline` line (chosen time, or `No deadline yet. It starts when your payment is confirmed.`) with a `Change` text button that opens the sheet before the deadline passes (proposed); the quote is kept (row 242); customer only (row 243).
   - Code: none.
   - Fix: after api `runner-gap-report.md` §19 items 2–3 and core-ui.
-- `x-awaiting-quote` stays `partial`. Row 241 is still open (notification copy).
+- `x-awaiting-quote` stays `partial`. Row 241 was answered later (round 16, below).
+
+## Owner answer row 241 (2026-10-19), applied on `docs/owner-answers-16-specs`
+- The out-of-area notification has owner copy: title `We can't take this task`, message `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.`. The `x-awaiting-quote` outside-area state (C-14-2) uses the same words, now decided. The app renders the API's notification text, so the only change needed is in the API (`runner-gap-report.md` §20 item 1).
