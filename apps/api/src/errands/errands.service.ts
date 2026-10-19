@@ -1248,11 +1248,13 @@ export class ErrandsService {
    * `PATCH /errands/:id` (owner customer or admin). Only the fields sent
    * change: `title` (`null` clears it) and, row 237, `deadlineAt`.
    * - `title`: any non-terminal status (409 `errand_closed`).
-   * - `deadlineAt`: the customer's new deadline after the old one passed
-   *   before payment (row 237), or any change before payment. Only in
-   *   DRAFT, REQUESTED, QUOTED or ACCEPTED (409 `deadline_not_editable`,
-   *   `status`); must be in the future (400 `deadline_in_past`); urgency is
-   *   derived again (row 51).
+   * - `deadlineAt`: customer only (row 243; 403 `deadline_customer_only`
+   *   for an admin). A new deadline after the old one passed before payment
+   *   (row 237), or any change before payment. Only in DRAFT, REQUESTED,
+   *   QUOTED or ACCEPTED (409 `deadline_not_editable`, `status`); it must
+   *   be in the future (400
+   *   `deadline_in_past`); urgency is derived again (row 51). The quote is
+   *   kept as it is (row 242).
    */
   async updateErrand(
     errandId: string,
@@ -1275,6 +1277,10 @@ export class ErrandsService {
       changes.title = patch.title && patch.title.length > 0 ? patch.title : null;
     }
     if (patch.deadlineAt !== undefined) {
+      // Row 243: the deadline is the customer's choice; admins cannot set it.
+      if (viewer.role !== UserRole.CUSTOMER) {
+        throw new ApiError(HttpStatus.FORBIDDEN, 'deadline_customer_only', 'Only the customer can change the deadline');
+      }
       if (!DEADLINE_EDITABLE.has(errand.status)) {
         throw new ApiError(HttpStatus.CONFLICT, 'deadline_not_editable', 'The deadline can only change before payment', {
           status: errand.status,

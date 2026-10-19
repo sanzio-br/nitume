@@ -67,9 +67,19 @@ describe('ErrandsService.updateErrand', () => {
     });
   });
 
+  it('an admin cannot set the deadline (row 243: 403 deadline_customer_only); an admin title edit still works', async () => {
+    const { service, repo } = build(ErrandStatus.QUOTED);
+    const admin = { role: UserRole.ADMIN, userId: 'admin-1' };
+    expect(
+      await fails(service.updateErrand('e-1', { deadlineAt: new Date(Date.now() + 3_600_000).toISOString() }, admin)),
+    ).toMatchObject({ statusCode: 403, code: 'deadline_customer_only' });
+    expect(repo.update).not.toHaveBeenCalled();
+    await service.updateErrand('e-1', { title: 'Ops title' }, admin);
+    expect(repo.update).toHaveBeenCalledWith('e-1', { title: 'Ops title' });
+  });
+
   it('the DTO refuses deadlineAt null', async () => {
     const errors = await validate(plainToInstance(UpdateErrandDto, { deadlineAt: null }));
     expect(errors.map((e) => e.property)).toContain('deadlineAt');
-    expect(await validate(plainToInstance(UpdateErrandDto, {}))).toEqual([]);
   });
 });

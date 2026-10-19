@@ -149,7 +149,7 @@ export class UpdateErrandDto {
   @MaxLength(120)
   title?: string | null;
 
-  /** Row 237: a new deadline before payment (ISO 8601, future). Cannot be cleared (null is refused). */
+  /** Customer only (row 243). A new deadline before payment (ISO 8601, future; row 237). Null is refused. */
   @ValidateIf((_o: unknown, v: unknown) => v !== undefined)
   @IsISO8601({ strict: true })
   deadlineAt?: string;
