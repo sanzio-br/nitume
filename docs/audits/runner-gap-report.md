@@ -1018,7 +1018,7 @@ The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are clos
 
 API items (continuing §18):
 6. **Row 236**:
-   - When a quote is refused for `location_outside_service_area`, send the customer a notification through the notifications queue (BullMQ), once per task. Built so on the api branch, with event `service_area.outside`. Copy: BOARD row 241 (open: API wording vs the spec's proposed wording).
+   - When a quote is refused for `location_outside_service_area`, send the customer a notification through the notifications queue (BullMQ), once per task. Built so on the api branch, with event `service_area.outside`. Copy (row 241, decided 2026-10-19): title `We can't take this task`, message `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.`. The built API wording is superseded and must change (§20).
    - Expose `outsideServiceArea: true` on the customer errand view (proposed field) so `x-awaiting-quote` shows the cancel state.
    - No state change and no admin cancel.
 7. **Row 237**:
@@ -1035,7 +1035,7 @@ Needs:
 
 Open owner rows (2026-10-19):
 - 240: answered 2026-10-19: clear the backfilled deadline on unpaid tasks (§19).
-- 241: out-of-area notification copy, API wording or spec wording? Recommended: the spec wording.
+- 241: answered 2026-10-19 with the owner's exact copy (§20).
 - 242: answered 2026-10-19: keep the quote (§19).
 - 243: answered 2026-10-19: customer only (§19).
 
@@ -1047,7 +1047,7 @@ Open owner rows (2026-10-19):
 
 ## 19. Owner answers rows 240, 242–244 (2026-10-19), applied on `docs/owner-answers-15-specs`
 
-Spec-only update; no screen re-audited. Row 241 (out-of-area notification copy) stays open.
+Spec-only update; no screen re-audited. Row 241 (out-of-area notification copy) stayed open; superseded, answered in §20.
 
 ### Decisions applied
 | Row | Decision | Files |
@@ -1071,4 +1071,17 @@ Because of row 240, "chosen = `deadlineAt` non-null before payment" (row 239 (a)
 - web-parity: nothing (there is no admin deadline edit, and none may be added: row 243).
 
 ### Open owner rows
-- 241: out-of-area notification copy (API wording vs the spec's proposed wording).
+- 241: answered 2026-10-19 (§20). No open rows.
+
+
+## 20. Owner answer row 241 (2026-10-19), applied on `docs/owner-answers-16-specs`
+- Decided copy for the out-of-area customer notification (`service_area.outside`): title `We can't take this task`, message `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.`.
+- Files: System Design §3.3; customer `v-notifications.md`, `x-awaiting-quote.md` (the screen state uses the same words), `_shared.md`.
+- Also fixed: the System Design §3.3 lead-in for row 236 now reads "REQUESTED, QUOTED or ACCEPTED".
+
+API items (numbered):
+1. Replace the built title and body of `service_area.outside` with the owner copy above (the built wording is superseded). Keep the queue delivery, once per task.
+
+core-ui, flutter-customer, web-parity: nothing new. The customer app renders the API's title and body, and the `x-awaiting-quote` outside-area state (C-14-2) uses the same words.
+
+Open owner rows: none from rounds 12–16.
