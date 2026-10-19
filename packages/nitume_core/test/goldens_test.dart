@@ -415,6 +415,28 @@ void main() {
     );
   });
 
+  testWidgets('empty state with title (C4)', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        const SizedBox(
+          width: 375,
+          child: NitumeEmptyState(
+            title: 'No offers right now',
+            message:
+                "We'll notify you when a job near you comes in. Keep the app "
+                'online.',
+          ),
+        ),
+      ),
+      surfaceSize: const Size(420, 220),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/empty_state_title.png'),
+    );
+  });
+
   testWidgets('capture states (C1, C2)', (tester) async {
     final photo = MemoryImage(_png);
     await pumpThemed(
