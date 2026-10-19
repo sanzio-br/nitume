@@ -928,3 +928,43 @@ Spec-only update; no screen re-audited.
 
 ## Owner answer row 241 (2026-10-19), applied on `docs/owner-answers-16-specs`
 - The out-of-area notification has owner copy: title `We can't take this task`, message `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.`. The `x-awaiting-quote` outside-area state (C-14-2) uses the same words, now decided. The app renders the API's notification text, so the only change needed is in the API (`runner-gap-report.md` §20 item 1).
+
+
+## Re-audit 2026-10-19: customer rounds 14–16 (`feat/customer-round-14` @ `31b703e`, with `feat/core-round-14-client` merged in `9d32bc4`)
+
+Commits `8cfa8ec`, `b8b4fbd`, `019b3b2`, `2bcb01f`, `31b703e`. Build health: `flutter analyze` clean; `flutter test` 148 pass; no literal colours, `fontFamily`, `GoogleFonts` or raw `TextStyle(` in `lib/`.
+
+### Per screen
+- **v-new-details (C-12-1): PASS.**
+  - The `Flexible` caption reads `No fixed time. Your task's deadline is {duration} after your payment is confirmed.`, with the duration in Fira Code (`NumSpan`).
+  - The duration comes from `GET /errands/defaults`. The caption shows only when the API says the clock starts at payment (row 235), and is hidden otherwise. Nothing is hard-coded.
+- **v-new-review (C-14-1): PASS.**
+  - On `location_outside_service_area` a C-40 notice `We don't cover this location yet. Choose a place inside the areas we serve.` and an outline `Change location` replace the snackbar.
+  - `Submit task →` stays disabled until a location changes.
+  - `Change location` returns to `v-new-details` and scrolls to the refused field.
+- **x-awaiting-quote (C-14-2, C-14-3, C-15-1): PASS** (see row 249 below).
+  - Outside-area state, in REQUESTED, QUOTED or ACCEPTED: the owner copy `We can't take this task` / `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.` (row 241), with `Cancel task` as the primary button.
+  - Checkout `Deadline` line:
+    - the chosen time in Fira Code, or `No deadline yet. It starts when your payment is confirmed.`;
+    - a C-04 `Change` that opens the sheet.
+  - Chosen deadline passed: the notice `Your deadline has passed. Choose a new one to continue.` and the primary `Choose a new deadline`.
+  - Sheet: `Today` (hidden after 23:59 local), `Tomorrow`, `Flexible` (sends `null`). The quote is kept, and only the customer can use it (rows 237, 242–244).
+- **v-payment: PASS.** A 409 `deadline_passed_before_payment` sends no STK, shows no snackbar, and goes back to checkout in the new-deadline state (pop from checkout, or replace when opened from elsewhere).
+- **v-notifications: PASS.** `service_area.outside` gets a location icon and routes to `x-awaiting-quote`. The app shows the API's title and body (owner copy, row 241, on the API side).
+
+### Rulings on the builder's choices
+1. **A chip tap saves; no Save button; sheet heading `Deadline`**: accepted. Each option is one decision, and a wrong tap is undone by opening the sheet again. The heading is proposed copy.
+2. **Inline danger `Couldn't change the deadline. Try again.`**: accepted as proposed copy (C-40 danger tone).
+3. **Plain themed `showModalBottomSheet` instead of a core sheet**: accepted. `nitume_core` has no sheet component, and this is the app's first chooser sheet. If a second app or screen needs one, core-ui promotes it (no copy-pasting).
+4. **Deadline passed: notice plus `Choose a new deadline`, with no auto-opened sheet**: accepted. It matches the spec exactly (the CTA is replaced; the sheet opens on tap).
+5. **An expired quote is handled before a passed deadline**: accepted. A new quote is needed anyway, and the deadline step follows on the new quote.
+6. **A refused submit cancels the draft (DRAFT → CANCELLED, customer) and creates a new one next time**: accepted. A draft has no location edit, and DRAFT → CANCELLED is the customer's own transition. Check that abandoned drafts stay out of `v-history` (they did before this change).
+7. **Outside-area: status chip only for REQUESTED, no waiting dots, `Cancel task` before `Back to Home`**: accepted. `Quote ready` / `Awaiting payment` would be wrong there, nothing is being prepared, and the primary action comes first.
+8. **Deadline time `20 Oct, 11:59 PM` (the past-oriented formatter) instead of `Tomorrow, 11:59 PM`**: accepted for now; the date is unambiguous. **m-1 (minor, core-ui)**: a future-aware EAT formatter (`Today, …` / `Tomorrow, …` / date) for deadlines, then use it here.
+9. **`Change location` scrolls but cannot focus the field**: accepted as interim. **m-2 (minor, core-ui)**: a `focusNode` (or `autofocus`) on the core place field, so `v-new-details` can focus the refused field as the spec asks.
+
+### Open owner row
+- **Row 249** (when to show the outside-area state): the build shows it whenever `outsideServiceArea` is true, in REQUESTED, QUOTED or ACCEPTED. If the owner picks (b) (only REQUESTED, or QUOTED/ACCEPTED once the quote has expired), C-14-2 changes: `_outsideArea` in `awaiting_quote_screen.dart` gains the quote-expiry condition. That is a small follow-up, not a FAIL now.
+
+### Verdict
+All five screens **PASS**. C-12-1, C-14-1, C-14-2, C-14-3 and C-15-1 are closed. Follow-ups: m-1, m-2 (core-ui), and row 249 (owner).
