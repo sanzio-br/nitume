@@ -183,6 +183,7 @@ const build = (
     onConfirmed: vi.fn(),
     listFor: vi.fn(() => Promise.resolve({ items: [{ id: 'e-7' }, { id: 'e-8' }], nextCursor: null })),
     activeAssignmentFor: vi.fn(() => Promise.resolve({ runnerProfileId: 'rp-1' })),
+    assertReceiptWindowOpen: vi.fn(() => Promise.resolve()),
     latestAssignmentOf: vi.fn(() => Promise.resolve({ id: 'as-1', runnerProfileId: 'rp-1' })),
     getById: vi.fn(() => Promise.resolve({ id: 'e-1', status: ErrandStatus.CANCELLED })),
     findByIds: vi.fn(() =>
@@ -461,6 +462,12 @@ describe('RunnerPayoutsService.claim (row 106)', () => {
     const err = await over.service.claim('u-run', { ...claim, amount: 1000.01 }).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: 'reimbursement_exceeds_cap' });
     expect((err as ApiError).getResponse()).toMatchObject({ cap: '1000.00' });
+
+    // Row 129 (RA-12): after the 24 h window the claim is refused.
+    const late = build({ itemPaid: 1000 });
+    late.errands.assertReceiptWindowOpen.mockRejectedValue(new ApiError(409, 'reimbursement_window_closed', 'closed'));
+    expect(await codeOf(late.service.claim('u-run', claim))).toBe('reimbursement_window_closed');
+    expect(late.table).toHaveLength(0);
 
     const twice = build({ itemPaid: 1000 });
     await twice.service.claim('u-run', claim);
