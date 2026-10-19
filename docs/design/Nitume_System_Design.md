@@ -311,7 +311,7 @@ Design conventions: **cursor-based pagination** on list endpoints (not offset �
 >
 > Updated 2026-10-19 (round 14c) to the owner's answer row 239 (a): `deadlineAt` stays NULL before payment for a task with no customer deadline; CHECK allows NULL only before payment and on CANCELLED; set at PAYMENT_CONFIRMED to payment time + 24 h. Sections touched: §2.2, §3.3.
 >
-> Updated 2026-10-19 (round 15) to the owner's answers rows 240, 242–244: backfilled deadlines on unpaid tasks cleared to NULL (240); quote kept when the deadline changes after quoting (242); only the customer sets a new deadline before payment (243); the customer may clear it back to Flexible (244). Row 241 (notification copy) open. Sections touched: §2.2, §3.3.
+> Updated 2026-10-19 (round 15) to the owner's answers rows 240, 242–244: backfilled deadlines on unpaid tasks cleared to NULL (240); quote kept when the deadline changes after quoting (242); only the customer sets a new deadline before payment (243); the customer may clear it back to Flexible (244). Row 241 (notification copy) was open then; superseded by round 16. Sections touched: §2.2, §3.3.
 >
 > Updated 2026-10-19 (round 16) to the owner's answer row 241: out-of-area customer notification copy, title `We can't take this task`, message `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.`. Section touched: §3.3.
 

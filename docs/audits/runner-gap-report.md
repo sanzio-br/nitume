@@ -1047,7 +1047,7 @@ Open owner rows (2026-10-19):
 
 ## 19. Owner answers rows 240, 242–244 (2026-10-19), applied on `docs/owner-answers-15-specs`
 
-Spec-only update; no screen re-audited. Row 241 (out-of-area notification copy) stays open.
+Spec-only update; no screen re-audited. Row 241 (out-of-area notification copy) stayed open; superseded, answered in §20.
 
 ### Decisions applied
 | Row | Decision | Files |
