@@ -149,10 +149,13 @@ export class UpdateErrandDto {
   @MaxLength(120)
   title?: string | null;
 
-  /** Customer only (row 243). A new deadline before payment (ISO 8601, future; row 237). Null is refused. */
-  @ValidateIf((_o: unknown, v: unknown) => v !== undefined)
+  /**
+   * Customer only (row 243). A new deadline before payment (ISO 8601,
+   * future; row 237), or `null` to switch back to Flexible (row 244).
+   */
+  @ValidateIf((_o: unknown, v: unknown) => v !== undefined && v !== null)
   @IsISO8601({ strict: true })
-  deadlineAt?: string;
+  deadlineAt?: string | null;
 }
 
 export class RunnerNotesDto {

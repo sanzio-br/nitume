@@ -111,8 +111,8 @@ export class ErrandsController {
    * Owner customer (or admin) edits the task: `{ title?, deadlineAt? }`;
    * only the fields sent change (`title: null` clears the title).
    * `deadlineAt` is customer only (row 243; 403 deadline_customer_only):
-   * before payment only (409 deadline_not_editable, `status`), in the
-   * future (400 deadline_in_past).
+   * before payment only (409 deadline_not_editable, `status`); a date in
+   * the future (400 deadline_in_past), or `null` for Flexible (row 244).
    * This is how the customer answers 409 deadline_passed_before_payment.
    * 409 errand_closed on a terminal task.
    */

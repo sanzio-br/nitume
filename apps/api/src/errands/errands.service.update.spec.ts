@@ -73,13 +73,28 @@ describe('ErrandsService.updateErrand', () => {
     expect(
       await fails(service.updateErrand('e-1', { deadlineAt: new Date(Date.now() + 3_600_000).toISOString() }, admin)),
     ).toMatchObject({ statusCode: 403, code: 'deadline_customer_only' });
+    expect(await fails(service.updateErrand('e-1', { deadlineAt: null }, admin))).toMatchObject({ code: 'deadline_customer_only' });
     expect(repo.update).not.toHaveBeenCalled();
     await service.updateErrand('e-1', { title: 'Ops title' }, admin);
     expect(repo.update).toHaveBeenCalledWith('e-1', { title: 'Ops title' });
   });
 
-  it('the DTO refuses deadlineAt null', async () => {
-    const errors = await validate(plainToInstance(UpdateErrandDto, { deadlineAt: null }));
-    expect(errors.map((e) => e.property)).toContain('deadlineAt');
+  it('null switches back to Flexible before payment (row 244), not after', async () => {
+    const { service, repo } = build(ErrandStatus.ACCEPTED);
+    await service.updateErrand('e-1', { deadlineAt: null }, OWNER);
+    expect(repo.update).toHaveBeenCalledWith('e-1', { deadlineAt: null, urgency: ErrandUrgency.STANDARD });
+    const paid = build(ErrandStatus.PAYMENT_CONFIRMED);
+    expect(await fails(paid.service.updateErrand('e-1', { deadlineAt: null }, OWNER))).toMatchObject({
+      code: 'deadline_not_editable',
+      status: 'PAYMENT_CONFIRMED',
+    });
+  });
+
+  it('the DTO accepts an ISO date or null, and nothing else', async () => {
+    const props = async (body: object) => (await validate(plainToInstance(UpdateErrandDto, body))).map((e) => e.property);
+    expect(await props({ deadlineAt: null })).toEqual([]);
+    expect(await props({})).toEqual([]);
+    expect(await props({ deadlineAt: '2030-01-01T00:00:00Z' })).toEqual([]);
+    expect(await props({ deadlineAt: 'tomorrow' })).toContain('deadlineAt');
   });
 });

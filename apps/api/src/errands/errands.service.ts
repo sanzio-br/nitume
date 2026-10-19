@@ -1250,15 +1250,15 @@ export class ErrandsService {
    * - `title`: any non-terminal status (409 `errand_closed`).
    * - `deadlineAt`: customer only (row 243; 403 `deadline_customer_only`
    *   for an admin). A new deadline after the old one passed before payment
-   *   (row 237), or any change before payment. Only in DRAFT, REQUESTED,
-   *   QUOTED or ACCEPTED (409 `deadline_not_editable`, `status`); it must
-   *   be in the future (400
+   *   (row 237), or any change before payment; `null` switches back to
+   *   Flexible (row 244). Only in DRAFT, REQUESTED, QUOTED or ACCEPTED (409
+   *   `deadline_not_editable`, `status`); a date must be in the future (400
    *   `deadline_in_past`); urgency is derived again (row 51). The quote is
    *   kept as it is (row 242).
    */
   async updateErrand(
     errandId: string,
-    patch: { title?: string | null; deadlineAt?: string },
+    patch: { title?: string | null; deadlineAt?: string | null },
     viewer: ViewerContext,
   ): Promise<ErrandView> {
     const errand = await this.getById(errandId, viewer);
@@ -1286,7 +1286,8 @@ export class ErrandsService {
           status: errand.status,
         });
       }
-      const deadlineAt = new Date(patch.deadlineAt);
+      // Row 244: null switches the task back to Flexible (its clock starts at payment).
+      const deadlineAt = patch.deadlineAt === null ? null : new Date(patch.deadlineAt);
       assertDeadlineInFuture(deadlineAt);
       changes.deadlineAt = deadlineAt;
       changes.urgency = deriveUrgency(deadlineAt, this.urgencyThresholds());
