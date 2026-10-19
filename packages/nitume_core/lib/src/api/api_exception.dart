@@ -527,6 +527,12 @@ abstract final class ApiErrorCodes {
   /// time).
   static const runnerBusy = 'runner_busy';
 
+  /// `GET /runners/me/jobs/:errandId` (403, A2): this runner does not hold
+  /// the job (never offered, declined, offer lapsed or withdrawn,
+  /// reassigned). Read it with `RunnerJobsRepository.readJob`, which gives
+  /// `RunnerJobAccessRevoked`.
+  static const jobNotHeld = 'job_not_held';
+
   /// Accepting while offline (409, RA-8). Go online first.
   static const runnerOffline = 'runner_offline';
 
