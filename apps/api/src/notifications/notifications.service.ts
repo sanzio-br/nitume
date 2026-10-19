@@ -21,6 +21,8 @@ import {
   TASK_DEADLINE_EXPIRED_EVENT,
   PAID_TASK_DEADLINE_PASSED_EVENT,
   PaidTaskDeadlinePassedEvent,
+  OUTSIDE_SERVICE_AREA_EVENT,
+  OutsideServiceAreaEvent,
   TaskDeadlineExpiredEvent,
   ASSIGNMENT_EXPIRED_EVENT,
   AssignmentDeclinedEvent,
@@ -99,7 +101,9 @@ export type FeedJob =
   /** Admin-facing (row 185): a RUNNER_ASSIGNED task expired at its customer deadline. */
   | { kind: 'deadline_passed'; errandId: string; reference: string }
   /** Admin-facing (rows 201, 220): a PAYMENT_CONFIRMED task is past its deadline; not expired. Once per task. */
-  | { kind: 'paid_deadline_passed'; errandId: string; reference: string };
+  | { kind: 'paid_deadline_passed'; errandId: string; reference: string }
+  /** Customer (row 236): the quote was refused, the task is inside no service area. Once per task. */
+  | { kind: 'outside_service_area'; errandId: string; reference: string };
 
 /** Feed jobs whose recipients are the admins, not the errand's customer. */
 const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>([
@@ -329,6 +333,26 @@ export class NotificationsService {
     );
   }
 
+  /**
+   * Row 236: a quote was refused because the task is inside no service area
+   * -> the customer's feed item + push, once per task (an admin may retry
+   * the quote). Queued under a per-task job id; the worker checks again.
+   */
+  @OnEvent(OUTSIDE_SERVICE_AREA_EVENT, { async: true })
+  async onOutsideServiceArea(event: OutsideServiceAreaEvent): Promise<void> {
+    if (await this.hasItem(event.errandId, NotificationEventType.OUTSIDE_SERVICE_AREA)) {
+      return;
+    }
+    await this.enqueue(
+      { kind: 'outside_service_area', errandId: event.errandId, reference: event.reference },
+      `outside-service-area-${event.errandId}`,
+    );
+  }
+
+  private hasItem(errandId: string, eventType: NotificationEventType): Promise<boolean> {
+    return this.notifications.exists({ where: { errandId, eventType } });
+  }
+
   private hasDeadlineItem(errandId: string): Promise<boolean> {
     return this.notifications.exists({ where: { errandId, eventType: NotificationEventType.DEADLINE_PASSED } });
   }
@@ -360,6 +384,9 @@ export class NotificationsService {
     }
     if (job.kind === 'paid_deadline_passed' && (await this.hasDeadlineItem(errand.id))) {
       return null; // Rows 201, 220: once per task.
+    }
+    if (job.kind === 'outside_service_area' && (await this.hasItem(errand.id, NotificationEventType.OUTSIDE_SERVICE_AREA))) {
+      return null; // Row 236: once per task.
     }
     let recipients: string[];
     if (ADMIN_FEED_KINDS.has(job.kind)) {
@@ -526,6 +553,13 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.DEADLINE_PASSED,
         title: 'Deadline passed',
         body: `The customer's deadline for ${job.reference} passed before any runner accepted. The task has expired.`,
+      };
+    // Row 236. Copy PROPOSED (api-contract, not yet approved by the owner).
+    case 'outside_service_area':
+      return {
+        eventType: NotificationEventType.OUTSIDE_SERVICE_AREA,
+        title: 'Outside our service area',
+        body: `We can't take ${job.reference}: its location is outside the areas we serve. You can cancel this task, or create a new one with a location inside a service area.`,
       };
     // Owner copy, row 220 (the task has not expired, so row 216's body does not fit).
     case 'paid_deadline_passed':

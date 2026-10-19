@@ -392,6 +392,18 @@ export interface PaidTaskDeadlinePassedEvent {
   deadlineAt: string;
 }
 
+/**
+ * Row 236 (owner, 2026-10-19): a quote was refused because the task is
+ * inside no service area (row 233). The customer is told and may cancel;
+ * ops cannot cancel before payment (no new transition).
+ */
+export const OUTSIDE_SERVICE_AREA_EVENT = 'errand.outside_service_area';
+
+export interface OutsideServiceAreaEvent {
+  errandId: string;
+  reference: string;
+}
+
 /** History note of the row-185 expiry; also how `expiry.trigger` is recognised. */
 export const DEADLINE_EXPIRY_NOTE = 'Customer deadline passed';
 
@@ -2194,6 +2206,16 @@ export class ErrandsService {
       done.errand.quotedPrice = quotedPrice;
       const row = await this.saveQuote(manager, errandId, quote);
       return { errand: done.errand, history: done.history, quote: row, reissued: false };
+    }).catch(async (err: unknown) => {
+      // Row 236: tell the customer (once; the notifications module dedupes).
+      if (err instanceof ApiError && err.code === 'location_outside_service_area') {
+        const errand = await this.errands.findOne({ where: { id: errandId } });
+        if (errand) {
+          const event: OutsideServiceAreaEvent = { errandId, reference: errand.reference };
+          setImmediate(() => this.events.emit(OUTSIDE_SERVICE_AREA_EVENT, event));
+        }
+      }
+      throw err;
     });
     if (out.reissued) {
       const event: QuoteReissuedEvent = {

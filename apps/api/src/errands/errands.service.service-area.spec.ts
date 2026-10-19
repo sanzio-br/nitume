@@ -6,7 +6,7 @@ import { CreateErrandDto } from './dto/errand.dto';
 import { ErrandLocation } from './errand-location.entity';
 import { ErrandStatusHistory } from './errand-status-history.entity';
 import { Errand } from './errand.entity';
-import { ErrandsService, firstPointOf } from './errands.service';
+import { ErrandsService, OUTSIDE_SERVICE_AREA_EVENT, firstPointOf } from './errands.service';
 import { Quote } from './quote.entity';
 
 /** Row 233 (owner, 2026-10-19): no task inside no configured service area. */
@@ -40,20 +40,21 @@ const build = (status: ErrandStatus, inArea: (p: { lat: number; lng: number }) =
   ]);
   const manager = { getRepository: (entity: unknown) => repos.get(entity) };
   const inServiceArea = vi.fn(inArea);
+  const emit = vi.fn();
   const service = new ErrandsService(
     { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
+    { findOne: vi.fn(() => Promise.resolve(Object.assign({}, errand, { reference: 'NT-42' }))) } as never,
     {} as never,
     {} as never,
     {} as never,
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
-    { emit: vi.fn() } as never,
+    { emit } as never,
     { inServiceArea } as never,
     {} as never,
   );
-  return { service, errand, saved, inServiceArea };
+  return { service, errand, saved, inServiceArea, emit };
 };
 
 const codeOf = async (p: Promise<unknown>) => {
@@ -116,5 +117,16 @@ describe('row 233: tasks inside no service area', () => {
     expect(await codeOf(quoted.service.quote('e-1', { total: 500 } as never, ADMIN))).toMatchObject({
       code: 'location_outside_service_area',
     });
+  });
+
+  it('a quote refused as out-of-area tells the customer (row 236); a create or submit refusal does not', async () => {
+    const requested = build(ErrandStatus.REQUESTED, () => false);
+    await codeOf(requested.service.quote('e-1', { total: 500 } as never, ADMIN));
+    await new Promise((r) => setImmediate(r));
+    expect(requested.emit).toHaveBeenCalledWith(OUTSIDE_SERVICE_AREA_EVENT, { errandId: 'e-1', reference: 'NT-42' });
+    const draft = build(ErrandStatus.DRAFT, () => false);
+    await codeOf(draft.service.transition('e-1', ErrandStatus.REQUESTED, { type: StatusHistoryActor.CUSTOMER, id: 'c-1' }));
+    await new Promise((r) => setImmediate(r));
+    expect(draft.emit).not.toHaveBeenCalledWith(OUTSIDE_SERVICE_AREA_EVENT, expect.anything());
   });
 });

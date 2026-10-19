@@ -266,4 +266,6 @@ export enum NotificationEventType {
   ASSIGNMENT_EXPIRED = 'assignment.expired',
   /** Admin feed: a RUNNER_ASSIGNED task expired at its customer deadline (row 185). */
   DEADLINE_PASSED = 'deadline_passed',
+  /** Customer: the task was refused at quote, inside no service area; they may cancel (row 236). */
+  OUTSIDE_SERVICE_AREA = 'service_area.outside',
 }

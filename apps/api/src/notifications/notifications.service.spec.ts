@@ -602,6 +602,34 @@ describe('assignment_declined with the row-210 reasons', () => {
   });
 });
 
+describe('outside_service_area customer item (row 236, copy proposed)', () => {
+  it('has customer copy with the reference', () => {
+    expect(copyFor({ kind: 'outside_service_area', errandId: 'e-1', reference: 'NT-7' })).toEqual({
+      eventType: 'service_area.outside',
+      title: 'Outside our service area',
+      body: "We can't take NT-7: its location is outside the areas we serve. You can cancel this task, or create a new one with a location inside a service area.",
+    });
+  });
+
+  it('is queued once per task, to the customer', async () => {
+    const { service, queue, notifications } = build();
+    await service.onOutsideServiceArea({ errandId: 'e-1', reference: 'NT-7' });
+    expect(notifications.exists).toHaveBeenCalledWith({ where: { errandId: 'e-1', eventType: 'service_area.outside' } });
+    expect(queue.add).toHaveBeenCalledWith(
+      FEED_JOB,
+      { kind: 'outside_service_area', errandId: 'e-1', reference: 'NT-7' },
+      { jobId: 'outside-service-area-e-1' },
+    );
+    await service.deliverFeed({ kind: 'outside_service_area', errandId: 'e-1', reference: 'NT-7' });
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-1', eventType: 'service_area.outside' }));
+
+    const again = build({ existing: true });
+    await again.service.onOutsideServiceArea({ errandId: 'e-1', reference: 'NT-7' });
+    expect(again.queue.add).not.toHaveBeenCalled();
+    await expect(again.service.deliverFeed({ kind: 'outside_service_area', errandId: 'e-1', reference: 'NT-7' })).resolves.toBeNull();
+  });
+});
+
 describe('paid_deadline_passed admin feed (rows 201, 220)', () => {
   const event = { errandId: 'e-1', reference: 'NT-7', deadlineAt: '2026-10-19T10:00:00.000Z' };
 
