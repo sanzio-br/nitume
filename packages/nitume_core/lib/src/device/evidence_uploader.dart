@@ -120,6 +120,13 @@ class EvidenceUploadItem extends ChangeNotifier {
 ///   or [dispose] deletes it (screens confirm before leaving, as the spec's
 ///   `Leave while uploading?` dialog).
 /// * Missing file: `failed` with [EvidenceUploadItem.fileMissing].
+/// * Disposed while an upload is in flight: the upload still runs to the
+///   end and its file is cleaned up as above (a refusal then deletes the
+///   copy, since nobody can retry it); no listener is called any more.
+///
+/// Lifetime (C-V2): hold one uploader per held job at app scope through
+/// [JobEvidenceUploads], so leaving `v-evidence-capture` does not drop
+/// uploads and `v-active` can read the item states.
 ///
 /// Photos and receipts only (row 121): any other type throws
 /// [ArgumentError]. Location is attached when the device has a fix; a
@@ -147,6 +154,10 @@ class EvidenceUploader extends ChangeNotifier {
   final DateTime Function() _clock;
 
   final List<EvidenceUploadItem> _items = [];
+  bool _disposed = false;
+
+  /// True once [dispose] ran; [captureAndUpload] then returns `null`.
+  bool get isDisposed => _disposed;
 
   /// This session's captures, oldest first.
   List<EvidenceUploadItem> get items => List.unmodifiable(_items);
@@ -169,25 +180,30 @@ class EvidenceUploader extends ChangeNotifier {
     required EvidenceType type,
   }) async {
     checkRunnerEvidenceType(type);
+    if (_disposed) return null;
     final image = await capture.takePhoto();
     if (image == null) return null;
+    if (_disposed) {
+      await _quietly(image.discard);
+      return null;
+    }
     final at = _clock().toUtc();
     String kept;
     try {
       kept = await files.keep(image.path);
       // B-1: the app keeps its own copy, so the picker's file (and any
       // scratch folder) goes at once.
-      try {
-        await image.discard();
-      } on Object {
-        // Best effort.
-      }
+      await _quietly(image.discard);
     } on FileSystemException {
       // The picker file is the only copy: it is used and released like a
       // kept copy.
       kept = image.path;
     }
     final fix = await _fix();
+    if (_disposed) {
+      await _quietly(() => files.discard(kept));
+      return null;
+    }
     final item = EvidenceUploadItem._(
       errandId: errandId,
       type: type,
@@ -205,7 +221,7 @@ class EvidenceUploader extends ChangeNotifier {
 
   /// Retries a failed item whose file is still there.
   Future<void> retry(EvidenceUploadItem item) async {
-    if (!item.canRetry) return;
+    if (_disposed || !item.canRetry) return;
     item._set(EvidenceUploadStatus.uploading);
     notifyListeners();
     await _send(item);
@@ -214,7 +230,7 @@ class EvidenceUploader extends ChangeNotifier {
   /// Removes a failed item and deletes its kept copy (the runner gave up
   /// on it). Queued and uploaded items are not touched.
   Future<void> remove(EvidenceUploadItem item) async {
-    if (item.status != EvidenceUploadStatus.failed) return;
+    if (_disposed || item.status != EvidenceUploadStatus.failed) return;
     _items.remove(item);
     await _release(item);
     item.dispose();
@@ -234,11 +250,35 @@ class EvidenceUploader extends ChangeNotifier {
   Future<void> _release(EvidenceUploadItem item) async {
     if (item._fileReleased) return;
     item._fileReleased = true;
+    await _quietly(() => files.discard(item.path));
+  }
+
+  static Future<void> _quietly(Future<void> Function() f) async {
     try {
-      await files.discard(item.path);
+      await f();
     } on Object {
       // Best effort.
     }
+  }
+
+  /// Ends an item's send. After [dispose] the item is cleaned up instead:
+  /// a failed copy is deleted (nobody can retry it) and the item disposed.
+  Future<void> _finish(
+    EvidenceUploadItem item,
+    EvidenceUploadStatus s, {
+    Evidence? evidence,
+    bool? missing,
+  }) async {
+    if (!_disposed) {
+      item._set(s, evidence: evidence, missing: missing);
+      notifyListeners();
+      return;
+    }
+    item._status = s;
+    item._evidence = evidence ?? item._evidence;
+    item._fileMissing = missing ?? item._fileMissing;
+    if (s == EvidenceUploadStatus.failed) await _release(item);
+    item.dispose();
   }
 
   Future<void> _send(EvidenceUploadItem item) async {
@@ -246,8 +286,7 @@ class EvidenceUploader extends ChangeNotifier {
     try {
       bytes = await _read(item.path);
     } on FileSystemException {
-      item._set(EvidenceUploadStatus.failed, missing: true);
-      notifyListeners();
+      await _finish(item, EvidenceUploadStatus.failed, missing: true);
       return;
     }
     try {
@@ -260,8 +299,8 @@ class EvidenceUploader extends ChangeNotifier {
         lat: item.lat,
         lon: item.lon,
       );
-      item._set(EvidenceUploadStatus.uploaded, evidence: ev);
       await _release(item);
+      await _finish(item, EvidenceUploadStatus.uploaded, evidence: ev);
     } on Object catch (e) {
       final q = queue;
       if (q != null && replayOutcomeFor(e) == ReplayOutcome.retryLater) {
@@ -279,20 +318,24 @@ class EvidenceUploader extends ChangeNotifier {
         );
         // The queue owns the file now.
         item._fileReleased = true;
-        item._set(EvidenceUploadStatus.queued);
+        await _finish(item, EvidenceUploadStatus.queued);
       } else {
-        item._set(EvidenceUploadStatus.failed);
+        await _finish(item, EvidenceUploadStatus.failed);
       }
     }
-    notifyListeners();
   }
 
+  /// Deletes failed copies and disposes settled items. Items still
+  /// uploading finish in the background and clean up after themselves.
   @override
   void dispose() {
+    _disposed = true;
     for (final i in _items) {
+      if (i.status == EvidenceUploadStatus.uploading) continue;
       if (i.status == EvidenceUploadStatus.failed) unawaited(_release(i));
       i.dispose();
     }
+    _items.clear();
     super.dispose();
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -72,6 +73,7 @@ void main() {
   late _Camera camera;
   late DirectoryEvidenceFileStore files;
   Object? failWith;
+  Completer<void>? gate;
   late List<({EvidenceType type, int bytes, DateTime? at, double? lat})> calls;
 
   Future<Evidence> upload(
@@ -84,6 +86,8 @@ void main() {
     double? lon,
   }) async {
     calls.add((type: type, bytes: bytes.length, at: capturedAt, lat: lat));
+    final g = gate;
+    if (g != null) await g.future;
     final f = failWith;
     if (f != null) throw f;
     return Evidence(id: 'ev${calls.length}', errandId: errandId, type: type);
@@ -96,6 +100,7 @@ void main() {
     files = DirectoryEvidenceFileStore(() async => app);
     calls = [];
     failWith = null;
+    gate = null;
   });
 
   tearDown(() {
@@ -242,5 +247,135 @@ void main() {
     failWith = const NitumeApiException(message: 'x', isNetworkError: true);
     final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
     expect(item!.status, EvidenceUploadStatus.failed);
+  });
+
+  group('C-V2: uploads outlive the screen', () {
+    Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+    /// Real file I/O runs before the upload call: wait for it.
+    Future<void> untilUploading() async {
+      for (var i = 0; i < 500 && calls.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+      expect(calls, isNotEmpty);
+    }
+
+    test('disposed while uploading: the upload finishes and the copy is '
+        'deleted, no listener after dispose', () async {
+      final u = make();
+      var notified = 0;
+      gate = Completer<void>();
+      final pending = u.captureAndUpload('e1', type: EvidenceType.photo);
+      await untilUploading();
+      expect(u.busy, isTrue);
+      final item = u.items.single;
+      item.addListener(() => notified++);
+      u.dispose();
+      expect(u.isDisposed, isTrue);
+      gate!.complete();
+      final done = await pending;
+      expect(done, same(item));
+      expect(item.status, EvidenceUploadStatus.uploaded);
+      expect(calls, hasLength(1));
+      expect(kept(), isEmpty);
+      expect(notified, 0);
+    });
+
+    test('disposed while uploading, then refused: the copy is deleted '
+        '(nobody can retry)', () async {
+      final u = make();
+      gate = Completer<void>();
+      failWith = const NitumeApiException(message: 'bad', statusCode: 422);
+      final pending = u.captureAndUpload('e1', type: EvidenceType.photo);
+      await untilUploading();
+      expect(kept(), hasLength(1));
+      u.dispose();
+      gate!.complete();
+      final item = await pending;
+      expect(item!.status, EvidenceUploadStatus.failed);
+      await settle();
+      expect(kept(), isEmpty);
+    });
+
+    test('disposed while uploading, then offline: the queue keeps the '
+        'copy', () async {
+      final queue = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async => ReplayOutcome.done,
+        onSettled: RunnerQueuedActions.cleanupFor(files),
+      );
+      final u = make(queue: queue);
+      gate = Completer<void>();
+      failWith = const NitumeApiException(message: 'x', statusCode: 503);
+      final pending = u.captureAndUpload('e1', type: EvidenceType.photo);
+      await untilUploading();
+      u.dispose();
+      gate!.complete();
+      expect((await pending)!.status, EvidenceUploadStatus.queued);
+      expect(queue.pending, hasLength(1));
+      expect(kept(), hasLength(1));
+    });
+
+    test('a disposed uploader takes no new capture', () async {
+      final u = make()..dispose();
+      expect(await u.captureAndUpload('e1', type: EvidenceType.photo), isNull);
+      expect(calls, isEmpty);
+    });
+
+    test('JobEvidenceUploads: one uploader per job, kept across screens, '
+        'released with the job', () async {
+      final created = <String>[];
+      final uploads = JobEvidenceUploads((id) {
+        created.add(id);
+        return make();
+      });
+      var changes = 0;
+      uploads.addListener(() => changes++);
+      expect(uploads.existing('e1'), isNull);
+      final a = uploads.forJob('e1');
+      expect(uploads.forJob('e1'), same(a));
+      expect(uploads.existing('e1'), same(a));
+      uploads.forJob('e2');
+      expect(created, ['e1', 'e2']);
+      expect(uploads.jobIds, {'e1', 'e2'});
+      expect(changes, 2);
+
+      // The screen captures, then is left while the upload is in flight.
+      gate = Completer<void>();
+      final pending = a.captureAndUpload('e1', type: EvidenceType.photo);
+      await untilUploading();
+      // v-active reads the state from the same uploader.
+      expect(uploads.existing('e1')!.busy, isTrue);
+      gate!.complete();
+      await pending;
+      expect(
+        uploads.existing('e1')!.items.single.status,
+        EvidenceUploadStatus.uploaded,
+      );
+
+      uploads.retainOnly(['e1']);
+      expect(uploads.jobIds, {'e1'});
+      uploads.release('e1');
+      expect(a.isDisposed, isTrue);
+      expect(uploads.jobIds, isEmpty);
+      expect(changes, 4);
+      uploads.dispose();
+      expect(() => uploads.forJob('e3'), throwsStateError);
+    });
+
+    test('JobEvidenceUploads.releaseAll disposes every uploader', () {
+      final made = <EvidenceUploader>[];
+      final uploads = JobEvidenceUploads((_) {
+        final u = make();
+        made.add(u);
+        return u;
+      });
+      uploads
+        ..forJob('e1')
+        ..forJob('e2')
+        ..releaseAll();
+      expect(made.every((u) => u.isDisposed), isTrue);
+      expect(uploads.jobIds, isEmpty);
+    });
   });
 }
