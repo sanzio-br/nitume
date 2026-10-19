@@ -236,6 +236,14 @@ void main() {
         code: ApiErrorCodes.offerExpired,
       ),
     ),
+    (
+      'assignment_not_declinable',
+      NitumeApiException(
+        message: 'x',
+        statusCode: 409,
+        code: ApiErrorCodes.assignmentNotDeclinable,
+      ),
+    ),
     ('404', const NitumeApiException(message: 'x', statusCode: 404)),
   ]) {
     testWidgets('$name closes with offerUnavailable', (tester) async {

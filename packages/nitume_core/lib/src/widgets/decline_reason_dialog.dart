@@ -55,7 +55,8 @@ enum DeclineReasonOutcome {
   /// `v-job-detail` go back to `v-jobs`.
   declined,
 
-  /// 409 `offer_expired` or 404: the offer is gone. Remove the card and show
+  /// 409 `offer_expired`, 409 `assignment_not_declinable` (the task left
+  /// RUNNER_ASSIGNED) or 404: the offer is gone. Remove the card and show
   /// [DeclineReasonCopy.offerUnavailable].
   offerUnavailable,
 
@@ -159,7 +160,9 @@ class _DeclineReasonDialogState extends State<DeclineReasonDialog> {
       if (mounted) Navigator.of(context).pop(DeclineReasonOutcome.declined);
     } on NitumeApiException catch (e) {
       if (!mounted) return;
-      if (e.code == ApiErrorCodes.offerExpired || e.statusCode == 404) {
+      if (e.code == ApiErrorCodes.offerExpired ||
+          e.code == ApiErrorCodes.assignmentNotDeclinable ||
+          e.statusCode == 404) {
         Navigator.of(context).pop(DeclineReasonOutcome.offerUnavailable);
         return;
       }
