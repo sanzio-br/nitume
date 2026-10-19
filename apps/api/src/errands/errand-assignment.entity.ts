@@ -28,7 +28,7 @@ export class ErrandAssignment {
   @Column({ type: 'timestamptz', nullable: true })
   decidedAt: Date | null;
 
-  /** Why the runner declined (row 108); null unless `declined`. */
+  /** Why the runner declined (rows 108, 210); null unless `declined` with a reason. */
   @Column({
     type: 'enum',
     enum: AssignmentDeclineReason,

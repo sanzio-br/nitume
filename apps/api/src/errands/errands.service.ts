@@ -112,7 +112,7 @@ export interface ErrandAssignmentView {
   offeredAt: Date;
   /** When the runner accepted or declined, or the offer expired; null while open (row 157, N-20). */
   decidedAt: Date | null;
-  /** Why the runner declined (row 108); null unless `declined`. */
+  /** Why the runner declined (rows 108, 210); null unless `declined` with a reason. */
   declineReason: AssignmentDeclineReason | null;
   runner: RunnerPublicSummary | null;
 }
@@ -397,7 +397,7 @@ export interface AssignmentDeclinedEvent {
   reference: string;
   assignmentId: string;
   runnerProfileId: string;
-  /** `over_purchase_limit` (row 108) or null (no reason given, row 113). */
+  /** A row-210 reason (`over_purchase_limit`, `too_far`, `not_available`, `other`) or null (none given, row 113). */
   reason: AssignmentDeclineReason | null;
 }
 

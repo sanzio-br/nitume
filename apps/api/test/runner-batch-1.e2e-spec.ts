@@ -436,9 +436,12 @@ describe('Runner API batch 1 (e2e)', () => {
       const bad = await http()
         .post(`/api/v1/errands/${errand.id}/decline`)
         .set(bearer(runner.token))
-        .send({ reason: 'too_far' })
+        .send({ reason: 'busy' })
         .expect(400);
-      expect(bad.body).toMatchObject({ code: 'decline_reason_invalid', allowed: ['over_purchase_limit'] });
+      expect(bad.body).toMatchObject({
+        code: 'decline_reason_invalid',
+        allowed: ['over_purchase_limit', 'too_far', 'not_available', 'other'],
+      });
       const declined = await http()
         .post(`/api/v1/errands/${errand.id}/decline`)
         .set(bearer(runner.token))

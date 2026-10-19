@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  AssignmentDeclineReason,
   ErrandStatus,
   NotificationEventType,
   NotificationSendStatus,
@@ -564,6 +565,38 @@ describe('assignment_declined admin feed (row 108)', () => {
     ).toMatchObject({
       body: 'The runner declined NT-7. Assign another runner.',
     });
+  });
+});
+
+describe('assignment_declined with the row-210 reasons', () => {
+  it.each(['too_far', 'not_available', 'other', null])(
+    'a %s decline gets the row-216 body (no limit sentence); only over_purchase_limit gets the limit body',
+    async (reason) => {
+      const { service, queue } = build();
+      await service.onAssignmentDeclined({
+        errandId: 'e-1',
+        reference: 'NT-7',
+        assignmentId: 'a-1',
+        runnerProfileId: 'rp-1',
+        reason: reason as AssignmentDeclineReason | null,
+      });
+      const job = (queue.add.mock.calls as unknown[][])[0][1] as Parameters<typeof copyFor>[0];
+      expect(job).toMatchObject({ kind: 'assignment_declined', overPurchaseLimit: false });
+      expect(copyFor(job)?.body).toBe('The runner declined NT-7. Assign another runner.');
+    },
+  );
+
+  it('over_purchase_limit keeps the limit body', async () => {
+    const { service, queue } = build();
+    await service.onAssignmentDeclined({
+      errandId: 'e-1',
+      reference: 'NT-7',
+      assignmentId: 'a-1',
+      runnerProfileId: 'rp-1',
+      reason: AssignmentDeclineReason.OVER_PURCHASE_LIMIT,
+    });
+    const job = (queue.add.mock.calls as unknown[][])[0][1] as Parameters<typeof copyFor>[0];
+    expect(copyFor(job)?.body).toBe('The runner declined NT-7: the purchase is above their limit. Assign another runner.');
   });
 });
 
