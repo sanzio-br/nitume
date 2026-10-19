@@ -193,6 +193,116 @@ void main() {
       expect(docs.idBack, isNull);
       expect(docs.idUnknownSide, isNull);
       expect(docs.selfie, isNull);
+      expect(docs.nationalIdStatus, VerificationCheckStatus.missing);
+      expect(docs.idRejectedSides, isEmpty);
+    });
+  });
+
+  group('nationalIdStatus (row 209)', () {
+    RunnerVerificationDocuments docs({String? front, String? back}) =>
+        RunnerVerificationDocuments.fromRecords([
+          if (front != null)
+            RunnerVerification.fromJson({
+              'id': 'f',
+              'verificationType': 'government_id',
+              'side': 'front',
+              'status': front,
+            }),
+          if (back != null)
+            RunnerVerification.fromJson({
+              'id': 'b',
+              'verificationType': 'government_id',
+              'side': 'back',
+              'status': back,
+            }),
+        ]);
+
+    const approved = VerificationCheckStatus.approved;
+    const rejected = VerificationCheckStatus.rejected;
+    const pending = VerificationCheckStatus.pending;
+    const missing = VerificationCheckStatus.missing;
+
+    // front, back -> combined
+    final table = <(String?, String?, VerificationCheckStatus)>[
+      ('approved', 'approved', approved),
+      ('approved', 'rejected', rejected),
+      ('rejected', 'approved', rejected),
+      ('rejected', 'rejected', rejected),
+      ('rejected', 'pending', rejected),
+      ('pending', 'rejected', rejected),
+      ('rejected', null, rejected),
+      (null, 'rejected', rejected),
+      ('pending', 'approved', pending),
+      ('approved', 'pending', pending),
+      ('pending', 'pending', pending),
+      ('pending', null, pending),
+      (null, 'pending', pending),
+      ('approved', null, missing),
+      (null, 'approved', missing),
+      (null, null, missing),
+    ];
+    for (final (front, back, want) in table) {
+      test('front $front, back $back -> ${want.wire}', () {
+        expect(docs(front: front, back: back).nationalIdStatus, want);
+      });
+    }
+
+    test('rejected sides, front first', () {
+      expect(docs(front: 'rejected', back: 'approved').idRejectedSides, [
+        VerificationDocumentSide.front,
+      ]);
+      expect(docs(front: 'pending', back: 'rejected').idRejectedSides, [
+        VerificationDocumentSide.back,
+      ]);
+      expect(docs(front: 'rejected', back: 'rejected').idRejectedSides, [
+        VerificationDocumentSide.front,
+        VerificationDocumentSide.back,
+      ]);
+      expect(docs(front: 'approved', back: 'pending').idRejectedSides, isEmpty);
+    });
+
+    RunnerVerification rec(String id, String? side, String status, String at) =>
+        RunnerVerification.fromJson({
+          'id': id,
+          'verificationType': 'government_id',
+          'side': side,
+          'status': status,
+          'createdAt': at,
+        });
+
+    test('a newer approved front does not hide a rejected back', () {
+      final d = RunnerVerificationDocuments.fromRecords([
+        rec('f2', 'front', 'approved', '2026-10-18T08:00:00Z'),
+        rec('b1', 'back', 'rejected', '2026-10-16T08:00:00Z'),
+        rec('f1', 'front', 'rejected', '2026-10-15T08:00:00Z'),
+      ]);
+      expect(d.nationalIdStatus, VerificationCheckStatus.rejected);
+      expect(d.idRejectedSides, [VerificationDocumentSide.back]);
+    });
+
+    test('per side, the newest record replaces an older rejection', () {
+      final d = RunnerVerificationDocuments.fromRecords([
+        rec('f1', 'front', 'rejected', '2026-10-15T08:00:00Z'),
+        rec('f2', 'front', 'pending', '2026-10-18T08:00:00Z'),
+        rec('b1', 'back', 'approved', '2026-10-16T08:00:00Z'),
+      ]);
+      expect(d.nationalIdStatus, VerificationCheckStatus.pending);
+      expect(d.idRejectedSides, isEmpty);
+    });
+
+    test('a legacy record without a side is ignored', () {
+      final d = RunnerVerificationDocuments.fromRecords([
+        rec('old', null, 'rejected', '2026-10-19T08:00:00Z'),
+        rec('f1', 'front', 'approved', '2026-10-15T08:00:00Z'),
+        rec('b1', 'back', 'approved', '2026-10-16T08:00:00Z'),
+      ]);
+      expect(d.nationalIdStatus, VerificationCheckStatus.approved);
+      expect(
+        RunnerVerificationDocuments.fromRecords([
+          rec('old', null, 'pending', '2026-10-19T08:00:00Z'),
+        ]).nationalIdStatus,
+        VerificationCheckStatus.missing,
+      );
     });
   });
 

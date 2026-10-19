@@ -342,7 +342,13 @@ class RunnerVerification {
       );
 
   /// Newest record per type (the list is newest first, so the first one
-  /// wins), as `v-onboard-pending` shows it.
+  /// wins), as `v-onboard-pending` shows the phone, selfie and payment
+  /// identity rows.
+  ///
+  /// [RunnerVerificationType.governmentId] is never in the map: its two
+  /// sides are separate records, and the newest of them could hide a
+  /// rejected side (row 209). Use
+  /// [RunnerVerificationDocuments.nationalIdStatus] for the National ID row.
   static Map<RunnerVerificationType, RunnerVerification> latestByType(
     Iterable<RunnerVerification> records,
   ) {
@@ -354,7 +360,9 @@ class RunnerVerification {
       );
     for (final r in sorted) {
       final t = r.type;
-      if (t != null) out.putIfAbsent(t, () => r);
+      if (t != null && t != RunnerVerificationType.governmentId) {
+        out.putIfAbsent(t, () => r);
+      }
     }
     return out;
   }
@@ -368,6 +376,9 @@ class RunnerVerification {
 /// records told apart by [RunnerVerification.side]. A legacy ID record
 /// without a side never fills the Front or Back tile; the newest one is kept
 /// in [idUnknownSide] so a screen can still show it as "side unknown".
+///
+/// The single `National ID` status row reads [nationalIdStatus] and
+/// [idRejectedSides] (row 209).
 class RunnerVerificationDocuments {
   const RunnerVerificationDocuments({
     this.idFront,
@@ -432,6 +443,45 @@ class RunnerVerificationDocuments {
     VerificationDocumentSide.front => idFront,
     VerificationDocumentSide.back => idBack,
   };
+
+  /// The combined `National ID` status (row 209, owner 2026-10-19), from
+  /// the newest record of each side ([idFront], [idBack]):
+  /// - [VerificationCheckStatus.approved] only if both sides are approved;
+  /// - [VerificationCheckStatus.rejected] if either side is rejected (see
+  ///   [idRejectedSides]);
+  /// - otherwise [VerificationCheckStatus.pending] if either side is
+  ///   pending;
+  /// - otherwise [VerificationCheckStatus.missing] (a side not uploaded yet;
+  ///   the screens' proposed `Not started`).
+  ///
+  /// A legacy record without a side ([idUnknownSide]) does not count
+  /// (proposed). The newest ID record across both sides never decides it.
+  VerificationCheckStatus get nationalIdStatus {
+    final front = idFront?.status;
+    final back = idBack?.status;
+    if (front == VerificationStatus.approved &&
+        back == VerificationStatus.approved) {
+      return VerificationCheckStatus.approved;
+    }
+    if (front == VerificationStatus.rejected ||
+        back == VerificationStatus.rejected) {
+      return VerificationCheckStatus.rejected;
+    }
+    if (front == VerificationStatus.pending ||
+        back == VerificationStatus.pending) {
+      return VerificationCheckStatus.pending;
+    }
+    return VerificationCheckStatus.missing;
+  }
+
+  /// The ID sides whose newest record is rejected, front first; empty when
+  /// none. Drives the `Front photo not approved` / `Back photo not approved`
+  /// / `Both photos not approved` caption and which side `Upload again`
+  /// selects.
+  List<VerificationDocumentSide> get idRejectedSides => [
+    for (final side in VerificationDocumentSide.values)
+      if (idFor(side)?.status == VerificationStatus.rejected) side,
+  ];
 }
 
 /// Client-side rules for ID and selfie images sent with

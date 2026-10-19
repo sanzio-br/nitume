@@ -139,11 +139,9 @@ void main() {
       final repo = RunnerAccountRepository(_client(a));
       final list = await repo.verifications();
       final latest = RunnerVerification.latestByType(list);
-      expect(latest[RunnerVerificationType.governmentId]!.id, 'v2');
-      expect(
-        latest[RunnerVerificationType.governmentId]!.status,
-        VerificationStatus.rejected,
-      );
+      // Row 209: the ID never uses "newest record wins".
+      expect(latest.containsKey(RunnerVerificationType.governmentId), isFalse);
+      expect(list.first.status, VerificationStatus.rejected);
       expect(latest[RunnerVerificationType.selfie]!.id, 'v3');
       expect(latest.containsKey(RunnerVerificationType.phone), isFalse);
 
