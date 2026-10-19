@@ -368,7 +368,8 @@ describe('Owner answers round 12 (e2e)', () => {
       const errand = await paidErrand(customer, admin, at(point));
       expect((await detail(admin, errand.id)).canExpire).toEqual({ noRunner: false, deadlinePassed: false });
       const paidOnly = await expire(admin, errand.id, { reason: 'No runner covers this area.' }, 409);
-      expect(paidOnly.body).toMatchObject({ code: 'expiry_not_allowed', reason: 'not_runner_assigned', status: 'PAYMENT_CONFIRMED' });
+      // Round 13 (rows 201, 225): a PAYMENT_CONFIRMED task can be expired, but only after its deadline.
+      expect(paidOnly.body).toMatchObject({ code: 'expiry_not_allowed', reason: 'deadline_not_passed' });
 
       await assign(admin, errand.id, first);
       expect((await detail(admin, errand.id)).canExpire).toEqual({ noRunner: false, deadlinePassed: false });
@@ -422,7 +423,7 @@ describe('Owner answers round 12 (e2e)', () => {
       expect(reviews.map((r) => r.trigger)).toContain('expired_after_payment');
       expect(await feedRow(customer.id, 'errand.EXPIRED', errand.id)).toMatchObject({ title: 'No runner available' });
       expect((await candidates(admin, errand.id, 409)).body).toMatchObject({ code: 'task_not_assignable', status: 'EXPIRED' });
-      expect((await expire(admin, errand.id, { reason: 'No runner covers this area.' }, 409)).body.reason).toBe('not_runner_assigned');
+      expect((await expire(admin, errand.id, { reason: 'No runner covers this area.' }, 409)).body.reason).toBe('not_expirable');
     });
 
     it('is refused after the deadline (the sweep expires it)', async () => {
