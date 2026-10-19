@@ -7,9 +7,11 @@ import type {
   AssignErrandDto,
   AssignErrandResult,
   Errand,
+  ErrandCandidatesPage,
   ErrandListItem,
   ErrandStatus,
   ErrandStatusHistoryEntry,
+  ExpireErrandResult,
   MerchantDetailsDto,
   QuoteErrandDto,
   QuoteErrandResult,
@@ -444,6 +446,34 @@ export class AdminDataService {
     try {
       const res = await firstValueFrom(this.api.assignErrand(id, dto));
       this.patchErrand(id, { status: res.errand.status, runnerProfileId });
+      this.appendHistory(res.history);
+      return res;
+    } catch (e) {
+      throw apiError(e);
+    }
+  }
+
+  /**
+   * `GET /errands/:id/candidates`: the runners the task may be offered to
+   * (N-20). Throws the A-14 `ApiErrorInfo`.
+   */
+  async loadCandidates(id: string): Promise<ErrandCandidatesPage> {
+    try {
+      return await firstValueFrom(this.api.listErrandCandidates(id));
+    } catch (e) {
+      throw apiError(e);
+    }
+  }
+
+  /**
+   * "Expire task — no runner available" (rows 187, 202, 203): RUNNER_ASSIGNED
+   * → EXPIRED by the admin, with the trimmed reason. Throws the A-14
+   * `ApiErrorInfo`.
+   */
+  async expireErrand(id: string, reason: string): Promise<ExpireErrandResult> {
+    try {
+      const res = await firstValueFrom(this.api.expireErrand(id, reason.trim()));
+      this.patchErrand(id, { status: res.errand.status });
       this.appendHistory(res.history);
       return res;
     } catch (e) {

@@ -15,7 +15,9 @@ import {
   RunnerPayoutStatus,
   Dispute,
   Errand,
+  ErrandCandidatesPage,
   ErrandRefundView,
+  ExpireErrandResult,
   ListRefundsResult,
   MerchantDetailsDto,
   Quote,
@@ -120,6 +122,26 @@ export class ApiService {
   /** POST /errands/:id/assign — PAYMENT_CONFIRMED → RUNNER_ASSIGNED only. */
   assignErrand(id: string, dto: AssignErrandDto) {
     return this.http.post<AssignErrandResult>(`${this.base}/errands/${id}/assign`, dto);
+  }
+
+  /**
+   * GET /errands/:id/candidates (admin, N-20): runners the task may be
+   * offered to, with `offline`, `tried`, `ineligibleReason` and the counts.
+   * 409 `task_not_assignable` unless PAYMENT_CONFIRMED or RUNNER_ASSIGNED.
+   */
+  listErrandCandidates(id: string, limit = 100) {
+    const params = new HttpParams().set('limit', String(limit));
+    return this.http.get<ErrandCandidatesPage>(`${this.base}/errands/${id}/candidates`, {
+      params,
+    });
+  }
+
+  /**
+   * POST /errands/:id/expire (admin, rows 187, 202, 203): "Expire task — no
+   * runner available", reason required (10–500 after trimming).
+   */
+  expireErrand(id: string, reason: string) {
+    return this.http.post<ExpireErrandResult>(`${this.base}/errands/${id}/expire`, { reason });
   }
 
   /**

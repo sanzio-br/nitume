@@ -203,6 +203,93 @@ export interface Errand {
    * null when none is pending.
    */
   quoteRequestedAt: string | null;
+  /**
+   * Admin views (row 157): the newest assignment, any status, so ops see an
+   * open, declined or lapsed offer. Built on `feat/api-runner-1`.
+   */
+  lastAssignment?: ErrandAssignmentView | null;
+  /** Admin detail: every assignment, newest first. */
+  assignments?: ErrandAssignmentView[];
+  /** Admin detail: the admin offer window in seconds. */
+  offerWindowSeconds?: number;
+  /** Admin views (row 185): RUNNER_ASSIGNED or PAYMENT_CONFIRMED past `deadlineAt`. */
+  deadlinePassed?: boolean;
+  /** Admin detail of an EXPIRED task: how it expired; null otherwise. */
+  expiry?: ErrandExpiryView | null;
+  /**
+   * Admin detail: which expire action the drawer may show. The server
+   * decides; the client never recomputes it (rows 187, 201, 202).
+   */
+  canExpire?: { noRunner: boolean; deadlinePassed: boolean };
+}
+
+/** Runner decline reasons (rows 108, 210). */
+export type AssignmentDeclineReason = 'over_purchase_limit' | 'too_far' | 'not_available' | 'other';
+
+/** One offer of a task to a runner (admin views, N-20). */
+export interface ErrandAssignmentView {
+  id: string;
+  /** `assigned` (open offer) | `accepted` | `declined` | `expired`. */
+  status: string;
+  assignedAt: string;
+  offerExpiresAt: string | null;
+  offeredAt: string;
+  /** When the runner accepted or declined, or the offer ended; null while open. */
+  decidedAt: string | null;
+  declineReason: AssignmentDeclineReason | null;
+  runner: {
+    id: string;
+    displayName: string | null;
+    shortName: string | null;
+    verificationLevel?: string;
+    avgRating?: string;
+    errandsCompleted?: number;
+  } | null;
+}
+
+/** How an EXPIRED task got there (admin detail), from its newest `→ EXPIRED` history row. */
+export interface ErrandExpiryView {
+  trigger: 'deadline_passed' | 'admin' | 'system';
+  /** RUNNER_ASSIGNED, or PAYMENT_CONFIRMED once row 201's action exists. */
+  fromStatus: string | null;
+  at: string;
+  by: { id: string; displayName: string | null } | null;
+  note: string | null;
+}
+
+/** `POST /errands/:id/expire` (rows 187, 202, 203). */
+export interface ExpireErrandResult {
+  errand: Errand;
+  history: ErrandStatusHistoryEntry;
+}
+
+/** One runner in `GET /errands/:id/candidates` (N-20, rows 178, 186, 215). */
+export interface ErrandCandidate {
+  runnerProfileId: string;
+  displayName: string | null;
+  /** 2-decimal string. */
+  rating: string;
+  tasksCompleted: number;
+  availability: 'online' | 'offline';
+  /** Eligible apart from being offline; an admin may still offer it (row 215). */
+  offline: boolean;
+  /** Declined or let an offer for this task lapse (row 178). */
+  tried: 'declined' | 'expired' | null;
+  ineligibleReason: 'over_purchase_limit' | null;
+  distanceKm: number | null;
+  /** 2-decimal string. */
+  purchaseLimit: string;
+}
+
+export interface ErrandCandidatesPage {
+  items: ErrandCandidate[];
+  nextCursor: string | null;
+  /** Online, untried, within-limit runners only. */
+  eligibleRemaining: number;
+  /** Offline runners who would otherwise be eligible. */
+  offlineCount: number;
+  triedCount: number;
+  requiredPurchase: string;
 }
 
 export interface ErrandListItem {
@@ -235,6 +322,8 @@ export interface ErrandStatusHistoryEntry {
   toStatus: string;
   actorType: string;
   actorId?: string | null;
+  /** Admin viewers: the actor's display name (null for system rows). */
+  actor?: { id: string; displayName: string | null } | null;
   note?: string | null;
   createdAt: string;
 }
