@@ -1085,3 +1085,100 @@ API items (numbered):
 core-ui, flutter-customer, web-parity: nothing new. The customer app renders the API's title and body, and the `x-awaiting-quote` outside-area state (C-14-2) uses the same words.
 
 Open owner rows: none from rounds 12–16.
+
+## 21. v-active family refresh (2026-10-19), on `docs/runner-v-active-spec` (off `main` @ `ccd8a1d`)
+
+Spec-only update before the build. Specs: `v-active.md`, `v-evidence-capture.md`, `v-price-request.md`, `v-job-summary.md`, `x-location-disclosure.md`, `_shared.md` §4.2 and §10. Checked against the code on `main`: `apps/runner_app` (the Active tab is a placeholder) and `packages/nitume_core` / `nitume_runner_device` (R-01 … R-23 built). Every layout or copy not drawn in the mockup is marked **(proposed)** in the specs.
+
+### Decisions applied
+| Row | What changes on these screens |
+|---|---|
+| 211 | Busy = RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS. A runner holds at most one working job plus any number of AWAITING_CUSTOMER / DISPUTED jobs. Added to `v-active`: the job-selection rule and the `Other jobs` list (both proposed); pings only for the working job |
+| 185, 205 | Deadline acts on RUNNER_ASSIGNED only; an accepted job is unaffected. `v-active` shows `Due …` as a plain time (proposed), no late state |
+| 206, 235, 239 | Every held job has `deadlineAt` (set by payment at the latest); no "No deadline yet" on runner screens |
+| 197 | No receipt upload, no claim, no ended card for a task the runner never accepted |
+| 113, 141, 150, 155–157, 210, 229 (offer/decline) | No change on these screens: decline lives on `v-jobs` / `v-job-detail`; accept lands on `v-active` on that job |
+| B-1 (review, batch 1) | Applied to evidence: picker file discarded once kept, kept copy deleted on upload, remove, leave, settle or log out; lost captures discarded at start; no gallery, no photo-library copy |
+| S-1 / m-7 (review, batch 1) | Blocking errors: one C-40 in the danger tone, one copy, no snackbar on top |
+| Reviewer note "iOS Always string overstates" | Disclosure Body 2 and the iOS string rewritten (proposed, RQ-34); the background step moves to the `v-active` job start (proposed, RQ-33) |
+
+### core-ui items (numbered)
+1. **C-V1, R-22 `EvidenceUploader` (B-1)**: after `files.keep(image.path)` succeeds, call `image.discard()`. Today the plugin's scaled camera file stays in the app cache for good (`evidence_uploader.dart` `captureAndUpload`). When `keep` fails, keep the current fallback (the picker path is the kept path and is released as now). Add a test with a fake capture that records the discard.
+2. **C-V2, R-22 lifetime**: an upload in flight must survive leaving `v-evidence-capture`. Today `dispose()` disposes items that may still be uploading, and `_send` then calls `_set` on a disposed notifier.
+   - Provide a job-scoped uploader (one per held job, app scope), or hand in-flight items to the R-21 queue on dispose.
+   - `v-active` must be able to read the item states.
+3. **C-V3, R-19 held jobs**:
+   - `RunnerJobsRepository.activeStatuses` includes RUNNER_ASSIGNED, and `activeJobs()` returns the customer-shaped `Errand`, open offers included.
+   - Add a held-jobs read that returns `RunnerJobView`s of **accepted** assignments in the active set, plus CANCELLED / FAILED for 24 h, using API item A1 once it exists. Until then: list, then `job(id)` per item, dropping `assignment.status == offered`.
+   - Add a `workingStatuses` set (RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS) that mirrors the API's `RUNNER_ACTIVE_JOB_STATES`.
+4. **C-V4, R-19 ended jobs**: `job(id)` after the job ends (API A2); map the 403 for a reassigned job to an "access revoked" result.
+5. **C-V5, R-20 `PositionSource` background access** (after RQ-33):
+   - `requestBackgroundAccess()`: Android 10 dialog; Android 11+ opens the app's location settings and re-reads on resume; iOS per RQ-33.
+   - Distinguish `whileInUse` from `always` in `access()` (already built).
+   - Verify on an iOS device whether the `geolocator` first prompt asks for Always while `NSLocationAlwaysAndWhenInUseUsageDescription` is in `Info.plist` (auditor's reading, unverified).
+6. **C-V6, `RealtimeEvents`**: `priceChangeDecided` (`price_change:decided`) with a model `{ errandId, requestId, status, toPrice, decidedAt }` (+ the difference-paid flag if RQ-36 takes the recommended option), after API A8.
+7. **C-V7, new R-24 `SuccessMark`**: 70px green-050 circle with a green check. Second copy today: customer `stk_view.dart:271`. Move the customer app to it too (flutter-customer, later).
+
+Already built and reused as-is (no change): R-01, R-06, R-07, R-09 (= C-24 `MenuRow` with `leadingIcon` / `subtitle`), R-13, R-15, R-16, R-18, R-20 `PingActiveJob` / `PingerStatus`, R-21, C-18, C-25, C-33, C-35 + `NitumeRadioRow`, C-40 (danger tone), `NitumeFixedCta`, `TaskRow`, `NumSpan`.
+
+### API items for api-contract (numbered; what the screens need, not how)
+- **A1 Held jobs list in runner projection.** One read of this runner's **accepted** jobs:
+  - the active set (RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER, DISPUTED), plus CANCELLED / FAILED / COMPLETED / CONFIRMED / SETTLED that ended in the last 24 h;
+  - as `RunnerJobView`, without open offers.
+  - Today `GET /errands?status=…` returns open offers too, in the customer shape (pricing nulled). The alternative is to state in the contract that list + `GET /runners/me/jobs/:id` per job is the way.
+- **A2 Job view after the end.** `GET /runners/me/jobs/:id` stays readable for the runner who accepted, in DISPUTED, COMPLETED, CONFIRMED, SETTLED, CANCELLED and FAILED. 403 only when reassigned or never accepted (row 197). Today it requires "the current assignment"; behaviour after the end is unverified.
+- **A3 Arrival actor.** The runner can read the ARRIVED history entry's time and `actorType` (`system` vs `runner`) from `GET /errands/:id/history`. Actor names stay admin-only.
+- **A4 Completion guard (RA-11).**
+  - IN_PROGRESS → AWAITING_CUSTOMER is refused unless the runner uploaded at least 1 photo, and, on `send_to_runner` with an item amount, at least 1 receipt.
+  - Use a code that names what is missing (proposed `evidence_required` with `missing: ['photo' | 'receipt']`).
+  - The notes rule for Check It For Me stays client-side (it is an auditor proposal, not an owner rule).
+- **A5 Evidence upload (RA-11).**
+  - (a) Accept a normal compressed photo: today the default JSON limit (no body limit in `main.ts`) refuses it with 413. Either raise the limit for this route or add the §3.2 signed upload. Publish the maximum size so the app can check before upload.
+  - (b) State guard: photos in ARRIVED / IN_PROGRESS; receipts in ARRIVED … AWAITING_CUSTOMER and for 24 h after CANCELLED / FAILED (row 129); refused with a code otherwise.
+- **A6 Idempotent replay (RA-17).** Transitions, runner notes and evidence uploads accept an idempotency key (the client's queue action id); a replay returns the first result and creates no second row.
+- **A7 `location:ping` (RA-4).**
+  - A gateway subscriber for `{ lat, lng, errandId?, accuracy, ts }`; it ignores pings from offline runners and ignores `errandId`s the runner is not working.
+  - Fan-out `location:update` to `errand:{id}`.
+  - Geofence ARRIVED with the System actor (emits `errand:status_changed`).
+  - Persistence to `runner_locations` waits for RQ-35.
+- **A8 `price_change:decided` (RA-5)** to the runner (room `runner:{runnerId}` joined server-side, row 139, or the errand room): `{ errandId, requestId, status: approved | rejected, toPrice, decidedAt }`; with RQ-36 (recommended), also whether the difference payment is confirmed. Plus the runner notification (RA-6).
+- **A9 Runner notification kinds (RA-6)** for job cancelled, failed, disputed, dispute resolved, confirmed and price change decided, each with `errandId` for the deep link.
+- **A10 24 h receipt / claim window (RA-12).** Enforced on evidence upload (receipt type) and `POST /runners/me/reimbursement-claims`, with a code (proposed `reimbursement_window_closed`) and the window end in the error.
+
+### flutter-runner items (when `v-active` is built)
+- Build `v-active`, `v-evidence-capture`, `v-price-request`, `v-job-summary` and the notes editor to the refreshed specs, on top of C-V1 … C-V7.
+- `x-location-disclosure` (status now `partial`):
+  - `location_disclosure_screen.dart:15-16` Body 2;
+  - `ios/Runner/Info.plist:64-65` Always string;
+  - both after RQ-33 / RQ-34.
+- The Play Console background-location declaration (and its video) and the App Store review note are prepared with the `v-active` build. They show the job-start step.
+- iOS Podfile permission macros (open from batch 1) are still needed for `permission_handler`.
+
+### New questions for the owner (BOARD rows to be assigned by the orchestrator)
+- **RQ-33 (security/compliance: location permission).** When and how to ask for background location.
+  - Proposed:
+    - (a) Android asks "Allow all the time" at the first job start, right after a short in-app disclosure (Google Play's prominent-disclosure rule);
+    - (b) iOS asks only "While Using": the `location` background mode keeps a running job's updates going in the background and on a locked screen, with the blue indicator. The Always request and its `Info.plist` key are removed;
+    - (c) a refusal never blocks a job: pings then run only while the app is open, and the runner sees a notice.
+  - **Recommended: (a) + (b) + (c).** It asks for the least access that does the job, and avoids a second iOS prompt.
+  - The alternative to (b) is to keep Always on iOS with the accurate string (RQ-34). The alternative to (c) is to refuse accept without background access, which conflicts with the owner's "never blocking" spirit of row 123 and with store guidance.
+- **RQ-34 (compliance: disclosure wording).** Approve the accurate wording:
+  - Disclosure Body 2: `During a job we keep sharing it when you switch apps or lock your phone, until you finish the task or go offline. If you close the app completely, sharing stops until you open it again.`
+  - Job-start dialog: `Keep sharing your location during jobs` / `While you're on a job, Nitume Runner shares your location with the customer, also when you switch apps or lock your phone. It stops when you finish the task or go offline. If you close the app completely, sharing stops until you open it again.`
+  - If iOS keeps Always: `During a job Nitume Runner keeps sharing your location while it runs in the background, until you finish the task or go offline. If you close the app completely, sharing stops until you open it again.`
+  - It replaces "even when the app is closed", which the reviewer found overstates behaviour after a force-quit.
+  - **Recommended: approve as written.**
+- **RQ-35 (security: location retention).** System Design §4.2 persists about every 10th ping (or one per state change) to `runner_locations`; no retention period is set, and idle online pings (no `errandId`) are not distinguished.
+  - Proposed:
+    - persist only job pings (with `errandId`, RUNNER_EN_ROUTE … IN_PROGRESS);
+    - keep idle online positions only as live presence (Redis TTL, never in Postgres);
+    - delete persisted job samples after a configurable period, initially 90 days after the task ends;
+    - hold them while a dispute on that task is open (as the ID-image dispute hold, row 190).
+  - Evidence `lat`/`lon` stays with the evidence (audit trail).
+  - **Recommended: as proposed.** The period is your call; 90 days is a placeholder. No runner copy names a period.
+- **RQ-36 (payments: price increase on `send_to_runner`).** Approving an increase moves the item amount at once and records a difference payment for the customer to pay (`price-change.service.ts` `approve`). The runner may then buy above what Nitume holds. The reimbursement cap is min(item amount paid to Nitume, `max_purchase_advance`) (rows 135, 142), so the runner would be out of pocket if the customer never pays.
+  - Proposed: on `send_to_runner`, the runner sees `Approved. Waiting for the customer to pay the difference.` until the difference payment is confirmed, and only then the approved line. `merchant_direct` is unchanged.
+  - Needs the decided event (A8) to carry the payment state.
+  - **Recommended: yes.**
+
+Proposals that are not owner questions (layout/copy, auditor's call, say if you disagree): the `Other jobs` list and the job-selection order; the `Due …` line with no late state; the notes editor as a pushed screen; the price-request purchase-limit warning, which sends rather than refuses (it follows row 135); the leave dialog for failed captures; no notice for lost captures; all dialog and notice copy.
