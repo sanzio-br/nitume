@@ -57,12 +57,14 @@ class EvidenceUploadItem extends ChangeNotifier {
     required this.capturedAt,
     this.lat,
     this.lon,
-  });
+    CapturedImage? pickerCapture,
+  }) : _picker = pickerCapture;
 
   final String errandId;
   final EvidenceType type;
 
-  /// The photo's copy in app storage ([EvidenceFileStore.keep]).
+  /// The photo's copy in app storage ([EvidenceFileStore.keep]), or the
+  /// picker's own file when keeping failed ([keptInAppStorage] false).
   final String path;
   final String contentType;
 
@@ -75,6 +77,14 @@ class EvidenceUploadItem extends ChangeNotifier {
   Evidence? _evidence;
   bool _fileMissing = false;
   bool _fileReleased = false;
+
+  /// Set when keeping failed: [path] is the picker's file, outside the
+  /// [EvidenceFileStore], so it is released with [CapturedImage.discard].
+  final CapturedImage? _picker;
+
+  /// False when [EvidenceFileStore.keep] failed and the item uses the
+  /// picker's file. Such an item is never handed to the offline queue.
+  bool get keptInAppStorage => _picker == null;
 
   EvidenceUploadStatus get status => _status;
 
@@ -111,7 +121,9 @@ class EvidenceUploadItem extends ChangeNotifier {
 ///
 /// * Kept: once [EvidenceFileStore.keep] succeeds, the picker's file is
 ///   deleted ([CapturedImage.discard], B-1). When keep fails, the picker
-///   file is the only copy and is used as the kept path.
+///   file is the only copy: it is used as the item's path, released with
+///   [CapturedImage.discard] wherever a kept copy would be deleted, and
+///   never queued (a temporary failure leaves it `failed`, with retry).
 /// * Uploaded: the kept copy is deleted.
 /// * Temporary failure (offline, timeout, 5xx, 408, 429) with a [queue]:
 ///   the action is queued with the kept copy, which the queue's
@@ -189,25 +201,29 @@ class EvidenceUploader extends ChangeNotifier {
     }
     final at = _clock().toUtc();
     String kept;
+    CapturedImage? picker;
     try {
       kept = await files.keep(image.path);
       // B-1: the app keeps its own copy, so the picker's file (and any
       // scratch folder) goes at once.
       await _quietly(image.discard);
     } on FileSystemException {
-      // The picker file is the only copy: it is used and released like a
-      // kept copy.
+      // The picker file is the only copy: it is used, and released with
+      // image.discard() on every exit path (the store only deletes inside
+      // its own folder).
       kept = image.path;
+      picker = image;
     }
     final fix = await _fix();
     if (_disposed) {
-      await _quietly(() => files.discard(kept));
+      await _quietly(picker?.discard ?? () => files.discard(kept));
       return null;
     }
     final item = EvidenceUploadItem._(
       errandId: errandId,
       type: type,
       path: kept,
+      pickerCapture: picker,
       contentType: image.contentType,
       capturedAt: at,
       lat: fix?.lat,
@@ -250,7 +266,7 @@ class EvidenceUploader extends ChangeNotifier {
   Future<void> _release(EvidenceUploadItem item) async {
     if (item._fileReleased) return;
     item._fileReleased = true;
-    await _quietly(() => files.discard(item.path));
+    await _quietly(item._picker?.discard ?? () => files.discard(item.path));
   }
 
   static Future<void> _quietly(Future<void> Function() f) async {
@@ -303,7 +319,11 @@ class EvidenceUploader extends ChangeNotifier {
       await _finish(item, EvidenceUploadStatus.uploaded, evidence: ev);
     } on Object catch (e) {
       final q = queue;
-      if (q != null && replayOutcomeFor(e) == ReplayOutcome.retryLater) {
+      // The queue deletes through the file store, which cannot delete the
+      // picker's file: such an item stays here as failed (retry possible).
+      if (q != null &&
+          item.keptInAppStorage &&
+          replayOutcomeFor(e) == ReplayOutcome.retryLater) {
         await q.enqueue(
           QueuedActionKind.evidenceUpload,
           errandId: item.errandId,

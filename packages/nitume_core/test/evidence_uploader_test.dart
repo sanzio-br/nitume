@@ -38,18 +38,6 @@ class _Camera implements ImageCaptureSource {
   }
 }
 
-/// A store whose keep always fails (e.g. storage full).
-class _FailingStore implements EvidenceFileStore {
-  final discarded = <String>[];
-
-  @override
-  Future<String> keep(String sourcePath) async =>
-      throw FileSystemException('full', sourcePath);
-
-  @override
-  Future<void> discard(String path) async => discarded.add(path);
-}
-
 class _Fix implements PositionSource {
   @override
   Future<LocationAccess> access() async => LocationAccess.whileInUse;
@@ -146,21 +134,89 @@ void main() {
     expect(kept(), hasLength(1), reason: 'the kept copy stays for retry');
   });
 
-  test('keep fails: the picker file is the kept path and is not discarded '
-      'before upload', () async {
-    final store = _FailingStore();
-    final u = EvidenceUploader(
-      capture: camera,
-      upload: upload,
-      files: store,
-      clock: () => now,
-    );
-    final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
-    expect(camera.discarded, isEmpty);
-    expect(item!.path, startsWith(cache.path));
-    expect(item.status, EvidenceUploadStatus.uploaded);
-    expect(calls.single.bytes, 10);
-    expect(store.discarded, [item.path], reason: 'released as a kept copy');
+  group('keep fails (real store): the picker file is released on every '
+      'exit path', () {
+    late File blocker;
+
+    /// A real [DirectoryEvidenceFileStore] whose base is a regular file, so
+    /// keep (and its own discard) fail as on a full or broken disk.
+    EvidenceUploader broken({OfflineActionQueue? queue}) {
+      blocker = File('${app.path}/not_a_dir')..writeAsStringSync('x');
+      return EvidenceUploader(
+        capture: camera,
+        upload: upload,
+        files: DirectoryEvidenceFileStore(() async => Directory(blocker.path)),
+        queue: queue,
+        clock: () => now,
+      );
+    }
+
+    bool pickerFilesLeft() => cache.listSync().whereType<File>().isNotEmpty;
+
+    test('uploaded: the picker file is deleted', () async {
+      final u = broken();
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.keptInAppStorage, isFalse);
+      expect(item.path, startsWith(cache.path));
+      expect(item.status, EvidenceUploadStatus.uploaded);
+      expect(calls.single.bytes, 10);
+      expect(camera.discarded, [item.path]);
+      expect(pickerFilesLeft(), isFalse);
+    });
+
+    test('refused: kept for retry, deleted on remove', () async {
+      final u = broken();
+      failWith = const NitumeApiException(message: 'bad', statusCode: 422);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(pickerFilesLeft(), isTrue);
+      await u.remove(item);
+      expect(pickerFilesLeft(), isFalse);
+    });
+
+    test('refused, then the uploader is released (leave, log out): '
+        'deleted', () async {
+      final uploads = JobEvidenceUploads((_) => broken());
+      failWith = const NitumeApiException(message: 'bad', statusCode: 422);
+      await uploads
+          .forJob('e1')
+          .captureAndUpload('e1', type: EvidenceType.photo);
+      expect(pickerFilesLeft(), isTrue);
+      uploads.releaseAll();
+      await Future<void>.delayed(Duration.zero);
+      expect(pickerFilesLeft(), isFalse);
+    });
+
+    test('offline with a queue: not queued (the queue cannot delete it), '
+        'failed with retry, deleted on dispose', () async {
+      final queue = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async => ReplayOutcome.done,
+      );
+      final u = broken(queue: queue);
+      failWith = const NitumeApiException(message: 'x', statusCode: 503);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(item.canRetry, isTrue);
+      expect(queue.pending, isEmpty);
+      u.dispose();
+      await Future<void>.delayed(Duration.zero);
+      expect(pickerFilesLeft(), isFalse);
+    });
+
+    test('released while uploading, then refused: deleted', () async {
+      final u = broken();
+      gate = Completer<void>();
+      failWith = const NitumeApiException(message: 'bad', statusCode: 422);
+      final pending = u.captureAndUpload('e1', type: EvidenceType.photo);
+      for (var i = 0; i < 500 && calls.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+      u.dispose();
+      gate!.complete();
+      await pending;
+      expect(pickerFilesLeft(), isFalse);
+    });
   });
 
   test('video is refused at runtime', () {
