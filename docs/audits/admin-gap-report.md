@@ -862,7 +862,7 @@ Spec-only update. Details and API items: `runner-gap-report.md` §18.
     - Fix: after api-contract §18 item 2.
 
 ### Questions for the owner (new)
-- AQ-33 (BOARD row 236, open: out-of-area tasks already REQUESTED/QUOTED: how they end) and AQ-34 (BOARD row 237, open: refuse payment after a chosen deadline has passed). See `runner-gap-report.md` §18.
+- AQ-33 (BOARD row 236, answered 2026-10-19: out-of-area tasks already REQUESTED/QUOTED: how they end) and AQ-34 (BOARD row 237, answered 2026-10-19: refuse payment after a chosen deadline has passed). See `runner-gap-report.md` §18.
 
 ### Rows 236–238 (2026-10-19)
 - Finding 33's copy is complete: `This task's location is outside every service area, so it can't be quoted. The customer is told and can cancel it.` (proposed; row 236). Rows 237 and 238 change no admin screen.

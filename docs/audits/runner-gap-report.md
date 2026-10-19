@@ -835,12 +835,12 @@ The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are clos
 - web-parity: admin finding 33 (quote refusal copy, `drawer-task-requote.md`).
 
 ### New questions for the owner
-- **AQ-33 (row 233 follow-up; BOARD row 236, open)**: a task already REQUESTED or QUOTED that is refused at quote (created before the check, or after the areas changed) cannot be cancelled by ops: §3.3 lets only the customer cancel before payment. Options:
+- **AQ-33 (row 233 follow-up; BOARD row 236, answered 2026-10-19, §18.1)**: a task already REQUESTED or QUOTED that is refused at quote (created before the check, or after the areas changed) cannot be cancelled by ops: §3.3 lets only the customer cancel before payment. Options:
   - (a) tell the customer through a notification and let them cancel;
   - (b) add an admin REQUESTED/QUOTED → CANCELLED for this case (a state-machine change).
   Recommended (a) for MVP, since it needs no new transition. The copy would come in a later round.
-- **AQ-34 (row 235 reviewer note; BOARD row 237, open)**:
-- **Backfill of paid tasks (BOARD row 238, open)**: row 221's backfill (built) gives an existing paid, open task with no deadline `createdAt` + 24 h, which may already be in the past, so it lands in `Deadline passed` at once. Should such tasks instead get their PAYMENT_CONFIRMED time + 24 h, consistent with row 235? Recommended: only if live (non-dev) paid tasks exist; otherwise keep row 221 as built.
+- **AQ-34 (row 235 reviewer note; BOARD row 237, answered 2026-10-19, §18.1)**:
+- **Backfill of paid tasks (BOARD row 238, answered 2026-10-19: keep as built)**: row 221's backfill (built) gives an existing paid, open task with no deadline `createdAt` + 24 h, which may already be in the past, so it lands in `Deadline passed` at once. Should such tasks instead get their PAYMENT_CONFIRMED time + 24 h, consistent with row 235? Recommended: only if live (non-dev) paid tasks exist; otherwise keep row 221 as built.
  payment is not refused after a deadline **the customer chose** has passed (for example `Today`, with the quote accepted the next day). Such a task reaches PAYMENT_CONFIRMED already past its deadline and can then only be expired by ops (row 201). Should the API refuse to start payment once the chosen deadline has passed, and ask the customer to pick a new one? Recommended yes. This is a payment-flow decision.
 
 ### 18.1 Owner answers rows 236–238 (2026-10-19)

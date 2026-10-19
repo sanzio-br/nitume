@@ -906,7 +906,7 @@ Spec-only update; no screen re-audited.
   - Design: on `location_outside_service_area` from `POST /errands`, show the notice `We don't cover this location yet. Choose a place inside the areas we serve.` and a `Change location` button back to `v-new-details` (all proposed).
   - Code: none (the generic snackbar is shown).
   - Fix: after api-contract §18 item 1 and the core error code. Status: `v-new-review` → `partial`.
-- New owner questions AQ-33 (BOARD row 236) and AQ-34 (BOARD row 237), both open: `runner-gap-report.md` §18.
+- New owner questions AQ-33 (BOARD row 236) and AQ-34 (BOARD row 237), both answered 2026-10-19 (see below): `runner-gap-report.md` §18.
 
 ### Rows 236–238 (2026-10-19)
 - C-14-2 (**minor**), `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart`.
