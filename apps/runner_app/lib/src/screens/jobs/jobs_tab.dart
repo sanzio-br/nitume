@@ -473,6 +473,7 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
       payAmount: o.runnerFee,
       title: offerTitle(o),
       meta: offerMeta(o, _fix),
+      richMeta: offerRichMeta(o, _fix),
       notice: o.overPurchaseLimit ? cardLimitNotice(o) : null,
       accepting: _acceptingId == o.id,
       onTap: () => _openDetail(o),

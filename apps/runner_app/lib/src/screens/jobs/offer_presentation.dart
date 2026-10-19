@@ -61,16 +61,41 @@ String? howItsPaid(RunnerJobView o) => switch (o.merchantRoute) {
 /// exist): `1.2 km away · Photos required · Item KSh 5,000 · Customer
 /// pays the merchant`. No duration; `Photos required` on every offer (row
 /// 120: the generic evidence checklist, a fixed line, not an API field).
-String? offerMeta(RunnerJobView o, DevicePosition? fix) {
+String offerMeta(RunnerJobView o, DevicePosition? fix) =>
+    _metaParts(o, fix).map((p) => p.map((s) => s.text).join()).join(' · ');
+
+/// [offerMeta] as spans for `JobOfferCard.richMeta`: Fira Sans with only
+/// the numbers (distance, amount) as [NumSpan]s (reviewer minor 1).
+InlineSpan offerRichMeta(RunnerJobView o, DevicePosition? fix) {
+  final parts = _metaParts(o, fix);
+  return TextSpan(
+    children: [
+      for (final (i, part) in parts.indexed) ...[
+        if (i > 0) const TextSpan(text: ' · '),
+        for (final s in part)
+          s.numeric ? NumSpan(s.text) : TextSpan(text: s.text),
+      ],
+    ],
+  );
+}
+
+typedef _Seg = ({String text, bool numeric});
+
+List<List<_Seg>> _metaParts(RunnerJobView o, DevicePosition? fix) {
   final km = offerDistanceKm(o, fix);
   final item = o.itemAmount;
-  final parts = [
-    if (km != null) '${formatDistanceKm(km)} away',
-    OfferCopy.photosRequired,
-    if (item != null) 'Item ${formatKes(item)}',
-    if (item != null) ?howItsPaid(o),
+  final paid = howItsPaid(o);
+  return [
+    if (km != null)
+      [
+        (text: formatDistanceKm(km), numeric: true),
+        (text: ' away', numeric: false),
+      ],
+    [(text: OfferCopy.photosRequired, numeric: false)],
+    if (item != null)
+      [(text: 'Item ', numeric: false), (text: formatKes(item), numeric: true)],
+    if (item != null && paid != null) [(text: paid, numeric: false)],
   ];
-  return parts.join(' · ');
 }
 
 /// Over-limit notice on the offer card (row 108; a fallback since row 186).

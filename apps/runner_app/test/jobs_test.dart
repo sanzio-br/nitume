@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
 import 'package:runner_app/src/screens/jobs/jobs_tab.dart';
+import 'package:runner_app/src/screens/jobs/offer_presentation.dart';
 import 'package:runner_app/src/screens/location/location_disclosure_screen.dart';
 import 'package:runner_app/src/screens/onboarding/onboard_id_screen.dart';
 import 'package:runner_app/src/screens/shell/runner_shell.dart';
@@ -67,6 +68,27 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    test('rich meta: Fira Code only on the numbers', () {
+      final span = offerRichMeta(
+        offer(
+          itemAmount: '5000.00',
+          merchantRoute: MerchantRoute.merchantDirect,
+        ),
+        DevicePosition(lat: -4.03, lng: 39.709, timestamp: testNow),
+      );
+      expect(
+        span.toPlainText(),
+        '1.2 km away · Photos required · Item KSh 5,000 · '
+        'Customer pays the merchant',
+      );
+      final numeric = <String>[];
+      span.visitChildren((s) {
+        if (s is NumSpan) numeric.add(s.text!);
+        return true;
+      });
+      expect(numeric, ['1.2 km', 'KSh 5,000']);
     });
 
     testWidgets('over the limit: notice and Accept disabled', (t) async {
