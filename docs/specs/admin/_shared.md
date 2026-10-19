@@ -323,10 +323,10 @@ Open:
 |---|---|---|
 | row 220 (orchestrator) | Feed body for a PAYMENT_CONFIRMED task past its deadline | proposed in the row: `The customer's deadline for {ref} passed before a runner was assigned. Expire the task or contact the customer.` |
 | row 221 (orchestrator) | Default `deadlineAt` when the customer gives none; backfill of existing tasks | proposed in the row: creation + 24 h |
-| AQ-28 (row 201) | The PAYMENT_CONFIRMED `Expire task`: same dialog and required 10–500 reason as the RUNNER_ASSIGNED action? | proposed yes |
-| AQ-29 (row 201) | PAYMENT_CONFIRMED → EXPIRED by the admin: send the customer the usual `errand.EXPIRED` notification? | proposed yes, no new copy |
-| AQ-30 (rows 187 (a), 204) | A task never offered, with no eligible runner online: "exhausted"? | proposed no: exhaustion needs at least one offer made |
-| AQ-31 (row 215) | Offline runners in the Reassign dialog as a collapsed, selectable `Show offline runners ({n})` group? | proposed yes |
+| AQ-28 (row 201; BOARD row 225) | The PAYMENT_CONFIRMED `Expire task`: same dialog and required 10–500 reason as the RUNNER_ASSIGNED action? | proposed yes |
+| AQ-29 (row 201; BOARD row 226) | PAYMENT_CONFIRMED → EXPIRED by the admin: send the customer the usual `errand.EXPIRED` notification? | proposed yes, no new copy |
+| AQ-30 (rows 187 (a), 204; BOARD row 227) | A task never offered, with no eligible runner online: "exhausted"? | proposed no: exhaustion needs at least one offer made |
+| AQ-31 (row 215; BOARD row 228) | Offline runners in the Reassign dialog as a collapsed, selectable `Show offline runners ({n})` group? | proposed yes |
 
 Answered 2026-10-16 (round 11, §1): row 185 (deadline path), 186 (purchase limit in the pool), 187 (empty online pool, no PAYMENT_CONFIRMED → EXPIRED, busy runners ineligible, admin expire action), 188–200.
 

@@ -47,7 +47,7 @@ R-23 `DeclineReasonDialog` (NEW, core-ui; used by `v-jobs` and `v-job-detail`, o
   |---|---|---|
   | `Above my purchase limit` | `over_purchase_limit` | Only when the offer is over the runner's limit (`overPurchaseLimit`); then listed first and **pre-selected**. The API refuses this value within the limit (409 `purchase_within_limit`) |
   | `Too far away` | `too_far` | Always |
-  | `Not available right now` | `not_available` | Always |
+  | `Not available right now` | `not_available` | Always (admin shows the same value as `Not available`; first person here on purpose) |
   | `Other reason` | `other` | Always. No text field: no free-text reason is stored (row 210 approves the enum only) |
 - Actions (core confirm convention): C-03 outline `Decline` (confirm) and C-01 primary `Keep offer`. `Decline` is disabled until a reason is selected (proposed: a reason is required in the UI; the API keeps it optional). Never red, never green for the decline itself.
 - Result: `POST /errands/:id/decline` `{ reason }` → the card is removed (no snackbar); on `v-job-detail`, back to `v-jobs`.
@@ -118,4 +118,4 @@ Proposed:
 
 ## Questions
 - Rows 150, 157, 167, 185 and 205 settle what happens after a lapse and at the deadline (AQ-25 answered by row 205: the offer ends at once).
-- RQ-32 (new): must the runner pick a reason before declining (proposed yes, UI only), and is `Other reason` without a free-text field enough (proposed yes; a text field would need a new column)?
+- RQ-32 (BOARD row 229, open): must the runner pick a reason before declining (proposed yes, UI only), and is `Other reason` without a free-text field enough (proposed yes; a text field would need a new column)?

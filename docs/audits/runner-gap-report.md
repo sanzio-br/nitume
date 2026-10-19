@@ -666,11 +666,11 @@ Already matching on `feat/api-runner-1` (nothing to build): 211 (`RUNNER_ACTIVE_
 6. **Availability flags**: `canExpire { noRunner, deadlinePassed }` on the admin errand detail (proposed shape, replaces `canExpireNoRunner`). Route: one `POST /errands/:id/expire` `{ reason }` for both, or `PATCH /errands/:id/status`; api-contract's choice.
 7. **Expiry view**: add `fromStatus` to `expiry` (tells the two admin expiries apart); later `trigger: 'matching_exhausted'` with note `No eligible runners left` when exhaustion is built (row 179).
 8. **Row 205**: every new offer `offerExpiresAt` = min(now + window, `deadlineAt`) (today `now + adminOfferWindowSeconds`, `errands.service.ts` assign); same rule for auto-offers later.
-9. **Row 210**: enum migration on `errand_assignment_decline_reason_enum` adding `too_far`, `not_available`, `other`; decline DTO and 400 `decline_reason_invalid` `allowed` list; `purchase_within_limit` stays for `over_purchase_limit` only; the admin views already return `declineReason`.
+9. **Row 210**: enum migration on `errand_assignment_decline_reason_enum` adding `too_far`, `not_available`, `other`; decline DTO and 400 `decline_reason_invalid` `allowed` list; `purchase_within_limit` stays for `over_purchase_limit` only; the admin views already return `declineReason`. The `assignment_declined` feed body is chosen by `overPurchaseLimit` today (`notifications.service.ts:481-486`); choose it by `declineReason` so an over-limit offer declined as `too_far` does not read "above their limit" (body for the non-null reasons proposed, row 216 covers only no reason).
 10. **Rows 206, 221**: `deadlineAt` default at create when absent (value pending row 221), then NOT NULL migration with the row-221 backfill; expose the default (e.g. `defaultDeadlineHours` on a config read) for the customer `Flexible` caption.
 11. **Row 215**: the candidates read (N-20, proposed) returns offline-but-otherwise-eligible runners flagged `offline: true`, outside `eligibleRemaining`.
 12. **Row 204 / AQ-30**: when exhaustion is built, count only eligible online runners; how a task never offered with an empty online pool is treated waits for AQ-30.
-13. **Check (security, minor)**: `POST /runners/me/verifications` accepts a client `documentS3Key`. With restricted ID storage (rows 125, 162) a runner should not be able to attach an arbitrary storage key; refuse it for runner callers (the interim payment-identity record, row 218, needs no key).
+13. **No change needed (checked after review)**: `POST /runners/me/verifications` already refuses any client `documentS3Key` with 400 `verification_document_upload_required` (`main` `runners.service.ts:253-263`; `feat/api-runner-1` `runners.service.ts:470-481`). The DTO field stays only to give that error its code (`dto/runner-actions.dto.ts:30-37`); dropping the dead field is optional. The interim payment-identity record (row 218) sends no key.
 
 ### core-ui items (numbered)
 1. **Row 210**: `OfferDeclineReason` (`feat/core-runner-batch-1`, `models/runner_job.dart`) gains `tooFar`, `notAvailable`, `other` (wire `too_far`, `not_available`, `other`); decline sends the chosen value; 409 `purchase_within_limit` code constant.
@@ -703,8 +703,8 @@ Admin findings 29–32 in `docs/audits/admin-gap-report.md` (round 12).
 ### New questions for the owner
 - Row 220 (open): ops feed body for a PAYMENT_CONFIRMED task past its deadline.
 - Row 221 (open): default `deadlineAt` and backfill.
-- AQ-28: PAYMENT_CONFIRMED `Expire task` uses the same dialog and required 10–500 reason? Recommended yes.
-- AQ-29: send the customer the usual `errand.EXPIRED` notification on PAYMENT_CONFIRMED → EXPIRED? Recommended yes.
-- AQ-30: is a task never offered, with no eligible runner online, "exhausted"? Proposed no (exhaustion needs at least one offer made).
-- AQ-31: offline runners in the Reassign dialog as a collapsed, selectable group? Proposed yes.
-- RQ-32: must the runner pick a decline reason (UI), and is `Other reason` without text enough? Proposed yes to both.
+- AQ-28 (BOARD row 225): PAYMENT_CONFIRMED `Expire task` uses the same dialog and required 10–500 reason? Recommended yes.
+- AQ-29 (BOARD row 226): send the customer the usual `errand.EXPIRED` notification on PAYMENT_CONFIRMED → EXPIRED? Recommended yes.
+- AQ-30 (BOARD row 227): is a task never offered, with no eligible runner online, "exhausted"? Proposed no (exhaustion needs at least one offer made).
+- AQ-31 (BOARD row 228): offline runners in the Reassign dialog as a collapsed, selectable group? Proposed yes.
+- RQ-32 (BOARD row 229): must the runner pick a decline reason (UI), and is `Other reason` without text enough? Proposed yes to both.

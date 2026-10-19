@@ -43,7 +43,7 @@ So ops need to see the customer deadline, how many eligible runners are left, an
    | Offered | `Offered` (pending) | `Offered at` → `assignedAt`; `Offer ends` → `offerExpiresAt`, which never falls after `deadlineAt` (row 205); the client still shows the earlier of the two for offers made before the cap (EAT, Fira Code) plus a live `{m:ss} left` (Fira Code, client clock, stops at 0) | `Waiting for {runner} to accept.` |
    | Offered, no deadline (row 156) | `Offered` (pending) | `Offered at` | `This offer has no deadline.` |
    | Offer ended | `Offer ended` (pending: ops must act) | `Offered at`; `Ended` → `offerExpiresAt` (EAT, Fira Code); `Eligible runners left` → `{n}` (Fira Code, row 167) | `{runner} didn't accept in time. The task is still waiting for a runner.` |
-   | Declined | `Declined` (pending: ops must act) | `Offered at`; `Declined` → `decidedAt`; `Reason` by `declineReason` (row 210): `over_purchase_limit` → `Above their purchase limit`, `too_far` → `Too far away`, `not_available` → `Not available`, `other` → `Other reason`, null → `No reason given`; `Eligible runners left` → `{n}` (Fira Code, row 167) | `The task is still waiting for a runner.` |
+   | Declined | `Declined` (pending: ops must act) | `Offered at`; `Declined` → `decidedAt`; `Reason` by `declineReason` (row 210; labels proposed): `over_purchase_limit` → `Above their purchase limit`, `too_far` → `Too far away`, `not_available` → `Not available`, `other` → `Other reason`, null → `No reason given` (the runner app words the same values in the first person, `Above my purchase limit`, `Not available right now`; the difference is intentional: ops read about the runner, the runner speaks for themself); `Eligible runners left` → `{n}` (Fira Code, row 167) | `The task is still waiting for a runner.` |
    | Deadline passed (RUNNER_ASSIGNED, row 185) | `Deadline passed` (info) | `Last offer` → `{runner} · {Offered \| Offer ended \| Declined}` | `The customer's deadline has passed, so this task is no longer offered. It moves to Expired automatically.` |
    | Accepted (EN_ROUTE …) | none (the task chip shows the state) | none | none |
    | Expired: deadline passed (row 185) | `Deadline passed` (info; the task chip already reads `Expired`) | `Last offer` (when there was one); `Expired at` → the RUNNER_ASSIGNED → EXPIRED history time (EAT, Fira Code); `Runners tried` → `{n}` (Fira Code) | `The customer's deadline passed before any runner accepted. The task has expired.` plus the refund line below |
@@ -128,7 +128,7 @@ Owner: "Exit = new Admin 'Expire task' action from PAYMENT_CONFIRMED after the d
 
 **Confirm dialog (proposed, design-auditor; the owner did not say. Recommended: the same A-08 drawer dialog and reason rule as "Expire task — no runner available", so both admin expiries are audited the same way)**:
 - Title `Expire this task?`
-- Body 13 slate-600: `The customer's deadline for {task title} has passed and no runner was assigned. The task moves to Expired and can't be offered again. The customer is told no runner was available. A refund review opens because the task was paid.` (A PAYMENT_CONFIRMED task is always paid, so the refund sentence always shows.)
+- Body 13 slate-600: `The customer's deadline for {task title} has passed and no runner was assigned. The task moves to Expired and can't be offered again. A refund review opens because the task was paid.` (A PAYMENT_CONFIRMED task is always paid, so the refund sentence always shows.) Only if the owner approves the customer notification on this transition (AQ-29, BOARD row 226, open), insert ` The customer is told no runner was available.` before the refund sentence.
 - Field `Reason`, required, 10–500 characters after trimming, counter `{n}/500` (Fira Code), the same hint and error copy as above.
 - Buttons: outline `Back` and primary `Expire task`, enabled at 10+ characters.
 
@@ -173,7 +173,7 @@ Errors (assign / reassign):
 
 ## Live updates
 These refresh the drawer and the queue row; an open drawer re-reads `GET /errands/:id` on any of them:
-- Admin feed item `assignment_declined` (built). Body without a limit reason approved (row 216): `The runner declined {ref}. Assign another runner.`; over the limit, the built `The runner declined {ref}: the purchase is above their limit. Assign another runner.` The other row-210 reasons use the approved general body (the drawer shows the reason).
+- Admin feed item `assignment_declined` (built). Body without a limit reason approved (row 216): `The runner declined {ref}. Assign another runner.`; over the limit, the built `The runner declined {ref}: the purchase is above their limit. Assign another runner.` Row 216 approves the general body only for a decline **without** a reason. For the other row-210 reasons (`too_far`, `not_available`, `other`) the general body is **proposed** (the drawer shows the reason). api-contract note: the built body is chosen by `overPurchaseLimit`, not by `declineReason` (`notifications.service.ts:481-486` @ `87d3076`), so an over-limit offer declined as `too_far` still gets the "above their limit" body; the body should follow `declineReason` (runner-gap-report §15 item 9).
 - Feed item `assignment_expired` / `Offer ended` (N-20, built on `feat/api-runner-1`: `The runner didn't accept {ref} in time. Offer it to another runner.`).
 - `matching_exhausted` (`Matching exhausted · {task}`, row 167, to build).
 - `deadline_passed`:
@@ -285,10 +285,10 @@ Decided: AQ-12, AQ-17, AQ-18, AQ-19, rows 185, 186, RQ-31, and on 2026-10-19 row
 Open:
 - **Row 220**: feed copy for a PAYMENT_CONFIRMED task past its deadline (proposed in the row).
 - **Row 221**: the default `deadlineAt` when the customer gives none, and the backfill of existing tasks.
-- **New (AQ-28, proposed for the BOARD)**: the PAYMENT_CONFIRMED `Expire task` asks for a required reason of 10–500 characters, like the RUNNER_ASSIGNED action (row 203), in the same kind of dialog. Recommended yes; the owner did not say.
-- **New (AQ-29)**: on PAYMENT_CONFIRMED → EXPIRED by the admin, send the customer the usual `errand.EXPIRED` notification (`No runner available` / row-158 body)? Recommended yes, no new copy.
-- **New (AQ-30)**: rows 187 (a) and 204 together: is a task that was never offered, with no eligible runner online, "exhausted"? Proposed no: exhaustion needs at least one offer made; otherwise re-check (row 179 holds exhaustion back for now anyway).
-- **New (AQ-31)**: Reassign dialog offline runners (row 215): proposed as a collapsed `Show offline runners ({n})` group, selectable, never counted in `Eligible runners left`. Confirm, or list them inline?
+- **AQ-28 (BOARD row 225, open)**: the PAYMENT_CONFIRMED `Expire task` asks for a required reason of 10–500 characters, like the RUNNER_ASSIGNED action (row 203), in the same kind of dialog. Recommended yes; the owner did not say.
+- **AQ-29 (BOARD row 226, open)**: on PAYMENT_CONFIRMED → EXPIRED by the admin, send the customer the usual `errand.EXPIRED` notification (`No runner available` / row-158 body)? Recommended yes, no new copy.
+- **AQ-30 (BOARD row 227, open)**: rows 187 (a) and 204 together: is a task that was never offered, with no eligible runner online, "exhausted"? Proposed no: exhaustion needs at least one offer made; otherwise re-check (row 179 holds exhaustion back for now anyway).
+- **AQ-31 (BOARD row 228, open)**: Reassign dialog offline runners (row 215): proposed as a collapsed `Show offline runners ({n})` group, selectable, never counted in `Eligible runners left`. Confirm, or list them inline?
 
 ## Current vs design
 `main`: the drawer's `Assign runner` shows only at PAYMENT_CONFIRMED (`task-drawer.ts:22-23`) and says `Runner assigned.` on success (`:305`). The queue's `Assign` shows only at PAYMENT_CONFIRMED (`task-queue.panel.ts:136-137`). There is no `Runner` section, no offer, decline, lapse or deadline state, no way to re-offer a RUNNER_ASSIGNED task and no expire action. The `Status history` shows the actor type and the note but no admin name (`:157-176`).
