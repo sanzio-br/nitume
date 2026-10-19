@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../screens/auth/otp_screen.dart';
+import '../screens/jobs/job_detail_screen.dart';
 import '../screens/location/location_disclosure_screen.dart';
 import '../screens/onboarding/onboard_id_screen.dart';
 import '../screens/onboarding/onboard_pending_screen.dart';
@@ -22,6 +23,10 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     Routes.onboardSelfie => const OnboardSelfieScreen(),
     Routes.onboardPending => const OnboardPendingScreen(),
     Routes.locationDisclosure => const LocationDisclosureScreen(),
+    Routes.jobDetail => () {
+      final a = args! as JobDetailArgs;
+      return JobDetailScreen(errandId: a.errandId, initial: a.offer);
+    }(),
     _ => null,
   };
   if (screen == null) return null;
