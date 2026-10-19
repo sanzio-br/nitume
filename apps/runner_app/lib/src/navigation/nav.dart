@@ -53,6 +53,10 @@ enum JobDetailOutcome {
   /// The offer is gone (expired, withdrawn, refused): remove the card and
   /// show `That offer is no longer available.`
   unavailable,
+
+  /// `Back to jobs` from the ended state, which already said so: remove
+  /// the card without a snackbar.
+  ended,
 }
 
 /// Typed navigation for runner screens (`_shared.md` §1).
