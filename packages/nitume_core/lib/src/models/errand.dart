@@ -275,15 +275,42 @@ String? _nullableDecimalString(Object? value) {
 DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value) : null;
 
-/// Task defaults clients show but never hard-code (`GET /errands/defaults`,
-/// row 221).
-class ErrandDefaults {
-  const ErrandDefaults({this.defaultDeadlineHours});
+/// When a `Flexible` task's default deadline clock starts
+/// (`defaultDeadlineStartsAt` on `GET /errands/defaults`).
+enum DeadlineClockStart {
+  /// At ACCEPTED → PAYMENT_CONFIRMED (rows 235, 239 (a)): the caption says
+  /// the deadline is {duration} after the payment is confirmed.
+  paymentConfirmed('payment_confirmed');
 
-  /// Hours from creation to the deadline the API sets when the customer
-  /// gives none (24 today); `null` when the API did not send a usable
-  /// value, so the caption is hidden rather than guessed.
+  const DeadlineClockStart(this.wire);
+  final String wire;
+
+  /// `null` for unknown or absent values.
+  static DeadlineClockStart? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
+/// Task defaults clients show but never hard-code (`GET /errands/defaults`,
+/// rows 221, 235).
+class ErrandDefaults {
+  const ErrandDefaults({
+    this.defaultDeadlineHours,
+    this.defaultDeadlineStartsAt,
+  });
+
+  /// Hours from [defaultDeadlineStartsAt] to the deadline the API sets when
+  /// the customer gives none (24 today); `null` when the API did not send a
+  /// usable value, so the caption is hidden rather than guessed.
   final double? defaultDeadlineHours;
+
+  /// When that clock starts: [DeadlineClockStart.paymentConfirmed] today
+  /// (row 235). `null` when absent or a value this client does not know:
+  /// hide a caption that names the start rather than guess it.
+  final DeadlineClockStart? defaultDeadlineStartsAt;
 
   /// [defaultDeadlineHours] as a [Duration] (minute precision).
   Duration? get defaultDeadline {
@@ -295,6 +322,9 @@ class ErrandDefaults {
     final h = parseDouble(json['defaultDeadlineHours']);
     return ErrandDefaults(
       defaultDeadlineHours: h != null && h.isFinite && h > 0 ? h : null,
+      defaultDeadlineStartsAt: DeadlineClockStart.tryFromWire(
+        json['defaultDeadlineStartsAt'],
+      ),
     );
   }
 }
