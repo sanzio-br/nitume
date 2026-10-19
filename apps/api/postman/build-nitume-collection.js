@@ -67,6 +67,12 @@ const put = (name, pathname, raw, actingRole) => ({
 
 const folder = (name, item) => ({ name, item });
 
+/** RA-17: adds `Idempotency-Key` (the app sends its offline-queue action id). */
+const withKey = (item, key) => {
+  item.request.header.push({ key: 'Idempotency-Key', value: key });
+  return item;
+};
+
 const collection = {
   info: {
     _postman_id: '2f1b9c3e-7a14-4c9d-9e6f-50b8e2c1a917',
@@ -282,6 +288,18 @@ const collection = {
       post('Admin expire a paid task past its deadline (fromStatus PAYMENT_CONFIRMED; 409 deadline_not_passed)', '/errands/{{errand_id}}/expire', '{\n  "reason": "Customer unreachable after the deadline",\n  "fromStatus": "PAYMENT_CONFIRMED"\n}', 'admin'),
       req('Task defaults (defaultDeadlineHours for the Flexible caption)', 'GET', '/errands/defaults', 'customer'),
       post('Runner decline (reason required: over_purchase_limit | too_far | not_available | other)', '/errands/{{errand_id}}/decline', '{\n  "reason": "not_available"\n}', 'runner'),
+    ]),
+    folder('14_Runner_Active_Job_2026_10_19', [
+      // A1-A10 (runner gap report §21). Socket.IO (not in Postman): location:ping { lat, lng, errandId?, accuracy?, ts? } with ack;
+      // server events location:update, job:offered, job:offer_withdrawn, price_change:decided (runner room joined on connect).
+      req('Runner held jobs (accepted; active set + finished in the last 24 h; cursor)', 'GET', '/runners/me/jobs?limit=20', 'runner'),
+      req('Runner job view (readable after the end; 403 job_not_held)', 'GET', '/runners/me/jobs/{{errand_id}}', 'runner'),
+      withKey(patch('Runner transition with Idempotency-Key (replay returns the first result)', '/errands/{{errand_id}}/status', '{\n  "to": "ARRIVED"\n}', 'runner'), 'queue-action-1'),
+      withKey(post('Runner photo (ARRIVED, IN_PROGRESS; 409 evidence_not_allowed)', '/errands/{{errand_id}}/evidence', '{\n  "type": "photo",\n  "contentType": "image/jpeg",\n  "data": "cGhvdG8="\n}', 'runner'), 'queue-action-2'),
+      withKey(post('Runner receipt (ARRIVED..AWAITING_CUSTOMER, 24 h after CANCELLED/FAILED; 409 reimbursement_window_closed)', '/errands/{{errand_id}}/evidence', '{\n  "type": "receipt",\n  "contentType": "image/jpeg",\n  "data": "cmVjZWlwdA=="\n}', 'runner'), 'queue-action-3'),
+      withKey(patch('Runner notes with Idempotency-Key', '/errands/{{errand_id}}/runner-notes', '{\n  "runnerNotes": "Checked every room."\n}', 'runner'), 'queue-action-4'),
+      patch('Runner finish (409 evidence_required { missing: [photo] })', '/errands/{{errand_id}}/status', '{\n  "to": "AWAITING_CUSTOMER"\n}', 'runner'),
+      req('Tracking snapshot (runnerLocation from the Redis live position)', 'GET', '/errands/{{errand_id}}/tracking', 'customer'),
     ]),
   ],
 };
