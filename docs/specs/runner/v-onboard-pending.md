@@ -22,6 +22,7 @@ None.
 2. White card C-07 (margin 0 20 12, padding 16): four R-05 rows (padding 12 0, hairline between), label 13 Sans left, C-05 **small status chip** right (mockup: coloured text; design system: amber/red only as chip accents):
    - `Phone number`, `National ID`, `Selfie / liveness check`, `M-Pesa identity match`.
    - Rejected rows add, under the label, a C-04 link `Upload again` (ID) / `Retake selfie` (selfie).
+   - **`National ID` combines the two sides (row 209, owner 2026-10-19)**: front and back are two records (`side`); the newest record of each side counts. The row is `Verified` only if both sides are approved; `Not approved` if either side is rejected; otherwise `In review` if either side is pending; otherwise `Not started` (a side not uploaded yet, none pending or rejected; proposed). A legacy ID record without a `side` does not count (proposed). When one side is rejected, a caption 11.5 slate-600 under the label names it: `Front photo not approved` / `Back photo not approved` / `Both photos not approved` (proposed), and `Upload again` opens `v-onboard-id` with that side selected.
 3. Body 12.5 slate-600, padding 14 20 0 (copy below, changes with the overall state).
 3a. Privacy paragraph (row 158), 11.5 slate-600 Fira Sans, padding 12 20 0: the owner's full sentence (Copy), then on its own line a C-04 link `Privacy Policy` (48 dp hit area) → `AppConfig.privacyLink`, opened externally; the link is hidden until `NITUME_PRIVACY_URL` holds the real published URL (no placeholder; row 173). Shown in every overall state.
 4. Fixed bottom C-03 outline `Back to app` (pill; mockup `.cta-outline` radius 14).
@@ -57,16 +58,18 @@ Never shown: the reviewer's internal note (unless RA-7 adds a runner-safe reason
 - `24` in the body copy (`under 24 hours`) as a Fira Code span.
 
 ## Data
-- `GET /runners/me/verifications` (exists): rows by `verificationType` (`phone`, `government_id`, `selfie`, `payment_identity`), newest record per type wins.
+- `GET /runners/me/verifications` (exists): rows by `verificationType` (`phone`, `government_id`, `selfie`, `payment_identity`). `phone`, `selfie` and `payment_identity`: the newest record of the type. `government_id`: the row-209 combination of the newest `front` and newest `back` record (the "newest record per type wins" rule is dropped for the ID: it could hide a rejected side). One core helper computes it (R-19, core-ui; `RunnerVerificationDocuments` on `main` already groups `idFront` / `idBack`).
 - `GET /runners/me` (exists) for `verificationLevel`.
 - Push / notification `verification decided` (RA-6) refreshes the screen; no socket event needed (re-fetch on resume).
-- RA-8: records for `phone` and `payment_identity` are not created by the API today, so those rows would always show `Not started`.
+- `phone`: recorded approved by the OTP sign-in (row 217, built on `feat/api-runner-1`), so the row reads `Verified`.
+- `payment_identity`: the automatic check and `POST /runners/me/verifications/submit` are deferred (rows 218, 222). Until then the app creates the pending record with `POST /runners/me/verifications` at selfie submit (`v-onboard-selfie.md`), and ops approve or reject it by hand (row 126). Before that call the row reads `Not started`.
 
 ## Accessibility and mobile
 Rows read as `National ID, verified`; chips are not colour-only (text label). CTA above the safe area; pull-to-refresh.
 
 ## Decisions (owner, 2026-10-13)
 - Row 126 (RQ-14): verified only when every required check (phone, ID, selfie, M-Pesa name) is approved; ops do the M-Pesa name match manually.
+- Row 209 (owner 2026-10-19): National ID `Verified` only if both sides approved; rejected if either is rejected; else `In review` if either is pending. Row 217: OTP sign-in records the phone check approved. Row 218: payment-identity automation deferred.
 
 - Row 158 (owner, 2026-10-16): the full privacy statement appears here (this is the screen behind Profile → `Verification documents`); the capture screens carry the short line.
 

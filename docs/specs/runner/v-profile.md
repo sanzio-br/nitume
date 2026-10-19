@@ -45,7 +45,7 @@ Exact, from the mockup: `Profile`, `Brian K.`, `● Verified Runner · Level 3 �
 ## Data
 - `GET /users/me` (exists): `displayName`, `phone`. Short name: the API computes it (row 40); `GET /runners/me` returns the raw entity without `shortName` (RA-18: add `shortName`, and the computed fields below).
 - `GET /runners/me` (exists): `verificationLevel`, `errandsCompleted`, `avgRating` (string), `completionRate` (0–100 numeric string, rendered with one decimal and `%`). Skills and service areas are **not** returned (RA-10).
-- Verification overall state: `GET /runners/me/verifications` (exists).
+- Verification overall state: `GET /runners/me/verifications` (exists), with the National ID combined from its two sides as `v-onboard-pending.md` (row 209, owner 2026-10-19: verified only if both sides are approved; rejected if either is rejected; else in review if either is pending). `Verification in review` when any check (ID combined) is in review and none is rejected; `Not verified yet` otherwise until all are approved.
 - Log out: `POST /auth/logout` (exists), `DELETE /users/me/devices/:id` (exists), `PATCH /runners/me/availability` (exists).
 - No socket events.
 

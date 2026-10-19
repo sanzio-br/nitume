@@ -52,7 +52,11 @@ Title `Notes for the customer`; C-17 multiline, max 2000 characters (API limit; 
 
 ### Other states
 - **No active job**: C-33 empty `No active job` / `Accept a job from the Jobs tab to start.` + C-03 `Go to jobs` (proposed). No map.
-- **More than one active job**: not possible; accept answers `runner_busy` while the runner holds a job (one job at a time).
+- **More than one active job (row 211, owner 2026-10-19: "only RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS make a runner busy")**: a runner holds at most one **working** job (RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS; accept answers `runner_busy` while they hold one), but may also hold any number of jobs in AWAITING_CUSTOMER or DISPUTED, because those free them for new offers. Proposed layout (EXTENDS MOCKUP, design-auditor):
+  - The screen shows one job: the working job if there is one, else the most recently updated waiting/disputed job.
+  - Below the screen's last section, C-08 `Other jobs` (proposed) and one row per other active-set job: C-24 `MenuRow` style (white, slate-line hairline, 48 dp), title 13/600 + Fira Code 11 slate-600 reference, trailing R-01 small chip (`Waiting for the customer`, `Disputed`, or the working state) and chevron. Tap → the screen switches to that job (no new route); the top bar chip follows the shown job.
+  - The tab badge, if any, counts jobs, not states (none in the mockup; not added).
+  - Pings run only for the working job (row 27: live location only for the current assignment up to AWAITING_CUSTOMER).
 - **AWAITING_CUSTOMER**: map and price section hidden; C-40 notice `Waiting for the customer to confirm. You'll be notified.`; checklist read-only except notes; link `View job summary` → `v-job-summary`.
 - **DISPUTED**: C-40 `The customer reported a problem. Our team is reviewing it.`; once resolved, the resolution note (row 79) under `Outcome` (13 Sans) as the customer sees it.
 - **COMPLETED / CONFIRMED / SETTLED**: success card `Job complete` with the R-01 chip and a link to `v-job-summary`; `Back to jobs`.
@@ -108,6 +112,7 @@ Everything else above is proposed.
 - Row 128 (RQ-16): no direct contact with the customer; Support relays.
 - Row 129 (RQ-17): receipts up to 24 h after CANCELLED/FAILED, then the ops process.
 - Row 132 (RQ-20): no FAILED from ARRIVED/IN_PROGRESS; `Get help with this task` → Support.
+- Row 211 (owner 2026-10-19): busy = RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS; AWAITING_CUSTOMER and DISPUTED free the runner for new work, so this screen can hold several active-set jobs (`Other jobs`, proposed).
 
 ## Questions
 - None new.

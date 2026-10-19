@@ -883,3 +883,13 @@ Spec-only update; no screen re-audited. Full list: `docs/audits/runner-gap-repor
 - **Row 188**: exact titles `No runner available` and `Runner assigned`, no status suffix. Built on `main` (`statusCopy` `exactTitle`). This supersedes the `No runner available · Expired` title recorded in the round-7 addendum above.
 - **Row 201** (open, proposed): a paid PAYMENT_CONFIRMED task past its deadline stays for ops. Proposed customer impact: none, so it keeps `Finding a runner` and no notification is sent. Flagged.
 - **Findings against `main`**: none. The app renders the API's `title` / `body`, and EXPIRED is already handled. v-notifications, v-track and v-task-detail stay `matches-design`.
+
+## Owner answers round 12 (rows 201, 206, 2026-10-19), applied on `docs/owner-answers-12-specs`
+
+Spec-only update; no screen re-audited.
+
+- **Row 201** (decided): a paid PAYMENT_CONFIRMED task past its deadline is never auto-expired; ops end it with the admin `Expire task` (new PAYMENT_CONFIRMED → EXPIRED, actor Admin). Customer impact: none before ops act (`Finding a runner`); afterwards the existing EXPIRED screen and refund line. The customer `errand.EXPIRED` notification on this transition is proposed (admin AQ-29; API item 3 in `runner-gap-report.md` §15). `_shared.md`, `v-notifications.md` updated. No app change.
+- **Row 206** (decided): every task has `deadlineAt`; the API sets a contract default when the customer picks `Flexible` (value open, row 221).
+  - `v-new-details.md`: `Flexible` keeps sending no `deadlineAt`; a new caption `No fixed time. We'll set a deadline of {duration} from when you submit.` (proposed; `{duration}` Fira Code, from an API value).
+  - Finding C-12-1 (**minor**, `apps/customer_app/lib/src/screens/wizard/details_screen.dart` deadline chips, around `:302`): Design: the caption under `Flexible`. Code: none. Fix: after row 221 and API item 10 (`runner-gap-report.md` §15). Status `partial` until then.
+- Row 201's earlier customer note in round 11 above is superseded.
