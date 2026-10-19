@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 361–384 (`#v-new-details`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
 - Implementation: `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (+ `task_draft.dart`) on branch `feat/customer-owner-answers`
-- Status: matches-design
+- Status: partial (round 12, row 206: the `Flexible` deadline caption is new and waits for row 221; everything else matches-design)
 
 ## Purpose
 Collect what the runner must do, where, by when, the item budget (Buy For Me and Get It For Me only), and (for Buy For Me) a structured shopping list.
@@ -76,6 +76,9 @@ Validation (proposed copy; shown on Continue, then live):
 
 ## Rules
 - **Deadline** (OA-19: `deadline_at` authoritative, urgency derived): Today → `deadlineAt` = today 23:59 local, sent as ISO 8601 UTC; Tomorrow → tomorrow 23:59 local; Flexible → no `deadlineAt`. The client **never sends `urgency`**; the backend derives it from `deadlineAt`.
+- **Every task has a deadline (row 206, owner 2026-10-19)**: "every task has deadlineAt — required at creation; the contract defines a default when the customer gives none; no indefinite tasks." `Flexible` keeps sending no `deadlineAt`; the API sets the contract default. The default value is **open (BOARD row 221**; proposed there: creation time + 24 h). Why it matters to the customer: a task nobody accepts by its deadline expires (row 185), so `Flexible` must not read as "no time limit".
+  - Caption under the chips while `Flexible` is selected (proposed; build only after row 221): 12 slate-600 `No fixed time. We'll set a deadline of {duration} from when you submit.` with `{duration}` in Fira Code (e.g. `24 hours`), formatted from a server value (`defaultDeadlineHours`, needs api-contract; it must come from the API, never be hard-coded). If the value is unavailable the caption is hidden. `Today` and `Tomorrow` get no caption (the chip says it).
+  - No time picker (Q2 unchanged).
 - **Budget** (row 45): shown **only for Buy For Me and Get It For Me**. Required (> 0) for Buy For Me; optional (default 0) for Get It For Me. Hidden for Check It For Me, Go There For Me and Wait For Me, which always send `budget: 0` (no item amount, so no merchant route later). Switching category back in the wizard keeps an entered budget only if the new category shows the field. The budget is the item/merchant amount (`_shared.md` §8), not a fee.
 - **Locations** (row 60): 3a → one `task_site` point. 3b → `pickup` + `dropoff`. 3c → `pickup` (store) + `dropoff`. Each point has `lat`, `lng`, `addressText`, `placeId` from Place Details (or from the saved address). A point without coordinates is never sent; text-only addresses are not accepted.
 
@@ -105,6 +108,7 @@ Validation (proposed copy; shown on Continue, then live):
 
 ## Open questions (non-blocking; build default given)
 - Q2: Is "end of day" right for Today/Tomorrow, or should those chips open a time picker? Default: 23:59 local.
+- Row 221 (open, BOARD): the default deadline for `Flexible`. The caption above waits for it.
 
 ## Current vs design
 Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. Text typed without any pick now shows `Choose a place from the list.` (core `onTextChanged`; earlier minor closed); `title` sent in `POST /errands`.
