@@ -161,11 +161,10 @@ export class CandidatesService implements OnModuleInit {
       (a, b) => FIRST_POINT_ORDER.indexOf(String(a.pointType)) - FIRST_POINT_ORDER.indexOf(String(b.pointType)),
     )[0];
     const point = first ? { lat: first.coordinates.coordinates[1], lng: first.coordinates.coordinates[0] } : null;
-    const [pool, assignments, required] = await Promise.all([
-      this.runners.poolFor(errand.category as unknown as RunnerSkill, point, manager),
-      this.errands.assignmentsOf(errandId, manager),
-      this.ledger.itemPaidToNitume(errandId, manager),
-    ]);
+    // One after the other: inside a transaction they share one connection.
+    const pool = await this.runners.poolFor(errand.category as unknown as RunnerSkill, point, manager);
+    const assignments = await this.errands.assignmentsOf(errandId, manager);
+    const required = await this.ledger.itemPaidToNitume(errandId, manager);
     const tried = triedByRunner(assignments);
     const holders = new Set(
       assignments

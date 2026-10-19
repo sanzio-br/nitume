@@ -480,13 +480,12 @@ export class RunnersService {
     if (ids.length === 0) {
       return [];
     }
-    const [profiles, checks] = await Promise.all([
-      repo(RunnerProfile, this.profiles).find({ where: { id: In(ids) } }),
-      repo(RunnerVerification, this.verifications).find({
-        where: { runnerProfileId: In(ids) },
-        select: { id: true, runnerProfileId: true, verificationType: true, side: true, status: true, createdAt: true },
-      }),
-    ]);
+    // Sequential: with `manager` both reads share the caller's connection.
+    const profiles = await repo(RunnerProfile, this.profiles).find({ where: { id: In(ids) } });
+    const checks = await repo(RunnerVerification, this.verifications).find({
+      where: { runnerProfileId: In(ids) },
+      select: { id: true, runnerProfileId: true, verificationType: true, side: true, status: true, createdAt: true },
+    });
     const byRunner = new Map<string, RunnerVerification[]>();
     for (const c of checks) {
       byRunner.set(c.runnerProfileId, [...(byRunner.get(c.runnerProfileId) ?? []), c]);
