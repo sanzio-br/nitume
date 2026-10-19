@@ -16,8 +16,9 @@ abstract final class RealtimeEvents {
   static const errandJoin = 'errand:join';
   static const errandLeave = 'errand:leave';
 
-  /// Runner position (§4.2, `LocationPing`). The API intake is RA-4 (not
-  /// built yet).
+  /// Runner position (§4.2, `LocationPing`, RA-4), with an ack
+  /// (`LocationPingAck`). Send it with
+  /// `RunnerRealtimeClient.sendLocationPing`.
   static const locationPing = 'location:ping';
 
   // server → client
@@ -50,6 +51,21 @@ abstract final class RealtimeEvents {
   /// A customer asked for a new quote (row 68); sent to admins and the
   /// errand room.
   static const quoteRequested = 'quote:requested';
+
+  /// Runner room (§4.2 `runner:{runnerProfileId}:status`): joined by the
+  /// server on connect, never by the client (row 139). For reference only.
+  static String runnerRoom(String runnerProfileId) =>
+      'runner:$runnerProfileId:status';
+
+  /// RA-5: a new offer for this runner (`JobOffered`).
+  static const jobOffered = 'job:offered';
+
+  /// RA-5: an open offer ended (`JobOfferWithdrawn`).
+  static const jobOfferWithdrawn = 'job:offer_withdrawn';
+
+  /// RA-5, A8: a price change was decided (`PriceChangeDecided`); to the
+  /// runner's room and `errand:{id}`.
+  static const priceChangeDecided = 'price_change:decided';
 }
 
 /// `location:update {errandId, lat, lng, eta, ts}`.

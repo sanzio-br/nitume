@@ -38,6 +38,7 @@ export 'src/places/place_search.dart';
 export 'src/push/fcm_push_service.dart';
 export 'src/push/push_service.dart';
 export 'src/realtime/realtime_client.dart';
+export 'src/realtime/runner_realtime.dart';
 export 'src/realtime/socket_io_realtime_client.dart';
 export 'src/repositories/account_repositories.dart';
 export 'src/repositories/errand_activity_repositories.dart';
