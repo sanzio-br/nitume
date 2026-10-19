@@ -103,6 +103,30 @@ void main() {
       expect(find.text('Back of your ID'), findsOneWidget);
     });
 
+    testWidgets('ID or selfie not started, none rejected: upload body', (
+      t,
+    ) async {
+      final b = TestBackend();
+      b.account.records = [
+        _of(RunnerVerificationType.phone, VerificationStatus.approved),
+        _id(VerificationStatus.pending, _front),
+        _id(VerificationStatus.pending, _back),
+      ];
+      await b.pumpScreen(t, const OnboardPendingScreen());
+      expect(_chipIn(t, 'Selfie / liveness check'), 'Not started');
+      expect(
+        find.text('Upload your ID and a selfie to start accepting jobs.'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'Verification usually takes under ',
+          findRichText: true,
+        ),
+        findsNothing,
+      );
+    });
+
     testWidgets('all approved: verified body and Start accepting jobs', (
       t,
     ) async {

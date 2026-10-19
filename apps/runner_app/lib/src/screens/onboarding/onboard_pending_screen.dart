@@ -27,6 +27,10 @@ abstract final class OnboardPendingCopy {
       'accepting jobs.';
   static const bodyRejected =
       "Some checks weren't approved. Fix them below and we'll review again.";
+
+  /// m-5: the ID or selfie not started and nothing rejected.
+  static const bodyNotStarted =
+      'Upload your ID and a selfie to start accepting jobs.';
   static const bodyVerified =
       "You're verified. You can go online and accept jobs.";
   static const backToApp = 'Back to app';
@@ -84,6 +88,11 @@ class VerificationRows {
   List<VerificationCheckStatus> get all => [phone, nationalId, selfie, payment];
 
   bool get anyRejected => all.contains(VerificationCheckStatus.rejected);
+
+  /// The ID or the selfie has not been submitted.
+  bool get captureNotStarted =>
+      nationalId == VerificationCheckStatus.missing ||
+      selfie == VerificationCheckStatus.missing;
   bool get allApproved =>
       all.every((s) => s == VerificationCheckStatus.approved);
 }
@@ -226,6 +235,9 @@ class _OnboardPendingScreenState extends State<OnboardPendingScreen>
     }
     if (rows.allApproved) {
       return Text(OnboardPendingCopy.bodyVerified, style: style);
+    }
+    if (rows.captureNotStarted) {
+      return Text(OnboardPendingCopy.bodyNotStarted, style: style);
     }
     return Text.rich(
       const TextSpan(
