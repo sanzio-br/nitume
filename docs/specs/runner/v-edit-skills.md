@@ -47,7 +47,7 @@ Chips are toggle buttons with `selected` semantics; 48 dp hit areas; CTA above t
 
 ## Decisions (owner, 2026-10-13)
 - Row 115 (RQ-3): skills = the six category values, migration from `RunnerSkill`.
-- Row 116 (RQ-4): service areas from an ops-configured list.
+- Row 116 (RQ-4): service areas from an ops-configured list. Rows 212, 213 (owner 2026-10-19): the list stays server config `RUNNER_SERVICE_AREAS` (no table, no admin screen for now); each area is a circle (centre + radius km) and a task falls in an area when its first point (task site, else pickup, else drop-off) is inside. No screen change: the runner picks area names; the geometry stays on the server.
 
 ## Questions
 - None new.
