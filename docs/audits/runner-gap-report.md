@@ -924,5 +924,5 @@ Open from §17: S-1 (orchestrator), m-4 and C1–C6 (core-ui), the bell route (w
 - **New m-6 (minor), v-jobs meta typography**: `v-jobs.md` now asks for Fira Code only on the numeric parts of the meta line (design system wins over the mockup). The build renders the whole meta in Fira Code (core R-04 `JobOfferCard` `meta` is a plain Fira Code string).
   - core-ui: let R-04 take a rich meta (spans), with `NumSpan` for numbers.
   - flutter-runner: build the meta from spans in `offer_presentation.dart` `offerMeta`.
-  - This does not reopen the v-jobs PASS for F-1; m-6 is a follow-up minor. The same check applies to `v-job-detail` captions.
+  - This does not reopen the v-jobs PASS for F-1; m-6 is a follow-up minor.
 - Still to correct after the B-1 fix lands: the claim that the captured file is deleted (§17 v-onboard-id; `v-onboard-id.md`, `v-onboard-selfie.md`).
