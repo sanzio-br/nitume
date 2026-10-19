@@ -92,6 +92,22 @@ void main() {
       expect(o.requestFullMetadata, isFalse);
     });
 
+    test('front camera: camera source, front lens, still compressed', () async {
+      await ImagePickerCaptureSource().takePhoto(from: CaptureFrom.frontCamera);
+      expect(fake.source, ImageSource.camera);
+      final o = fake.options!;
+      expect(o.preferredCameraDevice, CameraDevice.front);
+      expect((o.maxWidth, o.imageQuality), (1600.0, 80));
+    });
+
+    test('rear lens by default', () async {
+      await ImagePickerCaptureSource().takePhoto();
+      expect(fake.options!.preferredCameraDevice, CameraDevice.rear);
+      expect(CaptureFrom.camera.isCamera, isTrue);
+      expect(CaptureFrom.frontCamera.isCamera, isTrue);
+      expect(CaptureFrom.gallery.isCamera, isFalse);
+    });
+
     test('gallery picks are not resized (B-1: no hidden full copy)', () async {
       await ImagePickerCaptureSource().takePhoto(from: CaptureFrom.gallery);
       expect(fake.source, ImageSource.gallery);

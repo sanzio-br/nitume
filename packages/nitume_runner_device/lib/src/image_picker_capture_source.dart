@@ -8,6 +8,7 @@ import 'package:nitume_core/nitume_core.dart';
 /// Camera captures are compressed by the plugin: long edge ≤ [maxEdge] px,
 /// JPEG quality [quality] (`_shared.md` R-22: 1600 px, 80). The plugin
 /// deletes its full-size camera file once the scaled one is written.
+/// [CaptureFrom.frontCamera] asks for the front lens (selfie).
 ///
 /// Gallery picks are **not** resized (reviewer B-1). On Android the plugin
 /// copies a gallery photo into `cacheDir/<uuid>/` and, when asked to resize,
@@ -45,6 +46,9 @@ class ImagePickerCaptureSource implements ImageCaptureSource {
       maxHeight: gallery ? null : maxEdge,
       imageQuality: gallery ? null : quality,
       requestFullMetadata: false,
+      preferredCameraDevice: from == CaptureFrom.frontCamera
+          ? CameraDevice.front
+          : CameraDevice.rear,
     );
     if (file == null) return null;
     return _captured(file);

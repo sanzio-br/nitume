@@ -45,6 +45,14 @@ enum CaptureFrom {
 
   /// The gallery (onboarding only, and the accessibility path, §11).
   gallery,
+
+  /// The camera, opening on the front (selfie) lens (`v-onboard-selfie`,
+  /// C6). Best effort: the system camera app decides, and on some Android
+  /// devices it still opens the rear lens or lets the runner switch.
+  frontCamera;
+
+  /// True for [camera] and [frontCamera].
+  bool get isCamera => this != gallery;
 }
 
 /// Photo capture. Photos only: no video for runners (row 121). The runner
