@@ -382,4 +382,40 @@ describe('Owner answers round 14 (e2e)', () => {
       );
     });
   });
+
+  describe('rows 243, 244: who changes the deadline, and back to Flexible', () => {
+    it('admins cannot set it; the customer can clear it before payment and the clock then starts at payment', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const task = await createErrand(customer, { deadlineAt: new Date(Date.now() + 3_600_000).toISOString() });
+      await http().post(`/api/v1/errands/${task.id}/submit`).set(bearer(customer.token)).expect(201);
+
+      const byAdmin = await http()
+        .patch(`/api/v1/errands/${task.id}`)
+        .set(bearer(admin.token))
+        .send({ deadlineAt: new Date(Date.now() + 5 * 3_600_000).toISOString() })
+        .expect(403);
+      expect(byAdmin.body.code).toBe('deadline_customer_only');
+      await http().patch(`/api/v1/errands/${task.id}`).set(bearer(admin.token)).send({ title: 'Ops renamed it' }).expect(200);
+
+      const flexible = await http().patch(`/api/v1/errands/${task.id}`).set(bearer(customer.token)).send({ deadlineAt: null }).expect(200);
+      expect(flexible.body).toMatchObject({ deadlineAt: null, urgency: 'standard', title: 'Ops renamed it' });
+
+      await http()
+        .post(`/api/v1/errands/${task.id}/quote`)
+        .set(bearer(admin.token))
+        .send({ total: 1000, baseFee: 600, distanceFee: 400 })
+        .expect(201);
+      await http().patch(`/api/v1/errands/${task.id}/status`).set(bearer(customer.token)).send({ to: 'ACCEPTED' }).expect(200);
+      const before = Date.now();
+      const init = await http().post(`/api/v1/payments/${task.id}/initiate`).set(bearer(customer.token)).send({}).expect(201);
+      await http().post('/api/v1/payments/mpesa/callback').send({ reference: init.body.reference, resultCode: 0 }).expect(201);
+      const paid = await http().get(`/api/v1/errands/${task.id}`).set(bearer(customer.token)).expect(200);
+      const hours = (new Date(paid.body.deadlineAt as string).getTime() - before) / 3_600_000;
+      expect(hours).toBeGreaterThan(23.99);
+      expect(hours).toBeLessThan(24.05);
+      const late = await http().patch(`/api/v1/errands/${task.id}`).set(bearer(customer.token)).send({ deadlineAt: null }).expect(409);
+      expect(late.body).toMatchObject({ code: 'deadline_not_editable', status: 'PAYMENT_CONFIRMED' });
+    });
+  });
 });
