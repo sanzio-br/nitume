@@ -916,6 +916,10 @@ tr.clickable:hover {
   display: block;
   margin-top: 2px;
 }
+/* Who made the change (actor type, admin name): words in Fira Sans. */
+.dt-actor {
+  font-family: var(--nitume-font-ui);
+}
 .drawer-actions {
   display: flex;
   gap: 10px;
@@ -929,6 +933,57 @@ tr.clickable:hover {
   padding: 9px;
   border-radius: 9px;
   min-height: 36px;
+}
+/* State chip at the top of a drawer card (task drawer `Runner` section). */
+.offer-state {
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--nitume-slate-line);
+}
+/* Runner list of the assign dialog (app-runner-picker). */
+.runner-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.runner-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 12px;
+  background: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-s);
+  cursor: pointer;
+}
+.runner-pick:has(input:checked) {
+  border-color: var(--nitume-green);
+}
+.runner-pick input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--nitume-green);
+}
+.runner-pick-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.runner-pick-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--nitume-blue);
+}
+.runner-pick-sub {
+  font-size: 11px;
+  color: var(--nitume-slate-600);
+}
+.runner-pick-toggle {
+  margin-top: 6px;
 }
 .drawer-caption {
   font-size: 12px;
