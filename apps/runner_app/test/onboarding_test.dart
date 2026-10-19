@@ -101,6 +101,13 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Back of your ID'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('id-tile-back')),
+          matching: find.byKey(const ValueKey('capture-issue-notApproved')),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('ID or selfie not started, none rejected: upload body', (
@@ -189,7 +196,20 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Tap to take a photo or upload'), findsOneWidget);
-      expect(find.text('Front of your ID'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('id-drop-zone')),
+          matching: find.text('Front of your ID'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('id-tile-front')),
+          matching: find.byKey(const ValueKey('capture-selected-outline')),
+        ),
+        findsOneWidget,
+      );
       expect(find.text(PrivacyCopy.short), findsOneWidget);
       final cta = find.widgetWithText(NitumeButton, 'Continue →');
       expect(t.widget<NitumeButton>(cta).onPressed, isNull);
@@ -233,6 +253,14 @@ void main() {
       expect(b.capture.calls, [CaptureFrom.gallery]);
       expect(b.account.uploads, isEmpty);
       expect(b.capture.discarded, ['/cache/uuid/original.jpg']);
+      expect(
+        find.byKey(const ValueKey('capture-issue-tooLarge')),
+        findsOneWidget,
+      );
+      expect(
+        t.widget<NitumeNotice>(find.byType(NitumeNotice)).tone,
+        NitumeNoticeTone.danger,
+      );
       expect(
         find.text(
           'This photo is larger than 10 MB. Take it again or choose a '
@@ -332,7 +360,12 @@ void main() {
 
       await t.tap(find.byKey(const ValueKey('selfie-drop-zone')));
       await t.pumpAndSettle();
-      expect(b.capture.calls, [CaptureFrom.camera]);
+      expect(b.capture.calls, [CaptureFrom.frontCamera]);
+      // The zone now shows the photo with its upload state.
+      expect(
+        find.byKey(const ValueKey('capture-drop-zone-photo')),
+        findsOneWidget,
+      );
       final upload = b.account.uploads.single;
       expect(upload.$1, RunnerVerificationType.selfie);
       expect(upload.$2, isNull);

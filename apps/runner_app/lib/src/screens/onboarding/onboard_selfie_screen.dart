@@ -3,7 +3,6 @@ import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
-import '../../widgets/common.dart';
 import '../../widgets/privacy_note.dart';
 import 'capture_flow.dart';
 
@@ -69,9 +68,8 @@ class _OnboardSelfieScreenState extends State<OnboardSelfieScreen> {
     try {
       final LocalPhoto? photo;
       try {
-        // TODO(core-ui): front camera only (spec); `CaptureFrom` has no
-        // front-camera option yet.
-        photo = await capturePhoto(_s, CaptureFrom.camera);
+        // Front camera only, no gallery (spec).
+        photo = await capturePhoto(_s, CaptureFrom.frontCamera);
       } on PhotoProblem catch (p) {
         if (!mounted) return;
         setState(() {
@@ -136,38 +134,39 @@ class _OnboardSelfieScreenState extends State<OnboardSelfieScreen> {
   };
 
   Widget _captureArea() {
-    if (_state == CaptureState.empty) {
-      return CaptureDropZone(
-        key: const ValueKey('selfie-drop-zone'),
-        caption: OnboardSelfieCopy.dropZone,
-        icon: Icons.portrait_outlined,
-        height: 260,
-        semanticLabel: OnboardSelfieCopy.shutter,
-        onPick: _capture,
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Square photo; the failed-state chip goes under it.
-        SizedBox(
+    final photo = _photo;
+    final busy = _state == CaptureState.uploading;
+    if (photo == null && _state == CaptureState.uploaded) {
+      // A selfie already on file (pending or approved): no local photo to
+      // show, only its state and a way to take it again.
+      return Center(
+        child: SizedBox(
           width: 240,
           child: CaptureThumbnail(
             key: const ValueKey('selfie-tile'),
             state: _state,
-            image: _photo?.image,
             emptyIcon: Icons.portrait_outlined,
             semanticLabel: 'Selfie',
-            onRetry: _state == CaptureState.failed ? _upload : null,
+            onRemove: _capture,
+            removeLabel: OnboardSelfieCopy.retake,
           ),
         ),
-        const SizedBox(height: 10),
-        NitumeButton.outline(
-          label: OnboardSelfieCopy.retake,
-          size: NitumeButtonSize.small,
-          onPressed: _state == CaptureState.uploading ? null : _capture,
-        ),
-      ],
+      );
+    }
+    return CaptureDropZone(
+      key: const ValueKey('selfie-drop-zone'),
+      caption: OnboardSelfieCopy.dropZone,
+      icon: Icons.portrait_outlined,
+      height: 260,
+      semanticLabel: OnboardSelfieCopy.shutter,
+      onPick: busy ? null : _capture,
+      image: photo?.image,
+      captureState: _state == CaptureState.empty
+          ? CaptureState.uploaded
+          : _state,
+      onRetake: photo == null ? null : _capture,
+      retakeLabel: OnboardSelfieCopy.retake,
+      onRetry: _state == CaptureState.failed ? _upload : null,
     );
   }
 
@@ -218,7 +217,7 @@ class _OnboardSelfieScreenState extends State<OnboardSelfieScreen> {
                 ),
               ],
             ),
-      bottomNavigationBar: FixedCta(
+      bottomNavigationBar: NitumeFixedCta(
         child: NitumeButton.primary(
           label: OnboardSelfieCopy.cta,
           expand: true,

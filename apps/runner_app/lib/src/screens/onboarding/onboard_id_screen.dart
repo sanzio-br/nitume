@@ -5,7 +5,6 @@ import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
 import '../../services/shell_controller.dart';
 import '../../util/display.dart';
-import '../../widgets/common.dart';
 import '../../widgets/privacy_note.dart';
 import 'capture_flow.dart';
 
@@ -166,8 +165,9 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
         setState(() {
           final st = _sides[side]!;
           st.photo = null;
-          st.state = CaptureState.failed;
           st.tooLarge = p == PhotoProblem.tooLarge;
+          // Too large: nothing captured, the tile shows `Too large`.
+          st.state = st.tooLarge ? CaptureState.empty : CaptureState.failed;
           _problem = p;
           _message = null;
         });
@@ -217,9 +217,9 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
       if (!mounted) return;
       final f = uploadFailure(e);
       setState(() {
-        st.state = CaptureState.failed;
         st.tooLarge = f.problem == PhotoProblem.tooLarge;
         if (st.tooLarge) st.photo = null;
+        st.state = st.tooLarge ? CaptureState.empty : CaptureState.failed;
         _problem = f.problem;
         _message = f.message;
       });
@@ -270,29 +270,30 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
 
   CaptureThumbnail _tile(VerificationDocumentSide side) {
     final st = _sides[side]!;
-    final selected = _selected == side;
     final captured = st.state != CaptureState.empty;
-    final stateWords = st.rejected && !captured ? 'not approved' : null;
+    final CaptureIssue? issue = st.tooLarge
+        ? CaptureIssue.tooLarge
+        : (st.rejected && !captured ? CaptureIssue.notApproved : null);
     return CaptureThumbnail(
       key: ValueKey('id-tile-${side.wire}'),
       state: st.state,
       image: st.photo?.image,
       label: side.label,
       aspectRatio: 1.4,
-      semanticLabel: [
-        'ID ${side.wire}',
-        ?stateWords,
-        if (selected) 'selected',
-      ].join(', '),
+      selected: _selected == side,
+      // The side stays readable on the photo (front/back not swapped).
+      showLabelOnPhoto: true,
+      issue: issue,
+      onRetake: issue == null ? null : () => _capture(side),
+      retakeLabel: OnboardIdCopy.retake,
+      semanticLabel: 'ID ${side.wire}',
       onTap: captured ? null : () => setState(() => _selected = side),
       onRemove: captured && st.state != CaptureState.uploading
           ? () => _capture(side)
           : null,
       removeLabel: OnboardIdCopy.retake,
       onRetry: st.state == CaptureState.failed
-          ? (st.tooLarge || st.photo == null
-                ? () => _capture(side)
-                : () => _upload(side))
+          ? (st.photo == null ? () => _capture(side) : () => _upload(side))
           : null,
     );
   }
@@ -348,18 +349,12 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
                       ],
                     ),
                   ),
-                  if (selected != null && !_bothUploaded) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                      child: Text(
-                        OnboardIdCopy.sideLine(selected),
-                        style: NitumeTextStyles.rowTitle.copyWith(fontSize: 13),
-                      ),
-                    ),
+                  if (selected != null && !_bothUploaded)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                       child: CaptureDropZone(
                         key: const ValueKey('id-drop-zone'),
+                        title: OnboardIdCopy.sideLine(selected),
                         caption: OnboardIdCopy.dropZone,
                         icon: Icons.add_photo_alternate_outlined,
                         busy: uploading,
@@ -368,7 +363,6 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
                         onPick: () => _capture(selected),
                       ),
                     ),
-                  ],
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
                     child: Text(
@@ -382,7 +376,7 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
                   ),
                 ],
               ),
-        bottomNavigationBar: FixedCta(
+        bottomNavigationBar: NitumeFixedCta(
           child: NitumeButton.primary(
             label: OnboardIdCopy.cta,
             expand: true,

@@ -41,6 +41,7 @@ abstract final class CaptureCopy {
 
 /// `This photo is larger than 10 MB. …` with `10 MB` in Fira Code.
 NitumeNotice tooLargeNotice({required String tail}) => NitumeNotice(
+  tone: NitumeNoticeTone.danger,
   message: '${CaptureCopy.tooLargeLead}${CaptureCopy.tooLargeSize}$tail',
   richMessage: TextSpan(
     children: [
