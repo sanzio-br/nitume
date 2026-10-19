@@ -799,3 +799,52 @@ Spec-only update; no screen re-audited. API state and items: `runner-gap-report.
 ### Questions for the owner (new)
 - Row 234 (new, open): no admin feed item after the admin's PAYMENT_CONFIRMED `Expire task` (design-auditor reading of row 232; recommended none).
 - Row 233 is still open.
+
+## Re-audit 2026-10-19: admin findings 26, 30, 31 (`fix/angular-admin-round-12` @ `cdf8fc7`)
+
+Commits `7d89a90`, `16254b9`, `84c68fa`, `b530093`, `cdf8fc7`. New files: `drawers/task-offer.ts`, `task-offer.section.ts`, `expire-task-dialog.ts`, `runner-picker.ts`. Specs: `drawer-task-offer.md` (round 13), `_shared.md`, design system.
+
+Build health:
+- `ng test`: 27 files, 250 tests pass.
+- `tsc -p tsconfig.app.json`: clean.
+- No hex values or font families outside the token layer. The new `.dt-actor` uses `var(--nitume-font-ui)`; the new SCSS uses only `--nitume-*` tokens.
+
+### Finding 26: `Expire task — no runner available`: PASS
+- Shown only on `canExpire.noRunner` with RUNNER_ASSIGNED, as an outline button (A-07).
+- Dialog (A-08):
+  - Title `Expire this task?` and the body as specced.
+  - Reason required, 10–500 after trimming. Counter `{n}/500`, plain hint, `Enter at least 10 characters.` on blur. `Expire task` enabled only when valid.
+- Errors:
+  - 409 `expiry_not_allowed` copy by `reason`, with `This task changed. Check the latest offer.` otherwise; 409 others reload.
+  - 400 `expiry_reason_invalid` shows the field error.
+  - 403 and generic errors show in the dialog.
+- Result: `Task expired.`, reload, then **Expired by ops** with `Expired by`, `Expired at`, `Reason`, `Runners tried` (Fira Code values), the caption, and the refund line and link when the review exists.
+- History caption: `Admin · {name}` (row 232: no feed item is expected, and none is sent).
+
+### Finding 30: decline reason labels: PASS
+- `Declined` card shows the pending chip, `Offered at`, `Declined`, `Reason` (all four row-210 labels plus `No reason given`), and the caption.
+- The card is hidden once the deadline has passed (row 185 precedence).
+
+### Finding 31: offline runners group: PASS
+- `Show offline runners ({n})` is a collapsed, selectable group (row 228), using an A-07 text button with `aria-expanded`. `{n}` is in Fira Code, taken from `offlineCount`.
+- Offline rows carry an info chip `Offline`, are read as `{name}, offline`, and show the selection caption.
+- Online rows come first. The empty-list copy is shown. Busy runners are not listed (the API leaves them out).
+- Selection uses green only for the checked radio and the checked border (checked state), which the design system allows.
+
+### Rulings on the builder's notes
+1. **Cut-down `Runner` section** (only Declined and Expired by ops): accepted as an interim step. Findings 16, 21 and 24 stay **blockers**. A side effect: a RUNNER_ASSIGNED task whose offer **ended** and that `canExpire.noRunner` allows shows the expire button with no state line. **m-14 (minor)**: when finding 16 is built, do the `Offer ended` state first. Until then this is tolerated, because the server guard decides whether the task can be expired.
+   - The runner row (avatar, name, caption) is also missing from the Declined card. That is part of finding 16.
+2. **`View refund review` opens the refund drawer directly**: accepted. The spec is updated (one `expired_after_payment` review per task; `p-refunds` has no task filter).
+3. **The refund sentence always shows in the RUNNER_ASSIGNED expire dialog**: accepted. Every RUNNER_ASSIGNED task has passed PAYMENT_CONFIRMED (§3.3). The spec is updated.
+4. **Builder copy**: all accepted and added to the spec as proposed copy.
+   - `Couldn't load runners. Try again.`
+   - The candidate caption `{rating} · {n} tasks · {d} km`.
+   - The existing `This task changed while you were editing. Showing the latest.` on a 409/404 from the candidates read.
+   - `Admin` as the `Expired by` fallback.
+5. **The assign dialog keeps the PAYMENT_CONFIRMED wording** and **leaves out tried and over-limit runners instead of greying them**: accepted for now.
+   - Finding 17 (`Offer sent to {runner}.`) stays open.
+   - Findings 21 and 25 (greyed `Already offered` and over-limit rows with their reason) stay open. Leaving those runners out is safe, because the API refuses them anyway.
+6. **`limit=100` without paging, `({n})` from `offlineCount`**: accepted for MVP pools; recorded in the spec. Revisit if any pool goes over 100.
+
+### Verdict
+**PASS** for findings 26, 30 and 31 (closed). New minor m-14 (with finding 16). Still open for `drawer-task-offer`: 16, 17, 21, 24, 25, 29, 32 (and 27 folded into 29). Status stays `partial`.
