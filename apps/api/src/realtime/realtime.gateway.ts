@@ -16,21 +16,30 @@ import { ErrandStatus, UserRole, UserStatus } from '../common/enums';
 import {
   ErrandsService,
   MerchantDetailsUpdatedEvent,
+  OfferMadeEvent,
+  OfferWithdrawnEvent,
   QuoteReissuedEvent,
   QuoteRequestedEvent,
 } from '../errands/errands.service';
+import { LocationIngestService } from '../location/location-ingest.service';
 import { MerchantDetailsChangedEvent } from '../payments/payment-events';
+import { RunnersService } from '../runners/runners.service';
 import { UsersService } from '../users/users.service';
 import {
   ADMIN_ROOM,
   DomainEvent,
   EvidenceUploadedEvent,
+  JobOfferedPayload,
+  JobOfferWithdrawnPayload,
   JoinAck,
+  LocationPingAck,
   LocationUpdatePayload,
+  PriceChangeDecidedEvent,
   PriceChangeRequestedEvent,
   SocketClientEvent,
   SocketServerEvent,
   errandRoom,
+  runnerRoom,
 } from './realtime.events';
 
 interface StatusChangedEvent {
@@ -42,6 +51,8 @@ interface StatusChangedEvent {
 
 interface SocketData {
   user?: AuthContext;
+  /** Set on connect for a runner with a profile (RA-5 room). */
+  runnerProfileId?: string;
 }
 
 type AuthedSocket = Socket<
@@ -74,6 +85,8 @@ export class RealtimeGateway implements OnGatewayConnection {
     private readonly config: ConfigService,
     private readonly users: UsersService,
     private readonly errands: ErrandsService,
+    private readonly runners: RunnersService,
+    private readonly location: LocationIngestService,
   ) {}
 
   async handleConnection(client: AuthedSocket): Promise<void> {
@@ -85,6 +98,16 @@ export class RealtimeGateway implements OnGatewayConnection {
     client.data.user = user;
     if (user.role === UserRole.ADMIN) {
       await client.join(ADMIN_ROOM);
+    }
+    if (user.role === UserRole.RUNNER) {
+      // RA-5, row 139: the runner room comes from the JWT, never the client.
+      try {
+        const profile = await this.runners.profileByUserId(user.userId);
+        client.data.runnerProfileId = profile.id;
+        await client.join(runnerRoom(profile.id));
+      } catch (err) {
+        this.logger.warn(`Runner ${user.userId} connected without a runner room: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
@@ -126,14 +149,30 @@ export class RealtimeGateway implements OnGatewayConnection {
   }
 
   /**
-   * §4.2 live position push. Producer (runner `location:ping`) not built yet.
-   * Row 183: the errand room includes the customer, so the producer must
-   * only emit once the runner's assignment is `accepted` (RUNNER_EN_ROUTE
-   * onward), never for an open offer.
+   * RA-4, §4.2: runner position. Ack `LocationPingAck`. The intake accepts
+   * job pings only from the runner on the accepted assignment while the job
+   * is RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS, so the customer never sees
+   * an open offer's runner (row 183).
+   */
+  @SubscribeMessage(SocketClientEvent.LOCATION_PING)
+  async locationPing(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() body: unknown,
+  ): Promise<LocationPingAck> {
+    if (!client.data.user) {
+      return { ok: false, error: 'unauthenticated' };
+    }
+    return this.location.ingest(client.data.user, body);
+  }
+
+  /**
+   * §4.2 live position push to `errand:{id}` and the admins' live map
+   * (`admins`, §4.2 `admin:live-map`), fed by the Redis fan-out
+   * (`LocationRelay`).
    */
   emitLocationUpdate(payload: LocationUpdatePayload): void {
     this.server
-      ?.to(errandRoom(payload.errandId))
+      ?.to([errandRoom(payload.errandId), ADMIN_ROOM])
       .emit(SocketServerEvent.LOCATION_UPDATE, payload);
   }
 
@@ -228,6 +267,48 @@ export class RealtimeGateway implements OnGatewayConnection {
       );
     }
     return removed;
+  }
+
+  /** RA-5: `job:offered` to the offered runner's own room. */
+  @OnEvent(DomainEvent.OFFER_MADE)
+  onOfferMade(event: OfferMadeEvent): void {
+    const payload: JobOfferedPayload = {
+      errandId: event.errandId,
+      assignmentId: event.assignmentId,
+      offerExpiresAt: event.offerExpiresAt,
+      offeredAt: event.offeredAt,
+    };
+    this.server?.to(runnerRoom(event.runnerProfileId)).emit(SocketServerEvent.JOB_OFFERED, payload);
+  }
+
+  /** RA-5: `job:offer_withdrawn` (lapse, deadline, decline, admin cancel). */
+  @OnEvent(DomainEvent.OFFER_WITHDRAWN)
+  onOfferWithdrawn(event: OfferWithdrawnEvent): void {
+    const payload: JobOfferWithdrawnPayload = {
+      errandId: event.errandId,
+      assignmentId: event.assignmentId,
+      reason: event.reason,
+      at: event.at,
+    };
+    this.server?.to(runnerRoom(event.runnerProfileId)).emit(SocketServerEvent.JOB_OFFER_WITHDRAWN, payload);
+  }
+
+  /**
+   * RA-5: `price_change:decided` to the errand room and the current
+   * runner's room (one delivery per socket). Never throws.
+   */
+  @OnEvent(DomainEvent.PRICE_CHANGE_DECIDED, { async: true })
+  async onPriceChangeDecided(event: PriceChangeDecidedEvent): Promise<void> {
+    const rooms = [errandRoom(event.errandId)];
+    try {
+      const holder = await this.errands.activeAssignmentFor(event.errandId);
+      if (holder) {
+        rooms.push(runnerRoom(holder.runnerProfileId));
+      }
+    } catch (err) {
+      this.logger.warn(`price_change:decided without the runner room: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    this.server?.to(rooms).emit(SocketServerEvent.PRICE_CHANGE_DECIDED, event);
   }
 
   /** Merchant details changed after a merchant-direct payment started (row 80). */
