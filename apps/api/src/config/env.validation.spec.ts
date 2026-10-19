@@ -135,3 +135,12 @@ describe('REDIS_KEY_PREFIX (row 224)', () => {
     }
   });
 });
+
+describe('ERRANDS_DEFAULT_DEADLINE_HOURS (row 221)', () => {
+  it('must be a positive number of hours', () => {
+    expect(() => validateEnv({ NODE_ENV: 'development', ERRANDS_DEFAULT_DEADLINE_HOURS: '24' })).not.toThrow();
+    for (const bad of ['0', '-1', 'soon']) {
+      expect(() => validateEnv({ NODE_ENV: 'development', ERRANDS_DEFAULT_DEADLINE_HOURS: bad })).toThrow(/ERRANDS_DEFAULT_DEADLINE_HOURS/);
+    }
+  });
+});

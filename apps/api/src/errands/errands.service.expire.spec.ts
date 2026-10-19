@@ -11,7 +11,8 @@ const ADMIN = { type: StatusHistoryActor.ADMIN, id: 'admin-1' };
 const REASON = '  No runner works this area on Sundays.  ';
 
 const build = (status: ErrandStatus, assignments: Partial<ErrandAssignment>[] = [], opts: { eligible?: number | null } = {}) => {
-  const errand = { id: 'e-1', reference: 'NT-1', customerId: 'c-1', status, deadlineAt: null } as Errand;
+  // A null deadline stands for a legacy row (before 1790103300000); the code still copes.
+  const errand = { id: 'e-1', reference: 'NT-1', customerId: 'c-1', status, deadlineAt: null } as unknown as Errand;
   const rows = assignments.map((a, i) => ({
     id: `a-${i + 1}`,
     errandId: 'e-1',

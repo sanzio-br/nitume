@@ -469,7 +469,7 @@ export const RUNNER_ACTIVE_JOB_STATES: ReadonlySet<ErrandStatus> = new Set([
 ]);
 
 /** Row 185: the task's customer deadline has passed (deadlineAt null = no deadline). */
-export const deadlinePassed = (errand: Pick<Errand, 'deadlineAt'>, now: Date = new Date()): boolean =>
+export const deadlinePassed = (errand: { deadlineAt: Date | null }, now: Date = new Date()): boolean =>
   !!errand.deadlineAt && errand.deadlineAt.getTime() <= now.getTime();
 
 const deadlinePassedFor = (e: Pick<Errand, 'status' | 'deadlineAt'>): boolean =>
@@ -487,7 +487,7 @@ const ASSIGNABLE_STATUSES: ReadonlySet<ErrandStatus> = new Set([
  * task's `deadlineAt` when that comes first. No deadline: the full window.
  */
 export const offerExpiryFor = (
-  errand: Pick<Errand, 'deadlineAt'> | null | undefined,
+  errand: { deadlineAt: Date | null } | null | undefined,
   windowSeconds: number,
   now: Date = new Date(),
 ): Date => {
@@ -598,6 +598,11 @@ export class ErrandsService {
     @Optional() private readonly users?: UsersService,
   ) {}
 
+  /** Row 221: hours from creation to the default deadline (`errands.defaultDeadlineHours`, 24). */
+  defaultDeadlineHours(): number {
+    return this.config?.get<number>('errands.defaultDeadlineHours', 24) ?? 24;
+  }
+
   private urgencyThresholds() {
     return {
       urgentWithinHours: this.config?.get<number>('errands.urgentWithinHours', 4) ?? 4,
@@ -610,8 +615,11 @@ export class ErrandsService {
     dto: CreateErrandDto,
     actor: ActorReference,
   ): Promise<{ errand: ErrandView; history: ErrandStatusHistory }> {
-    const deadlineAt = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
-    assertDeadlineInFuture(deadlineAt);
+    // Rows 206, 221: every task has a deadline. A client deadline must be in
+    // the future; without one it is now + the default (24 h).
+    const given = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
+    assertDeadlineInFuture(given);
+    const deadlineAt = given ?? new Date(Date.now() + this.defaultDeadlineHours() * 3_600_000);
     assertLocationsFit(
       dto.category,
       dto.locations.map((l) => l.pointType),

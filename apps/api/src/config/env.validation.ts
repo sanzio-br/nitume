@@ -26,6 +26,11 @@ export const validateEnv = (env: Record<string, unknown>): Record<string, unknow
   if (keyPrefix !== undefined && !/^[a-z0-9_]+:$/.test(keyPrefix)) {
     throw new Error(`REDIS_KEY_PREFIX must be lowercase letters, digits or _ followed by ':' (got '${keyPrefix}')`);
   }
+  // Row 221: the default task deadline is a positive number of hours.
+  const deadlineHours = str(env.ERRANDS_DEFAULT_DEADLINE_HOURS);
+  if (deadlineHours !== undefined && !(Number.parseFloat(deadlineHours) > 0)) {
+    throw new Error(`ERRANDS_DEFAULT_DEADLINE_HOURS must be a positive number of hours (got '${deadlineHours}')`);
+  }
   // Row 83: every quote gets an expiry; a bad TTL would store Invalid Date.
   const ttl = str(env.QUOTES_DEFAULT_TTL_HOURS);
   if (ttl !== undefined && !(Number.parseFloat(ttl) > 0)) {

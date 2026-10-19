@@ -74,6 +74,17 @@ export class ErrandsController {
     );
   }
 
+  /**
+   * Row 221: task defaults clients show but never hard-code.
+   * `defaultDeadlineHours`: without a `deadlineAt` on create, the task's
+   * deadline is creation time + this many hours (24); the customer
+   * `Flexible` caption reads it.
+   */
+  @Get('defaults')
+  defaults(): { defaultDeadlineHours: number } {
+    return { defaultDeadlineHours: this.errands.defaultDeadlineHours() };
+  }
+
   /** Count of errands visible to the caller (e.g. customer profile "Tasks"). */
   @Get('count')
   count(

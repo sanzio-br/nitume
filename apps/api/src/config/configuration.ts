@@ -62,6 +62,8 @@ export interface AppConfig {
     urgentWithinHours: number;
     scheduledAfterHours: number;
     disputeWindowHours: number;
+    /** Row 221: deadlineAt = creation + this many hours when the customer gives none. */
+    defaultDeadlineHours: number;
   };
   runnerVerification: {
     /** console | cloudinary (defaults to the evidence driver: same provider, own folder). */
@@ -287,6 +289,10 @@ export const configuration = (): AppConfig => ({
   errands: {
     urgentWithinHours: Number.parseFloat(process.env.ERRANDS_URGENT_WITHIN_HOURS ?? '4'),
     scheduledAfterHours: Number.parseFloat(process.env.ERRANDS_SCHEDULED_AFTER_HOURS ?? '72'),
+    // Row 221 (owner, 2026-10-19): every task has a deadline; without one from
+    // the customer it is creation time + 24 h. Read by clients through
+    // GET /errands/defaults, never hard-coded in an app.
+    defaultDeadlineHours: Number.parseFloat(process.env.ERRANDS_DEFAULT_DEADLINE_HOURS ?? '24'),
     // TODO(owner): dispute window length is not defined anywhere. After it,
     // the system moves COMPLETED -> CONFIRMED (payout eligibility).
     disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
