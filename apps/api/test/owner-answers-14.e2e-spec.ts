@@ -243,7 +243,10 @@ describe('Owner answers round 14 (e2e)', () => {
         .expect(422);
       const told = await feedRows(customer.id, 'service_area.outside', requested.id);
       expect(told).toHaveLength(1);
-      expect(told[0]).toMatchObject({ title: 'Outside our service area' });
+      expect(told[0]).toMatchObject({
+        title: "We can't take this task",
+        body: "Its location is outside the areas we serve. You can cancel it; you haven't paid anything.",
+      });
       await new Promise((r) => setTimeout(r, 1_500));
       const count = async (errandId: string) =>
         Number(

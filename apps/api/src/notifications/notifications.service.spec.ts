@@ -602,12 +602,12 @@ describe('assignment_declined with the row-210 reasons', () => {
   });
 });
 
-describe('outside_service_area customer item (row 236, copy proposed)', () => {
-  it('has customer copy with the reference', () => {
+describe('outside_service_area customer item (rows 236, 241)', () => {
+  it('has the row-241 owner copy', () => {
     expect(copyFor({ kind: 'outside_service_area', errandId: 'e-1', reference: 'NT-7' })).toEqual({
       eventType: 'service_area.outside',
-      title: 'Outside our service area',
-      body: "We can't take NT-7: its location is outside the areas we serve. You can cancel this task, or create a new one with a location inside a service area.",
+      title: "We can't take this task",
+      body: "Its location is outside the areas we serve. You can cancel it; you haven't paid anything.",
     });
   });
 

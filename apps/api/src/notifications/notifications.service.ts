@@ -554,12 +554,12 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         title: 'Deadline passed',
         body: `The customer's deadline for ${job.reference} passed before any runner accepted. The task has expired.`,
       };
-    // Row 236. Copy PROPOSED (api-contract, not yet approved by the owner).
+    // Row 236; owner copy, row 241.
     case 'outside_service_area':
       return {
         eventType: NotificationEventType.OUTSIDE_SERVICE_AREA,
-        title: 'Outside our service area',
-        body: `We can't take ${job.reference}: its location is outside the areas we serve. You can cancel this task, or create a new one with a location inside a service area.`,
+        title: "We can't take this task",
+        body: "Its location is outside the areas we serve. You can cancel it; you haven't paid anything.",
       };
     // Owner copy, row 220 (the task has not expired, so row 216's body does not fit).
     case 'paid_deadline_passed':
