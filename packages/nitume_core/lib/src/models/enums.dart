@@ -482,6 +482,15 @@ enum NotificationEventType {
   /// `AppNotification.announcedStatus` (gives [ErrandStatus.expired]).
   static const errandExpiredWire = 'errand.EXPIRED';
 
+  /// `service_area.outside` (rows 236, 241): the task was refused at quote
+  /// because its location is inside no service area; the customer may
+  /// cancel. Opens `x-awaiting-quote`. Like [errandExpiredWire] it is not an
+  /// enum value (that would break the apps' exhaustive switches), so
+  /// [tryFromWire] gives `null`; check `AppNotification.isOutsideServiceArea`
+  /// before switching on `AppNotification.event`. The feed shows the API's
+  /// title and body as sent.
+  static const outsideServiceAreaWire = 'service_area.outside';
+
   /// The errand state the notification announces; `null` for non-status
   /// events (price change, refund).
   final ErrandStatus? status;
