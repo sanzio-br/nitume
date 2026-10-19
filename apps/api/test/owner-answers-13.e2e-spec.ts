@@ -315,20 +315,11 @@ describe('Owner answers round 13 (e2e)', () => {
     });
   });
 
-  describe('rows 206, 221: every task has a deadline', () => {
-    it('defaults to creation + defaultDeadlineHours and exposes the default', async () => {
+  describe('rows 206, 221 (round 14: rows 235, 239 moved the default to payment)', () => {
+    it('a customer deadline is kept; a past one is refused; the defaults read names the clock start', async () => {
       const customer = await makeUser(UserRole.CUSTOMER);
       const defaults = await http().get('/api/v1/errands/defaults').set(bearer(customer.token)).expect(200);
-      expect(defaults.body).toEqual({ defaultDeadlineHours: 24 });
-      const errand = await createErrand(customer);
-      const [row]: { createdAt: Date; deadlineAt: Date; urgency: string }[] = await db().query(
-        'SELECT "createdAt", "deadlineAt", urgency::text AS urgency FROM "errands" WHERE id = $1',
-        [errand.id],
-      );
-      const hours = (new Date(row.deadlineAt).getTime() - new Date(row.createdAt).getTime()) / 3_600_000;
-      expect(hours).toBeGreaterThan(23.99);
-      expect(hours).toBeLessThan(24.01);
-      expect(row.urgency).toBe('standard');
+      expect(defaults.body).toEqual({ defaultDeadlineHours: 24, defaultDeadlineStartsAt: 'payment_confirmed' });
       const given = new Date(Date.now() + 5 * 3_600_000).toISOString();
       const own = await createErrand(customer, { deadlineAt: given });
       const [ownRow]: { deadlineAt: Date }[] = await db().query('SELECT "deadlineAt" FROM "errands" WHERE id = $1', [own.id]);
@@ -344,10 +335,6 @@ describe('Owner answers round 13 (e2e)', () => {
         })
         .expect(400);
       expect(past.body.code).toBe('deadline_in_past');
-      const [{ nullable }]: { nullable: string }[] = await db().query(
-        `SELECT is_nullable AS nullable FROM information_schema.columns WHERE table_name = 'errands' AND column_name = 'deadlineAt'`,
-      );
-      expect(nullable).toBe('NO');
     });
   });
 

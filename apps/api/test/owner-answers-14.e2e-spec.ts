@@ -315,4 +315,71 @@ describe('Owner answers round 14 (e2e)', () => {
       expect(late.body).toMatchObject({ code: 'deadline_not_editable', status: 'PAYMENT_CONFIRMED' });
     });
   });
+
+  describe('rows 235, 239: a Flexible task has no deadline until payment', () => {
+    const quoteAndAccept = async (customer: Actor, admin: Actor, errandId: string) => {
+      await http().post(`/api/v1/errands/${errandId}/submit`).set(bearer(customer.token)).expect(201);
+      await http()
+        .post(`/api/v1/errands/${errandId}/quote`)
+        .set(bearer(admin.token))
+        .send({ total: 1000, baseFee: 600, distanceFee: 400 })
+        .expect(201);
+      await http().patch(`/api/v1/errands/${errandId}/status`).set(bearer(customer.token)).send({ to: 'ACCEPTED' }).expect(200);
+    };
+
+    it('reads null everywhere before payment, pays days later, and gets payment time + 24 h', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const runner = await makeUser(UserRole.RUNNER);
+      const task = await createErrand(customer);
+
+      const own = await http().get(`/api/v1/errands/${task.id}`).set(bearer(customer.token)).expect(200);
+      expect(own.body).toMatchObject({ deadlineAt: null, urgency: 'standard' });
+      await quoteAndAccept(customer, admin, task.id);
+      // Customers never list their drafts; after submit it is listed with no deadline.
+      const list = await http().get('/api/v1/errands').set(bearer(customer.token)).expect(200);
+      expect((list.body.items as { id: string; deadlineAt: unknown }[]).find((e) => e.id === task.id)).toMatchObject({ deadlineAt: null });
+      const adminView = await http().get(`/api/v1/errands/${task.id}`).set(bearer(admin.token)).expect(200);
+      expect(adminView.body).toMatchObject({ status: 'ACCEPTED', deadlineAt: null, deadlinePassed: false, canExpire: { noRunner: false, deadlinePassed: false } });
+      const adminList = await http().get('/api/v1/errands').query({ status: 'ACCEPTED', limit: 100 }).set(bearer(admin.token)).expect(200);
+      expect((adminList.body.items as { id: string }[]).find((e) => e.id === task.id)).toMatchObject({ deadlineAt: null, deadlinePassed: false });
+
+      // Created three days ago: the clock had not started, so payment is not refused (row 237 applies to chosen deadlines only).
+      await db().query(`UPDATE "errands" SET "createdAt" = now() - interval '3 days' WHERE id = $1`, [task.id]);
+      const before = Date.now();
+      const init = await http().post(`/api/v1/payments/${task.id}/initiate`).set(bearer(customer.token)).send({}).expect(201);
+      await http().post('/api/v1/payments/mpesa/callback').send({ reference: init.body.reference, resultCode: 0 }).expect(201);
+      const paid = await http().get(`/api/v1/errands/${task.id}`).set(bearer(customer.token)).expect(200);
+      expect(paid.body).toMatchObject({ status: 'PAYMENT_CONFIRMED', urgency: 'standard' });
+      const hours = (new Date(paid.body.deadlineAt as string).getTime() - before) / 3_600_000;
+      expect(hours).toBeGreaterThan(23.99);
+      expect(hours).toBeLessThan(24.05);
+
+      // The runner reads the deadline on the offer.
+      await http().post(`/api/v1/errands/${task.id}/assign`).set(bearer(admin.token)).send({ runnerProfileId: runner.profileId }).expect(201);
+      const job = await http().get(`/api/v1/runners/me/jobs/${task.id}`).set(bearer(runner.token)).expect(200);
+      expect(job.body.deadlineAt).toBe(paid.body.deadlineAt);
+    });
+
+    it('a Flexible task cancelled before payment keeps no deadline', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const task = await createErrand(customer);
+      await quoteAndAccept(customer, admin, task.id);
+      await http().patch(`/api/v1/errands/${task.id}/status`).set(bearer(customer.token)).send({ to: 'CANCELLED' }).expect(200);
+      const [row]: { deadlineAt: Date | null; s: string }[] = await db().query(
+        'SELECT "deadlineAt", status::text AS s FROM "errands" WHERE id = $1',
+        [task.id],
+      );
+      expect(row).toEqual({ deadlineAt: null, s: 'CANCELLED' });
+    });
+
+    it('the database refuses a paid task without a deadline (CHECK)', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const task = await createErrand(customer);
+      await expect(db().query(`UPDATE "errands" SET status = 'PAYMENT_CONFIRMED' WHERE id = $1`, [task.id])).rejects.toThrow(
+        /CHK_errands_deadline_from_payment/,
+      );
+    });
+  });
 });
