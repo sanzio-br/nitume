@@ -517,6 +517,14 @@ const FIRST_POINT_ORDER: readonly string[] = [ErrandPointType.TASK_SITE, ErrandP
 export const firstPointOf = <T extends { pointType: string }>(points: readonly T[]): T | null =>
   [...points].sort((a, b) => FIRST_POINT_ORDER.indexOf(a.pointType) - FIRST_POINT_ORDER.indexOf(b.pointType))[0] ?? null;
 
+/** Row 237: before payment the customer may set a new deadline. */
+const DEADLINE_EDITABLE: ReadonlySet<ErrandStatus> = new Set([
+  ErrandStatus.DRAFT,
+  ErrandStatus.REQUESTED,
+  ErrandStatus.QUOTED,
+  ErrandStatus.ACCEPTED,
+]);
+
 /** States in which an admin may replace an expired quote (rows 46, 72). */
 const REQUOTABLE = new Set<ErrandStatus>([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]);
 
@@ -1224,14 +1232,24 @@ export class ErrandsService {
    * Owner customer edits the optional title. Not allowed once the errand is
    * in a terminal state.
    */
-  async updateTitle(
+  /**
+   * `PATCH /errands/:id` (owner customer or admin). Only the fields sent
+   * change: `title` (`null` clears it) and, row 237, `deadlineAt`.
+   * - `title`: any non-terminal status (409 `errand_closed`).
+   * - `deadlineAt`: the customer's new deadline after the old one passed
+   *   before payment (row 237), or any change before payment. Only in
+   *   DRAFT, REQUESTED, QUOTED or ACCEPTED (409 `deadline_not_editable`,
+   *   `status`); must be in the future (400 `deadline_in_past`); urgency is
+   *   derived again (row 51).
+   */
+  async updateErrand(
     errandId: string,
-    title: string | null,
+    patch: { title?: string | null; deadlineAt?: string },
     viewer: ViewerContext,
   ): Promise<ErrandView> {
     const errand = await this.getById(errandId, viewer);
     if (viewer.role !== UserRole.CUSTOMER && viewer.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Only the task owner can edit the title');
+      throw new ForbiddenException('Only the task owner can edit the task');
     }
     if (ErrandStateMachine.isTerminal(errand.status)) {
       throw new ApiError(
@@ -1240,9 +1258,27 @@ export class ErrandsService {
         `The task is ${errand.status} and can no longer be edited`,
       );
     }
-    await this.errands.update(errandId, { title: title && title.length > 0 ? title : null });
+    const changes: Partial<Pick<Errand, 'title' | 'deadlineAt' | 'urgency'>> = {};
+    if (patch.title !== undefined) {
+      changes.title = patch.title && patch.title.length > 0 ? patch.title : null;
+    }
+    if (patch.deadlineAt !== undefined) {
+      if (!DEADLINE_EDITABLE.has(errand.status)) {
+        throw new ApiError(HttpStatus.CONFLICT, 'deadline_not_editable', 'The deadline can only change before payment', {
+          status: errand.status,
+        });
+      }
+      const deadlineAt = new Date(patch.deadlineAt);
+      assertDeadlineInFuture(deadlineAt);
+      changes.deadlineAt = deadlineAt;
+      changes.urgency = deriveUrgency(deadlineAt, this.urgencyThresholds());
+    }
+    if (Object.keys(changes).length > 0) {
+      await this.errands.update(errandId, changes);
+    }
     return this.getDetail(errandId, viewer);
   }
+
 
   /**
    * Admin sets the merchant Till/Paybill details used by the merchant_direct

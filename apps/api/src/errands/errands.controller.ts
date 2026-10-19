@@ -106,7 +106,14 @@ export class ErrandsController {
     return this.errands.getDetail(id, { role: user.role, userId: user.userId });
   }
 
-  /** Owner customer (or admin) edits the optional title. */
+  /**
+   * Owner customer (or admin) edits the task: `{ title?, deadlineAt? }`;
+   * only the fields sent change (`title: null` clears the title).
+   * `deadlineAt` (row 237): before payment only (409 deadline_not_editable,
+   * `status`), in the future (400 deadline_in_past); this is how the
+   * customer answers 409 deadline_passed_before_payment. 409 errand_closed
+   * on a terminal task.
+   */
   @Patch(':id')
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
   update(
@@ -114,7 +121,7 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
     @Body() dto: UpdateErrandDto,
   ): Promise<ErrandView> {
-    return this.errands.updateTitle(id, dto.title ?? null, {
+    return this.errands.updateErrand(id, { title: dto.title, deadlineAt: dto.deadlineAt }, {
       role: user.role,
       userId: user.userId,
     });

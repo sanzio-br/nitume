@@ -18,6 +18,7 @@ import {
   Min,
   Matches,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import {
@@ -139,13 +140,18 @@ export class CreateErrandDto {
 }
 
 export class UpdateErrandDto {
-  /** New title; `null` clears it. */
+  /** New title; `null` clears it; omitted = unchanged. */
   @IsOptional()
   @Transform(trimString)
   @IsString()
   @MinLength(3)
   @MaxLength(120)
   title?: string | null;
+
+  /** Row 237: a new deadline before payment (ISO 8601, future). Cannot be cleared (null is refused). */
+  @ValidateIf((_o: unknown, v: unknown) => v !== undefined)
+  @IsISO8601({ strict: true })
+  deadlineAt?: string;
 }
 
 export class RunnerNotesDto {
