@@ -14,7 +14,7 @@ enum RunnerVerificationType {
   final String wire;
 
   /// `null` for values this build does not know.
-  static RunnerVerificationType? tryFromWire(String? v) {
+  static RunnerVerificationType? tryFromWire(Object? v) {
     for (final e in values) {
       if (e.wire == v) return e;
     }
@@ -64,14 +64,146 @@ enum VerificationStatus {
   }
 }
 
-/// The signed-in runner's own profile, `GET /runners/me`.
-///
-/// Today the API returns the raw `runner_profiles` row (RA-18 asks for a
-/// runner view). Only the fields the runner screens need are read; the
-/// trust score and stored location are deliberately not modelled.
-/// [shortName], [skills] and [serviceAreas] are read when the API adds them
-/// (RA-10, RA-18) and are `null` until then; never compute a short name on
-/// the client (row 40).
+/// One ops-configured service area (owner row 116), `{ id, name }`:
+/// `GET /runners/service-areas`, `RunnerMe.serviceAreas` and the reply of
+/// `PUT /runners/me/service-areas`. Send [id]; show [name].
+class ServiceAreaOption {
+  const ServiceAreaOption({required this.id, required this.name});
+
+  /// Stable slug the API stores and accepts.
+  final String id;
+
+  /// What people read.
+  final String name;
+
+  factory ServiceAreaOption.fromJson(Map<String, dynamic> json) =>
+      ServiceAreaOption(id: '${json['id']}', name: '${json['name']}');
+
+  /// Parses a wire list, skipping entries without an `id` or `name`. Never
+  /// throws; anything but a list gives an empty list.
+  static List<ServiceAreaOption> listFromJson(Object? value) {
+    if (value is! List) return const [];
+    return [
+      for (final e in value)
+        if (e is Map &&
+            parseOptionalString(e['id']) != null &&
+            parseOptionalString(e['name']) != null)
+          ServiceAreaOption.fromJson(e.cast<String, dynamic>()),
+    ];
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ServiceAreaOption && other.id == id && other.name == name;
+
+  @override
+  int get hashCode => Object.hash(id, name);
+
+  @override
+  String toString() => 'ServiceAreaOption($id, $name)';
+}
+
+/// State of one required verification check (RA-8): the newest record's
+/// review state, or [missing] when there is no record yet.
+enum VerificationCheckStatus {
+  approved('approved'),
+  pending('pending'),
+  rejected('rejected'),
+  missing('missing');
+
+  const VerificationCheckStatus(this.wire);
+  final String wire;
+
+  /// `null` for an absent or unknown value.
+  static VerificationCheckStatus? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
+/// One required check in [RunnerVerificationSummary.checks].
+class RunnerVerificationCheck {
+  const RunnerVerificationCheck({
+    required this.type,
+    required this.status,
+    this.side,
+  });
+
+  /// `null` when the API sends a type this build does not know.
+  final RunnerVerificationType? type;
+
+  /// `front` / `back` for the two ID images; `null` for other checks.
+  final VerificationDocumentSide? side;
+
+  /// An unknown status reads as [VerificationCheckStatus.missing] (never as
+  /// approved).
+  final VerificationCheckStatus status;
+
+  bool get isApproved => status == VerificationCheckStatus.approved;
+
+  factory RunnerVerificationCheck.fromJson(Map<String, dynamic> json) =>
+      RunnerVerificationCheck(
+        type: RunnerVerificationType.tryFromWire(json['type']),
+        side: VerificationDocumentSide.tryFromWire(json['side']),
+        status:
+            VerificationCheckStatus.tryFromWire(json['status']) ??
+            VerificationCheckStatus.missing,
+      );
+}
+
+/// `RunnerMe.verification` and the `verification` detail of a 403
+/// `runner_not_verified` (RA-8, row 126): the runner is [verified] only
+/// when every required check is approved. [checks] keeps the API's order
+/// (phone, ID front, ID back, selfie, payment identity).
+class RunnerVerificationSummary {
+  const RunnerVerificationSummary({
+    required this.verified,
+    this.checks = const [],
+  });
+
+  /// Not verified, no checks known (the API sent no summary).
+  static const unknown = RunnerVerificationSummary(verified: false);
+
+  /// As the API computed it; never derived on the client.
+  final bool verified;
+  final List<RunnerVerificationCheck> checks;
+
+  /// The check for [type] (and [side] for an ID image); `null` when absent.
+  RunnerVerificationCheck? checkFor(
+    RunnerVerificationType type, {
+    VerificationDocumentSide? side,
+  }) {
+    for (final c in checks) {
+      if (c.type == type && c.side == side) return c;
+    }
+    return null;
+  }
+
+  factory RunnerVerificationSummary.fromJson(Map<String, dynamic> json) {
+    final raw = json['checks'];
+    return RunnerVerificationSummary(
+      verified: json['verified'] == true,
+      checks: [
+        if (raw is List)
+          for (final c in raw)
+            if (c is Map)
+              RunnerVerificationCheck.fromJson(c.cast<String, dynamic>()),
+      ],
+    );
+  }
+
+  /// [unknown] when [value] is not a JSON object.
+  static RunnerVerificationSummary fromJsonOrUnknown(Object? value) =>
+      value is Map
+      ? RunnerVerificationSummary.fromJson(value.cast<String, dynamic>())
+      : unknown;
+}
+
+/// The signed-in runner's own view, `GET /runners/me` (`RunnerSelfView`,
+/// RA-18). Also returned by `PATCH /runners/me/availability`. No trust score
+/// or stored location.
 class RunnerMe {
   const RunnerMe({
     required this.id,
@@ -82,16 +214,28 @@ class RunnerMe {
     required this.errandsCompleted,
     required this.completionRate,
     required this.maxPurchaseAdvance,
-    this.lastPingAt,
+    this.displayName,
     this.shortName,
-    this.skills,
-    this.serviceAreas,
+    this.lastPingAt,
+    this.skills = const [],
+    this.serviceAreas = const [],
+    this.verification = RunnerVerificationSummary.unknown,
   });
 
   /// Runner profile id.
   final String id;
   final String userId;
+
+  /// The runner's name; `null` until set.
+  final String? displayName;
+
+  /// First name + last initial (`Kevin O.`), computed by the API (row 40);
+  /// `null` until a name is set. Never shorten [displayName] on the client.
+  final String? shortName;
   final VerificationLevel verificationLevel;
+
+  /// `online` | `offline` | `busy`. Busy is server-set while a job is active
+  /// (RA-20). An unknown value reads as offline.
   final RunnerAvailability availability;
 
   /// Decimal string (`"4.90"`); format with `formatRating`.
@@ -101,38 +245,47 @@ class RunnerMe {
   /// 0–100 decimal string (`"98.70"`).
   final String completionRate;
 
-  /// Largest purchase the runner may pay out of pocket (row 108), decimal
-  /// string in KES.
+  /// Largest purchase the runner may pay out of pocket (rows 108, 138),
+  /// decimal string in KES. Read-only for the runner.
   final String maxPurchaseAdvance;
   final DateTime? lastPingAt;
-  final String? shortName;
-  final List<RunnerSkill>? skills;
-  final List<String>? serviceAreas;
+
+  /// Category order; unknown values are skipped.
+  final List<RunnerSkill> skills;
+
+  /// Listed areas only, by name (row 116).
+  final List<ServiceAreaOption> serviceAreas;
+
+  /// Required checks (RA-8). Going online and accepting jobs need
+  /// [RunnerVerificationSummary.verified].
+  final RunnerVerificationSummary verification;
 
   bool get isOnline => availability == RunnerAvailability.online;
+  bool get isBusy => availability == RunnerAvailability.busy;
+  bool get isVerified => verification.verified;
 
-  factory RunnerMe.fromJson(Map<String, dynamic> json) {
-    final skills = json['skills'];
-    final areas = json['serviceAreas'];
-    return RunnerMe(
-      id: json['id'] as String,
-      userId: json['userId'] as String,
-      verificationLevel: VerificationLevel.fromWire(
-        json['verificationLevel'] as String,
-      ),
-      availability: RunnerAvailability.fromWire(json['availability'] as String),
-      avgRating: parseDecimalOrZero(json['avgRating']),
-      errandsCompleted: (json['errandsCompleted'] as num?)?.toInt() ?? 0,
-      completionRate: parseDecimalOrZero(json['completionRate']),
-      maxPurchaseAdvance: parseDecimalOrZero(json['maxPurchaseAdvance']),
-      lastPingAt: parseDate(json['lastPingAt']),
-      shortName: parseOptionalString(json['shortName']),
-      skills: skills is List
-          ? [for (final s in skills) RunnerSkill.fromWire('$s')]
-          : null,
-      serviceAreas: areas is List ? [for (final a in areas) '$a'] : null,
-    );
-  }
+  factory RunnerMe.fromJson(Map<String, dynamic> json) => RunnerMe(
+    id: json['id'] as String,
+    userId: json['userId'] as String,
+    displayName: parseOptionalString(json['displayName']),
+    shortName: parseOptionalString(json['shortName']),
+    verificationLevel: VerificationLevel.fromWire(
+      json['verificationLevel'] as String,
+    ),
+    availability:
+        RunnerAvailability.tryFromWire(json['availability']) ??
+        RunnerAvailability.offline,
+    avgRating: parseDecimalOrZero(json['avgRating']),
+    errandsCompleted: (json['errandsCompleted'] as num?)?.toInt() ?? 0,
+    completionRate: parseDecimalOrZero(json['completionRate']),
+    maxPurchaseAdvance: parseDecimalOrZero(json['maxPurchaseAdvance']),
+    lastPingAt: parseDate(json['lastPingAt']),
+    skills: RunnerSkill.listFromWire(json['skills']),
+    serviceAreas: ServiceAreaOption.listFromJson(json['serviceAreas']),
+    verification: RunnerVerificationSummary.fromJsonOrUnknown(
+      json['verification'],
+    ),
+  );
 }
 
 /// One verification record, `GET /runners/me/verifications` and the

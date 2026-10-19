@@ -74,10 +74,7 @@ class RunnerPublicProfile extends RunnerSummary {
       displayName: base.displayName,
       shortName: base.shortName,
       availability: RunnerAvailability.fromWire(json['availability'] as String),
-      skills: [
-        for (final s in (json['skills'] as List? ?? const []))
-          RunnerSkill.fromWire(s as String),
-      ],
+      skills: RunnerSkill.listFromWire(json['skills']),
       serviceAreas: [
         for (final a in (json['serviceAreas'] as List? ?? const [])) '$a',
       ],

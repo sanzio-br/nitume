@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../models/enums.dart';
+import '../models/runner_account.dart';
 
 /// A normalised API failure, safe to show to a user.
 ///
@@ -97,6 +98,67 @@ class NitumeApiException implements Exception {
     final v = details['offerExpiresAt'];
     return v is String ? DateTime.tryParse(v) : null;
   }
+
+  /// A list detail as strings (e.g. `unknown`, `refused`); `null` when
+  /// absent or not a list.
+  List<String>? stringListDetail(String key) {
+    final v = details[key];
+    return v is List ? [for (final e in v) '$e'] : null;
+  }
+
+  /// `verification` of an [ApiErrorCodes.runnerNotVerified] error: which
+  /// required checks are still missing, pending or rejected. `null` when
+  /// absent.
+  RunnerVerificationSummary? get verificationSummary {
+    final v = details['verification'];
+    return v is Map
+        ? RunnerVerificationSummary.fromJson(v.cast<String, dynamic>())
+        : null;
+  }
+
+  /// `refused` of an [ApiErrorCodes.skillNotOffered] error (unknown wire
+  /// values skipped); `null` when absent.
+  List<RunnerSkill>? get refusedSkills {
+    final v = details['refused'];
+    return v is List ? RunnerSkill.listFromWire(v) : null;
+  }
+
+  /// `unknown` of an [ApiErrorCodes.serviceAreaUnknown] error: the area ids
+  /// not on the ops list; `null` when absent.
+  List<String>? get unknownServiceAreas => stringListDetail('unknown');
+
+  /// `reason` detail, e.g. `task_deadline_passed` on
+  /// [ApiErrorCodes.offerExpired] or `not_verified` / `runner_busy` /
+  /// `over_purchase_limit` on [ApiErrorCodes.runnerNotEligible]; `null`
+  /// when absent.
+  String? get reasonDetail {
+    final v = details['reason'];
+    return v is String && v.isNotEmpty ? v : null;
+  }
+
+  /// `deadlineAt` (the task deadline) of an [ApiErrorCodes.offerExpired] or
+  /// [ApiErrorCodes.taskDeadlinePassed] error, when sent.
+  DateTime? get deadlineAt {
+    final v = details['deadlineAt'];
+    return v is String ? DateTime.tryParse(v) : null;
+  }
+
+  /// True when the task's own deadline has passed (row 185): an
+  /// [ApiErrorCodes.offerExpired] with reason
+  /// [ApiErrorCodes.offerExpiredReasonTaskDeadlinePassed], or an
+  /// [ApiErrorCodes.taskDeadlinePassed].
+  bool get isTaskDeadlinePassed =>
+      code == ApiErrorCodes.taskDeadlinePassed ||
+      (code == ApiErrorCodes.offerExpired &&
+          reasonDetail == ApiErrorCodes.offerExpiredReasonTaskDeadlinePassed);
+
+  /// `requiredPurchase` of an [ApiErrorCodes.purchaseLimitExceeded] or
+  /// [ApiErrorCodes.purchaseWithinLimit] error (KES decimal string).
+  String? get requiredPurchase => decimalDetail('requiredPurchase');
+
+  /// `maxPurchaseAdvance` of an [ApiErrorCodes.purchaseLimitExceeded] or
+  /// [ApiErrorCodes.purchaseWithinLimit] error (KES decimal string).
+  String? get maxPurchaseAdvance => decimalDetail('maxPurchaseAdvance');
 
   /// `from` of an [ApiErrorCodes.illegalTransition] error: the task's
   /// committed state; `null` when absent or unknown.
@@ -254,11 +316,17 @@ abstract final class ApiErrorCodes {
   /// the task.
   static const illegalTransition = 'illegal_transition';
 
-  /// Runner accept (RUNNER_ASSIGNED → RUNNER_EN_ROUTE) after the offer's
-  /// deadline (409, rows 141, 150), even before the task shows EXPIRED.
-  /// Details: `offerExpiresAt` ([NitumeApiException.offerExpiresAt]).
-  /// Remove the offer and reload.
+  /// Runner accept (RUNNER_ASSIGNED → RUNNER_EN_ROUTE) or decline after the
+  /// offer's deadline (409, rows 141, 150), even before the task shows
+  /// EXPIRED. Details: `offerExpiresAt` ([NitumeApiException.offerExpiresAt]).
+  /// On accept past the task's own deadline (row 185) also `reason`
+  /// [offerExpiredReasonTaskDeadlinePassed] and `deadlineAt`
+  /// ([NitumeApiException.isTaskDeadlinePassed],
+  /// [NitumeApiException.deadlineAt]). Remove the offer and reload.
   static const offerExpired = 'offer_expired';
+
+  /// `reason` of an [offerExpired] sent because the task's deadline passed.
+  static const offerExpiredReasonTaskDeadlinePassed = 'task_deadline_passed';
 
   /// Someone else changed the task at the same time; reload and retry (409).
   static const concurrentModification = 'concurrent_modification';
@@ -431,4 +499,63 @@ abstract final class ApiErrorCodes {
   /// ([NitumeApiException.maxBytes]). Older APIs send the 413 without this
   /// code; [NitumeApiException.isPayloadTooLarge] covers both.
   static const verificationDocumentTooLarge = 'verification_document_too_large';
+
+  /// `PATCH /runners/me/availability` with `busy` (400, RA-20): busy is set
+  /// by the server while the runner holds a job. Details: `allowed`.
+  static const availabilityServerManaged = 'availability_server_managed';
+
+  /// Going online, listing offers or accepting before every required check
+  /// is approved (403, RA-8, row 126). Details: `verification`
+  /// ([NitumeApiException.verificationSummary]).
+  static const runnerNotVerified = 'runner_not_verified';
+
+  /// `PATCH /runners/me/availability` `offline` while busy on a job (409,
+  /// RA-20). Finish the job first.
+  static const runnerOnActiveJob = 'runner_on_active_job';
+
+  /// `PUT /runners/me/skills` with a skill not offered in the MVP (400,
+  /// OA-18: Business Tasks). Details: `refused`
+  /// ([NitumeApiException.refusedSkills]), `allowed`.
+  static const skillNotOffered = 'skill_not_offered';
+
+  /// `PUT /runners/me/service-areas` with an id not on the ops list (400,
+  /// row 116). Details: `unknown`
+  /// ([NitumeApiException.unknownServiceAreas]). Reload the list.
+  static const serviceAreaUnknown = 'service_area_unknown';
+
+  /// Accepting while already on a job (409, RA-20: one active job at a
+  /// time).
+  static const runnerBusy = 'runner_busy';
+
+  /// Accepting while offline (409, RA-8). Go online first.
+  static const runnerOffline = 'runner_offline';
+
+  /// Accepting an offer whose required purchase is above the runner's limit
+  /// (409, rows 113, 186). Details: `requiredPurchase`, `maxPurchaseAdvance`
+  /// ([NitumeApiException.requiredPurchase],
+  /// [NitumeApiException.maxPurchaseAdvance]). Offer the over-limit decline.
+  static const purchaseLimitExceeded = 'purchase_limit_exceeded';
+
+  /// `POST /errands/:id/decline` with an unknown `reason` (400). Details:
+  /// `allowed`.
+  static const declineReasonInvalid = 'decline_reason_invalid';
+
+  /// Over-limit decline while the purchase is within the limit (409, row
+  /// 108). Details: `requiredPurchase`, `maxPurchaseAdvance`.
+  static const purchaseWithinLimit = 'purchase_within_limit';
+
+  /// Declining after the task left RUNNER_ASSIGNED (409). Details: `status`.
+  /// Reload the job.
+  static const assignmentNotDeclinable = 'assignment_not_declinable';
+
+  /// Admin assign to a runner who cannot take the task (409, rows 126, 186,
+  /// 187). Details: `reason` ([NitumeApiException.reasonDetail]:
+  /// `not_verified`, `runner_busy`, `over_purchase_limit`),
+  /// `runnerProfileId`, and for the limit `requiredPurchase`,
+  /// `maxPurchaseAdvance`.
+  static const runnerNotEligible = 'runner_not_eligible';
+
+  /// Offering or reassigning a RUNNER_ASSIGNED task past its deadline (409,
+  /// row 185). Details: `deadlineAt` ([NitumeApiException.deadlineAt]).
+  static const taskDeadlinePassed = 'task_deadline_passed';
 }

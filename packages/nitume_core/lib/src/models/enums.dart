@@ -213,21 +213,67 @@ enum RunnerAvailability {
 
   static RunnerAvailability fromWire(String v) =>
       _fromWire(values, (e) => e.wire, v);
+
+  /// `null` for an absent or unknown value.
+  static RunnerAvailability? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
 }
 
+/// A runner skill = one of the six task categories (owner row 115). Same
+/// wire values as [ErrandCategory], in category order; [label] is the
+/// category display name.
 enum RunnerSkill {
-  shopping('shopping'),
-  pickupDelivery('pickup_delivery'),
-  inspection('inspection'),
-  documents('documents'),
-  propertyVisits('property_visits'),
-  queuing('queuing'),
-  businessErrands('business_errands');
+  buyForMe(ErrandCategory.buyForMe),
+  getItForMe(ErrandCategory.getItForMe),
+  checkItForMe(ErrandCategory.checkItForMe),
+  goThereForMe(ErrandCategory.goThereForMe),
+  waitForMe(ErrandCategory.waitForMe),
+  businessTasks(ErrandCategory.businessTasks);
 
-  const RunnerSkill(this.wire);
-  final String wire;
+  const RunnerSkill(this.category);
 
-  static RunnerSkill fromWire(String v) => _fromWire(values, (e) => e.wire, v);
+  /// The task category this skill covers.
+  final ErrandCategory category;
+
+  /// Wire value (`buy_for_me`, `pickup_delivery`, ...).
+  String get wire => category.wire;
+
+  /// Display name (`Buy For Me`, ...).
+  String get label => category.label;
+
+  /// The skills a runner can pick in the MVP: every category except
+  /// Business Tasks (OA-18). `PUT /runners/me/skills` refuses the others
+  /// with `skill_not_offered`.
+  static const List<RunnerSkill> offered = [
+    buyForMe,
+    getItForMe,
+    checkItForMe,
+    goThereForMe,
+    waitForMe,
+  ];
+
+  /// `null` for an absent or unknown value; never throws.
+  static RunnerSkill? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+
+  /// Parses a wire list, skipping unknown values and duplicates, in
+  /// category order. Anything but a list gives an empty list. Never throws.
+  static List<RunnerSkill> listFromWire(Object? v) {
+    if (v is! List) return const [];
+    final found = {for (final s in v) ?tryFromWire(s)};
+    return [
+      for (final e in values)
+        if (found.contains(e)) e,
+    ];
+  }
 }
 
 /// How the merchant amount is paid. Three payment flows stay separate
@@ -263,7 +309,7 @@ enum MerchantRoute {
       _fromWire(values, (e) => e.wire, v);
 
   /// `null` for unknown values.
-  static MerchantRoute? tryFromWire(String? v) {
+  static MerchantRoute? tryFromWire(Object? v) {
     for (final e in values) {
       if (e.wire == v) return e;
     }
