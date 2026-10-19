@@ -18,6 +18,7 @@ import {
   Min,
   Matches,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import {
@@ -107,9 +108,10 @@ export class CreateErrandDto {
   budget?: number;
 
   /**
-   * Optional on the wire (rows 206, 221): without it the task's deadline is
-   * creation + `defaultDeadlineHours` (GET /errands/defaults). A past value
-   * is refused (400 deadline_in_past).
+   * Optional (rows 235, 239): without it ("Flexible") the task has no
+   * deadline until payment is confirmed, then payment time +
+   * `defaultDeadlineHours` (GET /errands/defaults). A past value is refused
+   * (400 deadline_in_past).
    */
   @IsOptional()
   @IsISO8601({ strict: true })
@@ -139,13 +141,21 @@ export class CreateErrandDto {
 }
 
 export class UpdateErrandDto {
-  /** New title; `null` clears it. */
+  /** New title; `null` clears it; omitted = unchanged. */
   @IsOptional()
   @Transform(trimString)
   @IsString()
   @MinLength(3)
   @MaxLength(120)
   title?: string | null;
+
+  /**
+   * Customer only (row 243). A new deadline before payment (ISO 8601,
+   * future; row 237), or `null` to switch back to Flexible (row 244).
+   */
+  @ValidateIf((_o: unknown, v: unknown) => v !== undefined && v !== null)
+  @IsISO8601({ strict: true })
+  deadlineAt?: string | null;
 }
 
 export class RunnerNotesDto {

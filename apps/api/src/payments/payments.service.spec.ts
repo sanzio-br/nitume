@@ -28,6 +28,8 @@ const build = (opts: {
   quoteNotAccepted?: boolean;
   /** Merchant Till/Paybill columns on the errand (row 43). */
   merchant?: Record<string, string | null>;
+  /** The errand's deadline (row 237). */
+  deadlineAt?: Date | null;
 } = {}) => {
   const payments = {
     findOne: vi.fn(({ where }: { where: Record<string, unknown> }) =>
@@ -74,6 +76,7 @@ const build = (opts: {
         quotedPrice: '1000.00',
         budget: opts.budget ?? '0.00',
         category: 'buy_for_me',
+        deadlineAt: opts.deadlineAt ?? null,
         ...opts.merchant,
       }),
     ),
@@ -130,6 +133,40 @@ describe('stkStatusOf', () => {
     expect(stkStatusOf({ status: PaymentStatus.FAILED, createdAt: at(1) }, 120, now)).toBe(
       StkStatus.FAILED,
     );
+  });
+});
+
+describe('PaymentsService.initiate after the deadline (row 237)', () => {
+  it('refuses a new payment once the deadline has passed (409 deadline_passed_before_payment), without pushing', async () => {
+    const deadlineAt = new Date(Date.now() - 60_000);
+    const { service, stk } = build({ deadlineAt });
+    const err = await service.initiate('e-1', user).catch((e: unknown) => e);
+    expect((err as ApiError).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: 'deadline_passed_before_payment',
+      deadlineAt: deadlineAt.toISOString(),
+    });
+    expect(stk.initiateStk).not.toHaveBeenCalled();
+  });
+
+  it('still answers a payment already started before the deadline', async () => {
+    const existing = { id: 'p-1', errandId: 'e-1', status: PaymentStatus.PENDING, createdAt: new Date(), paymentFlow: PaymentFlow.PLATFORM_ONLY };
+    const { service, stk } = build({ deadlineAt: new Date(Date.now() - 60_000), keyed: existing });
+    const res = await service.initiate('e-1', user, { idempotencyKey: 'key-12345678' });
+    expect(res.payment).toBe(existing);
+    expect(stk.initiateStk).not.toHaveBeenCalled();
+  });
+
+  it('never refuses a Flexible task: it has no deadline until payment (rows 235, 239)', async () => {
+    const { service, stk } = build({ deadlineAt: null });
+    await service.initiate('e-1', user);
+    expect(stk.initiateStk).toHaveBeenCalledTimes(1);
+  });
+
+  it('pays normally while the deadline is ahead', async () => {
+    const { service, stk } = build({ deadlineAt: new Date(Date.now() + 3_600_000) });
+    await service.initiate('e-1', user);
+    expect(stk.initiateStk).toHaveBeenCalledTimes(1);
   });
 });
 

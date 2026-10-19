@@ -75,14 +75,15 @@ export class ErrandsController {
   }
 
   /**
-   * Row 221: task defaults clients show but never hard-code.
-   * `defaultDeadlineHours`: without a `deadlineAt` on create, the task's
-   * deadline is creation time + this many hours (24); the customer
-   * `Flexible` caption reads it.
+   * Rows 221, 235, 239: task defaults clients show but never hard-code.
+   * Without a `deadlineAt` on create ("Flexible") the task has no deadline
+   * (`deadlineAt: null`) until payment is confirmed; then its deadline is
+   * that time + `defaultDeadlineHours` (24). `defaultDeadlineStartsAt` says
+   * when the clock starts, for the customer caption.
    */
   @Get('defaults')
-  defaults(): { defaultDeadlineHours: number } {
-    return { defaultDeadlineHours: this.errands.defaultDeadlineHours() };
+  defaults(): { defaultDeadlineHours: number; defaultDeadlineStartsAt: 'payment_confirmed' } {
+    return { defaultDeadlineHours: this.errands.defaultDeadlineHours(), defaultDeadlineStartsAt: 'payment_confirmed' };
   }
 
   /** Count of errands visible to the caller (e.g. customer profile "Tasks"). */
@@ -106,7 +107,15 @@ export class ErrandsController {
     return this.errands.getDetail(id, { role: user.role, userId: user.userId });
   }
 
-  /** Owner customer (or admin) edits the optional title. */
+  /**
+   * Owner customer (or admin) edits the task: `{ title?, deadlineAt? }`;
+   * only the fields sent change (`title: null` clears the title).
+   * `deadlineAt` is customer only (row 243; 403 deadline_customer_only):
+   * before payment only (409 deadline_not_editable, `status`); a date in
+   * the future (400 deadline_in_past), or `null` for Flexible (row 244).
+   * This is how the customer answers 409 deadline_passed_before_payment.
+   * 409 errand_closed on a terminal task.
+   */
   @Patch(':id')
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
   update(
@@ -114,7 +123,7 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
     @Body() dto: UpdateErrandDto,
   ): Promise<ErrandView> {
-    return this.errands.updateTitle(id, dto.title ?? null, {
+    return this.errands.updateErrand(id, { title: dto.title, deadlineAt: dto.deadlineAt }, {
       role: user.role,
       userId: user.userId,
     });

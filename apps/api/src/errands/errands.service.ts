@@ -20,6 +20,7 @@ import {
 } from 'typeorm';
 import {
   AssignmentDeclineReason,
+  ErrandPointType,
   ErrandStatus,
   GeoPoint,
   StatusHistoryActor,
@@ -391,6 +392,18 @@ export interface PaidTaskDeadlinePassedEvent {
   deadlineAt: string;
 }
 
+/**
+ * Row 236 (owner, 2026-10-19): a quote was refused because the task is
+ * inside no service area (row 233). The customer is told and may cancel;
+ * ops cannot cancel before payment (no new transition).
+ */
+export const OUTSIDE_SERVICE_AREA_EVENT = 'errand.outside_service_area';
+
+export interface OutsideServiceAreaEvent {
+  errandId: string;
+  reference: string;
+}
+
 /** History note of the row-185 expiry; also how `expiry.trigger` is recognised. */
 export const DEADLINE_EXPIRY_NOTE = 'Customer deadline passed';
 
@@ -510,6 +523,20 @@ const paidExpiryBlocker = (
   return deadlinePassed(errand, now) ? null : { reason: 'deadline_not_passed' };
 };
 
+/** Row 213: a task's first point is its task site, else pickup, else drop-off. */
+const FIRST_POINT_ORDER: readonly string[] = [ErrandPointType.TASK_SITE, ErrandPointType.PICKUP, ErrandPointType.DROPOFF];
+
+export const firstPointOf = <T extends { pointType: string }>(points: readonly T[]): T | null =>
+  [...points].sort((a, b) => FIRST_POINT_ORDER.indexOf(a.pointType) - FIRST_POINT_ORDER.indexOf(b.pointType))[0] ?? null;
+
+/** Row 237: before payment the customer may set a new deadline. */
+const DEADLINE_EDITABLE: ReadonlySet<ErrandStatus> = new Set([
+  ErrandStatus.DRAFT,
+  ErrandStatus.REQUESTED,
+  ErrandStatus.QUOTED,
+  ErrandStatus.ACCEPTED,
+]);
+
 /** States in which an admin may replace an expired quote (rows 46, 72). */
 const REQUOTABLE = new Set<ErrandStatus>([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]);
 
@@ -598,7 +625,31 @@ export class ErrandsService {
     @Optional() private readonly users?: UsersService,
   ) {}
 
-  /** Row 221: hours from creation to the default deadline (`errands.defaultDeadlineHours`, 24). */
+  /**
+   * Row 233 (owner, 2026-10-19): a task whose first point (task site, else
+   * pickup, else drop-off) is inside no configured service area is refused
+   * at create, submit and quote: 422 `location_outside_service_area`
+   * (`pointType`). Off while no area is configured.
+   */
+  private assertInServiceArea(points: readonly { pointType: string; lat: number; lng: number }[]): void {
+    const first = firstPointOf(points);
+    if (first && !this.runners.inServiceArea(first)) {
+      throw new ApiError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'location_outside_service_area',
+        "This location is outside the areas we serve. Choose a location inside a service area.",
+        { pointType: first.pointType },
+      );
+    }
+  }
+
+  /** The row-233 check on a stored task (submit, quote), inside the caller's transaction. */
+  private async assertStoredInServiceArea(manager: EntityManager, errandId: string): Promise<void> {
+    const rows = await manager.getRepository(ErrandLocation).find({ where: { errandId } });
+    this.assertInServiceArea(rows.map(toLocationView));
+  }
+
+  /** Rows 221, 235: hours from payment confirmation to a Flexible task's deadline (`errands.defaultDeadlineHours`, 24). */
   defaultDeadlineHours(): number {
     return this.config?.get<number>('errands.defaultDeadlineHours', 24) ?? 24;
   }
@@ -615,16 +666,17 @@ export class ErrandsService {
     dto: CreateErrandDto,
     actor: ActorReference,
   ): Promise<{ errand: ErrandView; history: ErrandStatusHistory }> {
-    // Rows 206, 221: every task has a deadline. A client deadline must be in
-    // the future; without one it is now + the default (24 h).
-    const given = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
-    assertDeadlineInFuture(given);
-    const deadlineAt = given ?? new Date(Date.now() + this.defaultDeadlineHours() * 3_600_000);
+    // Rows 235, 239: a client deadline must be in the future. Without one
+    // ("Flexible") the task has no deadline until payment confirmation, which
+    // sets payment time + the default (24 h).
+    const deadlineAt = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
+    assertDeadlineInFuture(deadlineAt);
     assertLocationsFit(
       dto.category,
       dto.locations.map((l) => l.pointType),
     );
     const budget = budgetFor(dto.category, dto.budget);
+    this.assertInServiceArea(dto.locations.map((l) => ({ pointType: l.pointType, lat: l.lat, lng: l.lon })));
     return this.inTx(async (manager) => {
       const profile = await manager
         .getRepository(CustomerProfile)
@@ -1192,14 +1244,26 @@ export class ErrandsService {
    * Owner customer edits the optional title. Not allowed once the errand is
    * in a terminal state.
    */
-  async updateTitle(
+  /**
+   * `PATCH /errands/:id` (owner customer or admin). Only the fields sent
+   * change: `title` (`null` clears it) and, row 237, `deadlineAt`.
+   * - `title`: any non-terminal status (409 `errand_closed`).
+   * - `deadlineAt`: customer only (row 243; 403 `deadline_customer_only`
+   *   for an admin). A new deadline after the old one passed before payment
+   *   (row 237), or any change before payment; `null` switches back to
+   *   Flexible (row 244). Only in DRAFT, REQUESTED, QUOTED or ACCEPTED (409
+   *   `deadline_not_editable`, `status`); a date must be in the future (400
+   *   `deadline_in_past`); urgency is derived again (row 51). The quote is
+   *   kept as it is (row 242).
+   */
+  async updateErrand(
     errandId: string,
-    title: string | null,
+    patch: { title?: string | null; deadlineAt?: string | null },
     viewer: ViewerContext,
   ): Promise<ErrandView> {
     const errand = await this.getById(errandId, viewer);
     if (viewer.role !== UserRole.CUSTOMER && viewer.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Only the task owner can edit the title');
+      throw new ForbiddenException('Only the task owner can edit the task');
     }
     if (ErrandStateMachine.isTerminal(errand.status)) {
       throw new ApiError(
@@ -1208,9 +1272,32 @@ export class ErrandsService {
         `The task is ${errand.status} and can no longer be edited`,
       );
     }
-    await this.errands.update(errandId, { title: title && title.length > 0 ? title : null });
+    const changes: Partial<Pick<Errand, 'title' | 'deadlineAt' | 'urgency'>> = {};
+    if (patch.title !== undefined) {
+      changes.title = patch.title && patch.title.length > 0 ? patch.title : null;
+    }
+    if (patch.deadlineAt !== undefined) {
+      // Row 243: the deadline is the customer's choice; admins cannot set it.
+      if (viewer.role !== UserRole.CUSTOMER) {
+        throw new ApiError(HttpStatus.FORBIDDEN, 'deadline_customer_only', 'Only the customer can change the deadline');
+      }
+      if (!DEADLINE_EDITABLE.has(errand.status)) {
+        throw new ApiError(HttpStatus.CONFLICT, 'deadline_not_editable', 'The deadline can only change before payment', {
+          status: errand.status,
+        });
+      }
+      // Row 244: null switches the task back to Flexible (its clock starts at payment).
+      const deadlineAt = patch.deadlineAt === null ? null : new Date(patch.deadlineAt);
+      assertDeadlineInFuture(deadlineAt);
+      changes.deadlineAt = deadlineAt;
+      changes.urgency = deriveUrgency(deadlineAt, this.urgencyThresholds());
+    }
+    if (Object.keys(changes).length > 0) {
+      await this.errands.update(errandId, changes);
+    }
     return this.getDetail(errandId, viewer);
   }
+
 
   /**
    * Admin sets the merchant Till/Paybill details used by the merchant_direct
@@ -1640,12 +1727,26 @@ export class ErrandsService {
         await this.runners.endJob(holder.runnerProfileId, manager);
       }
     }
+    // Row 233: a draft made before areas were configured (or changed) is refused at submit.
+    if (fromStatus === ErrandStatus.DRAFT && to === ErrandStatus.REQUESTED) {
+      await this.assertStoredInServiceArea(manager, errandId);
+    }
     let acceptedQuote: Quote | null = null;
     if (fromStatus === ErrandStatus.QUOTED && to === ErrandStatus.ACCEPTED) {
       acceptedQuote = await this.currentQuote(errandId, manager);
       assertQuoteCurrent(acceptedQuote);
     }
 
+    // Rows 235, 239 (owner, 2026-10-19): a "Flexible" task (no customer
+    // deadline, deadlineAt null) gets its default window from payment
+    // confirmation: now + errands.defaultDeadlineHours, in the same
+    // transaction as -> PAYMENT_CONFIRMED (the CHECK on errands requires a
+    // deadline from there on). Urgency is derived again from it. A deadline
+    // the customer chose is never moved.
+    if (to === ErrandStatus.PAYMENT_CONFIRMED && !errand.deadlineAt) {
+      errand.deadlineAt = new Date(Date.now() + this.defaultDeadlineHours() * 3_600_000);
+      errand.urgency = deriveUrgency(errand.deadlineAt, this.urgencyThresholds());
+    }
     errand.status = to;
     try {
       await manager.getRepository(Errand).save(errand);
@@ -2070,6 +2171,10 @@ export class ErrandsService {
         where: { id: errandId },
         lock: { mode: 'pessimistic_write' },
       });
+      // Row 233: no quote or re-quote for a task inside no service area.
+      if (current && (current.status === ErrandStatus.REQUESTED || REQUOTABLE.has(current.status))) {
+        await this.assertStoredInServiceArea(manager, errandId);
+      }
       if (current && REQUOTABLE.has(current.status)) {
         if (actor.type !== StatusHistoryActor.ADMIN && actor.type !== StatusHistoryActor.SYSTEM) {
           throw new ForbiddenException(`Actor '${actor.type}' cannot re-quote an errand`);
@@ -2107,6 +2212,16 @@ export class ErrandsService {
       done.errand.quotedPrice = quotedPrice;
       const row = await this.saveQuote(manager, errandId, quote);
       return { errand: done.errand, history: done.history, quote: row, reissued: false };
+    }).catch(async (err: unknown) => {
+      // Row 236: tell the customer (once; the notifications module dedupes).
+      if (err instanceof ApiError && err.code === 'location_outside_service_area') {
+        const errand = await this.errands.findOne({ where: { id: errandId } });
+        if (errand) {
+          const event: OutsideServiceAreaEvent = { errandId, reference: errand.reference };
+          setImmediate(() => this.events.emit(OUTSIDE_SERVICE_AREA_EVENT, event));
+        }
+      }
+      throw err;
     });
     if (out.reissued) {
       const event: QuoteReissuedEvent = {

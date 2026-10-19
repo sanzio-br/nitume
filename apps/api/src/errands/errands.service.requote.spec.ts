@@ -3,6 +3,7 @@ import { ApiError } from '../common/api-error';
 import { ErrandStatus, StatusHistoryActor, UserRole } from '../common/enums';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { ErrandStatusHistory } from './errand-status-history.entity';
+import { ErrandLocation } from './errand-location.entity';
 import { Errand } from './errand.entity';
 import { ErrandsService, assertQuoteCurrent } from './errands.service';
 import { Quote } from './quote.entity';
@@ -32,6 +33,7 @@ const build = (status: ErrandStatus, latest: Partial<Quote> | null) => {
     [Quote, quoteRepo],
     [ErrandStatusHistory, historyRepo],
     [CustomerProfile, { findOne: vi.fn(() => Promise.resolve({ id: 'cust-1' })) }],
+    [ErrandLocation, { find: vi.fn(() => Promise.resolve([])) }],
   ]);
   const manager = { getRepository: (entity: unknown) => repos.get(entity) };
   const dataSource = { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) };
@@ -46,7 +48,7 @@ const build = (status: ErrandStatus, latest: Partial<Quote> | null) => {
     {} as never,
     {} as never,
     { emit } as never,
-    {} as never,
+    { inServiceArea: () => true } as never,
     quoteRepo as never,
   );
   return { service, errand, errandRepo, quoteRepo, historyRepo, emit };

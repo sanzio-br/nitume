@@ -70,9 +70,14 @@ export class Errand {
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
   finalPrice: string | null;
 
-  /** Rows 206, 221: always set (creation + 24 h by default); NOT NULL since 1790103300000. */
-  @Column({ type: 'timestamptz' })
-  deadlineAt: Date;
+  /**
+   * The customer's deadline, or null for a "Flexible" task before payment
+   * (rows 235, 239): set at PAYMENT_CONFIRMED to payment time +
+   * ERRANDS_DEFAULT_DEADLINE_HOURS. Null only in DRAFT, REQUESTED, QUOTED,
+   * ACCEPTED, CANCELLED (CHECK, migration 1790103400000).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  deadlineAt: Date | null;
 
   @Column({
     type: 'enum',

@@ -247,6 +247,19 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
         status: errand.status,
       });
     }
+    // Row 237 (owner, 2026-10-19): no new payment once the task's deadline
+    // has passed; the customer sets a new one (PATCH /errands/:id
+    // { deadlineAt }) and pays again. A payment already started is still
+    // answered above. Only a deadline the customer chose can be passed
+    // here: a Flexible task has none until payment (rows 235, 239).
+    if (errand.deadlineAt && errand.deadlineAt.getTime() <= Date.now()) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'deadline_passed_before_payment',
+        "Your task's deadline has passed. Choose a new deadline, then pay.",
+        { deadlineAt: errand.deadlineAt.toISOString() },
+      );
+    }
     if (errand.quotedPrice === null) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'errand_not_quoted', 'Errand has not been quoted yet');
     }

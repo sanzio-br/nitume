@@ -43,3 +43,27 @@ describe('AuthService suspended accounts', () => {
     );
   });
 });
+
+describe('AuthService runner OTP sign-in (row 217)', () => {
+  const buildWith = (user: object) => {
+    const runners = { ensurePhoneVerified: vi.fn(() => Promise.resolve()) };
+    const service = new AuthService(
+      { findByPhone: vi.fn(() => Promise.resolve(user)) } as never,
+      {} as never,
+      runners as never,
+      { verifyCode: vi.fn(() => Promise.resolve()) } as never,
+      { issueTokenPair: vi.fn(() => Promise.resolve({ accessToken: 'a', refreshToken: 'r' })) } as never,
+      {} as never,
+    );
+    return { service, runners };
+  };
+
+  it('records the phone check approved for a runner, and not for a customer', async () => {
+    const runner = buildWith({ id: 'u-r', role: UserRole.RUNNER, status: UserStatus.ACTIVE });
+    await runner.service.verifyOtpAndLogin({ phone: '0712345678', code: '123456' });
+    expect(runner.runners.ensurePhoneVerified).toHaveBeenCalledWith('u-r');
+    const customer = buildWith({ id: 'u-c', role: UserRole.CUSTOMER, status: UserStatus.ACTIVE });
+    await customer.service.verifyOtpAndLogin({ phone: '0712345678', code: '123456' });
+    expect(customer.runners.ensurePhoneVerified).not.toHaveBeenCalled();
+  });
+});
