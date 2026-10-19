@@ -1024,8 +1024,8 @@ API items (continuing §18):
 7. **Row 237**:
    - `POST /payments/:errandId/initiate` answers 409 (proposed `deadline_passed_before_payment`) when `deadlineAt` is non-null (= chosen, row 239) and has passed. No STK.
    - The customer sets a new deadline before payment (QUOTED or ACCEPTED) with `PATCH /errands/:id` `{ deadlineAt }` (built on the api branch). `null` = `Flexible`, so the 24 h starts at payment (rows 235, 239). Refuse a past value.
-   - Who may edit the deadline: built for the customer and admins, with no history row. That is open as BOARD row 243 (recommended: customer only).
-   - The quote stands: built that way; open as BOARD row 242 (recommended: keep).
+   - Who may edit the deadline: customer only (row 243, answered 2026-10-19, §19).
+   - The quote stands (row 242, answered 2026-10-19).
 8. **Row 238**: nothing to build.
 
 Needs:
@@ -1034,12 +1034,41 @@ Needs:
 - web-parity: finding 33's copy is now complete (row 236).
 
 Open owner rows (2026-10-19):
-- 240: existing backfilled unpaid tasks keep their deadline? Proposed: keep.
+- 240: answered 2026-10-19: clear the backfilled deadline on unpaid tasks (§19).
 - 241: out-of-area notification copy, API wording or spec wording? Recommended: the spec wording.
-- 242: keep the quote after a deadline change? Built and recommended: keep.
-- 243: deadline edits customer only, or admins too (then with a history row)? Built: customer and admin, no history row. Recommended: customer only.
+- 242: answered 2026-10-19: keep the quote (§19).
+- 243: answered 2026-10-19: customer only (§19).
 
 ### 18.2 Owner answer row 239 (2026-10-19)
 - (a) decided: **Storage (decided, owner 2026-10-19, row 239 (a))**: a task with no customer deadline keeps `deadlineAt` NULL until payment; the NOT NULL of row 221 is relaxed to a CHECK that allows NULL only before payment (DRAFT, REQUESTED, QUOTED, ACCEPTED) and on CANCELLED; at ACCEPTED → PAYMENT_CONFIRMED the API sets `deadlineAt` = payment time + 24 h. So "chosen" = `deadlineAt` non-null before payment; no new column and no `deadlineChosen` field.
 - Screens: before payment, a task with no customer deadline shows `No deadline yet` (proposed) on the customer checkout (`x-awaiting-quote`) and in the admin task drawer (`drawer-task-offer.md` `Deadline` row).
 - Still open: rows 240–243 (§18.1 list).
+
+
+## 19. Owner answers rows 240, 242–244 (2026-10-19), applied on `docs/owner-answers-15-specs`
+
+Spec-only update; no screen re-audited. Row 241 (out-of-area notification copy) stays open.
+
+### Decisions applied
+| Row | Decision | Files |
+|---|---|---|
+| 240 | Clear the backfilled deadline on unpaid tasks so their clock starts at payment | System Design §2.2; admin `_shared.md`; customer `_shared.md`, `x-awaiting-quote.md` |
+| 242 | Keep the quote when the deadline changes after quoting | System Design §2.2; customer `x-awaiting-quote.md`; admin `_shared.md` |
+| 243 | Only the customer may set a new deadline before payment (no admin edit) | System Design §2.2; customer `x-awaiting-quote.md`; admin `_shared.md`, `drawer-task-offer.md` |
+| 244 | The customer may switch the deadline back to `Flexible` (clear it) before payment | System Design §2.2; customer `x-awaiting-quote.md` |
+
+Because of row 240, "chosen = `deadlineAt` non-null before payment" (row 239 (a)) now has no exception. The row-206 wording ("every task has deadlineAt") is linked to row 239 in System Design §2.2, customer `v-new-details.md` and `_shared.md`, admin `_shared.md`, and runner `_shared.md`. The REQUESTED/QUOTED-only cancel phrases now include ACCEPTED (`x-awaiting-quote.md` Data, `drawer-task-requote.md`).
+
+### API items for api-contract (numbered)
+1. **Row 240**: a data migration that sets `deadline_at` to NULL on unpaid tasks (DRAFT, REQUESTED, QUOTED, ACCEPTED) whose value is exactly the backfilled `createdAt` + 24 h. It must be reversible, within the row-239 CHECK. Report the row count in your HANDOFF.
+2. **Row 243**: `PATCH /errands/:id` `{ deadlineAt }` is customer only. Admins get 403, or `deadlineAt` is ignored for them; api-contract's choice, stated in the contract. Today it allows admins.
+3. **Row 244**: the same `PATCH` accepts `deadlineAt: null` before payment (back to `Flexible`). Today it refuses null. A past value stays refused.
+4. **Row 242**: nothing to build (the quote is already kept).
+
+### core-ui, flutter-customer, web-parity needs
+- core-ui: `ErrandRepository.setDeadline(null)` allowed (clear).
+- flutter-customer: C-15-1 (`x-awaiting-quote`): the new-deadline sheet keeps all three chips (`Flexible` sends null); the `Deadline` line in the checkout summary with a `Change` text button (proposed entry point, row 244); the quote stays as shown.
+- web-parity: nothing (there is no admin deadline edit, and none may be added: row 243).
+
+### Open owner rows
+- 241: out-of-area notification copy (API wording vs the spec's proposed wording).

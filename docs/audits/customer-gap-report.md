@@ -918,3 +918,10 @@ Spec-only update; no screen re-audited.
   - Code: none.
   - Fix: after api §18.1 item 7.
 - Status: `x-awaiting-quote` and `v-payment` → `partial`. Row 238 has no customer impact.
+
+## Owner answers round 15 (rows 240, 242–244, 2026-10-19), applied on `docs/owner-answers-15-specs`
+- C-15-1 (**minor**), `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart`.
+  - Design: the new-deadline sheet with `Today`, `Tomorrow`, `Flexible` (`Flexible` clears the deadline, row 244); the checkout `Deadline` line (chosen time, or `No deadline yet. It starts when your payment is confirmed.`) with a `Change` text button that opens the sheet before the deadline passes (proposed); the quote is kept (row 242); customer only (row 243).
+  - Code: none.
+  - Fix: after api `runner-gap-report.md` §19 items 2–3 and core-ui.
+- `x-awaiting-quote` stays `partial`. Row 241 is still open (notification copy).
