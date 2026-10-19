@@ -31,6 +31,7 @@ export 'src/models/payment.dart';
 export 'src/models/runner.dart';
 export 'src/models/runner_account.dart';
 export 'src/models/runner_job.dart';
+export 'src/models/runner_notification_events.dart';
 export 'src/models/runner_payouts.dart';
 export 'src/models/stk_payment_state.dart';
 export 'src/places/google_place_search.dart';
