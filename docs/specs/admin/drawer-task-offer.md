@@ -36,7 +36,7 @@ So ops need to see the customer deadline, how many eligible runners are left, an
 ## Layout: `Runner` section (drawer-task, after Locations, before Quote)
 `.drawer-label` `Runner`, then one `.drawer-card`:
 1. Runner row (mockup): avatar (initials, `.verif-avatar`), short name 13.5/600, caption Fira Code 11 slate-600 `Verified · 4.9 · 137 tasks` (from the runner summary). Hidden when the task was never offered (PAYMENT_CONFIRMED).
-2. `Deadline` row: `.drawer-row` `Deadline` → `deadlineAt` (12-hour EAT, Fira Code). Shown in every PAYMENT_CONFIRMED, RUNNER_ASSIGNED and EXPIRED sub-state. Every task has a deadline (row 206); `No deadline` (Fira Sans) shows only on legacy tasks created without one, until the NOT NULL backfill (row 221, open).
+2. `Deadline` row: `.drawer-row` `Deadline` → `deadlineAt` (12-hour EAT, Fira Code). Shown in every PAYMENT_CONFIRMED, RUNNER_ASSIGNED and EXPIRED sub-state. Every task has a deadline (row 206); `No deadline` (Fira Sans) shows only on legacy tasks created without one, until the NOT NULL backfill (row 221, decided: open tasks get `createdAt` + 24 h, closed tasks their closing time).
 3. State line, by sub-state:
    | Sub-state | Chip (A-02, §6.1) | `.drawer-row`s | Caption 12 slate-600 |
    |---|---|---|---|
@@ -49,7 +49,7 @@ So ops need to see the customer deadline, how many eligible runners are left, an
    | Expired: deadline passed (row 185) | `Deadline passed` (info; the task chip already reads `Expired`) | `Last offer` (when there was one); `Expired at` → the RUNNER_ASSIGNED → EXPIRED history time (EAT, Fira Code); `Runners tried` → `{n}` (Fira Code) | `The customer's deadline passed before any runner accepted. The task has expired.` plus the refund line below |
    | Expired: matching exhausted (row 167) | `No runners left` (info) | `Last offer` → `{runner} · {Offer ended \| Declined}`; `Expired at`; `Runners tried` → `{n}` | `Every eligible runner for this area and category declined, let the offer lapse, or became unavailable. The task has expired.` plus the refund line below |
    | Expired by ops (row 187, from RUNNER_ASSIGNED) | `Expired by ops` (info) | `Expired by` → admin display name; `Expired at`; `Reason` → the admin's reason (admins only); `Runners tried` → `{n}` | `An admin expired this task because no runner was available.` plus the refund line below |
-   | PAYMENT_CONFIRMED past deadline (rows 201, 214) | `Deadline passed` (pending: ops must act) | none beyond `Deadline` | `The customer's deadline passed before a runner was assigned. Expire the task or contact the customer.` (wording aligned with the row-220 feed proposal; changes with it) |
+   | PAYMENT_CONFIRMED past deadline (rows 201, 214) | `Deadline passed` (pending: ops must act) | none beyond `Deadline` | `The customer's deadline passed before a runner was assigned. Expire the task or contact the customer.` (wording of the approved row-220 feed body; proposed for the drawer) |
    | Expired by ops after the deadline (row 201, from PAYMENT_CONFIRMED) | `Expired by ops` (info) | `Expired by`; `Expired at`; `Reason` (admins only) | `An admin expired this task after the customer's deadline passed before a runner was assigned.` plus the refund line below |
 
    Refund line for every EXPIRED variant of a paid task: `A refund review was opened.` with a link `View refund review` (an A-07 text button → `p-refunds` filtered to the task, trigger `expired_after_payment`, row 102).
@@ -65,7 +65,7 @@ Actions (`.drawer-actions` of the section):
     - **Runner list (rows 167, 177, 178, 186, 187 (c); System Design §3.3 "Pool")**: the task's eligible pool from the API, ranked as matching v1. These are runners not yet tried for this task who are online, eligible and not on another accepted or active task. Two groups appear only under the list, greyed (slate-400 text), not selectable, each with its reason:
       - Runners who already declined this task or let an offer for it lapse (row 178): `Already offered`.
       - Runners whose purchase limit is below the task's required purchase (row 186; no pre-offer exception exists, row 207): `Above their purchase limit · KSh {limit} limit, task needs KSh {purchase}` (amounts Fira Code).
-    - **Offline runners (row 215: "admin may assign an offline runner; online-only applies to the matching/offer pool")**: under the pool, a collapsed text button `Show offline runners ({n})` (A-07 text, `{n}` Fira Code; proposed). Expanded, it lists runners who are eligible apart from being offline, ranked the same way, **selectable**, each with an info chip `Offline` and, once one is selected, a 12 slate-600 line `{runner} is offline. They can accept once they go online.` (proposed). Offline runners never count in `Eligible runners left` and never block expiry (rows 202, 204).
+    - **Offline runners (row 215: "admin may assign an offline runner; online-only applies to the matching/offer pool")**: under the pool, a collapsed text button `Show offline runners ({n})` (A-07 text, `{n}` Fira Code; decided, owner 2026-10-19, row 228). Expanded, it lists runners who are eligible apart from being offline, ranked the same way, **selectable**, each with an info chip `Offline` and, once one is selected, a 12 slate-600 line `{runner} is offline. They can accept once they go online.` (proposed). Offline runners never count in `Eligible runners left` and never block expiry (rows 202, 204).
     - Busy runners (on RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS, row 211; row 187 (c)) and otherwise ineligible runners are not listed. A runner whose only task is AWAITING_CUSTOMER or DISPUTED is not busy (row 211) and is listed as normal.
     - Row 178 applies now, even before the full pool exists (it needs only the task's offer history). Row 186 needs only the runner's limit and the task's purchase, so it also applies now.
     - **Empty list**: the dialog shows 12 slate-600 `No eligible runners are available right now.` and `Send offer` stays disabled until an offline runner is chosen (row 215). The task stays RUNNER_ASSIGNED: the list read never expires it, and an empty online pool alone never does (row 187 (a)).
@@ -80,7 +80,7 @@ The owner approved this action as an ops safety mechanism: "audited (admin, time
 **When it shows (decided, owner 2026-10-19, row 202: "approved as proposed — RUNNER_ASSIGNED, no open offer, deadline not passed, no eligible online runner left; offline/busy runners do not prevent it")**. All of these must hold:
 1. The task is RUNNER_ASSIGNED.
 2. It has no open offer: the latest assignment is `declined` or `expired`.
-3. The deadline has not passed (a legacy task with no `deadlineAt` counts as not passed, until the row-221 backfill). After the deadline the system expires the task itself.
+3. The deadline has not passed (a legacy task with no `deadlineAt` counts as not passed, until the row-221 backfill runs; decided: creation + 24 h for open tasks). After the deadline the system expires the task itself.
 4. No eligible **online** runner is left to offer it to: `eligibleRemaining = 0`, meaning every online, eligible runner was tried or is excluded. Offline and busy runners do not prevent it (rows 202, 204).
 
 Before the full pool exists (row 179, no automatic expiry yet), point 4 counts the built candidate list minus the row-178 and row-186 exclusions. The server decides and exposes `canExpire.noRunner`; the client never recomputes it. This is where the action matters most: row 187 (a) never auto-expires a task whose online pool is merely empty for now, so an admin may judge that no runner will come.
@@ -97,7 +97,7 @@ Before the full pool exists (row 179, no automatic expiry yet), point 4 counts t
 
 **Result**:
 - RUNNER_ASSIGNED → EXPIRED with actor `admin`. The `errand_status_history` row records the admin id, the time and the reason (`actorType`, `actorId`, `createdAt`, `note`); no schema change.
-- Side effects, as on every RUNNER_ASSIGNED → EXPIRED: the customer `errand.EXPIRED` notification (unchanged copy), a refund review for a paid task (row 102), and the admin feed.
+- Side effects, as on every RUNNER_ASSIGNED → EXPIRED: the customer `errand.EXPIRED` notification (unchanged copy) and a refund review for a paid task (row 102). **No admin feed item** (decided, owner 2026-10-19, row 232: the admin acted themselves).
 - Success notice A-11 `Task expired.`
 - The section switches to **Expired by ops**.
 - The queue row leaves `Needs a runner`.
@@ -126,15 +126,15 @@ Owner: "Exit = new Admin 'Expire task' action from PAYMENT_CONFIRMED after the d
 
 **When it shows** (from the owner's words): the task is PAYMENT_CONFIRMED and its `deadlineAt` has passed. The server decides and exposes it (`canExpire.deadlinePassed`, Data); the client never recomputes it. There is no pool condition: the task was never offered and can no longer be (assign is refused).
 
-**Confirm dialog (proposed, design-auditor; the owner did not say. Recommended: the same A-08 drawer dialog and reason rule as "Expire task — no runner available", so both admin expiries are audited the same way)**:
+**Confirm dialog (decided, owner 2026-10-19, row 225: "the same confirm dialog and required reason 10–500 chars" as "Expire task — no runner available")**:
 - Title `Expire this task?`
-- Body 13 slate-600: `The customer's deadline for {task title} has passed and no runner was assigned. The task moves to Expired and can't be offered again. A refund review opens because the task was paid.` (A PAYMENT_CONFIRMED task is always paid, so the refund sentence always shows.) Only if the owner approves the customer notification on this transition (AQ-29, BOARD row 226, open), insert ` The customer is told no runner was available.` before the refund sentence.
+- Body 13 slate-600: `The customer's deadline for {task title} has passed and no runner was assigned. The task moves to Expired and can't be offered again. The customer is told no runner was available. A refund review opens because the task was paid.` (Always shown in full: row 226 decides the customer notification and the refund review on this transition; a PAYMENT_CONFIRMED task is always paid.)
 - Field `Reason`, required, 10–500 characters after trimming, counter `{n}/500` (Fira Code), the same hint and error copy as above.
 - Buttons: outline `Back` and primary `Expire task`, enabled at 10+ characters.
 
 **Result**:
 - PAYMENT_CONFIRMED → EXPIRED, actor `admin`; the history row records the admin id, the time and the reason (`note`); no schema change.
-- Side effects: a refund review (row 102, trigger `expired_after_payment`), the admin feed, and (proposed, flagged) the customer `errand.EXPIRED` notification with the unchanged title `No runner available` and row-158 body.
+- Side effects (decided, row 226): the customer `errand.EXPIRED` notification with the unchanged title `No runner available` and row-158 body, and a refund review (row 102, trigger `expired_after_payment`). Admin feed item: pending BOARD row 234 (design-auditor reading of row 232; recommended none); until answered, none is sent.
 - Success notice A-11 `Task expired.`; the section switches to **Expired by ops after the deadline**; the queue row loses its `Deadline passed` chip and leaves `Needs a runner`.
 - Activity row: `{from} → Expired` with the built status labels for PAYMENT_CONFIRMED and EXPIRED, caption `Admin · {admin name} · {time}`, the reason on its own line.
 
@@ -173,12 +173,12 @@ Errors (assign / reassign):
 
 ## Live updates
 These refresh the drawer and the queue row; an open drawer re-reads `GET /errands/:id` on any of them:
-- Admin feed item `assignment_declined` (built). Body without a limit reason approved (row 216): `The runner declined {ref}. Assign another runner.`; over the limit, the built `The runner declined {ref}: the purchase is above their limit. Assign another runner.` Row 216 approves the general body only for a decline **without** a reason. For the other row-210 reasons (`too_far`, `not_available`, `other`) the general body is **proposed** (the drawer shows the reason). api-contract note: the built body is chosen by `overPurchaseLimit`, not by `declineReason` (`notifications.service.ts:481-486` @ `87d3076`), so an over-limit offer declined as `too_far` still gets the "above their limit" body; the body should follow `declineReason` (runner-gap-report §15 item 9).
+- Admin feed item `assignment_declined` (built). Owner copy: `The runner declined {ref}. Assign another runner.` for a decline with no reason (row 216) and for `too_far`, `not_available`, `other` (row 231); `over_purchase_limit` keeps `The runner declined {ref}: the purchase is above their limit. Assign another runner.` The body is chosen by `declineReason` (built on `feat/api-owner-answers-12`); the drawer shows the reason.
 - Feed item `assignment_expired` / `Offer ended` (N-20, built on `feat/api-runner-1`: `The runner didn't accept {ref} in time. Offer it to another runner.`).
 - `matching_exhausted` (`Matching exhausted · {task}`, row 167, to build).
 - `deadline_passed`:
   - RUNNER_ASSIGNED task expired at its deadline (row 185; **owner copy, row 216**, built on `feat/api-runner-1`): title `Deadline passed`, body `The customer's deadline for {ref} passed before any runner accepted. The task has expired.`
-  - PAYMENT_CONFIRMED task past its deadline (row 201, one item per task, decided; to build): title `Deadline passed` (owner, row 201). Body **open (BOARD row 220)**, proposed there: `The customer's deadline for {ref} passed before a runner was assigned. Expire the task or contact the customer.` Row 216's "The task has expired." must not be used here: the task has not expired.
+  - PAYMENT_CONFIRMED task past its deadline (row 201, one item per task; to build): **owner copy, row 220**: title `Deadline passed`, body `The customer's deadline for {ref} passed before a runner was assigned. Expire the task or contact the customer.` Row 216's "The task has expired." must not be used here.
 - `errand:status_changed` to EXPIRED switches the drawer to the matching EXPIRED variant.
 
 Fallbacks until the feed items exist:
@@ -192,13 +192,13 @@ Exact, from the mockup: `Runner`, `Reassign runner`, `Verified · 4.9 · 137 tas
 Exact, from the owner:
 - Row 187: `Expire task — no runner available`.
 - Row 201: `Expire task` (the PAYMENT_CONFIRMED action) and the feed title `Deadline passed`.
-- Row 216 (approved 2026-10-19): feed `Deadline passed` / `The customer's deadline for {ref} passed before any runner accepted. The task has expired.` (RUNNER_ASSIGNED expiry only) and `The runner declined {ref}. Assign another runner.`
-
-Open, proposed (row 220): feed body `The customer's deadline for {ref} passed before a runner was assigned. Expire the task or contact the customer.`
+- Row 216 (approved 2026-10-19): feed `Deadline passed` / `The customer's deadline for {ref} passed before any runner accepted. The task has expired.` (RUNNER_ASSIGNED expiry only) and `The runner declined {ref}. Assign another runner.` (row 231 extends it to `too_far`, `not_available`, `other`).
+- Row 220 (approved 2026-10-19): feed body `The customer's deadline for {ref} passed before a runner was assigned. Expire the task or contact the customer.`
+- Row 228 (approved 2026-10-19): `Show offline runners ({n})`.
 
 Everything else proposed:
 - Offer states: `Offered`, `Offer ended`, `Declined`, `Offered at`, `Offer ends`, `{m:ss} left`, `Ended`, `Reason`, `Above their purchase limit`, `Too far away`, `Not available`, `Other reason`, `No reason given`, `Waiting for {runner} to accept.`, `This offer has no deadline.`, `{runner} didn't accept in time. The task is still waiting for a runner.`, `The task is still waiting for a runner.`, `Earlier offers`.
-- Reassign dialog and queue: `Send offer`, `The new runner has 10 minutes to accept.`, `The new runner has until {deadline time} to accept.`, `Offer sent to {runner}.`, `Already offered`, `Above their purchase limit · KSh {limit} limit, task needs KSh {purchase}`, `Show offline runners ({n})`, `Offline`, `{runner} is offline. They can accept once they go online.`, `Reassign`, `Needs a runner`, `Eligible runners left`.
+- Reassign dialog and queue: `Send offer`, `The new runner has 10 minutes to accept.`, `The new runner has until {deadline time} to accept.`, `Offer sent to {runner}.`, `Already offered`, `Above their purchase limit · KSh {limit} limit, task needs KSh {purchase}`, `Offline`, `{runner} is offline. They can accept once they go online.`, `Reassign`, `Needs a runner`, `Eligible runners left`.
 - Deadline: `Deadline`, `No deadline`, `Deadline passed`, `Last offer`, `The customer's deadline has passed, so this task is no longer offered. It moves to Expired automatically.`, `The customer's deadline passed before any runner accepted. The task has expired.`, `The customer's deadline passed before a runner was assigned. Expire the task or contact the customer.`.
 - EXPIRED variants: `No runners left`, `Expired at`, `Runners tried`, `Every eligible runner for this area and category declined, let the offer lapse, or became unavailable. The task has expired.`, `Expired by ops`, `Expired by`, `An admin expired this task because no runner was available.`, `An admin expired this task after the customer's deadline passed before a runner was assigned.`, `A refund review was opened.`, `View refund review`.
 - Expire dialogs: `Expire this task?`, both dialog bodies, `Kept in the task history for audit. The customer and runners don't see it.`, `Enter at least 10 characters.`, `Task expired.`.
@@ -231,18 +231,18 @@ No copy says the task expired after a single lapse or decline. No copy mentions 
   - The deadline sweep: RUNNER_ASSIGNED → EXPIRED (S) at `deadlineAt` with note `Customer deadline passed`, closing any open offer; side effects as below; feed item `deadline_passed` with the row-216 copy.
   - Assign on a RUNNER_ASSIGNED task past its deadline → 409 `task_deadline_passed`. Assign to a runner who declined or lapsed → 409 `runner_already_offered`. A runner on another active job → 409 `runner_not_eligible`.
   - Feed item `assignment_expired` (`Offer ended`).
-- **Still needed (api-contract; numbered in `docs/audits/runner-gap-report.md` §15)**:
-  - Row 201/214: assign on a **PAYMENT_CONFIRMED** task past `deadlineAt` → 409 `task_deadline_passed` (`feat/api-runner-1` still allows it: "PAYMENT_CONFIRMED is held for row 201").
-  - Row 201: the PAYMENT_CONFIRMED → EXPIRED transition, actor A only, guarded by status PAYMENT_CONFIRMED and `deadlineAt` passed; reason required 10–500 after trimming (proposed, as row 203); history row with the admin and the reason; side effects: refund review `expired_after_payment` (row 102: N-16 opens it today only on RUNNER_ASSIGNED → EXPIRED and must cover this transition), admin feed, and (proposed, flagged) the customer `errand.EXPIRED` notification.
-  - Row 201: one `deadline_passed` feed item per PAYMENT_CONFIRMED task when its deadline passes (no state change), body pending row 220.
-  - Row 187/202/203: the RUNNER_ASSIGNED admin expire with its guard and reason (not built).
-  - Availability flags on the admin detail, e.g. `canExpire { noRunner: boolean, deadlinePassed: boolean }` (proposed shape; it replaces the round-11 `canExpireNoRunner`). The route may be one endpoint for both (`POST /errands/:id/expire` `{ reason }`, the server picks the transition from the status) or `PATCH /errands/:id/status`; api-contract's choice.
-  - `expiry`: add `fromStatus` (`RUNNER_ASSIGNED | PAYMENT_CONFIRMED`) so the drawer tells **Expired by ops** from **Expired by ops after the deadline**; add `trigger: 'matching_exhausted'` once exhaustion is built (row 179), with note `No eligible runners left` (proposed).
-  - Row 205: cap every new offer: `offerExpiresAt` = min(now + window, `deadlineAt`) (today `now + window`).
-  - Row 210: `declineReason` values `too_far`, `not_available`, `other` (enum migration).
-  - Row 215: the candidates read returns offline-but-otherwise-eligible runners separately (e.g. `offline: true` items or an `offline[]` list), excluded from `eligibleRemaining`; assign accepts an offline runner (check: the API must not answer `runner_offline` on assign).
-  - Row 206/221: `deadlineAt` required at create with the contract default; NOT NULL migration and backfill once row 221 is answered.
-  - Candidates read with `eligibleRemaining`, `tried`, `ineligibleReason` (N-20; not built).
+- **Built on `feat/api-owner-answers-12`** (round 12 api, @ `b47d9f2`):
+  - Assign on a PAYMENT_CONFIRMED task past `deadlineAt` → 409 `task_deadline_passed` (rows 201, 214).
+  - `offerExpiresAt` capped at `deadlineAt` (row 205).
+  - `declineReason` `too_far | not_available | other` and the feed body by reason (rows 210, 231).
+  - `POST /errands/:id/expire` `{ reason }` for the RUNNER_ASSIGNED admin expire (rows 187, 202, 203, 208): 400 `expiry_reason_invalid`; 409 `expiry_not_allowed` `{ reason: not_runner_assigned | deadline_passed | open_offer | eligible_runners_remain }`; no admin feed item (row 232). `PATCH /errands/:id/status` refuses it for an admin (409 `transition_requires_admin_expiry`).
+  - `canExpire { noRunner, deadlinePassed }` on the admin detail (`deadlinePassed` always false until the PAYMENT_CONFIRMED action exists); `expiry.fromStatus`.
+  - `GET /errands/:id/candidates` with `offline`, `tried`, `ineligibleReason`, `eligibleRemaining` (online only), `offlineCount`, `triedCount` (rows 204, 215).
+- **Still needed (api-contract; `docs/audits/runner-gap-report.md` §16)**, all unblocked by the 2026-10-19 answers:
+  - Row 201 + 225 + 226: PAYMENT_CONFIRMED → EXPIRED, actor A only, through the same `POST /errands/:id/expire` (server picks the transition by status) or its own route, api-contract's choice; guard: status PAYMENT_CONFIRMED and `deadlineAt` passed (409 `expiry_not_allowed` `{ reason: 'deadline_not_passed' | 'not_payment_confirmed' }`); reason required 10–500; history with admin and reason; side effects: customer `errand.EXPIRED` and refund review `expired_after_payment` (N-16 extended to this from-state); admin feed item pending BOARD row 234 (design-auditor reading of row 232; recommended none), so build none (the safe default; not blocking); `canExpire.deadlinePassed` turns true when allowed.
+  - Row 201 + 220: one `deadline_passed` feed item per PAYMENT_CONFIRMED task when its deadline passes (no state change, idempotent per task), owner copy above.
+  - Row 221: default `deadlineAt` = creation + 24 h when absent (api-contract to confirm against the category rules), backfill (open tasks `createdAt` + 24 h, closed tasks their closing time), then NOT NULL; expose the default for the customer caption.
+  - Row 227: when exhaustion is built, a task never offered is not exhausted.
 - **Matching exhausted (rows 167, 177–179, 186, 187, 204; to build, api-contract N-20)**:
   - **Eligible pool per task** (System Design §3.3 "Pool"):
     - Online: offline runners are never in the pool (row 177) and never block exhaustion (row 204).
@@ -257,7 +257,7 @@ No copy says the task expired after a single lapse or decline. No copy mentions 
   - **Assign** refuses an over-limit runner with 409 `runner_not_eligible` `{ reason: 'over_purchase_limit' }` (row 186). Other ineligible or busy runners get `runner_not_eligible` with their own `reason`. Offline is not a refusal (row 215).
   - **Server check** (**proposed**, design-auditor; api-contract to confirm):
     - It runs after every decline and every offer lapse (the expiry sweep) only, **not** on the candidates read (a GET must not change state).
-    - Exhaustion = no untried, non-excluded eligible **online** runner left (row 204). Row 187 (a): an online pool that is empty only because nobody eligible is online never expires the task. Where the two meet (a task never offered, with nobody eligible online) is a new owner question (below); proposed: exhaustion needs at least one offer made for the task.
+    - Exhaustion = no untried, non-excluded eligible **online** runner left (row 204). Row 187 (a): an online pool that is empty only because nobody eligible is online never expires the task. A task never offered is never exhausted (decided, owner 2026-10-19, row 227: "exhaustion needs at least one offer made").
     - On a genuine exhaustion: RUNNER_ASSIGNED → EXPIRED (S), a history row (note `No eligible runners left`, proposed), `errand.EXPIRED` to the customer, a refund review for a paid task (row 102), and the admin feed item `matching_exhausted`.
     - Never on a single decline or lapse while `eligibleRemaining > 0`.
   - **Dependencies**: RA-10 and RA-1. Row 179 (decided): no automatic expiry by exhaustion until service areas and the full eligible pool exist. Until then:
@@ -266,7 +266,7 @@ No copy says the task expired after a single lapse or decline. No copy mentions 
     - `canExpire.noRunner` follows that list.
 
 ## Customer and runner (what they see; their specs own the copy)
-- **Customer**: every EXPIRED path looks the same: chip `Expired`, `No runner accepted your task in time.` / `Start a new task`, and the `errand.EXPIRED` notification with exact title `No runner available` (row 188) and the row-158 body. No new customer copy. Before the sweep, a RUNNER_ASSIGNED task past its deadline still reads `Finding a runner` (row 176). A PAYMENT_CONFIRMED task past its deadline keeps `Finding a runner` with no notification until ops expire it; then the same EXPIRED screen and (proposed, flagged) the same notification. See `docs/specs/customer/v-notifications.md`, `v-task-detail.md`, `_shared.md` §6.
+- **Customer**: every EXPIRED path looks the same: chip `Expired`, `No runner accepted your task in time.` / `Start a new task`, and the `errand.EXPIRED` notification with exact title `No runner available` (row 188) and the row-158 body. No new customer copy. Before the sweep, a RUNNER_ASSIGNED task past its deadline still reads `Finding a runner` (row 176). A PAYMENT_CONFIRMED task past its deadline keeps `Finding a runner` with no notification until ops expire it; then the same EXPIRED screen and the same notification (row 226). See `docs/specs/customer/v-notifications.md`, `v-task-detail.md`, `_shared.md` §6.
 - **Runner**: an open offer that ends at the deadline disappears like any ended offer (row 205). Copy: `That offer is no longer available.`, plus the existing `job.offer_withdrawn` feed item. A runner never learns how the task ended. A PAYMENT_CONFIRMED expiry touches no runner (never offered). No new runner copy. See `docs/specs/runner/_shared.md` §6, `v-jobs.md`, `v-job-detail.md`.
 
 ## Accessibility
@@ -277,18 +277,14 @@ No copy says the task expired after a single lapse or decline. No copy mentions 
 - Greyed runners in the list are `aria-disabled` and their reason is read. `Show offline runners` is a disclosure button (`aria-expanded`); each offline runner reads `{name}, offline`.
 
 ## Owner decisions applied
-Rows 113, 114, 134, 141, 150, 155, 156, 157, 167, 177, 178, 179, 185 (deadline path), 186 (purchase limit in the pool), 187 (empty online pool, busy runners ineligible, admin expire action), 188 (exact customer title), and round 12 (2026-10-19): 201 and 214 (PAYMENT_CONFIRMED stays for ops, `Deadline passed` feed item, new admin `Expire task` PAYMENT_CONFIRMED → EXPIRED, assign refused after the deadline), 202 (expire rule), 203 (reason required, 10–500), 204 (offline/busy don't block exhaustion), 205 (an open offer ends at the deadline; `offerExpiresAt` capped), 206 (every task has a deadline; default open, row 221), 207 (no pre-offer exception), 208 (RUNNER_ASSIGNED → EXPIRED by S or A), 210 (decline reasons), 211 (busy = EN_ROUTE, ARRIVED, IN_PROGRESS), 212, 213 (service areas), 215 (admin may assign an offline runner), 216 (feed copy) (`_shared.md` §1). Row 187 (b)'s "no PAYMENT_CONFIRMED → EXPIRED" is superseded by row 201 for the admin; the system still never expires a PAYMENT_CONFIRMED task.
+Rows 113, 114, 134, 141, 150, 155, 156, 157, 167, 177, 178, 179, 185 (deadline path), 186 (purchase limit in the pool), 187 (empty online pool, busy runners ineligible, admin expire action), 188 (exact customer title), and round 12 (2026-10-19): 201 and 214 (PAYMENT_CONFIRMED stays for ops, `Deadline passed` feed item, new admin `Expire task` PAYMENT_CONFIRMED → EXPIRED, assign refused after the deadline), 202 (expire rule), 203 (reason required, 10–500), 204 (offline/busy don't block exhaustion), 205 (an open offer ends at the deadline; `offerExpiresAt` capped), 206 and 221 (every task has a deadline; default creation + 24 h, backfill, then NOT NULL), 207 (no pre-offer exception), 208 (RUNNER_ASSIGNED → EXPIRED by S or A), 210 (decline reasons), 211 (busy = EN_ROUTE, ARRIVED, IN_PROGRESS), 212, 213 (service areas), 215 (admin may assign an offline runner), 216 (feed copy), and round 13 (2026-10-19): 220 (PAYMENT_CONFIRMED feed copy), 225 (same dialog and reason), 226 (customer notification and refund review), 227 (never offered = not exhausted), 228 (offline group), 231 (plain decline body), 232 (no feed item after the admin's own expiry) (`_shared.md` §1). Row 187 (b)'s "no PAYMENT_CONFIRMED → EXPIRED" is superseded by row 201 for the admin; the system still never expires a PAYMENT_CONFIRMED task.
 
 ## Open questions for the owner
 Decided: AQ-12, AQ-17, AQ-18, AQ-19, rows 185, 186, RQ-31, and on 2026-10-19 row 201 (with 214) and AQ-22 … AQ-27 (rows 202–207).
 
-Open:
-- **Row 220**: feed copy for a PAYMENT_CONFIRMED task past its deadline (proposed in the row).
-- **Row 221**: the default `deadlineAt` when the customer gives none, and the backfill of existing tasks.
-- **AQ-28 (BOARD row 225, open)**: the PAYMENT_CONFIRMED `Expire task` asks for a required reason of 10–500 characters, like the RUNNER_ASSIGNED action (row 203), in the same kind of dialog. Recommended yes; the owner did not say.
-- **AQ-29 (BOARD row 226, open)**: on PAYMENT_CONFIRMED → EXPIRED by the admin, send the customer the usual `errand.EXPIRED` notification (`No runner available` / row-158 body)? Recommended yes, no new copy.
-- **AQ-30 (BOARD row 227, open)**: rows 187 (a) and 204 together: is a task that was never offered, with no eligible runner online, "exhausted"? Proposed no: exhaustion needs at least one offer made; otherwise re-check (row 179 holds exhaustion back for now anyway).
-- **AQ-31 (BOARD row 228, open)**: Reassign dialog offline runners (row 215): proposed as a collapsed `Show offline runners ({n})` group, selectable, never counted in `Eligible runners left`. Confirm, or list them inline?
+Decided 2026-10-19 (round 13): rows 220, 221, 225 (AQ-28), 226 (AQ-29), 227 (AQ-30), 228 (AQ-31), 231, 232.
+
+Open: row 233 (a task whose location is inside no configured service area always has an empty pool; accept it at creation?). No drawer change until answered; ops assign by hand, cancel or expire.
 
 ## Current vs design
 `main`: the drawer's `Assign runner` shows only at PAYMENT_CONFIRMED (`task-drawer.ts:22-23`) and says `Runner assigned.` on success (`:305`). The queue's `Assign` shows only at PAYMENT_CONFIRMED (`task-queue.panel.ts:136-137`). There is no `Runner` section, no offer, decline, lapse or deadline state, no way to re-offer a RUNNER_ASSIGNED task and no expire action. The `Status history` shows the actor type and the note but no admin name (`:157-176`).
@@ -302,7 +298,7 @@ Fix list (web-parity, after api-contract):
 6. blocker (row 185, after `feat/api-runner-1` merges): the `Deadline` row, the Deadline passed sub-state (read-only, no Reassign), the Expired: deadline passed variant, the queue `Deadline passed` chip with `View` and the exclusion from `Needs a runner`, and the `task_deadline_passed` error.
 7. blocker (row 186): runners below the purchase limit greyed with their reason in the Reassign list; the `runner_not_eligible` `over_purchase_limit` notice.
 8. blocker (rows 187, 202, 203, after api-contract): `Expire task — no runner available` (button, confirm with required reason, result, activity row with the admin name, errors), shown only on `canExpire.noRunner`; the Expired by ops variant.
-9. blocker (rows 201, 214, after api-contract; was a held minor): PAYMENT_CONFIRMED past its deadline: `Deadline passed` chip and flag, no `Assign`, `Expire task` (confirm with reason, result, errors), the Expired by ops after the deadline variant, and the `deadline_passed` feed item (body pending row 220).
+9. blocker (rows 201, 214, after api-contract; was a held minor): PAYMENT_CONFIRMED past its deadline: `Deadline passed` chip and flag, no `Assign`, `Expire task` (confirm with reason, result, errors), the Expired by ops after the deadline variant, and the `deadline_passed` feed item (owner copy, row 220). Unblocked: needs the api §16 items 1–2.
 10. minor (row 210): decline reason labels in the `Declined` row.
 11. minor (row 215): `Show offline runners ({n})` group in the Reassign dialog.
 12. minor (round 11 review): `runner_already_offered` notices.

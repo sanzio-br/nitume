@@ -708,3 +708,91 @@ Admin findings 29–32 in `docs/audits/admin-gap-report.md` (round 12).
 - AQ-30 (BOARD row 227): is a task never offered, with no eligible runner online, "exhausted"? Proposed no (exhaustion needs at least one offer made).
 - AQ-31 (BOARD row 228): offline runners in the Reassign dialog as a collapsed, selectable group? Proposed yes.
 - RQ-32 (BOARD row 229): must the runner pick a decline reason (UI), and is `Other reason` without text enough? Proposed yes to both.
+
+## 15.1 Audit 2026-10-19: core R-23 and the combined National ID status (`feat/core-owner-answers-12` @ `b44da01`)
+
+Specs: runner `_shared.md` R-19, R-23, §9; `v-jobs.md` "Decline reason picker" with the `cd31855` rulings; `v-job-detail.md`; `v-onboard-pending.md`; `v-profile.md`. Golden `packages/nitume_core/test/goldens/decline_reason_dialog.png` checked by eye. `flutter test` (decline dialog, verification documents, goldens): 69 pass; `flutter analyze` on `nitume_core`: no issues.
+
+### R-23 `DeclineReasonDialog` (`lib/src/widgets/decline_reason_dialog.dart`): PASS
+- Structure: the C-35 `NitumeDialog` shell is unchanged (the large radius, the C-35 body style, the 335 max width). The title, the body with its over-limit variant, the label `Why are you declining?`, and one C-16 `NitumeRadioRow` group with a gap of 8. `Above my purchase limit` is listed first and pre-selected only when over the limit. Actions: outline `Decline`, then primary `Keep offer`.
+- States: `Decline` stays disabled until a reason is chosen. This is behind `reasonRequired` (default true), so it can follow row 229 either way. `purchase_within_limit` drops the row, clears the choice and shows the inline error, and the body follows the shown rows. `decline_reason_invalid` and other errors show inline. `offer_expired`, `assignment_not_declinable` and 404 close the dialog as `offerUnavailable` (ruling `cd31855`). The dialog cannot be dismissed while busy.
+- Copy: every string matches `v-jobs.md` word for word and is kept in one `DeclineReasonCopy` class (all proposed).
+- Tokens and typography: no literal colours; theme tokens only. Fira Sans throughout; there are no numbers.
+- Contrast: the selected row is a blue fill with white text. `Keep offer` is green with white text (primary). `Decline` is outline, never red or green.
+- Reuse: built from C-35 and C-16. The new `NitumeDialog.autofocusTitle` is opt-in and off by default, so other dialogs are unchanged (tested).
+- Accessibility: the title gets initial focus; the disabled `Decline` announces `Choose a reason first`; the rows are a mutually exclusive group with 48 dp targets.
+- Minor (no fix needed): the golden's rows are 48 high. That is the C-16 hit area drawn as the pill, so it is the existing `NitumeRadioRow` look, not an R-23 deviation.
+
+### Combined National ID status (`lib/src/models/runner_account.dart`, `RunnerVerificationDocuments.nationalIdStatus`, `idRejectedSides`): PASS
+- Row 209 rule exactly: approved only if both sides are approved, rejected if either side is rejected, otherwise pending if either side is pending, otherwise `missing` (the screens' proposed `Not started`). The newest record counts per side. A legacy record with no side does not count (proposed, as specced).
+- `government_id` is left out of the per-type "newest record" map, so no screen can show one side as the whole ID.
+- `idRejectedSides` (front first) drives the `Front` / `Back` / `Both photos not approved` caption and the side that `Upload again` selects.
+
+Verdict: **PASS**, no findings. core-ui §15 items 1–3 are met on this branch. Item 4 (the payment-identity call) was not part of this audit.
+
+## 15.2 Check 2026-10-19: eligible pool on `feat/api-owner-answers-12` @ `b47d9f2`
+
+Read-only check of `apps/api/src/runners/runners.service.ts` `poolFor` and `apps/api/src/matching/candidates.service.ts` against `drawer-task-offer.md` Data and System Design §3.3 "Pool".
+
+1. **Runners with no matching skill, or no service area while areas are configured, are not listed.** This **matches** the spec: the category must be in `skills` (row 115), and the runner must be inside a service area once areas exist (rows 116, 212, 213). Without configured areas (`RUNNER_SERVICE_AREAS` empty), or with no task point, the area filter is skipped. That also matches "once areas exist".
+2. **A task whose first point is inside no configured area gets an empty pool.** This **matches** the rule as written (rows 213, 177): no runner can be in the pool. Effects:
+   - The Reassign dialog shows `No eligible runners are available right now.`
+   - Offline runners are not offered as a fallback either, because offline candidates also come from the pool.
+   - An admin can still assign by hand: assign checks only verification, busy and purchase limit, not skill or area.
+   - Unless an admin offered it by hand, the task is never offered, so it is never exhausted (row 227, decided 2026-10-19: exhaustion needs at least one offer); row 179 holds exhaustion back anyway. It expires at its deadline (row 185), or ops cancel or expire it.
+   - This does not block anything. It does raise a product question the documents do not answer, so it goes to the owner as **AQ-32**: should a task be accepted at creation when its location is inside no service area? Proposed: refuse at quote or create with a clear customer message. Until the owner answers, ops handle it by hand (assign, cancel, or expire).
+3. **Business tasks always get an empty pool** because `business` is not a skill a runner can pick. This **matches**: Business Tasks are out of MVP (OA-18; `v-edit-skills.md`: `business` refused from the app), and the customer app offers 5 categories. No question now. When Business Tasks enter scope, the skill must become selectable or business tasks must be matched another way; record that with the Business scope decision.
+
+Also seen, and matching the spec: busy runners are not listed (`availability = busy` plus the holders of another job, rows 187 (c), 211); offline runners are flagged `offline`, kept out of `eligibleRemaining` and counted in `offlineCount` (row 215); tried runners are marked `declined | expired` (row 178); over-limit runners are marked `ineligibleReason: over_purchase_limit` (rows 186, 207); the first point is taken in the order task site, pickup, drop-off (row 213); the candidates read changes no state.
+
+New owner question: **AQ-32**, tasks located outside every configured service area (above).
+
+## 16. Owner answers rows 220, 221, 225–229, 231, 232 (2026-10-19), applied on `docs/owner-answers-13-specs`
+
+Spec-only update; no screen re-audited. The API state was read on `feat/api-owner-answers-12` @ `b47d9f2`, which built §15 items 1, 5–9, 11 and 13 (nothing to build). Row 233 (a task inside no service area; AQ-32) stays open.
+
+### Decisions applied
+| Row | Decision | Files |
+|---|---|---|
+| 220 | PAYMENT_CONFIRMED deadline feed: `Deadline passed` / `The customer's deadline for {ref} passed before a runner was assigned. Expire the task or contact the customer.` | System Design §3.3, §4.4; admin `drawer-task-offer.md`, `_shared.md` |
+| 221 | Default `deadlineAt` = creation + 24 h (api-contract to confirm against the category rules); backfill open tasks `createdAt` + 24 h, closed tasks their closing time; then NOT NULL. The customer caption reads the default from the API | System Design §2.2, §3.3; customer `v-new-details.md`, `_shared.md`; runner `_shared.md`; admin specs |
+| 225 | The PAYMENT_CONFIRMED `Expire task` uses the same confirm dialog and a required 10–500 reason | System Design §3.3; admin specs |
+| 226 | That expiry sends the usual `errand.EXPIRED` and opens an `expired_after_payment` refund review; the dialog sentence `The customer is told no runner was available.` is now unconditional | System Design §3.3, §4.4; admin `drawer-task-offer.md`; customer `_shared.md`, `v-notifications.md` |
+| 227 | A task never offered is not exhausted; exhaustion needs at least one offer made | System Design §3.3; admin `drawer-task-offer.md`, `_shared.md`; runner `_shared.md` |
+| 228 | Offline runners as a collapsed, selectable `Show offline runners ({n})` group | admin `drawer-task-offer.md` |
+| 229 | The runner must pick a decline reason; `Other reason` has no free-text box | System Design §2.2; runner `v-jobs.md`, `v-job-detail.md`, `_shared.md` |
+| 231 | Plain decline feed body also for `too_far`, `not_available`, `other` (already built that way) | System Design §4.4; admin `drawer-task-offer.md` |
+| 232 | No admin feed item after the admin's own `Expire task — no runner available` (already built that way). For the PAYMENT_CONFIRMED `Expire task` the feed rule is pending BOARD row 234 (design-auditor reading of row 232; recommended none); previously read here as: the admin acts there as well. This is a design-auditor reading; the owner's words name only the RUNNER_ASSIGNED action | System Design §3.3; admin specs |
+
+### API items for api-contract (numbered; all unblocked)
+1. **Rows 201, 225, 226, 232**: PAYMENT_CONFIRMED → EXPIRED, actor A only.
+   - Route: extend `POST /errands/:id/expire` (the server picks the transition by status), or use a sibling route; api-contract's choice.
+   - Guard: PAYMENT_CONFIRMED and `deadlineAt ≤ now`. Otherwise 409 `expiry_not_allowed` `{ reason: 'deadline_not_passed' | 'not_payment_confirmed' }`.
+   - Reason: required, 10–500 after trimming (400 `expiry_reason_invalid`). It becomes the history note.
+   - Side effects: the customer `errand.EXPIRED` (existing copy), and N-16 `expired_after_payment` extended to this from-state. Admin feed item: pending BOARD row 234 (design-auditor reading of row 232; recommended none). Build none; that is the safe default and does not block this item.
+   - `canExpire.deadlinePassed` becomes true when the action is allowed; `expiry.fromStatus = PAYMENT_CONFIRMED`.
+2. **Rows 201, 220**: one `deadline_passed` admin feed item per PAYMENT_CONFIRMED task when its deadline passes. No state change, idempotent per task, owner copy (row 220).
+3. **Row 221**:
+   - Default `deadlineAt` = creation + 24 h when the customer sends none (confirm against the category rules; if a category needs another default, ask before building).
+   - Backfill migration: open tasks get `createdAt` + 24 h; closed tasks get their closing time (the time of the terminal history row). Then `deadline_at` NOT NULL and `CreateErrandDto.deadlineAt` stays optional on the wire.
+   - Expose the default (e.g. `defaultDeadlineHours` on a public config read) for the customer caption.
+   - `assertDeadlineInFuture` keeps refusing a past `deadlineAt` from the client.
+4. **Row 227**: when exhaustion is built (after row 179), only tasks with at least one offer can be exhausted.
+5. Row 233 (open): build nothing for out-of-area tasks.
+
+### core-ui items
+1. **Row 229**: R-23 `reasonRequired` must stay `true` in both screens. Optional: remove the flag, since the owner settled it. No other change; R-23 and `nationalIdStatus` passed (§15.1).
+2. **Row 221**: a core accessor for the default deadline value (API item 3), for the customer caption.
+
+### flutter-runner items
+1. Use R-23 with a required reason (row 229) in `v-jobs` and `v-job-detail`. No other change from round 13.
+
+### flutter-customer items
+1. `v-new-details`: the `Flexible` caption (row 221), after API item 3 and core-ui item 2. `{duration}` comes from the API, never hard-coded.
+
+### web-parity items
+Admin findings 29 (now unblocked: API items 1–2) and 31 (offline group, decided row 228). See `admin-gap-report.md` round 13.
+
+### New questions for the owner
+- Row 234 (new, open): no admin feed item after the admin's PAYMENT_CONFIRMED `Expire task` either (design-auditor reading of row 232; recommended none).
+- Row 233 (AQ-32) is still open.

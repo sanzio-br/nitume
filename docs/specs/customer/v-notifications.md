@@ -93,7 +93,7 @@ States (proposed):
 - Unread styling: red dot allowed (OA-13, was Q2).
 - `errand.EXPIRED` body (row 158, 2026-10-16): owner wording, no refund sentence. The screen renders the API's `title` / `body`, so this is an API change only; the built screen stays `matches-design`.
 - Rows 176, 182, 184 (2026-10-16): `Runner assigned` only on acceptance, nothing when an offer is made; API-only, the built screen stays `matches-design`.
-- Row 188 (2026-10-16): exact titles `No runner available` and `Runner assigned`, no status suffix (built on `main`); row 185: the deadline path sends the same `errand.EXPIRED` item. Row 201 (2026-10-19): the admin `Expire task` on a paid task past its deadline (PAYMENT_CONFIRMED → EXPIRED) sends the same item too (proposed, admin AQ-29). API-only; the built screen stays `matches-design`.
+- Row 188 (2026-10-16): exact titles `No runner available` and `Runner assigned`, no status suffix (built on `main`); row 185: the deadline path sends the same `errand.EXPIRED` item. Row 201 (2026-10-19): the admin `Expire task` on a paid task past its deadline (PAYMENT_CONFIRMED → EXPIRED) sends the same item too (decided, owner 2026-10-19, row 226). API-only; the built screen stays `matches-design`.
 
 ## Open questions (non-blocking; build default given)
 - Q1: Rows tappable? Default: yes, table above.
