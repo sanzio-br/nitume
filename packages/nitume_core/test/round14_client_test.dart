@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
 
+import 'helpers/fake_api.dart';
+
 Map<String, dynamic> _errand(String status, [Map<String, dynamic>? extra]) => {
   'id': 'e1',
   'customerId': 'c1',
@@ -162,6 +164,98 @@ void main() {
       expect(_error(409, {'code': 'quote_expired'}).deadlineProblem, isNull);
       expect(_error(500, {}).deadlineProblem, isNull);
       expect(DeadlineProblem.fromCode(null), isNull);
+    });
+  });
+
+  group('ErrandRepository.update / setDeadline (rows 237, 243, 244)', () {
+    FakeApiAdapter adapter([(int, Object?)? reply]) => FakeApiAdapter({
+      'PATCH /errands/e1':
+          reply ??
+          (200, _errand('QUOTED', {'deadlineAt': '2026-10-20T20:59:00.000Z'})),
+    });
+
+    test('setDeadline sends only deadlineAt, as UTC ISO 8601', () async {
+      final a = adapter();
+      final e = await ErrandRepository(fakeClient(a))
+          .setDeadline('e1', DateTime.utc(2026, 10, 20, 20, 59));
+      expect(a.calls, ['PATCH /errands/e1']);
+      expect(a.bodies.single, {'deadlineAt': '2026-10-20T20:59:00.000Z'});
+      expect(e.deadlineAt, DateTime.utc(2026, 10, 20, 20, 59));
+    });
+
+    test(
+      'setDeadline(null) sends an explicit null (back to Flexible)',
+      () async {
+        final a = adapter((200, _errand('QUOTED', {'deadlineAt': null})));
+        final e = await ErrandRepository(fakeClient(a)).setDeadline('e1', null);
+        expect(a.bodies.single, {'deadlineAt': null});
+        expect((a.bodies.single as Map).containsKey('title'), isFalse);
+        expect(e.hasNoDeadlineYet, isTrue);
+      },
+    );
+
+    test('ErrandUpdate keeps unset fields out of the body', () {
+      const none = ErrandUpdate();
+      expect(none.isEmpty, isTrue);
+      expect(none.toJson(), isEmpty);
+      expect(const ErrandUpdate().withTitle(null).toJson(), {'title': null});
+      final both = const ErrandUpdate()
+          .withTitle('Flat check')
+          .withDeadline(DateTime.utc(2026, 10, 21, 9));
+      expect(both.isEmpty, isFalse);
+      expect(both.changesDeadline, isTrue);
+      expect(both.toJson(), {
+        'title': 'Flat check',
+        'deadlineAt': '2026-10-21T09:00:00.000Z',
+      });
+      expect(const ErrandUpdate().withTitle('x').changesDeadline, isFalse);
+    });
+
+    test('update sends title and deadline together', () async {
+      final a = adapter();
+      await ErrandRepository(fakeClient(a)).update(
+        'e1',
+        const ErrandUpdate().withTitle('Flat check').withDeadline(null),
+      );
+      expect(a.bodies.single, {'title': 'Flat check', 'deadlineAt': null});
+    });
+
+    test('refusals surface as typed deadline problems', () async {
+      final cases = {
+        (400, 'deadline_in_past'): DeadlineProblem.inPast,
+        (409, 'deadline_not_editable'): DeadlineProblem.notEditable,
+        (403, 'deadline_customer_only'): DeadlineProblem.customerOnly,
+      };
+      for (final MapEntry(key: (status, code), value: problem)
+          in cases.entries) {
+        final repo = ErrandRepository(
+          fakeClient(
+            adapter((
+              status,
+              {
+                'statusCode': status,
+                'code': code,
+                'message': 'Refused',
+                if (status == 409) 'status': 'PAYMENT_CONFIRMED',
+              },
+            )),
+          ),
+        );
+        await expectLater(
+          repo.setDeadline('e1', DateTime.utc(2026, 10, 1)),
+          throwsA(
+            isA<NitumeApiException>()
+                .having((e) => e.statusCode, 'statusCode', status)
+                .having((e) => e.deadlineProblem, 'deadlineProblem', problem),
+          ),
+        );
+      }
+    });
+
+    test('updateTitle is unchanged (title only)', () async {
+      final a = adapter();
+      await ErrandRepository(fakeClient(a)).updateTitle('e1', 'Flat check');
+      expect(a.bodies.single, {'title': 'Flat check'});
     });
   });
 }

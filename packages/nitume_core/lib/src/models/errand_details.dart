@@ -1,3 +1,4 @@
+import '../api/api_exception.dart' show ApiErrorCodes;
 import 'enums.dart';
 import 'errand.dart';
 import 'errand_location.dart';
@@ -69,9 +70,9 @@ class ErrandPage {
   bool get hasMore => nextCursor != null;
 
   factory ErrandPage.fromJson(Map<String, dynamic> json) => ErrandPage(
-        items: asJsonList(json['items']).map(Errand.fromJson).toList(),
-        nextCursor: json['nextCursor'] as String?,
-      );
+    items: asJsonList(json['items']).map(Errand.fromJson).toList(),
+    nextCursor: json['nextCursor'] as String?,
+  );
 }
 
 /// Shopping-list item for `POST /errands` (`ErrandItemDto`).
@@ -89,11 +90,11 @@ class ErrandItemInput {
   final String? notes;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        if (quantity != null) 'quantity': quantity,
-        if (unit != null) 'unit': unit,
-        if (notes != null) 'notes': notes,
-      };
+    'name': name,
+    if (quantity != null) 'quantity': quantity,
+    if (unit != null) 'unit': unit,
+    if (notes != null) 'notes': notes,
+  };
 }
 
 /// Body of `POST /errands` (`CreateErrandDto`). The errand is created as
@@ -133,16 +134,69 @@ class CreateErrandRequest {
   final List<ErrandItemInput> items;
 
   Map<String, dynamic> toJson() => {
-        'category': category.wire,
-        if (title?.trim() case final t? when t.isNotEmpty) 'title': t,
-        'description': description,
-        'budget': budget,
-        'locations': [for (final l in locations) l.toJson()],
-        if (deadlineAt != null)
-          'deadlineAt': deadlineAt!.toUtc().toIso8601String(),
-        if (urgency != null) 'urgency': urgency!.wire,
-        if (items.isNotEmpty) 'items': [for (final i in items) i.toJson()],
-      };
+    'category': category.wire,
+    if (title?.trim() case final t? when t.isNotEmpty) 'title': t,
+    'description': description,
+    'budget': budget,
+    'locations': [for (final l in locations) l.toJson()],
+    if (deadlineAt != null) 'deadlineAt': deadlineAt!.toUtc().toIso8601String(),
+    if (urgency != null) 'urgency': urgency!.wire,
+    if (items.isNotEmpty) 'items': [for (final i in items) i.toJson()],
+  };
+}
+
+/// Partial body of `PATCH /errands/:id` (`{ title?, deadlineAt? }`): only
+/// the fields set with [withTitle] / [withDeadline] are sent, so "leave it"
+/// and "clear it" (`null`) stay distinct.
+///
+/// - Title: `null` clears it; 3–120 characters after trimming.
+/// - Deadline (row 237): customer only (403
+///   [ApiErrorCodes.deadlineCustomerOnly]); only before payment, DRAFT to
+///   ACCEPTED (409 [ApiErrorCodes.deadlineNotEditable], `status`); a time in
+///   the future (400 [ApiErrorCodes.deadlineInPast]); `null` switches the
+///   task back to `Flexible`, its clock starting at payment (row 244). The
+///   quote is kept (row 242).
+///
+/// ```dart
+/// repo.update(id, const ErrandUpdate().withDeadline(null)); // Flexible
+/// ```
+final class ErrandUpdate {
+  const ErrandUpdate()
+    : _title = null,
+      _deadlineAt = null,
+      _hasTitle = false,
+      _hasDeadline = false;
+
+  const ErrandUpdate._(
+    this._title,
+    this._deadlineAt,
+    this._hasTitle,
+    this._hasDeadline,
+  );
+
+  final String? _title;
+  final DateTime? _deadlineAt;
+  final bool _hasTitle;
+  final bool _hasDeadline;
+
+  /// Sets ([title] non-null) or clears (`null`) the title.
+  ErrandUpdate withTitle(String? title) =>
+      ErrandUpdate._(title, _deadlineAt, true, _hasDeadline);
+
+  /// Sets a new deadline, or `null` for `Flexible` (row 244).
+  ErrandUpdate withDeadline(DateTime? deadlineAt) =>
+      ErrandUpdate._(_title, deadlineAt, _hasTitle, true);
+
+  /// True when nothing would change.
+  bool get isEmpty => !_hasTitle && !_hasDeadline;
+
+  /// True when the deadline is part of the update.
+  bool get changesDeadline => _hasDeadline;
+
+  Map<String, dynamic> toJson() => {
+    if (_hasTitle) 'title': _title,
+    if (_hasDeadline) 'deadlineAt': _deadlineAt?.toUtc().toIso8601String(),
+  };
 }
 
 /// Customer-readable quote breakdown, `GET /errands/:id/quote`. Amounts are
@@ -177,19 +231,19 @@ class Quote {
   final DateTime? createdAt;
 
   factory Quote.fromJson(Map<String, dynamic> json) => Quote(
-        id: json['id'] as String,
-        errandId: json['errandId'] as String,
-        baseFee: parseDecimalOrZero(json['baseFee']),
-        distanceFee: parseDecimalOrZero(json['distanceFee']),
-        timeFee: parseDecimalOrZero(json['timeFee']),
-        urgencyFee: parseDecimalOrZero(json['urgencyFee']),
-        complexityFee: parseDecimalOrZero(json['complexityFee']),
-        premiumFee: parseDecimalOrZero(json['premiumFee']),
-        total: parseDecimalOrZero(json['total']),
-        currency: json['currency'] as String? ?? 'KES',
-        expiresAt: parseDate(json['expiresAt']),
-        createdAt: parseDate(json['createdAt']),
-      );
+    id: json['id'] as String,
+    errandId: json['errandId'] as String,
+    baseFee: parseDecimalOrZero(json['baseFee']),
+    distanceFee: parseDecimalOrZero(json['distanceFee']),
+    timeFee: parseDecimalOrZero(json['timeFee']),
+    urgencyFee: parseDecimalOrZero(json['urgencyFee']),
+    complexityFee: parseDecimalOrZero(json['complexityFee']),
+    premiumFee: parseDecimalOrZero(json['premiumFee']),
+    total: parseDecimalOrZero(json['total']),
+    currency: json['currency'] as String? ?? 'KES',
+    expiresAt: parseDate(json['expiresAt']),
+    createdAt: parseDate(json['createdAt']),
+  );
 }
 
 /// Last-known runner position in a [TrackingSnapshot].
@@ -200,12 +254,12 @@ class RunnerLocation {
   final DateTime? capturedAt;
 
   factory RunnerLocation.fromJson(Map<String, dynamic> json) => RunnerLocation(
-        point: GeoPoint(
-          lat: parseDouble(json['lat']) ?? 0,
-          lng: parseDouble(json['lng']) ?? 0,
-        ),
-        capturedAt: parseDate(json['capturedAt']),
-      );
+    point: GeoPoint(
+      lat: parseDouble(json['lat']) ?? 0,
+      lng: parseDouble(json['lng']) ?? 0,
+    ),
+    capturedAt: parseDate(json['capturedAt']),
+  );
 }
 
 /// Initial tracking state, `GET /errands/:id/tracking`. Live updates then
