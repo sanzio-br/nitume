@@ -9,7 +9,7 @@ import { ErrandStatusHistory } from './errand-status-history.entity';
 import { Errand } from './errand.entity';
 import { ErrandsService } from './errands.service';
 
-/** Rows 206, 221: every task gets a deadline; the default is creation + 24 h. */
+/** Rows 235, 239: a Flexible task has no deadline until payment; then payment time + 24 h. */
 const build = (config: Record<string, number> = {}) => {
   const saved: Partial<Errand>[] = [];
   const passthrough = { create: vi.fn((r: object) => r), save: vi.fn((r: unknown) => Promise.resolve(r)) };
@@ -58,25 +58,17 @@ const dto = (extra: Partial<CreateErrandDto> = {}): CreateErrandDto =>
 
 const CUSTOMER = { type: StatusHistoryActor.CUSTOMER, id: 'u-1' };
 
-describe('createDraft deadline (rows 206, 221)', () => {
-  it('without a deadline from the customer, sets creation + 24 h (standard urgency)', async () => {
+describe('createDraft deadline (rows 206, 221, 235, 239)', () => {
+  it('without a deadline from the customer (Flexible) stores none before payment (rows 235, 239)', async () => {
     const { service, saved } = build();
-    const before = Date.now();
     await service.createDraft('u-1', dto(), CUSTOMER);
-    const ms = (saved[0].deadlineAt as Date).getTime() - before;
-    expect(ms).toBeGreaterThanOrEqual(24 * 3_600_000 - 50);
-    expect(ms).toBeLessThan(24 * 3_600_000 + 1_000);
+    expect(saved[0].deadlineAt).toBeNull();
     expect(saved[0].urgency).toBe(ErrandUrgency.STANDARD);
   });
 
-  it('uses errands.defaultDeadlineHours when configured', async () => {
-    const { service, saved } = build({ 'errands.defaultDeadlineHours': 6 });
-    const before = Date.now();
-    await service.createDraft('u-1', dto(), CUSTOMER);
-    const ms = (saved[0].deadlineAt as Date).getTime() - before;
-    expect(ms).toBeGreaterThanOrEqual(6 * 3_600_000 - 50);
-    expect(ms).toBeLessThan(6 * 3_600_000 + 1_000);
-    expect(service.defaultDeadlineHours()).toBe(6);
+  it('defaultDeadlineHours reads errands.defaultDeadlineHours (24 by default)', () => {
+    expect(build().service.defaultDeadlineHours()).toBe(24);
+    expect(build({ 'errands.defaultDeadlineHours': 6 }).service.defaultDeadlineHours()).toBe(6);
   });
 
   it('keeps the customer deadline, and still refuses one in the past', async () => {

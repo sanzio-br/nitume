@@ -250,7 +250,8 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
     // Row 237 (owner, 2026-10-19): no new payment once the task's deadline
     // has passed; the customer sets a new one (PATCH /errands/:id
     // { deadlineAt }) and pays again. A payment already started is still
-    // answered above. A task with no deadline yet (row 235) is not refused.
+    // answered above. Only a deadline the customer chose can be passed
+    // here: a Flexible task has none until payment (rows 235, 239).
     if (errand.deadlineAt && errand.deadlineAt.getTime() <= Date.now()) {
       throw new ApiError(
         HttpStatus.CONFLICT,

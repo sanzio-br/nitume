@@ -108,9 +108,10 @@ export class CreateErrandDto {
   budget?: number;
 
   /**
-   * Optional on the wire (rows 206, 221): without it the task's deadline is
-   * creation + `defaultDeadlineHours` (GET /errands/defaults). A past value
-   * is refused (400 deadline_in_past).
+   * Optional (rows 235, 239): without it ("Flexible") the task has no
+   * deadline until payment is confirmed, then payment time +
+   * `defaultDeadlineHours` (GET /errands/defaults). A past value is refused
+   * (400 deadline_in_past).
    */
   @IsOptional()
   @IsISO8601({ strict: true })

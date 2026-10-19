@@ -649,7 +649,7 @@ export class ErrandsService {
     this.assertInServiceArea(rows.map(toLocationView));
   }
 
-  /** Row 221: hours from creation to the default deadline (`errands.defaultDeadlineHours`, 24). */
+  /** Rows 221, 235: hours from payment confirmation to a Flexible task's deadline (`errands.defaultDeadlineHours`, 24). */
   defaultDeadlineHours(): number {
     return this.config?.get<number>('errands.defaultDeadlineHours', 24) ?? 24;
   }
@@ -666,11 +666,11 @@ export class ErrandsService {
     dto: CreateErrandDto,
     actor: ActorReference,
   ): Promise<{ errand: ErrandView; history: ErrandStatusHistory }> {
-    // Rows 206, 221: every task has a deadline. A client deadline must be in
-    // the future; without one it is now + the default (24 h).
-    const given = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
-    assertDeadlineInFuture(given);
-    const deadlineAt = given ?? new Date(Date.now() + this.defaultDeadlineHours() * 3_600_000);
+    // Rows 235, 239: a client deadline must be in the future. Without one
+    // ("Flexible") the task has no deadline until payment confirmation, which
+    // sets payment time + the default (24 h).
+    const deadlineAt = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
+    assertDeadlineInFuture(deadlineAt);
     assertLocationsFit(
       dto.category,
       dto.locations.map((l) => l.pointType),
@@ -1730,13 +1730,12 @@ export class ErrandsService {
       assertQuoteCurrent(acceptedQuote);
     }
 
-    // Row 235 (owner, 2026-10-19, option b): a task with no customer
-    // deadline gets its default window from payment confirmation, not from
-    // creation. A task reaching PAYMENT_CONFIRMED without a deadline gets
-    // now + errands.defaultDeadlineHours. (How a defaulted task is told
-    // apart before payment is pending the schema decision on row 235; with
-    // deadlineAt NOT NULL today this never fires.) Urgency is derived again
-    // from the new deadline.
+    // Rows 235, 239 (owner, 2026-10-19): a "Flexible" task (no customer
+    // deadline, deadlineAt null) gets its default window from payment
+    // confirmation: now + errands.defaultDeadlineHours, in the same
+    // transaction as -> PAYMENT_CONFIRMED (the CHECK on errands requires a
+    // deadline from there on). Urgency is derived again from it. A deadline
+    // the customer chose is never moved.
     if (to === ErrandStatus.PAYMENT_CONFIRMED && !errand.deadlineAt) {
       errand.deadlineAt = new Date(Date.now() + this.defaultDeadlineHours() * 3_600_000);
       errand.urgency = deriveUrgency(errand.deadlineAt, this.urgencyThresholds());
