@@ -3,7 +3,7 @@
 - Mockup: **not drawn**. Required by system design §7.2 ("a clear in-app disclosure and OS-level permission flow") and by Google Play's prominent-disclosure rule for background location. Built from the `.auth-wrap` layout and design-system patterns; all copy **(proposed)**.
 - Shared conventions: `_shared.md` (§10)
 - Implementation: `apps/runner_app/lib/src/screens/location/location_disclosure_screen.dart` + `services/location_gate.dart` (on `main`); iOS strings in `apps/runner_app/ios/Runner/Info.plist`
-- Status: partial (2026-10-19: Body 2 and the iOS background string change, pending RQ-34; the rest of the audited 2026-10-19 PASS stands)
+- Status: partial (2026-10-19: Body 2 changes and the iOS Always key and Android `ACCESS_BACKGROUND_LOCATION` go, pending RQ-33 / RQ-34 = BOARD rows 245 / 246, open; the rest of the audited 2026-10-19 PASS stands)
 
 ## Purpose
 Explain, before the OS prompt, why Nitume needs the runner's location (including in the background during a job), when it is collected and when it stops; then request the permission.
@@ -11,7 +11,7 @@ Explain, before the OS prompt, why Nitume needs the runner's location (including
 ## Entry / exit
 - Entry: the first time the runner goes online (`v-jobs` switch) or accepts an offer without location permission; Profile has no entry (the OS settings own it afterwards).
 - `Continue` → OS when-in-use prompt only. Back to the screen that asked.
-- The background step is not on this screen. It comes at the first job start, on `v-active` ("Location at job start": a short in-app disclosure dialog right before the background request, as Google Play requires; Android "Allow all the time"; iOS per RQ-33).
+- This is the only location prompt (while-in-use). There is no later background or "Always" step: during a job the Android location foreground service and the iOS `location` background mode keep sharing going when the runner switches apps or locks the phone (RQ-33, `v-active` "Location during a job").
 - `Not now` → back; going online / accepting stays blocked with C-40 `Turn on location to receive and do jobs.` + `Open Settings` when permanently denied.
 
 ## Task states
@@ -26,9 +26,9 @@ Full-screen pushed (C-10 back), `.auth-wrap`-style centred column, padding 0 28:
 
 ## Copy (proposed)
 - Body 1: `Nitume uses your location to show you nearby jobs, to tell the customer when you're on the way and when you've arrived.`
-- Body 2 (changed 2026-10-19, proposed, RQ-34): `During a job we keep sharing it when you switch apps or lock your phone, until you finish the task or go offline. If you close the app completely, sharing stops until you open it again.`
+- Body 2 (changed 2026-10-19, proposed, RQ-34): `During a job we keep sharing it when you switch apps or lock your phone, until you finish the task or go offline. If you close the app completely, or your phone stops it to save battery, sharing stops until you open the app again.`
   - Was: `During a job we keep sharing it even when the app is closed, until you finish the task or go offline.` (built).
-  - Why: the reviewer found that "even when the app is closed" overstates what happens. After a force-quit (swiped away), iOS stops standard location updates and does not relaunch the app for them. On Android, the foreground service ends with the app's process. "Closed" reads as exactly that case. The new text promises only what the app does: background and locked-screen sharing during a job (iOS `location` background mode; Android foreground service). It also says plainly what happens after a full close.
+  - Why: the reviewer found that "even when the app is closed" overstates what happens. After a force-quit (swiped away), iOS stops standard location updates and does not relaunch the app for them. On Android, the foreground service ends with the app's process, and the system or battery optimisation can stop it. "Closed" reads as exactly that case. The new text promises only what the app does: background and locked-screen sharing during a job (iOS `location` background mode; Android foreground service). It also says plainly what happens after a full close.
 - Body 3: `We never share your location when you're offline, and customers only see it while you're working on their task.`
 - Buttons: `Continue`, `Not now`.
 - Body 1 and 2 match row 123: while online without a job the app shares location every 30 seconds (nearby jobs); during a job every few seconds; offline never.
@@ -37,15 +37,12 @@ Full-screen pushed (C-10 back), `.auth-wrap`-style centred column, padding 0 28:
 None.
 
 ## Data
-OS strings (proposed; builder copy accepted 2026-10-19, taken from Body 1 and Body 2; amended 2026-10-19 for RQ-34):
-- iOS `NSLocationWhenInUseUsageDescription` (built, unchanged): `Nitume Runner uses your location to show you nearby jobs and to tell the customer when you're on the way and when you've arrived.`
-  - With the recommended RQ-33 option (no Always request on iOS), this string is the one iOS shows. The background mode keeps a running job's updates going, and iOS shows the blue location indicator while the app is in the background.
-- iOS `NSLocationAlwaysAndWhenInUseUsageDescription`:
-  - Built: `During a job Nitume Runner keeps sharing your location even when the app is closed, until you finish the task or go offline.` It overstates: see Body 2.
-  - Proposed: `During a job Nitume Runner keeps sharing your location while it runs in the background, until you finish the task or go offline. If you close the app completely, sharing stops until you open it again.`
-  - RQ-33 recommended option: remove the key, and with it the Always request. Auditor's reading, not verified on a device: the `geolocator` iOS plugin seems to ask for "Always" at the first prompt when this key is in `Info.plist`. If so, the when-in-use prompt on this screen is really an Always prompt. core-ui and flutter-runner should check on a device (C-V5).
+OS strings and declarations (proposed; builder copy accepted 2026-10-19; corrected 2026-10-19 after reviewer FAIL 1, RQ-33 / RQ-34):
+- iOS `NSLocationWhenInUseUsageDescription` (built, unchanged): `Nitume Runner uses your location to show you nearby jobs and to tell the customer when you're on the way and when you've arrived.` This is the only location prompt iOS shows.
+- iOS `NSLocationAlwaysAndWhenInUseUsageDescription`: **remove** (built text `During a job Nitume Runner keeps sharing your location even when the app is closed, …` overstates and asks for more than needed). With the key gone the app cannot ask for Always. Auditor's reading, unverified: the `geolocator` iOS plugin may ask for Always at the first prompt while this key is present; removing it settles that either way.
+- iOS `UIBackgroundModes` `location` (built): keep; it carries a running job's updates in the background with the blue indicator.
+- Android: keep `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`; **remove** `ACCESS_BACKGROUND_LOCATION`. A location foreground service started while the app is visible keeps while-in-use access after the app leaves the screen (Android 10+); to verify on an Android 14 device during C-V5. No Play Console background-location declaration is then needed. Foreground-service notification text is final (`_shared.md` §10).
 - Camera and photo-library strings for ID, selfie and evidence (built).
-- Android: no permission strings; the foreground-service notification text is final (`_shared.md` §10). Store declarations: the Play Console background-location declaration and its video show the `v-active` job-start step, so they are prepared with the `v-active` build (reviewer note, batch 1).
 No API data. Packages: `geolocator` + `permission_handler` (row 124).
 
 ## Accessibility and mobile
@@ -56,10 +53,11 @@ Heading announced; buttons 48 dp; Android 14 foreground-service type `location` 
 - Row 124 (RQ-12): packages approved.
 
 ## Current vs design (2026-10-19)
-- `location_disclosure_screen.dart:15-16` `body2` = the old Body 2. Change it to the proposed text once RQ-34 is answered.
-- `Info.plist:64-65` `NSLocationAlwaysAndWhenInUseUsageDescription` = the old string. Remove it (RQ-33 recommended) or replace it (RQ-34).
-- `location_gate.dart`: asks for when-in-use only (`requestAccess`). Correct for this screen. Background access is the `v-active` step.
+- `location_disclosure_screen.dart:15-16` `body2` = the old Body 2. Change it to the proposed text once RQ-34 (BOARD row 246) is answered.
+- `ios/Runner/Info.plist:64-65` `NSLocationAlwaysAndWhenInUseUsageDescription`: remove (RQ-33, BOARD row 245).
+- `android/app/src/main/AndroidManifest.xml:13` `ACCESS_BACKGROUND_LOCATION`: remove (RQ-33).
+- `location_gate.dart`: asks for when-in-use only (`requestAccess`). Correct, and now the only request.
 
 ## Questions (owner; full text in `docs/audits/runner-gap-report.md` §21)
-- RQ-33: the background-location approach per platform.
-- RQ-34: the accurate Body 2 and iOS string above.
+- RQ-33 (BOARD row 245, open): while-in-use only on both platforms; remove `ACCESS_BACKGROUND_LOCATION` and the iOS Always key.
+- RQ-34 (BOARD row 246, open): the accurate Body 2 above.

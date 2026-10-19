@@ -98,7 +98,7 @@ For api-contract: what the screen needs. Item numbers match `docs/audits/runner-
 - `GET /errands/:errandId/evidence` (exists) for already uploaded items.
 - Socket: `evidence:uploaded` (exists) refreshes the customer side; the runner updates its list from the POST response.
 - No delete endpoint, and none proposed: evidence is part of the audit trail (system design §10). A wrong photo is explained in the notes (proposed).
-- Location kept with evidence: the evidence row stores `lat`/`lon` as part of the task record. That is not the location-history question RQ-35.
+- Location kept with evidence: the evidence row stores `lat`/`lon` as part of the task record. That is not the location-history question RQ-35 (BOARD row 247, open).
 
 ## Accessibility and mobile
 - Drop zone labelled `Take photo`; tiles read `Photo 2 of 3, uploaded, 10:31 AM`; `Remove` and `Retry` are 48 dp.

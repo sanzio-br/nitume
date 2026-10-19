@@ -82,4 +82,4 @@ Heading announced on open; amounts read as currency; CTA above the safe area.
 - Row 211: AWAITING_CUSTOMER and DISPUTED do not make the runner busy (see Exit).
 
 ## Questions
-- None new. RQ-36 (`v-price-request.md`) may change what `Item reimbursement` shows after an approved increase that the customer has not paid yet.
+- None new. RQ-36 (BOARD row 248, open; `v-price-request.md`) may change what `Item reimbursement` shows after an approved increase that the customer has not paid yet.

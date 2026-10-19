@@ -4,7 +4,7 @@
 - Shared conventions: `_shared.md` (§6 runner transitions and active set, §8 reimbursement, §10 location/offline)
 - Implementation: `apps/runner_app/lib/src/screens/active/active_tab.dart` on `main` is a placeholder (`RootTabPlaceholder(title: 'Active')`); nothing of this spec is built
 - Status: missing
-- Refreshed 2026-10-19 (design-auditor, `docs/runner-v-active-spec`) for owner rows 185, 197, 205, 206, 211, 235, 239 and the batch-1 review notes (B-1, S-1, iOS "Always" wording). Everything not drawn in the mockup is marked **(proposed)**.
+- Refreshed 2026-10-19 (design-auditor, `docs/runner-v-active-spec`) for owner rows 185, 197, 205, 206, 211, 235, 239 and the batch-1 review notes (B-1, S-1, iOS "Always" wording); corrected 2026-10-19 after reviewer FAIL 1 (B-1: no background permission needed). Everything not drawn in the mockup is marked **(proposed)**.
 
 ## Purpose
 The runner's working screen for the job they hold: navigate to the task, move the job through its runner states, complete the evidence checklist, write notes for the customer, request a price change (purchase tasks only) and hand the job to the customer for confirmation. It also shows jobs that are waiting for the customer or disputed, and ended jobs that still need a receipt.
@@ -14,7 +14,7 @@ The runner's working screen for the job they hold: navigate to the task, move th
   - tab bar `Active`;
   - `Accept` / `Accept job` success on `v-jobs` / `v-job-detail` (the job arrives in RUNNER_EN_ROUTE, row 113): the shell selects the Active tab and shows **that** job;
   - push tap for a held job (`_shared.md` §10 deep links): shows the job named by `errandId` if the runner holds it, else the default job.
-- Before the first job starts: the background-location step (below, "Location at job start").
+- After the first accept: the one-time location notice (below, "Location during a job"); no OS prompt.
 - `Navigate` → Google Maps turn-by-turn (`url_launcher`, `_shared.md` §10). No in-app navigation.
 - Checklist `Upload` on `Photos` / `Receipt` → `v-evidence-capture` with the evidence type preset.
 - Checklist `Add` / `Edit` on `Notes for the customer` → notes editor (pushed screen, below).
@@ -48,7 +48,7 @@ The runner's working screen for the job they hold: navigate to the task, move th
   - Tap → the screen switches to that job; the top-bar chip follows the shown job.
   - Order: the working job first, then by last update, newest first.
   - Placed after the primary action (item 9 below) so the working job's controls stay on top.
-- Location pings run only for the working job, whichever job is on screen (row 27; `_shared.md` §10).
+- Job pings (with `errandId`) run only for the working job, whichever job is on screen (row 27; `_shared.md` §10). The 30 s idle pings while online (row 123) stay as they are; AWAITING_CUSTOMER and DISPUTED jobs never get job pings.
 - No tab badge (none in the mockup).
 
 ### Deadline after accept (rows 185, 205, 206, 235, 239)
@@ -69,7 +69,7 @@ The runner's working screen for the job they hold: navigate to the task, move th
    - C-01 small `Navigate` (green action, mockup `.go-btn`).
    - Map and chip are hidden from AWAITING_CUSTOMER on.
    - Without a maps key: the placeholder body (blue-050 grid, `_shared.md` §2), chip still shown.
-4. Location notice (proposed; only during the working job, see "Location at job start"): C-40 when the pinger reports no fix, or background access is missing.
+4. Location notice (proposed; only during the working job, see "Location during a job"): C-40 when the pinger reports no fix.
 5. C-08 `Checklist`.
 6. R-07 `ChecklistStepCard` rows (margin 0 20 10). Generic checklist (row 120; the mockup rows are task-specific samples):
    1. `Arrived at location`:
@@ -114,25 +114,18 @@ The runner's working screen for the job they hold: navigate to the task, move th
 10. `Other jobs` (above, proposed).
 11. Tab bar (Active selected).
 
-### Location at job start (background permission, proposed; RQ-33, RQ-34)
-- Today on `main`: `x-location-disclosure` asks for when-in-use before going online or accepting. Android declares `ACCESS_BACKGROUND_LOCATION` and the location foreground service. iOS declares `NSLocationAlwaysAndWhenInUseUsageDescription` and the `location` background mode. No code asks for background access yet (`PositionSource` has no such call: core-ui need C-V5).
-- When: right after the first successful accept while background access is not granted. The job is already RUNNER_EN_ROUTE, so the step never blocks or delays the accept. Asked again at a later job start only if the runner chose `Not now`, at most once per job.
-- Step 1, in-app prominent disclosure (Google Play requires it immediately before the background request). C-35 dialog:
-  - title `Keep sharing your location during jobs`;
-  - body `While you're on a job, Nitume Runner shares your location with the customer, also when you switch apps or lock your phone. It stops when you finish the task or go offline. If you close the app completely, sharing stops until you open it again.`;
-  - Android extra line: `On the next screen, choose "Allow all the time".`;
-  - buttons `Continue` (primary) / `Not now` (text).
-- Step 2, the OS:
-  - **Android 10**: the system dialog.
-  - **Android 11+**: the app settings page (the OS no longer offers "Allow all the time" in a dialog). Return to `v-active` afterwards.
-  - **iOS**: depends on RQ-33. Recommended: no Always request on iOS. The `location` background mode keeps updates that started in the foreground running while the app is in the background or the phone is locked, with the blue status-bar indicator. "Always" is only needed to start location from the background, which Nitume does not do.
-- Refused or `Not now`:
-  - The job continues. Pings run while the app is in the foreground only.
-  - C-40 on this screen (item 4): `Location sharing pauses when you leave the app. To let the customer follow you, allow location all the time in Settings.` + C-04 `Open Settings` (proposed).
-  - Never block the job, a transition or evidence on background permission.
-- Pinger trouble during the working job (`PingerStatus.noFix`: services off, permission revoked): C-40 `Location is off. The customer can't see where you are.` + `Open Settings` (proposed).
-- After the app was closed completely (force-quit, or the OS killed it) and opened again: when the runner holds a working job, pings restart at once in `PingActiveJob` mode, without a prompt. The runner sees nothing extra.
-- Android foreground-service notification (final, `_shared.md` §10): `Nitume Runner` / `Sharing your location for your active job.`, shown only while background collection runs.
+### Location during a job (while-in-use only, proposed; RQ-33 = BOARD row 245, RQ-34 = row 246, open)
+- Permission: **while-in-use only, on both platforms.** `x-location-disclosure` asks for it before the runner goes online or accepts (built). This screen asks for nothing further: there is no "Allow all the time" or "Always" step and no second OS prompt.
+- How sharing continues when the runner switches apps or locks the phone:
+  - **Android**: the location foreground service (type `location`, persistent notification `Nitume Runner` / `Sharing your location for your active job.`, final, `_shared.md` §10). It starts while the app is visible: at accept, or when `v-active` opens on a working job. On Android 10+ a location foreground service started from the foreground keeps while-in-use access after the app leaves the screen, so `ACCESS_BACKGROUND_LOCATION` is not needed. Remove it from the manifest: it would trigger Google Play's background-location declaration and review for more access than the app uses. **To verify on an Android 14 device during C-V5.** The service must be started while the app is in the foreground, never from the background.
+  - **iOS**: the `location` background mode (built in `Info.plist`) keeps updates started in the foreground running in the background and on a locked screen, with the blue location indicator. Remove `NSLocationAlwaysAndWhenInUseUsageDescription`; the app never asks for Always.
+- The real limit: sharing **stops** after a force-quit (swiped away), or if Android ends the service or the app's process (e.g. battery optimisation). It stays stopped until the runner opens the app again. On opening, when the runner holds a working job, the pinger restarts at once in `PingActiveJob` mode (no prompt, nothing extra shown). The app never says sharing continues "when the app is closed".
+- Job-start notice (proposed, replaces the earlier background-permission dialog; no OS step): after the first successful accept, once per install, C-35 info dialog with one button:
+  - title `Sharing your location during jobs`;
+  - body `While you're on a job, Nitume Runner shares your location with the customer, also when you switch apps or lock your phone. It stops when you finish the task or go offline. If you close the app completely, or your phone stops it to save battery, sharing stops until you open the app again.`;
+  - button `OK`.
+  - It never blocks or delays the accept (the job is already RUNNER_EN_ROUTE).
+- Location trouble during the working job (`PingerStatus.noFix`: services off, permission revoked or reduced to approximate): C-40 `Location is off. The customer can't see where you are.` + C-04 `Open Settings` (proposed). Never block the job, a transition or evidence on location.
 
 ### Confirm dialogs (C-35, proposed)
 - Mark complete:
@@ -202,7 +195,7 @@ The runner's working screen for the job they hold: navigate to the task, move th
 | Notes editor | C-10 `NitumePushedHeader`, C-17 `NitumeField.multiline`, `NitumeFixedCta` | exists |
 | Other jobs rows | `TaskRow` (title, Fira Code meta, trailing chip) | exists |
 | Empty / loading / error | C-33 `NitumeEmptyState`, `SkeletonCard`, `NitumeErrorState` | exists |
-| Pings | R-20 `LocationPinger` (`PingActiveJob`, `PingerStatus`) | exists; **change** C-V5 (background access request) |
+| Pings | R-20 `LocationPinger` (`PingActiveJob`, `PingerStatus`) | exists; **change** C-V5 (foreground-service start rule, Android 14 check, drop background permission) |
 | Offline queue | R-21 `OfflineActionQueue` + `RunnerQueuedActions` | exists |
 | Held-jobs data | R-19 `RunnerJobsRepository` | **change** C-V3 (held jobs in runner projection, without open offers) |
 | Price-change decided event | core `RealtimeEvents` | **change** C-V6 (after API item A8) |
@@ -212,7 +205,7 @@ Exact, from the mockup: `Active job`, `Navigate`, `Checklist`, `Arrived at locat
 
 The mockup's sample rows `Compound photos`, `Bedroom & bathroom video` and `Caretaker notes` are task-specific examples. They are replaced by the generic checklist (row 120; video dropped, rows 32, 121). The street `Links Road, Nyali` is sample data.
 
-Everything else above is **proposed**: the header line, `Due …`, `Other jobs`, captions, dialogs, notices, the background-location dialog, the notes editor and the ended-state copy.
+Everything else above is **proposed**: the header line, `Due …`, `Other jobs`, captions, dialogs, notices, the job-start location notice, the notes editor and the ended-state copy.
 
 ## Numeric fields (Fira Code)
 - Reference (`#NT-10482`); `Due` time; arrival time; `1.2 km · 6 min`; photo and receipt counts (`3 photos uploaded`, `1 receipt uploaded`); amounts in price notices; notes counter `0/2000`; the receipt-window time; references in `Other jobs` rows.
@@ -244,7 +237,7 @@ For api-contract: what the screen needs. Item numbers match `docs/audits/runner-
 - Checklist rows read `Photos, required, button Upload`; done rows read `completed`.
 - The primary action stays reachable: the screen scrolls, with no fixed overlay over content; 48 dp.
 - `Other jobs` rows read `{title}, {state label}, {reference}`.
-- The background-location dialog is a real dialog (focus moves into it); `Open Settings` is 48 dp.
+- The job-start location notice is a real dialog (focus moves into it); `Open Settings` is 48 dp.
 - The screen is not kept awake (battery); pings run from the foreground service during the working job.
 - Bottom content above the tab bar's safe area.
 
@@ -261,7 +254,7 @@ For api-contract: what the screen needs. Item numbers match `docs/audits/runner-
 - Row 211 (2026-10-19): busy = RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS; AWAITING_CUSTOMER and DISPUTED free the runner, so this screen can hold several active-set jobs (`Other jobs`, proposed).
 
 ## Questions (owner; full text in `docs/audits/runner-gap-report.md` §21)
-- RQ-33: the background-location approach (Android "Allow all the time" at job start; iOS without "Always"), and never blocking a job without it.
-- RQ-34: the accurate disclosure wording and OS strings (the reviewer found that "even when the app is closed" overstates behaviour after a force-quit).
-- RQ-35: retention of stored runner location (`runner_locations`).
-- RQ-36: a price increase on `send_to_runner` approved before the difference is paid.
+- RQ-33 (BOARD row 245, open): while-in-use only on both platforms (Android location foreground service, iOS background mode); remove `ACCESS_BACKGROUND_LOCATION` and the iOS Always key; never block a job on location.
+- RQ-34 (BOARD row 246, open): the accurate disclosure wording and OS string ("even when the app is closed" overstates behaviour after a force-quit).
+- RQ-35 (BOARD row 247, open): retention of stored runner location (`runner_locations`).
+- RQ-36 (BOARD row 248, open): a price increase on `send_to_runner` approved before the difference is paid.
