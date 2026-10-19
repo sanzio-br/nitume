@@ -278,7 +278,11 @@ export class NotificationsService {
     });
   }
 
-  /** Runner declined over their purchase limit -> admin feed (row 108). */
+  /**
+   * Runner declined -> admin feed (rows 108, 216, 231). Only
+   * `over_purchase_limit` gets the limit body; `too_far`, `not_available`,
+   * `other` (and older declines without a reason) get the plain body.
+   */
   @OnEvent(ASSIGNMENT_DECLINED_EVENT, { async: true })
   async onAssignmentDeclined(event: AssignmentDeclinedEvent): Promise<void> {
     await this.enqueue({
@@ -509,7 +513,9 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
       return {
         eventType: NotificationEventType.ASSIGNMENT_DECLINED,
         title: 'Runner declined a task',
-        // Jobs queued before the general decline (row 113) carry no flag: they were all over the limit.
+        // Owner copy: limit body (row 108); plain body (rows 216, 231). Jobs
+        // queued before the general decline (row 113) carry no flag: they
+        // were all over the limit.
         body:
           job.overPurchaseLimit === false
             ? `The runner declined ${job.reference}. Assign another runner.`
