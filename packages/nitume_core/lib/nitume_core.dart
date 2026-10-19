@@ -7,6 +7,7 @@ library;
 export 'src/api/api_config.dart';
 export 'src/api/api_exception.dart';
 export 'src/api/nitume_api_client.dart';
+export 'src/api/runner_error_details.dart';
 export 'src/auth/auth_repository.dart';
 export 'src/auth/otp_policy.dart';
 export 'src/config/app_config.dart';

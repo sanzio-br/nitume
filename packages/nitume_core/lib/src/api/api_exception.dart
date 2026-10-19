@@ -533,6 +533,29 @@ abstract final class ApiErrorCodes {
   /// `RunnerJobAccessRevoked`.
   static const jobNotHeld = 'job_not_held';
 
+  /// `PATCH /errands/:id/status` IN_PROGRESS → AWAITING_CUSTOMER without
+  /// the required evidence (409, RA-11, A4). Details: `missing`
+  /// (`RunnerErrorDetails.missingEvidence`). Show the matching caption
+  /// (`Upload photos to finish.` …).
+  static const evidenceRequired = 'evidence_required';
+
+  /// `POST /errands/:id/evidence` by a runner with a type other than photo
+  /// or receipt, or a non-image (400). Details: `allowed` `{ type,
+  /// contentType }` (`RunnerErrorDetails.allowedEvidenceTypes`).
+  static const evidenceTypeNotAllowed = 'evidence_type_not_allowed';
+
+  /// `POST /errands/:id/evidence` in a state that does not take this type
+  /// (409, A5: photos in ARRIVED / IN_PROGRESS, receipts ARRIVED …
+  /// AWAITING_CUSTOMER and 24 h after CANCELLED / FAILED). Details:
+  /// `status`, `type` (`RunnerErrorDetails.evidenceRefusedStatus`,
+  /// `evidenceRefusedType`). Reload the job.
+  static const evidenceNotAllowed = 'evidence_not_allowed';
+
+  /// A receipt upload or `POST /runners/me/reimbursement-claims` after the
+  /// 24 h window (409, row 129, A10). Details: `endedAt`, `windowEndsAt`
+  /// (`RunnerErrorDetails.jobEndedAt`, `receiptWindowEndsAt`).
+  static const reimbursementWindowClosed = 'reimbursement_window_closed';
+
   /// Accepting while offline (409, RA-8). Go online first.
   static const runnerOffline = 'runner_offline';
 
