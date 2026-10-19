@@ -14,7 +14,11 @@ class TaskSummaryCard extends StatelessWidget {
     this.titleStyle,
     this.showChip = true,
     this.note,
+    this.footer,
   });
+
+  /// Optional content under the meta line (checkout `Deadline` line).
+  final Widget? footer;
 
   /// Optional 13 slate-600 line under the chip (e.g. Task detail EXPIRED
   /// with no refund review).
@@ -54,6 +58,7 @@ class TaskSummaryCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(meta, style: NitumeTextStyles.metaLarge),
             ],
+            ?footer,
           ],
         ),
       ),
