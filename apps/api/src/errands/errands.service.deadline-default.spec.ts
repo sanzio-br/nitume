@@ -40,7 +40,7 @@ const build = (config: Record<string, number> = {}) => {
     {} as never,
     {} as never,
     { emit: vi.fn() } as never,
-    {} as never,
+    { inServiceArea: () => true } as never,
     {} as never,
     { get: vi.fn((key: string, def: unknown) => config[key] ?? def) } as never,
   );

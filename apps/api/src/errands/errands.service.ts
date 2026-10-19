@@ -20,6 +20,7 @@ import {
 } from 'typeorm';
 import {
   AssignmentDeclineReason,
+  ErrandPointType,
   ErrandStatus,
   GeoPoint,
   StatusHistoryActor,
@@ -510,6 +511,12 @@ const paidExpiryBlocker = (
   return deadlinePassed(errand, now) ? null : { reason: 'deadline_not_passed' };
 };
 
+/** Row 213: a task's first point is its task site, else pickup, else drop-off. */
+const FIRST_POINT_ORDER: readonly string[] = [ErrandPointType.TASK_SITE, ErrandPointType.PICKUP, ErrandPointType.DROPOFF];
+
+export const firstPointOf = <T extends { pointType: string }>(points: readonly T[]): T | null =>
+  [...points].sort((a, b) => FIRST_POINT_ORDER.indexOf(a.pointType) - FIRST_POINT_ORDER.indexOf(b.pointType))[0] ?? null;
+
 /** States in which an admin may replace an expired quote (rows 46, 72). */
 const REQUOTABLE = new Set<ErrandStatus>([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]);
 
@@ -598,6 +605,30 @@ export class ErrandsService {
     @Optional() private readonly users?: UsersService,
   ) {}
 
+  /**
+   * Row 233 (owner, 2026-10-19): a task whose first point (task site, else
+   * pickup, else drop-off) is inside no configured service area is refused
+   * at create, submit and quote: 422 `location_outside_service_area`
+   * (`pointType`). Off while no area is configured.
+   */
+  private assertInServiceArea(points: readonly { pointType: string; lat: number; lng: number }[]): void {
+    const first = firstPointOf(points);
+    if (first && !this.runners.inServiceArea(first)) {
+      throw new ApiError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'location_outside_service_area',
+        "This location is outside the areas we serve. Choose a location inside a service area.",
+        { pointType: first.pointType },
+      );
+    }
+  }
+
+  /** The row-233 check on a stored task (submit, quote), inside the caller's transaction. */
+  private async assertStoredInServiceArea(manager: EntityManager, errandId: string): Promise<void> {
+    const rows = await manager.getRepository(ErrandLocation).find({ where: { errandId } });
+    this.assertInServiceArea(rows.map(toLocationView));
+  }
+
   /** Row 221: hours from creation to the default deadline (`errands.defaultDeadlineHours`, 24). */
   defaultDeadlineHours(): number {
     return this.config?.get<number>('errands.defaultDeadlineHours', 24) ?? 24;
@@ -625,6 +656,7 @@ export class ErrandsService {
       dto.locations.map((l) => l.pointType),
     );
     const budget = budgetFor(dto.category, dto.budget);
+    this.assertInServiceArea(dto.locations.map((l) => ({ pointType: l.pointType, lat: l.lat, lng: l.lon })));
     return this.inTx(async (manager) => {
       const profile = await manager
         .getRepository(CustomerProfile)
@@ -1640,6 +1672,10 @@ export class ErrandsService {
         await this.runners.endJob(holder.runnerProfileId, manager);
       }
     }
+    // Row 233: a draft made before areas were configured (or changed) is refused at submit.
+    if (fromStatus === ErrandStatus.DRAFT && to === ErrandStatus.REQUESTED) {
+      await this.assertStoredInServiceArea(manager, errandId);
+    }
     let acceptedQuote: Quote | null = null;
     if (fromStatus === ErrandStatus.QUOTED && to === ErrandStatus.ACCEPTED) {
       acceptedQuote = await this.currentQuote(errandId, manager);
@@ -2080,6 +2116,10 @@ export class ErrandsService {
         where: { id: errandId },
         lock: { mode: 'pessimistic_write' },
       });
+      // Row 233: no quote or re-quote for a task inside no service area.
+      if (current && (current.status === ErrandStatus.REQUESTED || REQUOTABLE.has(current.status))) {
+        await this.assertStoredInServiceArea(manager, errandId);
+      }
       if (current && REQUOTABLE.has(current.status)) {
         if (actor.type !== StatusHistoryActor.ADMIN && actor.type !== StatusHistoryActor.SYSTEM) {
           throw new ForbiddenException(`Actor '${actor.type}' cannot re-quote an errand`);

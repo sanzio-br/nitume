@@ -339,3 +339,16 @@ describe('poolFor: the task pool by identity (rows 115, 116, 126, 212, 213)', ()
     expect(noPoint.map((r) => r.profile.id).sort()).toEqual(['rp-a', 'rp-c']);
   });
 });
+
+describe('inServiceArea (row 233)', () => {
+  const service = (areas: unknown[]) =>
+    new RunnersService({} as never, {} as never, {} as never, {} as never, {} as never, undefined, {
+      get: vi.fn((k: string, d: unknown) => (k === 'runners.serviceAreas' ? areas : d)),
+    } as never);
+
+  it('is true inside an area, false outside, and true while no area is configured', () => {
+    expect(service(AREAS).inServiceArea({ lat: -1.2864, lng: 36.8172 })).toBe(true);
+    expect(service(AREAS).inServiceArea({ lat: -4.04, lng: 39.7 })).toBe(false);
+    expect(service([]).inServiceArea({ lat: -4.04, lng: 39.7 })).toBe(true);
+  });
+});

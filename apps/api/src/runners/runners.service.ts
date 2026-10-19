@@ -497,6 +497,16 @@ export class RunnersService {
       .map((p) => ({ profile: p, displayName: active.get(p.userId) ?? null }));
   }
 
+  /**
+   * Row 233 (owner, 2026-10-19): true when the point is inside a configured
+   * service area (RUNNER_SERVICE_AREAS, circles, row 213), or when no area
+   * is configured (the check is off).
+   */
+  inServiceArea(point: { lat: number; lng: number }): boolean {
+    const areas = this.areaList();
+    return areas.length === 0 || areasContaining(point, areas).length > 0;
+  }
+
   /** Row 116: the ops-configured areas, by name (`GET /runners/service-areas`). */
   serviceAreaOptions(): { items: ServiceAreaOption[] } {
     return { items: serviceAreaOptionsOf(this.areaList()) };

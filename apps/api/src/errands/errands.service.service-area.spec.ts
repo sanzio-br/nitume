@@ -1,0 +1,120 @@
+import { describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../common/api-error';
+import { ErrandCategory, ErrandPointType, ErrandStatus, StatusHistoryActor } from '../common/enums';
+import { CustomerProfile } from '../customers/customer-profile.entity';
+import { CreateErrandDto } from './dto/errand.dto';
+import { ErrandLocation } from './errand-location.entity';
+import { ErrandStatusHistory } from './errand-status-history.entity';
+import { Errand } from './errand.entity';
+import { ErrandsService, firstPointOf } from './errands.service';
+import { Quote } from './quote.entity';
+
+/** Row 233 (owner, 2026-10-19): no task inside no configured service area. */
+const PICKUP = { lat: -1.2, lng: 36.8 };
+const DROPOFF = { lat: -4.04, lng: 39.7 };
+
+const build = (status: ErrandStatus, inArea: (p: { lat: number; lng: number }) => boolean) => {
+  const errand = { id: 'e-1', customerId: 'c-1', status, deadlineAt: new Date(Date.now() + 3_600_000) } as Errand;
+  const stored = [
+    { pointType: ErrandPointType.DROPOFF, coordinates: { coordinates: [DROPOFF.lng, DROPOFF.lat] } },
+    { pointType: ErrandPointType.PICKUP, coordinates: { coordinates: [PICKUP.lng, PICKUP.lat] } },
+  ];
+  const saved: unknown[] = [];
+  const repos = new Map<unknown, unknown>([
+    [
+      Errand,
+      {
+        findOne: vi.fn(() => Promise.resolve(errand)),
+        create: vi.fn((r: object) => r),
+        save: vi.fn((r: object) => {
+          saved.push(r);
+          return Promise.resolve(Object.assign(r, { id: 'e-1' }));
+        }),
+        update: vi.fn(() => Promise.resolve()),
+      },
+    ],
+    [ErrandLocation, { find: vi.fn(() => Promise.resolve(stored)), create: vi.fn((r: object) => r), save: vi.fn((r: unknown) => Promise.resolve(r)) }],
+    [ErrandStatusHistory, { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) }],
+    [CustomerProfile, { findOne: vi.fn(() => Promise.resolve({ id: 'c-1' })) }],
+    [Quote, { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) }],
+  ]);
+  const manager = { getRepository: (entity: unknown) => repos.get(entity) };
+  const inServiceArea = vi.fn(inArea);
+  const service = new ErrandsService(
+    { transaction: vi.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    { emit: vi.fn() } as never,
+    { inServiceArea } as never,
+    {} as never,
+  );
+  return { service, errand, saved, inServiceArea };
+};
+
+const codeOf = async (p: Promise<unknown>) => {
+  const err = await p.catch((e: unknown) => e);
+  return err instanceof ApiError ? (err.getResponse() as Record<string, unknown>) : { thrown: String(err) };
+};
+
+const dto = {
+  category: ErrandCategory.PICKUP_DELIVERY,
+  description: 'Collect the parcel',
+  budget: 200,
+  locations: [
+    { pointType: ErrandPointType.DROPOFF, lat: DROPOFF.lat, lon: DROPOFF.lng, addressText: 'Nyali' },
+    { pointType: ErrandPointType.PICKUP, lat: PICKUP.lat, lon: PICKUP.lng, addressText: 'CBD' },
+  ],
+} as CreateErrandDto;
+
+const ADMIN = { type: StatusHistoryActor.ADMIN, id: 'admin-1' };
+
+describe('row 233: tasks inside no service area', () => {
+  it('firstPointOf: task site, else pickup, else drop-off', () => {
+    expect(firstPointOf([{ pointType: 'dropoff' }, { pointType: 'pickup' }])?.pointType).toBe('pickup');
+    expect(firstPointOf([{ pointType: 'dropoff' }, { pointType: 'task_site' }])?.pointType).toBe('task_site');
+    expect(firstPointOf([])).toBeNull();
+  });
+
+  it('refuses create when the first point is outside every area (422 location_outside_service_area)', async () => {
+    const { service, saved, inServiceArea } = build(ErrandStatus.DRAFT, () => false);
+    expect(await codeOf(service.createDraft('u-1', dto, { type: StatusHistoryActor.CUSTOMER, id: 'u-1' }))).toMatchObject({
+      statusCode: 422,
+      code: 'location_outside_service_area',
+      pointType: 'pickup',
+    });
+    expect(inServiceArea).toHaveBeenCalledWith(expect.objectContaining(PICKUP));
+    expect(saved).toHaveLength(0);
+  });
+
+  it('only the first point counts: a drop-off outside does not matter', async () => {
+    const { service, saved } = build(ErrandStatus.DRAFT, (p) => p.lat === PICKUP.lat);
+    Object.assign(service, { derivedFields: () => ({}) });
+    await service.createDraft('u-1', dto, { type: StatusHistoryActor.CUSTOMER, id: 'u-1' });
+    expect(saved).toHaveLength(1);
+  });
+
+  it('refuses submit of a stored draft outside every area', async () => {
+    const { service, errand } = build(ErrandStatus.DRAFT, () => false);
+    expect(
+      await codeOf(service.transition('e-1', ErrandStatus.REQUESTED, { type: StatusHistoryActor.CUSTOMER, id: 'c-1' })),
+    ).toMatchObject({ code: 'location_outside_service_area', pointType: 'pickup' });
+    expect(errand.status).toBe(ErrandStatus.DRAFT);
+  });
+
+  it('refuses the first quote and a re-quote', async () => {
+    const requested = build(ErrandStatus.REQUESTED, () => false);
+    expect(await codeOf(requested.service.quote('e-1', { total: 500 } as never, ADMIN))).toMatchObject({
+      code: 'location_outside_service_area',
+    });
+    expect(requested.errand.status).toBe(ErrandStatus.REQUESTED);
+    const quoted = build(ErrandStatus.QUOTED, () => false);
+    expect(await codeOf(quoted.service.quote('e-1', { total: 500 } as never, ADMIN))).toMatchObject({
+      code: 'location_outside_service_area',
+    });
+  });
+});
