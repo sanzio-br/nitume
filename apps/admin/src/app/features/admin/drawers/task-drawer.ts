@@ -6,7 +6,11 @@ import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
 import { ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
-import type { ErrandStatusHistoryEntry, QuoteErrandResult } from '../../../core/api-types';
+import type {
+  ErrandCandidatesPage,
+  ErrandStatusHistoryEntry,
+  QuoteErrandResult,
+} from '../../../core/api-types';
 import { formatDateTime, formatKsh, formatKshExact } from '../shared-format';
 import { QuoteConflict, QuoteDialogComponent } from './quote-dialog';
 import { QuoteSectionComponent } from './quote.section';
@@ -14,6 +18,7 @@ import { MerchantDetailsSectionComponent } from './merchant-details.section';
 import { RefundLinkSectionComponent } from './refund-link.section';
 import { RunnerPayoutsLinkSectionComponent } from '../payouts/runner-payouts-link.section';
 import { TaskOfferSectionComponent } from './task-offer.section';
+import { RunnerPickerComponent } from './runner-picker';
 
 /**
  * Admin actions by state (§3.3): the first quote only from REQUESTED; a
@@ -58,6 +63,7 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
     RefundLinkSectionComponent,
     RunnerPayoutsLinkSectionComponent,
     TaskOfferSectionComponent,
+    RunnerPickerComponent,
   ],
   template: `
     @if (s.detailLoading()) {
@@ -219,24 +225,34 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
           >.
         </p>
         @if (assignNotice(); as n) {
-          <app-inline-notice [tone]="n.tone"><app-num-text [text]="n.text" /></app-inline-notice>
+          <app-inline-notice [tone]="n.tone"
+            ><app-num-text [text]="n.text" />
+            @if (candidatesFailed()) {
+              <button
+                notice-action
+                type="button"
+                class="btn btn-outline btn-sm"
+                (click)="loadCandidates()"
+              >
+                Try again
+              </button>
+            }
+          </app-inline-notice>
         }
         <div class="drawer-stack">
-          <app-form-field label="Runner">
-            <select
-              appFieldControl
-              data-autofocus
-              [value]="assignRunnerId()"
-              (change)="assignRunnerId.set(val($event))"
-            >
-              <option value="">Choose a runner</option>
-              @for (r of availableRunners(); track r.id) {
-                <option [value]="r.id">
-                  {{ shortId(r.id) }} · {{ statusLabel(r.availability, 'availability') }}
-                </option>
-              }
-            </select>
-          </app-form-field>
+          <div class="field">
+            <div class="field-label" aria-hidden="true">Runner</div>
+            @if (candidatesLoading()) {
+              <div class="ops-loading">Loading runners…</div>
+            } @else if (candidates(); as page) {
+              <app-runner-picker
+                [candidates]="page.items"
+                [offlineCount]="page.offlineCount"
+                [selected]="assignRunnerId()"
+                (selectedChange)="assignRunnerId.set($event)"
+              />
+            }
+          </div>
           <app-form-field label="Note (optional)" [counter]="assignNote().length + '/500'">
             <textarea
               appFieldControl
@@ -264,6 +280,9 @@ export class TaskDrawerComponent implements OnInit {
   protected readonly assignRunnerId = signal('');
   protected readonly assignNote = signal('');
   protected readonly assignNotice = signal<{ tone: NoticeTone; text: string } | null>(null);
+  protected readonly candidates = signal<ErrandCandidatesPage | null>(null);
+  protected readonly candidatesLoading = signal(false);
+  protected readonly candidatesFailed = signal(false);
 
   protected readonly actions = computed(() => taskActions(this.s.detail()?.status ?? ''));
 
@@ -282,11 +301,6 @@ export class TaskDrawerComponent implements OnInit {
 
   protected val(event: Event): string {
     return (event.target as HTMLInputElement).value;
-  }
-
-  /** Online and on-task runners (the API decides; busy reads `On task`). */
-  protected availableRunners() {
-    return this.s.runners().filter((r) => r.availability === 'online' || r.availability === 'busy');
   }
 
   protected onQuoted(res: QuoteErrandResult): void {
@@ -311,6 +325,39 @@ export class TaskDrawerComponent implements OnInit {
     this.assignNote.set('');
     this.assignNotice.set(null);
     this.assignOpen.set(true);
+    void this.loadCandidates();
+  }
+
+  /**
+   * The dialog's runner list from `GET /errands/:id/candidates` (rows 177,
+   * 215): busy runners are left out by the API; offline runners go in the
+   * collapsed `Show offline runners ({n})` group.
+   */
+  protected async loadCandidates(): Promise<void> {
+    this.candidatesLoading.set(true);
+    this.candidatesFailed.set(false);
+    this.assignNotice.set(null);
+    try {
+      this.candidates.set(await this.s.loadCandidates(this.errandId()));
+    } catch (e) {
+      const err = e as ApiErrorInfo;
+      this.candidates.set(null);
+      if (err.status === 409 || err.status === 404) {
+        this.assignOpen.set(false);
+        await this.s.loadErrandDetail(this.errandId(), { quiet: true });
+        this.notice.set({
+          tone: 'info',
+          text: 'This task changed while you were editing. Showing the latest.',
+        });
+      } else if (err.status === 403) {
+        this.assignNotice.set({ tone: 'danger', text: FORBIDDEN_COPY });
+      } else {
+        this.candidatesFailed.set(true);
+        this.assignNotice.set({ tone: 'danger', text: "Couldn't load runners. Try again." });
+      }
+    } finally {
+      this.candidatesLoading.set(false);
+    }
   }
 
   protected async confirmAssign(): Promise<void> {
