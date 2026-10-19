@@ -144,7 +144,7 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
         </section>
       }
 
-      <app-task-offer-section [errand]="d" />
+      <app-task-offer-section [errand]="d" (notice)="notice.set($event)" />
 
       <app-merchant-details-section [errand]="d" />
 
