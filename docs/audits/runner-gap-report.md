@@ -797,6 +797,172 @@ Admin findings 29 (now unblocked: API items 1–2) and 31 (offline group, decide
 - Row 234 (new, open): no admin feed item after the admin's PAYMENT_CONFIRMED `Expire task` either (design-auditor reading of row 232; recommended none).
 - Row 233 (AQ-32) is still open.
 
+## 17. Audit 2026-10-19: runner batch 1 (`feat/runner-batch-1` @ `9572e64`, on core `b44da01`)
+
+Commits `60399ed`, `2cfb3ac`, `c322029`, `89ebdfe`, `e5b269c`, `9572e64`. Specs: round 13 (`docs/owner-answers-13-specs` and the stacked audit branches). The mockup is `nitume_runner_app.html`.
+
+Build health:
+- `flutter analyze` (runner_app): no issues. `flutter test`: 65 pass.
+- No `Color(0x…)`, `fontFamily`, `GoogleFonts` or raw `TextStyle(` in `lib/`. Every style comes from core `NitumeTextStyles`, and numbers use `NumSpan` / `NumText` / `meta` (Fira Code).
+
+### Rulings on the builder's readings
+- **(a) D-1, selfie missing goes to `v-onboard-selfie`**: accepted. The routing order matches `v-auth-otp` step 3 and the spec entries:
+  - verified → shell;
+  - an ID side missing → `v-onboard-id`;
+  - selfie missing → `v-onboard-selfie`;
+  - everything submitted → shell with `v-onboard-pending` pushed;
+  - a failed check or a restored session → shell, which shows the verification card.
+- **(b) `v-onboard-pending`**:
+  - The generic load-error copy is accepted.
+  - "Not verified, nothing pending" used the 24-hour body. The spec now adds the case where the ID or selfie is `Not started` (none rejected): show the `v-jobs` copy `Upload your ID and a selfie to start accepting jobs.` This is **m-5 (minor)**.
+- **(c) `v-jobs`**:
+  - The disabled availability card stays for an unverified runner: accepted, and the spec wording is fixed (the card replaces items 3–4).
+  - 20 s polling instead of the RA-5 socket: accepted (the spec's own fallback). No `Reconnecting…` notice without a socket: accepted.
+  - The bell does nothing until `v-notifications` exists: accepted interim. It must route to `v-notifications` in that build.
+  - `Photos required` left out of the meta line: **not accepted**. `Photos required` is proposed copy applying row 120 (RQ-8, generic evidence checklist). Every task's generic checklist requires photos, so it is a constant meta part, not an API field. See F-1.
+- **(d) `v-job-detail` items `qty × name unit`**: accepted. It matches the spec example `2 × Milk 500 ml`; the quantity is in Fira Code.
+- **(e) Interim stand-ins for missing core pieces**: all acceptable interim. None is a FAIL, because each keeps the spec's information, uses only core tokens, and is marked `TODO(core-ui)` where code exists. core-ui needs:
+  - C1 R-15 `CaptureThumbnail` states:
+    - `selected` (2 px blue outline);
+    - a rejected chip (C-05 small danger `Not approved`);
+    - a `Too large` label.
+    Until then a rejected side reads as an empty tile; the notice above the tiles names the side.
+  - C2 R-13 `CaptureDropZone` title slot (the side line) and a captured state (photo r 16, cover) for the selfie.
+  - C3 C-40 `NitumeNotice` danger accent (the 10 MB notice).
+  - C4 C-33 empty-state title slot (`v-jobs` empty and offline states now put title and body in one message).
+  - C5 promote `FixedCta` to `nitume_core`. **m-4 (minor)**: the runner copy is the second copy (customer app plus runner app). The m-2 rule applies: a third copy, or drift, is a FAIL.
+  - C6 `CaptureFrom.frontCamera` (front camera only for the selfie). Today the rear camera opens and the runner can switch.
+- **(f) iOS permission strings written from the disclosure copy**: accepted and recorded in `x-location-disclosure.md`. Android: the camera, fine/coarse/background location and foreground-service location permissions are declared. Background location is asked only when a job starts.
+- **(g) No location pings**: accepted. RA-4 (the API side of `location:ping`) is not built, so there is nothing to send to. Nothing is collected offline: the device fix is read only while online, for the distance.
+
+### Per screen
+
+#### runner/shell, D-1 routing: PASS
+- D-1 (round-7 deferral) is closed: `onboarding_routing.dart` and `app.dart` route as in (a), with tests.
+
+#### v-onboard-id: PASS (interim C1, C2)
+- Header `ID verification` with `Step 1 of 2`, the intro, and `Front` / `Back` tiles in order, each upload sending `side`.
+- The side line `Front of your ID` / `Back of your ID`, the drop zone `Tap to take a photo or upload`, and a `Take photo` / `Choose from gallery` sheet.
+- After the front uploads, the back is selected. A rejected side is selected first, with the notice for one side or both (row 209). `Retake` / `Retry` per tile.
+- Too large: checked before upload and on 413, with `10 MB` in Fira Code. Bad type and bad photo copy as specced.
+- The `Leave verification?` dialog on the first run.
+- Hint and privacy line; the link is hidden without the URL.
+- `Continue →` only when both sides are uploaded. Photos are read into memory (file deletion as corrected in §17.3).
+
+#### v-onboard-selfie: PASS (interim C2, C6; open item S-1)
+- Copy as in the mockup. The size and type checks are shared with the ID screen. `Retake`. `Submit for review →` replaces the onboarding stack with `v-onboard-pending`.
+- Builder hint copy accepted (spec updated).
+- **S-1 (open, orchestrator decision)**: the interim `payment_identity` record at submit (row 218; core-ui §15 item 4) is not built, because it was deferred by the orchestrator.
+  - Consequence: no runner can become verified end to end, because the gate needs `payment_identity` approved and nothing creates that record.
+  - It must be built (core-ui item 4, then this screen) before any real runner onboarding.
+
+#### v-onboard-pending: PASS (m-5)
+- The four rows with compact chips (`Verified`, `In review`, `Not approved`, `Not started`).
+- The National ID uses the row-209 combination (`nationalIdStatus`), with the side caption and `Upload again` opening the rejected side; `Retake selfie`.
+- Bodies by state, with `24` in Fira Code. The owner's full privacy paragraph and the link.
+- `Back to app` / `Start accepting jobs`. Reloads on resume; pull to refresh.
+- m-5: the `Not started` body (spec updated in this branch).
+
+#### x-location-disclosure: PASS
+- Layout and copy as specced: a 56 px blue-050 circle, the heading, three paragraphs, `Continue` / `Not now`.
+- The OS prompt is asked only after `Continue`; the result is returned to the caller.
+- The gate shows `Turn on location to receive and do jobs.` with `Open Settings` when the permission is permanently denied.
+
+#### v-jobs: FAIL (1 minor)
+F-1 **minor**: `screens/jobs/offer_presentation.dart:63-72` (`offerMeta`).
+- Design: the meta line includes `Photos required` (proposed copy applying row 120; mockup meta).
+- Code: no evidence part ("the offer view carries no evidence requirement").
+- Fix: append `Photos required` to every card's meta (after distance, before the purchase terms), as a constant. Update `jobs_test.dart`.
+
+Everything else passes:
+- Top bar `Nearby jobs` with the bell and unread count.
+- The R-02 availability card, with the areas line or `No service areas yet`.
+- Verification card states and targets, offline and empty states, the error state, and skeletons.
+- `{n} offers near you` with a Fira Code count. Cards with tag, pay, title, meta and the over-limit notice; `Accept` disabled over the limit.
+- The active-job card. Busy rules (row 211): no going offline while busy, `runner_busy` copy.
+- Offline offers notice (row 215).
+- The location gate before going online or accepting.
+- Accept goes to the Active tab, with the error mapping (`offer_expired` with or without the deadline reason, `illegal_transition`, 404/403 → `That offer is no longer available.`).
+- R-23 decline with the reason required (row 229).
+- Cards are removed at the earlier of `offerExpiresAt` and `deadlineAt` (rows 156, 205). New offers are announced politely. Pull to refresh.
+
+#### v-job-detail: PASS
+- Countdown `Offer ends in m:ss` (Fira Code, 1 s tick); the ended state at 0, or when the job is no longer returned.
+- R-16 map with the device marker.
+- Detail card:
+  - tag and pay (17, Fira Code), title, description, items;
+  - `Distance` / `Deadline` / `Payout` / `Item amount` / `How it's paid` / addresses (numbers in Fira Code).
+- Over-limit notice and caption; the reimbursement note for `send_to_runner`.
+- `Decline` uses R-23 and `Accept job` uses the location gate.
+- Offline or unverified: buttons hidden behind the notice.
+- A stale notification for a held job goes to Active.
+- Ended state: `This offer is no longer available.` with `Back to jobs`. `Distance unavailable` without a fix (builder copy, accepted).
+
+### Needs
+- flutter-runner: F-1 (v-jobs); m-5 (v-onboard-pending); later S-1 (after core-ui item 4), the C1–C6 switches once core ships them, the bell route with `v-notifications`, and m-4 (switch to the core `FixedCta`).
+- core-ui: C1–C6 above; §15 item 4 (payment-identity call, unblocks S-1).
+- api-contract: RA-4 (`location:ping`) and RA-5 (runner socket room), already listed; no new item.
+- Orchestrator: S-1 is the only path to a verified runner. Schedule it before onboarding is used with real runners.
+
+### 17.1 Re-audit 2026-10-19 (`feat/runner-batch-1` @ `f125ef9`)
+Build health: `flutter analyze` clean; `flutter test` 66 pass.
+
+- **v-jobs: PASS (F-1 closed)**, fixed in `b2beedb`.
+  - The meta line now reads `{distance} away · Photos required · Item KSh … · {how it's paid}`. `Photos required` is on every offer and the distance is left out without a device fix. That matches the spec (proposed copy applying row 120) and the spec order.
+  - The copy is the constant `OfferCopy.photosRequired`, and the tests are updated.
+- **v-onboard-pending: PASS (m-5 closed)**, fixed in `f125ef9`.
+  - Body order: rejected, then all approved, then ID or selfie `Not started` (`Upload your ID and a selfie to start accepting jobs.`), then the 24-hour mockup body.
+  - The National ID counts as not started whenever its combined status is `missing`, including one side uploaded and the other not.
+  - Ruling: when only `M-Pesa identity match` is `Not started`, the 24-hour body stays. This matches the spec as amended in `f03be0e`. That record is created by the app at submit once S-1 is built, so the case is temporary. No change.
+
+Open from §17: S-1 (orchestrator), m-4 and C1–C6 (core-ui), the bell route (with `v-notifications`).
+
+### 17.2 Review minors (2026-10-19)
+- Labels: the `x-location-disclosure` OS strings and the `v-onboard-pending` additions are marked proposed. "None (OS permission)" is reworded to "No API data".
+- `Photos required` is attributed as "proposed copy applying row 120" (§17, §17.1, `v-jobs.md`).
+- `v-onboard-pending` now states that the M-Pesa-only 24-hour body is misleading until S-1 is built.
+- **New m-6 (minor), v-jobs meta typography**: `v-jobs.md` now asks for Fira Code only on the numeric parts of the meta line (design system wins over the mockup). The build renders the whole meta in Fira Code (core R-04 `JobOfferCard` `meta` is a plain Fira Code string).
+  - core-ui: let R-04 take a rich meta (spans), with `NumSpan` for numbers.
+  - flutter-runner: build the meta from spans in `offer_presentation.dart` `offerMeta`.
+  - This does not reopen the v-jobs PASS for F-1; m-6 is a follow-up minor.
+- The captured-file claim is corrected in §17.3 after the B-1 fix (`bcae361`).
+
+### 17.3 Re-audit 2026-10-19 (`feat/runner-batch-1` @ `e2069dd`, with core `feat/core-runner-batch-2` merged in `b6c2fa6`)
+Build health: `flutter analyze` clean; `flutter test` 67 pass. Still no literal colours or font families in `lib/`.
+
+Changes checked:
+- **B-1** (`bcae361`): the picked or shot image is read into memory, then the capture file and any scratch copy the picker made are deleted (`CapturedImage.discard`), and captures orphaned when Android killed the app mid-pick are deleted at the next start (`discardLostCaptures`); copies outside the app, such as the runner's own gallery photo or a system camera app's copy, are not the app's to delete.
+- **Core C1–C3, C6** (`8d08b0b`):
+  - R-15 `selected` outline (2 px blue), `issue` (`notApproved`, `tooLarge`) with `Retake`, and the side label on the photo.
+  - R-13 `title` slot and captured state.
+  - C-40 danger tone on the 10 MB notice.
+  - `CaptureFrom.frontCamera` for the selfie.
+- **`NitumeFixedCta`, empty-state titles, required reason** (`b7d04f7`): the local `FixedCta` copy is gone (m-4 closed). The `v-jobs` empty and offline states now have a title and a body (C4 closed). R-23 `reasonRequired` stays required.
+- **S-1** (`28290b0`): `Submit for review →` calls `ensurePaymentIdentityVerification` (it creates the pending `payment_identity` record unless a pending or approved one exists; a rejected one is created again), then replaces the stack with `v-onboard-pending`. On failure: C-40 `Couldn't submit. Check your connection and try again.` (the proposed copy in `v-onboard-selfie.md`); the selfie stays uploaded. **S-1 closed.**
+- **m-6** (`e2069dd`): `richMeta` puts Fira Sans words with `NumSpan` numbers (distance, item amount). **m-6 closed.**
+
+Rulings:
+- A selfie already on the server shows the R-15 thumbnail (uploaded state, `Retake`) with no image: accepted (the app never downloads ID or selfie images). `v-onboard-selfie.md` updated.
+- Too large leaves the tile empty with the `tooLarge` issue and `Retake`: accepted. `v-onboard-id.md` updated.
+- The side label on a captured tile is a solid `#0B2545` (`blue`) chip with white text: accepted. `v-onboard-id.md` R-15 amended.
+- Runner `_shared.md` §3: offer meta in Sans with Code only on the numbers.
+
+### Verdicts
+| Screen | Verdict |
+|---|---|
+| v-onboard-id | **PASS** (C1, C2 now real; no stand-ins left) |
+| v-onboard-selfie | **PASS** (C2, C6 real; S-1 closed) |
+| v-onboard-pending | **PASS** |
+| x-location-disclosure | **PASS** (unchanged) |
+| runner/shell (D-1) | **PASS** (unchanged) |
+| v-jobs | **PASS** (m-6 closed; C4, C5 real) |
+| v-job-detail | **PASS** (`NitumeFixedCta`) |
+
+Still open: the bell route (with `v-notifications`); RA-4 and RA-5 (API).
+
+### 17.4 Spec note (2026-10-19)
+- `v-onboard-selfie.md` now has one submit-error copy, `Couldn't submit. Check your connection and try again.`, as a C-40 notice in the **danger** tone (the duplicate `We couldn't submit your application. Try again.` is removed). **m-7 (minor)**: the build shows it in the default tone (`onboard_selfie_screen.dart:152`); pass `tone: NitumeNoticeTone.danger`.
+
 ## 18. Owner answers rows 233–235 (2026-10-19), applied on `docs/owner-answers-14-specs`
 
 Spec-only update; no screen re-audited.

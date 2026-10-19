@@ -109,11 +109,11 @@ Unmapped implementation files: `apps/customer_app/lib/src/screens/tasks_screen.d
 |---------|---------|------|---------------------|--------|
 | v-auth-phone | Phone entry (sign in / apply) | `docs/specs/runner/v-auth-phone.md` | `apps/runner_app/lib/src/screens/auth/phone_screen.dart` (+ `auth_frame.dart`, `widgets/runner_wordmark.dart`; branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS; minors m-2, m-3 wait on core-ui) |
 | v-auth-otp | OTP verify, role check, routing | `docs/specs/runner/v-auth-otp.md` | `apps/runner_app/lib/src/screens/auth/otp_screen.dart` + `services/session.dart` (branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS; D-1 onboarding routing deferred to the onboarding build) |
-| v-onboard-id | ID verification, step 1 of 2 | `docs/specs/runner/v-onboard-id.md` | — (app not built) | specced — app not built (round 11: side `front` / `back` per upload, rows 195, 200; round 12: per-side rejected state, row 209) |
-| v-onboard-selfie | Selfie check, step 2 of 2 | `docs/specs/runner/v-onboard-selfie.md` | — (app not built) | specced — app not built (round 12: interim payment-identity record, rows 217, 218) |
-| v-onboard-pending | Verification status (also Profile → Verification documents) | `docs/specs/runner/v-onboard-pending.md` | — (app not built) | specced — app not built (round 12: National ID combined from both sides, row 209; needs core-ui §15 item 3) |
-| v-jobs | Nearby jobs / offers + availability | `docs/specs/runner/v-jobs.md` | — (app not built) | specced — app not built (round 12: decline reason picker R-23, row 210; needs core-ui §15 items 1–2) |
-| v-job-detail | Job offer detail (purchase limit, row 108) | `docs/specs/runner/v-job-detail.md` | — (app not built) | specced — app not built (round 12: R-23 decline dialog, row 210) |
+| v-onboard-id | ID verification, step 1 of 2 | `docs/specs/runner/v-onboard-id.md` | `apps/runner_app/lib/src/screens/onboarding/onboard_id_screen.dart` (+ `capture_flow.dart`; branch `feat/runner-batch-1`) | matches-design (re-audit 2026-10-19 @ `e2069dd` PASS, core C1/C2 in place, §17.3) |
+| v-onboard-selfie | Selfie check, step 2 of 2 | `docs/specs/runner/v-onboard-selfie.md` | `apps/runner_app/lib/src/screens/onboarding/onboard_selfie_screen.dart` (branch `feat/runner-batch-1`) | matches-design (re-audit 2026-10-19 @ `e2069dd` PASS; S-1 closed, §17.3) |
+| v-onboard-pending | Verification status (also Profile → Verification documents) | `docs/specs/runner/v-onboard-pending.md` | `apps/runner_app/lib/src/screens/onboarding/onboard_pending_screen.dart` (branch `feat/runner-batch-1`) | matches-design (audit 2026-10-19 PASS; m-5 closed @ `f125ef9`, §17.1) |
+| v-jobs | Nearby jobs / offers + availability | `docs/specs/runner/v-jobs.md` | `apps/runner_app/lib/src/screens/jobs/jobs_tab.dart` (+ `offer_presentation.dart`; branch `feat/runner-batch-1`) | matches-design (audit 2026-10-19 FAIL F-1; re-audit @ `f125ef9` PASS, §17.1) |
+| v-job-detail | Job offer detail (purchase limit, row 108) | `docs/specs/runner/v-job-detail.md` | `apps/runner_app/lib/src/screens/jobs/job_detail_screen.dart` (branch `feat/runner-batch-1`) | matches-design (audit 2026-10-19 PASS) |
 | v-active | Active job: navigation, runner transitions, checklist | `docs/specs/runner/v-active.md` | — (app not built) | specced — app not built (round 12: several active-set jobs, row 211) |
 | v-evidence-capture | Evidence capture (photos, receipts) | `docs/specs/runner/v-evidence-capture.md` | — (app not built) | specced — app not built |
 | v-price-request | Price-change request (IN_PROGRESS, Buy/Get It For Me) | `docs/specs/runner/v-price-request.md` | — (app not built) | specced — app not built |
@@ -123,7 +123,7 @@ Unmapped implementation files: `apps/customer_app/lib/src/screens/tasks_screen.d
 | v-notifications | Notifications | `docs/specs/runner/v-notifications.md` | — (app not built) | specced — app not built |
 | v-profile | Profile | `docs/specs/runner/v-profile.md` | — (app not built) | specced — app not built |
 | v-edit-skills | Edit skills & service areas | `docs/specs/runner/v-edit-skills.md` | — (app not built) | specced — app not built |
-| shell | Bottom tab bar (4 tabs: Jobs, Active, Earnings, Profile) | `docs/specs/runner/_shared.md` §1 (C-13) | `apps/runner_app/lib/src/screens/shell/runner_shell.dart` + `app.dart`, `services/shell_controller.dart` (branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS; tab bodies are placeholders, audited with each view) |
+| shell | Bottom tab bar (4 tabs: Jobs, Active, Earnings, Profile) | `docs/specs/runner/_shared.md` §1 (C-13) | `apps/runner_app/lib/src/screens/shell/runner_shell.dart` + `app.dart`, `services/shell_controller.dart` (branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS; D-1 onboarding routing closed on `feat/runner-batch-1`, audit 2026-10-19 PASS) |
 
 Modals: the mockup draws none. Confirmations (decline offer, can't complete, mark complete, send price change, payout, log out, discard) use C-35 and are specced inside the views that open them.
 
@@ -133,7 +133,7 @@ Screens not drawn in the mockup (copy "(proposed)" in each spec):
 |---|---|---|---|---|---|
 | x-name-capture | Runner display name after first sign-in (OA-2) | `v-auth-otp` | `docs/specs/runner/x-name-capture.md` | `apps/runner_app/lib/src/screens/auth/name_capture_screen.dart` (branch `feat/runner-scaffold`) | matches-design (audit 2026-10-13 PASS) |
 | x-payout-history | Full payout ledger (row 107) | `v-earnings` `Payout history` | `docs/specs/runner/x-payout-history.md` | — | specced — app not built |
-| x-location-disclosure | Location disclosure before the OS prompt (§7.2) | `v-jobs` switch, first offer accept | `docs/specs/runner/x-location-disclosure.md` | — | specced — app not built |
+| x-location-disclosure | Location disclosure before the OS prompt (§7.2) | `v-jobs` switch, first offer accept | `docs/specs/runner/x-location-disclosure.md` | `apps/runner_app/lib/src/screens/location/location_disclosure_screen.dart` (+ `services/location_gate.dart`; branch `feat/runner-batch-1`) | matches-design (audit 2026-10-19 PASS) |
 | x-support, x-legal | External Support / Terms links | `v-profile`, `v-auth-phone` | reuse `docs/specs/customer/x-support.md`, `x-legal.md` with runner `AppConfig` URIs | — | specced — app not built |
 
 ## Admin dashboard — `docs/design/nitume_admin_dashboard.html` → `apps/admin`

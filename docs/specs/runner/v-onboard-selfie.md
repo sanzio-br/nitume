@@ -19,7 +19,7 @@ None.
 ## Layout (top to bottom)
 1. C-10 header: `Selfie check`, step `Step 2 of 2`.
 2. Intro 13 slate-600, padding 0 20, margin-bottom 14.
-3. R-13 drop zone, height 260: outline person-in-frame icon, caption. Tap → **front camera only** (no gallery for the selfie, proposed; manual comparison by ops, row 126). After capture the zone shows the photo (r 16, cover) with `Retake` (C-03 small) and the upload state.
+3. R-13 drop zone, height 260: outline person-in-frame icon, caption. Tap → **front camera only** (no gallery for the selfie, proposed; manual comparison by ops, row 126). After capture the zone shows the photo (r 16, cover) with `Retake` (C-03 small) and the upload state. A selfie already on the server (pending or approved, opened again later) shows the R-15 thumbnail in its uploaded state with `Retake` and no image: the app never downloads ID or selfie images (ruling 2026-10-19).
 4. Fixed bottom C-01 `Submit for review →`.
 
 ## Components
@@ -32,7 +32,7 @@ Exact, from the mockup:
 - Drop zone: `Center your face in the frame`
 - Button: `Submit for review →`
 
-Privacy line 11.5 slate-600 under the hint, the same as `v-onboard-id` (row 158 shortened, **approved, row 172**): `Your ID and selfie are stored privately and only authorised Nitume personnel can see them.` + C-04 link `Privacy Policy` (hidden until `NITUME_PRIVACY_URL` holds the real URL, no placeholder, row 173; full sentence on `v-onboard-pending`). Replaces the round-8 `We keep your selfie only as long as needed, then delete it.` File too large (row 163; checked before upload, also on an API 413): C-40 `This photo is larger than 10 MB. Take it again.` (proposed; `10 MB` Fira Code; front camera only, so no gallery wording); `Retake`; upload error `Not uploaded` + `Retry`; submit error C-40 `We couldn't submit your application. Try again.`; hint 11.5 slate-600 `Face the light, remove sunglasses or a hat.`
+Privacy line 11.5 slate-600 under the hint, the same as `v-onboard-id` (row 158 shortened, **approved, row 172**): `Your ID and selfie are stored privately and only authorised Nitume personnel can see them.` + C-04 link `Privacy Policy` (hidden until `NITUME_PRIVACY_URL` holds the real URL, no placeholder, row 173; full sentence on `v-onboard-pending`). Replaces the round-8 `We keep your selfie only as long as needed, then delete it.` File too large (row 163; checked before upload, also on an API 413): C-40 `This photo is larger than 10 MB. Take it again.` (proposed; `10 MB` Fira Code; front camera only, so no gallery wording); `Retake`; upload error `Not uploaded` + `Retry`; submit error: see Data (one copy); hint 11.5 slate-600 `Face the light, remove sunglasses or a hat.`
 
 ## Numeric fields (Fira Code)
 - `Step 2 of 2`.
@@ -41,13 +41,13 @@ Privacy line 11.5 slate-600 under the hint, the same as `v-onboard-id` (row 158 
 - Selfie upload to restricted storage, built on `main` (RA-7, rows 125, 154, 161–163): `POST /runners/me/verifications/documents` multipart `file` + `verificationType: 'selfie'` → a `pending` verification (no key returned); errors as `v-onboard-id.md` Data (413 above 10 MB). Private object under a separate restricted credential, signed admin-authorised access only, logged; retention config-driven (initially 12 months), restarted by a new/replacement selfie (row 161), never by a view; daily purge keeps only minimum audit metadata.
 - Submit for review:
   - `phone` is already recorded approved by the OTP sign-in (row 217, built on `feat/api-runner-1`).
-  - `POST /runners/me/verifications/submit` and the automatic `payment_identity` check are **deferred** (rows 218, 222). Interim (row 218 says only that the runner records payment identity with `POST /runners/me/verifications` meanwhile): **proposed (design-auditor)**: `Submit for review →` calls `POST /runners/me/verifications` `{ verificationType: 'payment_identity' }` to create the pending record for the ops M-Pesa name match, skipping the call when a pending or approved record already exists, then goes to `v-onboard-pending`. The placement at selfie submit and the skip rule are not in the owner's answer. A failed call → C-40 `Couldn't submit. Check your connection and try again.` (proposed); the selfie stays uploaded.
+  - `POST /runners/me/verifications/submit` and the automatic `payment_identity` check are **deferred** (rows 218, 222). Interim (row 218 says only that the runner records payment identity with `POST /runners/me/verifications` meanwhile): **proposed (design-auditor)**: `Submit for review →` calls `POST /runners/me/verifications` `{ verificationType: 'payment_identity' }` to create the pending record for the ops M-Pesa name match, skipping the call when a pending or approved record already exists, then goes to `v-onboard-pending`. The placement at selfie submit and the skip rule are not in the owner's answer. A failed call → C-40 **danger tone** `Couldn't submit. Check your connection and try again.` (proposed; the only submit-error copy); the selfie stays uploaded.
   - Ops notification of a new submission: not built (part of the deferred submit, row 222).
 - No socket events.
 
 ## Accessibility and mobile
 - Front camera opens with a face guide overlay; the shutter button has a label `Take selfie`.
-- The selfie is never stored in the device gallery.
+- The selfie is never saved to the gallery; the picked or shot image is read into memory, then the capture file and any scratch copy the picker made are deleted (`CapturedImage.discard`), and captures orphaned when Android killed the app mid-pick are deleted at the next start (`discardLostCaptures`); copies outside the app, such as the runner's own gallery photo or a system camera app's copy, are not the app's to delete (corrected 2026-10-19, B-1).
 - Screen-reader users get the instruction read before the camera opens.
 
 ## Decisions (owner, 2026-10-13)

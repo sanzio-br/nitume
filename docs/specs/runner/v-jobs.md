@@ -27,7 +27,7 @@ Offers: errands in RUNNER_ASSIGNED with an assignment `offered` to this runner (
 5. Tab bar C-13 (Jobs active).
 
 States:
-- **Not verified** (§9): replace 2–4 with a C-07 card: title 15/600 `Finish your verification`, body 13 slate-600 by state (`We're reviewing your documents. We'll notify you when you're approved.` / `Some checks weren't approved. Fix them to start accepting jobs.` / `Upload your ID and a selfie to start accepting jobs.`), C-01 `View status` or `Continue verification`. Availability card shown disabled with `You can go online once your verification is approved.`
+- **Not verified** (§9; ruling 2026-10-19: the availability card stays, disabled, and the C-07 card replaces items 3–4): a C-07 card: title 15/600 `Finish your verification`, body 13 slate-600 by state (`We're reviewing your documents. We'll notify you when you're approved.` / `Some checks weren't approved. Fix them to start accepting jobs.` / `Upload your ID and a selfie to start accepting jobs.`), C-01 `View status` or `Continue verification`. Availability card shown disabled with `You can go online once your verification is approved.`
 - **Offline**: R-02 shows `Offline`, slate-400 dot; body C-33 empty state `You're offline` / `Go online to get job offers near your service areas.` (proposed). No pings. Exception (row 215: an admin may offer a task to an offline runner): offers the API still returns are listed under a C-40 info notice `Go online to accept this offer.` (proposed); `Accept` while offline is refused (409 `runner_offline`) → snackbar `Go online to accept this job.` (proposed).
 - **Online, no offers**: C-33 empty state `No offers right now` / `We'll notify you when a job near you comes in. Keep the app online.` (proposed).
 - **Loading**: two `SkeletonCard`s.
@@ -60,7 +60,7 @@ R-23 `DeclineReasonDialog` (NEW, core-ui; used by `v-jobs` and `v-job-detail`, o
 | Tag | category display name (R-14) | `Check It For Me` (mockup `Inspection`) |
 | Pay | runner fee (RA-2), `formatKes` | `KSh 1,750` |
 | Title | `title` or category name | `Check apartment — Nyali` |
-| Meta (Fira Code, ` · ` separated, only parts that exist) | distance from the device to the first task point (R-18); no estimated duration (row 120); purchase terms (§8); evidence requirement (proposed `Photos required`; never `video`, row 32 / RQ-9); `Signature on delivery` only if the API carries such a requirement (it does not today; dropped) | `1.2 km away · Photos required` · `2.8 km away · Item KSh 5,000 · Customer pays the merchant` |
+| Meta (11.5 slate-600, ` · ` separated, only parts that exist; **Fira Code only on the numeric parts**, the distance and amounts such as `1.2 km` and `KSh 5,000`; words such as `away`, `Item`, `Photos required` and `Customer pays the merchant` in Fira Sans, per the design system's numeric-only rule, which wins over the mockup's all-Fira-Code `.meta`) | distance from the device to the first task point (R-18); no estimated duration (row 120); purchase terms (§8); evidence requirement `Photos required` (proposed copy applying row 120's generic evidence checklist; never `video`, row 32 / RQ-9); `Signature on delivery` only if the API carries such a requirement (it does not today; dropped) | `1.2 km away · Photos required` · `2.8 km away · Item KSh 5,000 · Customer pays the merchant` |
 | Over-limit notice (row 108; fallback only since row 186) | `send_to_runner` item amount > `maxPurchaseAdvance`. Row 186: such offers are no longer made, so this shows only if the limit changed after the offer was made | `Above your purchase limit of KSh 3,000. You can decline this job.` |
 
 ## Components
@@ -84,7 +84,7 @@ Proposed:
 - Accept errors: `purchase_limit_exceeded` → snackbar `This job is above your purchase limit.`; offer expired or withdrawn (409 `offer_expired`, with or without `reason: 'task_deadline_passed'` (row 185; the accept-after-deadline code built on `feat/api-runner-1`), 409 `illegal_transition`, 404) → `That offer is no longer available.` and the card is removed; `runner_busy` → `Finish your active job first.` (rare since row 187 (c): busy runners are not offered jobs); `runner_not_verified` / `runner_offline` → the matching state above. (Codes as built on `feat/api-runner-1`, `runner-jobs.controller.ts` accept order.)
 
 ## Numeric fields (Fira Code)
-- Offer count in the section label; pay; every meta line (distance, item amount, limit); the areas line in the availability card (proposed, as drawn: `.avail-row span` is Fira Code); unread badge count if shown.
+- Offer count in the section label; pay; the numeric parts of the meta line (distance, item amount, limit); the areas line in the availability card (proposed, as drawn: `.avail-row span` is Fira Code); unread badge count if shown.
 
 ## Data
 - `GET /runners/me` (exists): `availability`, `verificationLevel`, `maxPurchaseAdvance` (exists in the entity, exposed raw). Skills and areas are **not** returned (RA-10).
@@ -113,7 +113,7 @@ Proposed:
 - Row 114 (RQ-2): admin offers 10 min, auto-offers 90 s (configurable).
 - Row 116 (RQ-4): service areas from an ops-configured list; kept as server config `RUNNER_SERVICE_AREAS` (row 212, 2026-10-19); an area is a circle and the task's first point places it (row 213).
 - Rows 204–207, 210, 211 (owner 2026-10-19): offline/busy runners don't block exhaustion (no runner copy); an open offer ends at the deadline and `offerExpiresAt` never exceeds it; every task has a deadline; no pre-offer purchase-limit exception; decline reasons with a picker; busy = RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS.
-- Row 120 (RQ-8): no estimated duration on cards; generic evidence line `Photos required`.
+- Row 120 (RQ-8): no estimated duration on cards; generic evidence checklist. `Photos required` is proposed copy applying it.
 - Row 123 (RQ-11): 30 s pings while online without a job; none offline.
 
 ## Questions

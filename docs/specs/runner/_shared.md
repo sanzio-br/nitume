@@ -182,7 +182,7 @@ Same rules and roles as `docs/specs/customer/_shared.md` §3: Fira Sans for all 
 | Section label (`.sec-label`) | 11.5 / 700 uppercase 0.05em slate-600 | Sans |
 | Offer pay (`.offer-pay`) | 17 / 600 | Code |
 | Offer title (`.offer-title`) | 14 / 600 | Sans |
-| Offer meta (`.offer-meta`) | 11.5 / 400 slate-600 | Code |
+| Offer meta (`.offer-meta`) | 11.5 / 400 slate-600 | Sans, with Code only on the numbers (distance, amounts; `JobOfferCard.richMeta`, amended 2026-10-19) |
 | Step title / sub | 13 / 600 · 11 / 400 slate-600 | Sans · Code |
 | Balance amount (`.bal-card h3`) | 30 / 600 white | Code |
 | Stat value / label | 16 / 600 (Code) · 10 / 400 uppercase slate-600 (Sans) | |
