@@ -5,6 +5,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { Errand } from '../errands/errand.entity';
 import { ErrandAssignment } from '../errands/errand-assignment.entity';
 import { RunnerProfile } from '../runners/runner-profile.entity';
+import { CandidatesService } from './candidates.service';
 import { MatchingController } from './matching.controller';
 import { PriceChangeController } from './price-change.controller';
 import { PriceChangeRequest } from './price-change-request.entity';
@@ -27,7 +28,7 @@ import { RunnersModule } from '../runners/runners.module';
     ]),
   ],
   controllers: [MatchingController, PriceChangeController, RunnerJobsController],
-  providers: [PriceChangeService, PurchaseLimitService, RunnerJobsService],
+  providers: [CandidatesService, PriceChangeService, PurchaseLimitService, RunnerJobsService],
   exports: [PriceChangeService],
 })
 export class MatchingModule {}

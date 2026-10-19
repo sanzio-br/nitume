@@ -131,3 +131,18 @@ export class ListOffersQueryDto {
   @MaxLength(200)
   cursor?: string;
 }
+
+/** GET /errands/:id/candidates (N-20). */
+export class ListCandidatesQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  cursor?: string;
+}

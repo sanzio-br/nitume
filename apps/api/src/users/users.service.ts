@@ -69,6 +69,22 @@ export class UsersService {
     return rows.map((u) => u.id);
   }
 
+  /**
+   * Active accounts among `userIds`, keyed by id, with their display name
+   * (null when unset). Suspended, banned and missing users are omitted.
+   */
+  async activeDisplayNames(userIds: string[]): Promise<Map<string, string | null>> {
+    const unique = [...new Set(userIds)].filter(Boolean);
+    if (unique.length === 0) {
+      return new Map();
+    }
+    const rows = await this.users.find({
+      where: { id: In(unique), status: UserStatus.ACTIVE },
+      select: { id: true, displayName: true },
+    });
+    return new Map(rows.map((u) => [u.id, u.displayName ?? null]));
+  }
+
   /** Display names keyed by user id (missing users and unset names are omitted). */
   async displayNames(userIds: string[]): Promise<Map<string, string>> {
     const unique = [...new Set(userIds)].filter(Boolean);
