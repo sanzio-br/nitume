@@ -142,6 +142,5 @@ Future<DeclineReasonOutcome> declineOffer(
 ) => DeclineReasonDialog.show(
   context,
   overPurchaseLimit: o.overPurchaseLimit,
-  reasonRequired: true,
   onDecline: (reason) => jobs.decline(o.id, reason: reason),
 );

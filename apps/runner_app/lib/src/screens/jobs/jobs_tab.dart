@@ -512,9 +512,8 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
     if (_offers.isEmpty) {
       out.add(
         NitumeEmptyState(
-          message: online
-              ? '${JobsCopy.emptyTitle}\n${JobsCopy.emptyBody}'
-              : '${JobsCopy.offlineTitle}\n${JobsCopy.offlineBody}',
+          title: online ? JobsCopy.emptyTitle : JobsCopy.offlineTitle,
+          message: online ? JobsCopy.emptyBody : JobsCopy.offlineBody,
         ),
       );
       return out;

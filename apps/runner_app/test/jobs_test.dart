@@ -209,7 +209,11 @@ void main() {
       b.account.current = runnerMe(availability: RunnerAvailability.offline);
       await _pumpJobs(t, b);
       expect(find.text('Offline'), findsOneWidget);
-      expect(find.textContaining("You're offline"), findsOneWidget);
+      expect(find.text("You're offline"), findsOneWidget);
+      expect(
+        find.text('Go online to get job offers near your service areas.'),
+        findsOneWidget,
+      );
       expect(b.location.currentCalls, 0);
     });
 

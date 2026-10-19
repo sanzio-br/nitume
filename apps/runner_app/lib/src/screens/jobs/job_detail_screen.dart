@@ -346,7 +346,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget _actions(RunnerJobView? job) {
     final me = _me;
     if (_ended) {
-      return FixedCta(
+      return NitumeFixedCta(
         above: const NitumeNotice(message: JobDetailCopy.ended),
         child: NitumeButton.outline(
           label: JobDetailCopy.backToJobs,
@@ -357,7 +357,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
     if (job == null || me == null) return const SizedBox.shrink();
     if (!me.isVerified || !(me.isOnline || me.isBusy)) {
-      return FixedCta(
+      return NitumeFixedCta(
         child: NitumeNotice(
           message: me.isVerified
               ? JobDetailCopy.goOnline
@@ -366,7 +366,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       );
     }
     final overLimit = job.overPurchaseLimit;
-    return FixedCta(
+    return NitumeFixedCta(
       above: overLimit
           ? Text(
               JobDetailCopy.aboveLimitCaption,

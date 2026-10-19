@@ -5,7 +5,6 @@ import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
 import '../../services/shell_controller.dart';
 import '../../util/display.dart';
-import '../../widgets/common.dart';
 import '../../widgets/privacy_note.dart';
 
 /// `v-onboard-pending` copy (`docs/specs/runner/v-onboard-pending.md`).
@@ -295,7 +294,7 @@ class _OnboardPendingScreenState extends State<OnboardPendingScreen>
       backgroundColor: NitumeColors.slate,
       appBar: const NitumePushedHeader(title: OnboardPendingCopy.title),
       body: content,
-      bottomNavigationBar: FixedCta(
+      bottomNavigationBar: NitumeFixedCta(
         child: verified
             ? NitumeButton.primary(
                 label: OnboardPendingCopy.startJobs,
