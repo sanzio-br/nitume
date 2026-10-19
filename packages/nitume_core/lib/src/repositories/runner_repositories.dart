@@ -483,26 +483,53 @@ class RunnerJobsRepository {
   /// Throws [ArgumentError] unless it is a runner transition; the API also
   /// checks the actor.
   /// [note] (≤ 500) carries the reason for RUNNER_EN_ROUTE → FAILED.
+  /// [idempotencyKey] (RA-17, the offline queue's action id) goes in the
+  /// `Idempotency-Key` header: a replay returns the first result.
+  ///
+  /// API errors: 409 [ApiErrorCodes.illegalTransition]; 409
+  /// [ApiErrorCodes.evidenceRequired] (`missing`); with a key, 400
+  /// [ApiErrorCodes.idempotencyKeyInvalid], 409
+  /// [ApiErrorCodes.idempotencyKeyReused] and
+  /// [ApiErrorCodes.idempotencyInProgress].
   Future<ErrandTransitionResult> transition(
     String errandId, {
     required ErrandStatus from,
     required ErrandStatus to,
     String? note,
-  }) {
+    String? idempotencyKey,
+  }) async {
     if (!(runnerTransitions[from]?.contains(to) ?? false)) {
       throw ArgumentError('Not a runner transition: ${from.wire} → ${to.wire}');
     }
-    return _errands.transition(errandId, to, note: note);
+    if (idempotencyKey == null) {
+      return _errands.transition(errandId, to, note: note);
+    }
+    return ErrandTransitionResult.fromJson(
+      await _api.patchMap(
+        '/errands/$errandId/status',
+        data: {'to': to.wire, 'note': ?note},
+        headers: _idempotency(idempotencyKey),
+      ),
+    );
   }
 
+  static Map<String, String> _idempotency(String key) => {
+    'Idempotency-Key': key,
+  };
+
   /// `PATCH /errands/:id/runner-notes` (≤ 2000 characters; `null` clears).
-  Future<Errand> updateRunnerNotes(String errandId, String? notes) async =>
-      Errand.fromJson(
-        await _api.patchMap(
-          '/errands/$errandId/runner-notes',
-          data: {'runnerNotes': notes},
-        ),
-      );
+  /// [idempotencyKey]: as [transition].
+  Future<Errand> updateRunnerNotes(
+    String errandId,
+    String? notes, {
+    String? idempotencyKey,
+  }) async => Errand.fromJson(
+    await _api.patchMap(
+      '/errands/$errandId/runner-notes',
+      data: {'runnerNotes': notes},
+      headers: idempotencyKey == null ? null : _idempotency(idempotencyKey),
+    ),
+  );
 
   /// `GET /errands/:id/evidence` (signed URLs, row 25).
   Future<List<Evidence>> evidence(String errandId) => _evidence.list(errandId);
@@ -512,6 +539,11 @@ class RunnerJobsRepository {
   ///
   /// RA-11: the API's default JSON body limit refuses normal photos until
   /// it is raised or a signed upload is added; expect a 413 meanwhile.
+  /// [idempotencyKey]: as [transition] (a replay stores no second row).
+  ///
+  /// API errors: 400 [ApiErrorCodes.evidenceTypeNotAllowed]; 409
+  /// [ApiErrorCodes.evidenceNotAllowed] (`status`, `type`); 409
+  /// [ApiErrorCodes.reimbursementWindowClosed] (`endedAt`, `windowEndsAt`).
   Future<Evidence> uploadEvidence(
     String errandId, {
     required EvidenceType type,
@@ -520,6 +552,7 @@ class RunnerJobsRepository {
     DateTime? capturedAt,
     double? lat,
     double? lon,
+    String? idempotencyKey,
   }) {
     if (type != EvidenceType.photo && type != EvidenceType.receipt) {
       throw ArgumentError.value(
@@ -539,6 +572,7 @@ class RunnerJobsRepository {
             'lat': ?lat,
             'lon': ?lon,
           },
+          headers: idempotencyKey == null ? null : _idempotency(idempotencyKey),
         )
         .then(Evidence.fromJson);
   }

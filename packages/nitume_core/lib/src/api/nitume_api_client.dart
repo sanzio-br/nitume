@@ -87,8 +87,18 @@ class NitumeApiClient {
     ),
   );
 
-  Future<dynamic> patch(String path, {Object? data}) =>
-      _send(() => _dio.patch<dynamic>(path, data: data));
+  /// [headers] adds request headers (e.g. `Idempotency-Key`).
+  Future<dynamic> patch(
+    String path, {
+    Object? data,
+    Map<String, String>? headers,
+  }) => _send(
+    () => _dio.patch<dynamic>(
+      path,
+      data: data,
+      options: headers == null ? null : Options(headers: headers),
+    ),
+  );
 
   Future<dynamic> put(String path, {Object? data}) =>
       _send(() => _dio.put<dynamic>(path, data: data));
@@ -118,8 +128,11 @@ class NitumeApiClient {
     Map<String, String>? headers,
   }) async => _asMap(await post(path, data: data, headers: headers));
 
-  Future<Map<String, dynamic>> patchMap(String path, {Object? data}) async =>
-      _asMap(await patch(path, data: data));
+  Future<Map<String, dynamic>> patchMap(
+    String path, {
+    Object? data,
+    Map<String, String>? headers,
+  }) async => _asMap(await patch(path, data: data, headers: headers));
 
   Future<dynamic> _send(Future<Response<dynamic>> Function() request) async {
     try {

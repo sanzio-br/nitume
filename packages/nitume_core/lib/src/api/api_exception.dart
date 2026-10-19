@@ -264,7 +264,13 @@ abstract final class ApiErrorCodes {
   static const idempotencyKeyInvalid = 'idempotency_key_invalid';
 
   /// The key was already used for a different payment: make a new key.
+  /// On a runner replay (status, notes, evidence; RA-17) the key was used
+  /// for a different request.
   static const idempotencyKeyReused = 'idempotency_key_reused';
+
+  /// The first call with this `Idempotency-Key` is still running (409,
+  /// RA-17): retry shortly with the same key.
+  static const idempotencyInProgress = 'idempotency_in_progress';
 
   /// The errand has a merchant amount and no `merchantRoute` was sent.
   static const merchantRouteRequired = 'merchant_route_required';

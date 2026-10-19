@@ -55,9 +55,19 @@ abstract final class RunnerQueuedActions {
   /// A [QueuedActionRunner] that replays through [repo]. A missing photo
   /// file answers [ReplayOutcome.fileMissing] (reported to the runner).
   ///
-  /// A replayed transition answered 409 counts as done when the job is
-  /// already in the target state (the API has no idempotent replay yet,
-  /// RA-17); otherwise it is rejected.
+  /// Every replay sends the action's id as `Idempotency-Key` (RA-17): the
+  /// API answers a repeat with the first result (header
+  /// `Idempotent-Replay: true`, a normal 2xx, so it counts as done) and
+  /// writes nothing new.
+  ///
+  /// * 409 [ApiErrorCodes.idempotencyInProgress]: the first call is still
+  ///   running, so retry later.
+  /// * A replayed transition answered with another 409 (state moved, or
+  ///   [ApiErrorCodes.idempotencyKeyReused]) counts as done when the job is
+  ///   already in the target state; otherwise it is rejected.
+  /// * 400 [ApiErrorCodes.idempotencyKeyInvalid] and
+  ///   [ApiErrorCodes.idempotencyKeyReused] on notes or evidence are
+  ///   refusals (dropped).
   static QueuedActionRunner runnerFor(
     RunnerJobsRepository repo, {
     Future<Uint8List> Function(String path)? readFile,
@@ -75,9 +85,13 @@ abstract final class RunnerQueuedActions {
                 from: ErrandStatus.fromWire(p['from']! as String),
                 to: to,
                 note: p['note'] as String?,
+                idempotencyKey: action.id,
               );
             } on NitumeApiException catch (e) {
-              if (e.statusCode != 409) rethrow;
+              if (e.statusCode != 409 ||
+                  e.code == ApiErrorCodes.idempotencyInProgress) {
+                rethrow;
+              }
               final job = await repo.get(action.errandId);
               return job.status == to
                   ? ReplayOutcome.done
@@ -87,6 +101,7 @@ abstract final class RunnerQueuedActions {
             await repo.updateRunnerNotes(
               action.errandId,
               p['runnerNotes'] as String?,
+              idempotencyKey: action.id,
             );
           case QueuedActionKind.evidenceUpload:
             final bytes = await read(p['path']! as String);
@@ -98,6 +113,7 @@ abstract final class RunnerQueuedActions {
               capturedAt: DateTime.tryParse('${p['capturedAt']}'),
               lat: (p['lat'] as num?)?.toDouble(),
               lon: (p['lon'] as num?)?.toDouble(),
+              idempotencyKey: action.id,
             );
         }
         return ReplayOutcome.done;
