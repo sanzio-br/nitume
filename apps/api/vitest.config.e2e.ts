@@ -29,6 +29,10 @@ export default defineConfig({
     root: './',
     include: ['**/*.e2e-spec.ts'],
     testTimeout: 20_000,
+    // One file at a time: files share the test database, and one file's
+    // cleanup (deleting its users) races another's fan-outs (e.g. the admin
+    // feed writes a row for every active admin).
+    fileParallelism: false,
     env: { QUEUE_PREFIX: testQueuePrefix, DATABASE_NAME: testDatabaseName },
     globalSetup: ['./test/support/e2e-global-setup.ts'],
     setupFiles: ['./test/support/e2e-guard.ts'],
