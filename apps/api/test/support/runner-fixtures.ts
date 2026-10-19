@@ -1,3 +1,4 @@
+import request from 'supertest';
 import { DataSource } from 'typeorm';
 
 /**
@@ -43,4 +44,31 @@ export const deleteRunnerVerifications = async (ds: DataSource, userIds: string[
       [userIds],
     );
   }
+};
+
+/**
+ * Finds one verification in the admin queue (GET /runners/verifications),
+ * following `nextCursor`: parallel e2e files add their own verifications, so
+ * the one under test may not be on the first page.
+ */
+export const findInVerificationQueue = async (
+  baseUrl: string,
+  adminToken: string,
+  verificationId: string,
+  filter: { status?: string } = {},
+): Promise<Record<string, unknown> | undefined> => {
+  let cursor: string | null = null;
+  do {
+    const page = await request(baseUrl)
+      .get('/api/v1/runners/verifications')
+      .query({ ...filter, limit: 100, ...(cursor ? { cursor } : {}) })
+      .set({ Authorization: `Bearer ${adminToken}` })
+      .expect(200);
+    const found = (page.body.items as { id: string }[]).find((v) => v.id === verificationId);
+    if (found) {
+      return found as Record<string, unknown>;
+    }
+    cursor = page.body.nextCursor as string | null;
+  } while (cursor);
+  return undefined;
 };

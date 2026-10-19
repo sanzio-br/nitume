@@ -13,7 +13,7 @@ import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { IdDocumentRetentionService } from '../src/scheduler/id-document-retention.service';
-import { readyRunner } from './support/runner-fixtures';
+import { findInVerificationQueue, readyRunner } from './support/runner-fixtures';
 import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
@@ -491,8 +491,7 @@ describe('Owner answers 8 (e2e)', () => {
 
       const mine = await http().get('/api/v1/runners/me/verifications').set(bearer(runner.token)).expect(200);
       expect(mine.body[0]).not.toHaveProperty('documentS3Key');
-      const queue = await http().get('/api/v1/runners/verifications?status=pending&limit=100').set(bearer(admin.token)).expect(200);
-      const item = queue.body.items.find((v: { id: string }) => v.id === uploaded.body.id);
+      const item = await findInVerificationQueue(baseUrl, admin.token, uploaded.body.id, { status: 'pending' });
       expect(item).toMatchObject({ hasDocument: true, runnerProfile: { id: runner.profileId } });
       expect(item).not.toHaveProperty('documentS3Key');
 

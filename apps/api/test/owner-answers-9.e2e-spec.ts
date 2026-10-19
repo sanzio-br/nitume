@@ -23,7 +23,7 @@ import {
 } from '../src/runners/verification-storage/verification-document-storage';
 import { NOTIFICATIONS_QUEUE } from '../src/infra/queue/queues';
 import { FEED_JOB, FeedJob, NotificationsService } from '../src/notifications/notifications.service';
-import { readyRunner } from './support/runner-fixtures';
+import { findInVerificationQueue, readyRunner } from './support/runner-fixtures';
 import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
@@ -614,8 +614,7 @@ describe('Owner answers 9 (e2e)', () => {
       await expect(
         db().query(`UPDATE "verification_document_access_log" SET note = NULL WHERE id = $1`, [rr.body.reReview.id]),
       ).rejects.toThrow(/append-only/);
-      const queue = await http().get('/api/v1/runners/verifications?limit=100').set(bearer(admin.token)).expect(200);
-      const listed = queue.body.items.find((v: { id: string }) => v.id === id);
+      const listed = await findInVerificationQueue(baseUrl, admin.token, id);
       expect(listed).toMatchObject({
         status: 'approved',
         reviewer: { id: admin.id, displayName: 'Verifier' },
