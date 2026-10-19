@@ -36,7 +36,7 @@ So ops need to see the customer deadline, how many eligible runners are left, an
 ## Layout: `Runner` section (drawer-task, after Locations, before Quote)
 `.drawer-label` `Runner`, then one `.drawer-card`:
 1. Runner row (mockup): avatar (initials, `.verif-avatar`), short name 13.5/600, caption Fira Code 11 slate-600 `Verified · 4.9 · 137 tasks` (from the runner summary). Hidden when the task was never offered (PAYMENT_CONFIRMED).
-2. `Deadline` row: `.drawer-row` `Deadline` → `deadlineAt` (12-hour EAT, Fira Code). Shown in every PAYMENT_CONFIRMED, RUNNER_ASSIGNED and EXPIRED sub-state; from PAYMENT_CONFIRMED on every task has one (rows 206, 235, 239). Before payment the drawer summary shows the same `Deadline` row: the chosen time, or `No deadline yet` (Fira Sans, proposed) when `deadlineAt` is null (the customer chose `Flexible`; set at payment, row 239 (a)). A CANCELLED task without one shows no row.
+2. `Deadline` row: `.drawer-row` `Deadline` → `deadlineAt` (12-hour EAT, Fira Code). Shown in every PAYMENT_CONFIRMED, RUNNER_ASSIGNED and EXPIRED sub-state; from PAYMENT_CONFIRMED on every task has one (rows 206, 235, 239). Before payment the drawer summary shows the same `Deadline` row: the chosen time, or `No deadline yet` (Fira Sans, proposed) when `deadlineAt` is null (the customer chose `Flexible`; set at payment, row 239 (a)). A CANCELLED task without one shows no row. The row is read-only: admins never edit a deadline (decided, owner 2026-10-19, row 243: only the customer sets a new deadline before payment).
 3. State line, by sub-state:
    | Sub-state | Chip (A-02, §6.1) | `.drawer-row`s | Caption 12 slate-600 |
    |---|---|---|---|

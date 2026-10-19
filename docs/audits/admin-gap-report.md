@@ -866,3 +866,6 @@ Spec-only update. Details and API items: `runner-gap-report.md` §18.
 
 ### Rows 236–238 (2026-10-19)
 - Finding 33's copy is complete: `This task's location is outside every service area, so it can't be quoted. The customer is told and can cancel it.` (proposed; row 236). Rows 237 and 238 change no admin screen.
+
+## Owner answers round 15 (rows 240, 242–244, 2026-10-19)
+- No admin screen change. Row 243 forbids an admin deadline edit: `drawer-task-offer.md` now states that the `Deadline` row is read-only. Row 240 means more unpaid tasks show `No deadline yet` (backfilled values cleared). No new findings.
