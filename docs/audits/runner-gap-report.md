@@ -959,3 +959,6 @@ Rulings:
 | v-job-detail | **PASS** (`NitumeFixedCta`) |
 
 Still open: the bell route (with `v-notifications`); RA-4 and RA-5 (API).
+
+### 17.4 Spec note (2026-10-19)
+- `v-onboard-selfie.md` now has one submit-error copy, `Couldn't submit. Check your connection and try again.`, as a C-40 notice in the **danger** tone (the duplicate `We couldn't submit your application. Try again.` is removed). **m-7 (minor)**: the build shows it in the default tone (`onboard_selfie_screen.dart:152`); pass `tone: NitumeNoticeTone.danger`.
