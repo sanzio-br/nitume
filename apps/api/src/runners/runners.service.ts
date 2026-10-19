@@ -313,7 +313,8 @@ export class RunnersService {
       .where('id = :id', { id: ping.runnerProfileId })
       .andWhere('("lastPingAt" IS NULL OR "lastPingAt" < :at)', { at: ping.capturedAt })
       .execute();
-    if (ping.trail) {
+    // Row 247 proposal: only job pings ever join the trail.
+    if (ping.trail && ping.errandId) {
       const trail = this.profiles.manager.getRepository(RunnerLocation);
       await trail.insert({
         runnerProfileId: ping.runnerProfileId,
