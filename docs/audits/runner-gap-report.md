@@ -796,3 +796,84 @@ Admin findings 29 (now unblocked: API items 1–2) and 31 (offline group, decide
 ### New questions for the owner
 - Row 234 (new, open): no admin feed item after the admin's PAYMENT_CONFIRMED `Expire task` either (design-auditor reading of row 232; recommended none).
 - Row 233 (AQ-32) is still open.
+
+## 18. Owner answers rows 233–235 (2026-10-19), applied on `docs/owner-answers-14-specs`
+
+Spec-only update; no screen re-audited.
+
+### Decisions applied
+| Row | Decision | Files |
+|---|---|---|
+| 233 | Refuse at quote and create a task whose location is inside no configured service area, with a clear customer message; until built, ops assign by hand, cancel or expire | System Design §2.2, §3.3; customer `v-new-review.md`, `_shared.md`; admin `drawer-task-requote.md`, `_shared.md`, `drawer-task-offer.md` |
+| 234 | No admin feed item after the admin's own PAYMENT_CONFIRMED `Expire task` (as built) | System Design §3.3; admin `drawer-task-offer.md`, `_shared.md` |
+| 235 | When the customer gives no deadline, the default 24 h starts at payment confirmation, not at creation | System Design §2.2, §3.3; customer `v-new-details.md`, `_shared.md`; admin `drawer-task-offer.md`; runner `_shared.md` |
+
+The round-13 "pending BOARD row 234" notes (§16 items, admin round 13) are closed by row 234.
+
+### API items for api-contract (numbered)
+1. **Row 233, at create**:
+   - `POST /errands` refuses a task whose first point (task site, else pickup, else drop-off; row 213) is inside no area of `RUNNER_SERVICE_AREAS`. Proposed: 422 (or 400) `location_outside_service_area` with the point type; api-contract names it.
+   - Skip the check while the area list is empty (design-auditor reading of rows 177 and 179, not the owner's words: with no areas configured every task would be refused).
+   - Also check on submit (DRAFT → REQUESTED) if the draft could have been created before areas were configured.
+2. **Row 233, at quote**:
+   - `POST /errands/:id/quote` (first quote and re-quote) refuses the same task with the same code.
+   - Tasks created before the check exist and stay REQUESTED/QUOTED/ACCEPTED. They end by the customer's cancel after the notification (row 236, §18.1).
+3. **Row 235**:
+   - When the customer sends no `deadlineAt`, set `deadlineAt` = the PAYMENT_CONFIRMED time + 24 h, in the same transaction as ACCEPTED → PAYMENT_CONFIRMED.
+   - Never move a deadline the customer chose.
+   - **Storage (decided, owner 2026-10-19, row 239 (a))**: a task with no customer deadline keeps `deadlineAt` NULL until payment; the NOT NULL of row 221 is relaxed to a CHECK that allows NULL only before payment (DRAFT, REQUESTED, QUOTED, ACCEPTED) and on CANCELLED; at ACCEPTED → PAYMENT_CONFIRMED the API sets `deadlineAt` = payment time + 24 h. So "chosen" = `deadlineAt` non-null before payment; no new column and no `deadlineChosen` field.
+   - The urgency derived from `deadlineAt` (row 51) is recomputed at payment.
+   - The default value exposed for the customer caption (§16 item 3) stays 24 h.
+4. **Backfill**: the row-221 backfill stands as built (migration `1790103300000`: open tasks `createdAt` + 24 h, closed tasks their closing time). Row 235 changes only the default for new tasks. Nothing to build.
+5. **Row 234**: nothing to build (no feed item, as built).
+
+### core-ui, flutter-customer, web-parity needs
+- core-ui: map the new error code (`location_outside_service_area`) in `nitume_core` `ApiErrorCodes`. The default-deadline accessor (§16 core-ui item 2) is unchanged.
+- flutter-customer:
+  - `v-new-review`: the out-of-area notice and `Change location` (finding C-14-1, customer gap report).
+  - `v-new-details`: the caption now says the window starts at payment (C-12-1, wording changed).
+- web-parity: admin finding 33 (quote refusal copy, `drawer-task-requote.md`).
+
+### New questions for the owner
+- **AQ-33 (row 233 follow-up; BOARD row 236, answered 2026-10-19, §18.1)**: a task already REQUESTED or QUOTED that is refused at quote (created before the check, or after the areas changed) cannot be cancelled by ops: §3.3 lets only the customer cancel before payment. Options:
+  - (a) tell the customer through a notification and let them cancel;
+  - (b) add an admin REQUESTED/QUOTED → CANCELLED for this case (a state-machine change).
+  Recommended (a) for MVP, since it needs no new transition. The copy would come in a later round.
+- **AQ-34 (row 235 reviewer note; BOARD row 237, answered 2026-10-19, §18.1)**:
+- **Backfill of paid tasks (BOARD row 238, answered 2026-10-19: keep as built)**: row 221's backfill (built) gives an existing paid, open task with no deadline `createdAt` + 24 h, which may already be in the past, so it lands in `Deadline passed` at once. Should such tasks instead get their PAYMENT_CONFIRMED time + 24 h, consistent with row 235? Recommended: only if live (non-dev) paid tasks exist; otherwise keep row 221 as built.
+ payment is not refused after a deadline **the customer chose** has passed (for example `Today`, with the quote accepted the next day). Such a task reaches PAYMENT_CONFIRMED already past its deadline and can then only be expired by ops (row 201). Should the API refuse to start payment once the chosen deadline has passed, and ask the customer to pick a new one? Recommended yes. This is a payment-flow decision.
+
+### 18.1 Owner answers rows 236–238 (2026-10-19)
+| Row | Decision | Files |
+|---|---|---|
+| 236 | A task refused at quote (outside every service area): notify the customer and let them cancel; no admin cancel transition | System Design §3.3; admin `drawer-task-requote.md`; customer `x-awaiting-quote.md`, `v-notifications.md` |
+| 237 | Refuse to start payment once a customer-chosen deadline has passed; ask for a new deadline | System Design §2.2; customer `x-awaiting-quote.md`, `v-payment.md` |
+| 238 | The row-221 backfill stays as built (`1790103300000`) | System Design §2.2 |
+
+API items (continuing §18):
+6. **Row 236**:
+   - When a quote is refused for `location_outside_service_area`, send the customer a notification through the notifications queue (BullMQ), once per task. Built so on the api branch, with event `service_area.outside`. Copy: BOARD row 241 (open: API wording vs the spec's proposed wording).
+   - Expose `outsideServiceArea: true` on the customer errand view (proposed field) so `x-awaiting-quote` shows the cancel state.
+   - No state change and no admin cancel.
+7. **Row 237**:
+   - `POST /payments/:errandId/initiate` answers 409 (proposed `deadline_passed_before_payment`) when `deadlineAt` is non-null (= chosen, row 239) and has passed. No STK.
+   - The customer sets a new deadline before payment (QUOTED or ACCEPTED) with `PATCH /errands/:id` `{ deadlineAt }` (built on the api branch). `null` = `Flexible`, so the 24 h starts at payment (rows 235, 239). Refuse a past value.
+   - Who may edit the deadline: built for the customer and admins, with no history row. That is open as BOARD row 243 (recommended: customer only).
+   - The quote stands: built that way; open as BOARD row 242 (recommended: keep).
+8. **Row 238**: nothing to build.
+
+Needs:
+- core-ui: the new codes and fields (`deadline_passed_before_payment`, `outsideServiceArea`) and `ErrandRepository.setDeadline` (`PATCH /errands/:id` `{ deadlineAt }`); `Errand.deadlineAt` nullable before payment (row 239).
+- flutter-customer: C-14-2 (`x-awaiting-quote` outside-area state, row 236), C-14-3 (`x-awaiting-quote` new-deadline step and `v-payment` refusal, row 237), the routing for the notification.
+- web-parity: finding 33's copy is now complete (row 236).
+
+Open owner rows (2026-10-19):
+- 240: existing backfilled unpaid tasks keep their deadline? Proposed: keep.
+- 241: out-of-area notification copy, API wording or spec wording? Recommended: the spec wording.
+- 242: keep the quote after a deadline change? Built and recommended: keep.
+- 243: deadline edits customer only, or admins too (then with a history row)? Built: customer and admin, no history row. Recommended: customer only.
+
+### 18.2 Owner answer row 239 (2026-10-19)
+- (a) decided: **Storage (decided, owner 2026-10-19, row 239 (a))**: a task with no customer deadline keeps `deadlineAt` NULL until payment; the NOT NULL of row 221 is relaxed to a CHECK that allows NULL only before payment (DRAFT, REQUESTED, QUOTED, ACCEPTED) and on CANCELLED; at ACCEPTED → PAYMENT_CONFIRMED the API sets `deadlineAt` = payment time + 24 h. So "chosen" = `deadlineAt` non-null before payment; no new column and no `deadlineChosen` field.
+- Screens: before payment, a task with no customer deadline shows `No deadline yet` (proposed) on the customer checkout (`x-awaiting-quote`) and in the admin task drawer (`drawer-task-offer.md` `Deadline` row).
+- Still open: rows 240–243 (§18.1 list).

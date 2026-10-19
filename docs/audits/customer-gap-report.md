@@ -898,3 +898,23 @@ Spec-only update; no screen re-audited.
 
 - **Row 221** (decided): the default deadline is creation + 24 h. Finding C-12-1 (`v-new-details` `Flexible` caption) is no longer held by an owner question. It still needs the API value and a core accessor (`runner-gap-report.md` §16, api item 3 and core-ui item 2). Status stays `partial`.
 - **Row 226** (decided): the admin's PAYMENT_CONFIRMED → EXPIRED sends the usual `errand.EXPIRED` and opens a refund review. No customer app change (existing screen and copy).
+
+## Owner answers round 14 (rows 233, 235, 2026-10-19), applied on `docs/owner-answers-14-specs`
+
+- **Row 235**: the `Flexible` default counts 24 h from payment confirmation. The caption in finding C-12-1 is reworded to `No fixed time. Your task's deadline is {duration} after your payment is confirmed.` (proposed). It still waits for the API value and the core accessor. Status stays `partial`.
+- **Row 233**: finding C-14-1 (**minor**), `apps/customer_app/lib/src/screens/wizard/review_screen.dart` (submit error handling).
+  - Design: on `location_outside_service_area` from `POST /errands`, show the notice `We don't cover this location yet. Choose a place inside the areas we serve.` and a `Change location` button back to `v-new-details` (all proposed).
+  - Code: none (the generic snackbar is shown).
+  - Fix: after api-contract §18 item 1 and the core error code. Status: `v-new-review` → `partial`.
+- New owner questions AQ-33 (BOARD row 236) and AQ-34 (BOARD row 237), both answered 2026-10-19 (see below): `runner-gap-report.md` §18.
+
+### Rows 236–238 (2026-10-19)
+- C-14-2 (**minor**), `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart`.
+  - Design (row 236): the outside-area state, with `We can't take this task`, the body and `Cancel task` as primary; the notification route.
+  - Code: none.
+  - Fix: after api `runner-gap-report.md` §18.1 item 6.
+- C-14-3 (**minor**), `awaiting_quote_screen.dart`, `payment_screen.dart`.
+  - Design (row 237): the new-deadline step (notice, `Choose a new deadline`, chip sheet), and the initiate refusal returning to it.
+  - Code: none.
+  - Fix: after api §18.1 item 7.
+- Status: `x-awaiting-quote` and `v-payment` → `partial`. Row 238 has no customer impact.
