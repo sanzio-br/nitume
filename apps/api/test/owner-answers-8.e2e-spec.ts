@@ -13,7 +13,7 @@ import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { IdDocumentRetentionService } from '../src/scheduler/id-document-retention.service';
-import { findInVerificationQueue, readyRunner } from './support/runner-fixtures';
+import { findInVerificationQueue, readyRunner, runnerPhoto } from './support/runner-fixtures';
 import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
@@ -246,6 +246,7 @@ describe('Owner answers 8 (e2e)', () => {
       }
     }
     await upload(ctx.runner, ctx.errand.id);
+    await runnerPhoto(baseUrl, ctx.runner.token, ctx.errand.id);
     await setStatus(ctx.runner, ctx.errand.id, 'AWAITING_CUSTOMER');
     await setStatus(ctx.customer, ctx.errand.id, 'COMPLETED');
     await app

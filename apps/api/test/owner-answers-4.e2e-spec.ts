@@ -11,7 +11,7 @@ import { UserRole } from '../src/common/enums';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
-import { deleteRunnerVerifications, readyRunner } from './support/runner-fixtures';
+import { deleteRunnerVerifications, readyRunner, runnerPhoto } from './support/runner-fixtures';
 
 /**
  * Contract checks for the owner answers 4 (BOARD rows 68, 79, 80, 82, 83,
@@ -419,6 +419,7 @@ describe('Owner answers 4 (e2e)', () => {
     const runner = await makeUser(UserRole.RUNNER);
     const errand = await createErrand(customer);
     await toInProgress({ customer, admin, runner }, errand.id);
+    await runnerPhoto(baseUrl, runner.token, errand.id);
     await setStatus(runner, errand.id, 'AWAITING_CUSTOMER');
     await http()
       .post('/api/v1/disputes')

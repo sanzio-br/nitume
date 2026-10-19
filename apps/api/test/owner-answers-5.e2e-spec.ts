@@ -13,7 +13,7 @@ import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { PaymentsService } from '../src/payments/payments.service';
-import { deleteRunnerVerifications, readyRunner } from './support/runner-fixtures';
+import { deleteRunnerVerifications, readyRunner, runnerPhoto } from './support/runner-fixtures';
 import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
@@ -371,6 +371,9 @@ describe('Owner answers 5 (e2e)', () => {
   it('nothing is payable to the runner before CONFIRMED on a send_to_runner task (row 95)', async () => {
     const { runner, errand } = await paidAndAssigned();
     for (const to of ['RUNNER_EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'AWAITING_CUSTOMER']) {
+      if (to === 'AWAITING_CUSTOMER') {
+        await runnerPhoto(baseUrl, runner.token, errand.id);
+      }
       await setStatus(runner, errand.id, to);
     }
     const payments = app.get(PaymentsService);
