@@ -112,9 +112,10 @@ describe('ErrandStateMachine', () => {
       [ErrandStatus.ACCEPTED, ErrandStatus.PAYMENT_CONFIRMED, [A, S]],
       [ErrandStatus.ACCEPTED, ErrandStatus.CANCELLED, [C]],
       [ErrandStatus.PAYMENT_CONFIRMED, ErrandStatus.RUNNER_ASSIGNED, [A, S]],
+      [ErrandStatus.PAYMENT_CONFIRMED, ErrandStatus.EXPIRED, [A]],
       [ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.RUNNER_EN_ROUTE, [R]],
       [ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.CANCELLED, [A]],
-      [ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.EXPIRED, [S]],
+      [ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.EXPIRED, [S, A]],
       [ErrandStatus.RUNNER_EN_ROUTE, ErrandStatus.ARRIVED, [R, S]],
       [ErrandStatus.RUNNER_EN_ROUTE, ErrandStatus.FAILED, [R, S]],
       [ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS, [R]],
@@ -182,9 +183,10 @@ describe('ErrandStateMachine', () => {
         'ACCEPTED->PAYMENT_CONFIRMED:admin,system',
         'ACCEPTED->CANCELLED:customer',
         'PAYMENT_CONFIRMED->RUNNER_ASSIGNED:admin,system',
+        'PAYMENT_CONFIRMED->EXPIRED:admin[admin_expiry]',
         'RUNNER_ASSIGNED->RUNNER_EN_ROUTE:runner',
         'RUNNER_ASSIGNED->CANCELLED:admin',
-        'RUNNER_ASSIGNED->EXPIRED:system',
+        'RUNNER_ASSIGNED->EXPIRED:system,admin',
         'RUNNER_EN_ROUTE->ARRIVED:runner,system',
         'RUNNER_EN_ROUTE->FAILED:runner,system',
         'ARRIVED->IN_PROGRESS:runner',
@@ -216,7 +218,22 @@ describe('ErrandStateMachine', () => {
       TransitionGuard.PRICE_CHANGE_REJECTION,
     );
     const guarded = ErrandStateMachine.allTransitions().filter((t) => t.guard !== null);
-    expect(guarded).toHaveLength(1);
+    // Plus PAYMENT_CONFIRMED -> EXPIRED behind the admin expiry (rows 201, 225).
+    expect(guarded.map((t) => `${t.from}->${t.to}:${t.guard}`).sort()).toEqual([
+      'IN_PROGRESS->CANCELLED:price_change_rejection',
+      'PAYMENT_CONFIRMED->EXPIRED:admin_expiry',
+    ]);
     expect(ErrandStateMachine.guardFor(ErrandStatus.QUOTED, ErrandStatus.CANCELLED)).toBeNull();
+  });
+
+  it('RUNNER_ASSIGNED -> EXPIRED: the system unguarded, an admin only through the expire action (rows 187, 208)', () => {
+    expect(ErrandStateMachine.guardFor(ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.EXPIRED, S)).toBeNull();
+    expect(ErrandStateMachine.guardFor(ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.EXPIRED, A)).toBe(
+      TransitionGuard.ADMIN_EXPIRY,
+    );
+    expect(ErrandStateMachine.guardFor(ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.EXPIRED)).toBeNull();
+    // Rows 201, 225: PAYMENT_CONFIRMED -> EXPIRED, admin only, always through the expire action.
+    expect(ErrandStateMachine.allowedActors(ErrandStatus.PAYMENT_CONFIRMED, ErrandStatus.EXPIRED)).toEqual([A]);
+    expect(ErrandStateMachine.guardFor(ErrandStatus.PAYMENT_CONFIRMED, ErrandStatus.EXPIRED, A)).toBe(TransitionGuard.ADMIN_EXPIRY);
   });
 });

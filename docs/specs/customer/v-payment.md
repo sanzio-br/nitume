@@ -77,6 +77,7 @@ TIMEOUT is **not** a failure (OA-21): the screen keeps listening; a late SUCCESS
 - Status: `GET /api/v1/payments/:errandId` (exists) → `stkStatus` (`PENDING | SUCCESS | FAILED | TIMEOUT`). `failureReason` (provider reason, e.g. Daraja `ResultDesc`, or null; on `feat/api-owner-answers-4`). needs: api-contract — Daraja STK Query behind TIMEOUT (row 52).
 - Live (rows 23, 29): STK status has no socket event (a FAILED or TIMEOUT push changes no errand state), so this screen polls `GET /payments/:errandId` every 5 s while PENDING/TIMEOUT and visible, then every 30 s up to 10 minutes, **whether or not the socket is connected** (accepted in the 2026-10-09 re-audit). `errand:status_changed` to PAYMENT_CONFIRMED still moves on at once.
 - Push: "Payment confirmed / failed" (§4.4); needs: api-contract — add `payment.confirmed` / `payment.failed` to `NotificationEventType` if not yet there.
+- **Refused because the chosen deadline has passed (row 237)**: initiate answers 409 (proposed code `deadline_passed_before_payment`; api-contract names it). No STK is sent. Pop back to `x-awaiting-quote` in its new-deadline state (no snackbar).
 - Dev note: v1 STK is mocked. The app must never call `/payments/mpesa/callback` in any build.
 
 ## Accessibility and mobile

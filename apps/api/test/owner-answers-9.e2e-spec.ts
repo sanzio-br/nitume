@@ -23,6 +23,8 @@ import {
 } from '../src/runners/verification-storage/verification-document-storage';
 import { NOTIFICATIONS_QUEUE } from '../src/infra/queue/queues';
 import { FEED_JOB, FeedJob, NotificationsService } from '../src/notifications/notifications.service';
+import { findInVerificationQueue, readyRunner } from './support/runner-fixtures';
+import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
  * Contract checks for the owner answers 9 (BOARD rows 161-166 and the
@@ -48,7 +50,7 @@ describe('Owner answers 9 (e2e)', () => {
 
   type Actor = { id: string; token: string; profileId: string | null };
 
-  const makeUser = async (role: UserRole, displayName?: string): Promise<Actor> => {
+  const makeUser = async (role: UserRole, displayName?: string, opts: { ready?: boolean } = {}): Promise<Actor> => {
     const users = app.get(UsersService);
     const user = await users.create({ phone: randomPhone(), role });
     if (displayName) {
@@ -60,6 +62,10 @@ describe('Owner answers 9 (e2e)', () => {
       profileId = (await app.get(CustomersService).createForUser(user.id)).id;
     } else if (role === UserRole.RUNNER) {
       profileId = (await app.get(RunnersService).createForUser(user.id)).id;
+      if (opts.ready !== false) {
+        // RA-8: verified and online, so assign and accept work (opt out for ID upload tests).
+        await readyRunner(app.get(DataSource), profileId);
+      }
     }
     return { id: user.id, token: tokenFor(user), profileId };
   };
@@ -75,6 +81,8 @@ describe('Owner answers 9 (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Row 224: RedisService keys carry the e2e prefix (REDIS_KEY_PREFIX=nitume_test:),
+    // so this removes only this run's nitume_test:idem:* keys, never a dev server's.
     await app.get(RedisService).del(...redisKeys);
     const ds = app.get(DataSource);
     if (errandIds.length > 0) {
@@ -91,22 +99,22 @@ describe('Owner answers 9 (e2e)', () => {
       // Payments and refund reviews reference price_change_requests.
       await ds.query('DELETE FROM "payments" WHERE "errandId" = ANY($1)', [errandIds]);
       // Overrides reference refund reviews and runner lines (row 136).
-      await ds.query('ALTER TABLE "task_exposure_overrides" DISABLE TRIGGER USER');
-      await ds.query('DELETE FROM "task_exposure_overrides" WHERE "errandId" = ANY($1)', [errandIds]);
-      await ds.query('ALTER TABLE "task_exposure_overrides" ENABLE TRIGGER USER');
+      await withAppendOnlyGuardLifted(ds, 'task_exposure_overrides', async (query) => {
+        await query('DELETE FROM "task_exposure_overrides" WHERE "errandId" = ANY($1)', [errandIds]);
+      });
       // Corrections are append-only (DB trigger): lift it for the cleanup only.
-      await ds.query('ALTER TABLE "refund_payout_corrections" DISABLE TRIGGER USER');
-      await ds.query(
-        `DELETE FROM "refund_payout_corrections" WHERE "refundReviewId" IN
-           (SELECT id FROM "refund_reviews" WHERE "errandId" = ANY($1))`,
-        [errandIds],
-      );
-      await ds.query('ALTER TABLE "refund_payout_corrections" ENABLE TRIGGER USER');
+      await withAppendOnlyGuardLifted(ds, 'refund_payout_corrections', async (query) => {
+        await query(
+          `DELETE FROM "refund_payout_corrections" WHERE "refundReviewId" IN
+             (SELECT id FROM "refund_reviews" WHERE "errandId" = ANY($1))`,
+          [errandIds],
+        );
+      });
       // The runner payout ledger is append-only too (rows 107).
-      await ds.query('ALTER TABLE "runner_payout_lines" DISABLE TRIGGER USER');
-      await ds.query('DELETE FROM "runner_payout_lines" WHERE "relatedLineId" IS NOT NULL AND "errandId" = ANY($1)', [errandIds]);
-      await ds.query('DELETE FROM "runner_payout_lines" WHERE "errandId" = ANY($1)', [errandIds]);
-      await ds.query('ALTER TABLE "runner_payout_lines" ENABLE TRIGGER USER');
+      await withAppendOnlyGuardLifted(ds, 'runner_payout_lines', async (query) => {
+        await query('DELETE FROM "runner_payout_lines" WHERE "relatedLineId" IS NOT NULL AND "errandId" = ANY($1)', [errandIds]);
+        await query('DELETE FROM "runner_payout_lines" WHERE "errandId" = ANY($1)', [errandIds]);
+      });
       await ds.query('DELETE FROM "refund_reviews" WHERE "errandId" = ANY($1)', [errandIds]);
       const tables: { table_name: string }[] = await ds.query(
         `SELECT table_name FROM information_schema.columns
@@ -140,26 +148,26 @@ describe('Owner answers 9 (e2e)', () => {
         [userIds],
       );
       // ID document access log is append-only (row 154).
-      await ds.query('ALTER TABLE "verification_document_access_log" DISABLE TRIGGER USER');
-      await ds.query(
-        `DELETE FROM "verification_document_access_log" WHERE "runnerProfileId" IN
-           (SELECT id FROM "runner_profiles" WHERE "userId" = ANY($1))`,
-        [userIds],
-      );
-      await ds.query('ALTER TABLE "verification_document_access_log" ENABLE TRIGGER USER');
+      await withAppendOnlyGuardLifted(ds, 'verification_document_access_log', async (query) => {
+        await query(
+          `DELETE FROM "verification_document_access_log" WHERE "runnerProfileId" IN
+             (SELECT id FROM "runner_profiles" WHERE "userId" = ANY($1))`,
+          [userIds],
+        );
+      });
       await ds.query(
         `DELETE FROM "runner_verifications" WHERE "runnerProfileId" IN
            (SELECT id FROM "runner_profiles" WHERE "userId" = ANY($1))`,
         [userIds],
       );
       // Payout requests are append-only (row 153): lift the trigger for the cleanup only.
-      await ds.query('ALTER TABLE "runner_payout_requests" DISABLE TRIGGER USER');
-      await ds.query(
-        `DELETE FROM "runner_payout_requests" WHERE "runnerProfileId" IN
-           (SELECT id FROM "runner_profiles" WHERE "userId" = ANY($1))`,
-        [userIds],
-      );
-      await ds.query('ALTER TABLE "runner_payout_requests" ENABLE TRIGGER USER');
+      await withAppendOnlyGuardLifted(ds, 'runner_payout_requests', async (query) => {
+        await query(
+          `DELETE FROM "runner_payout_requests" WHERE "runnerProfileId" IN
+             (SELECT id FROM "runner_profiles" WHERE "userId" = ANY($1))`,
+          [userIds],
+        );
+      });
       await ds.query('DELETE FROM "runner_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "customer_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "users" WHERE "id" = ANY($1)', [userIds]);
@@ -519,7 +527,7 @@ describe('Owner answers 9 (e2e)', () => {
 
   describe('row 163: 10 MB per ID/selfie image, refused before storage', () => {
     it('answers 413 verification_document_too_large with maxBytes and stores nothing', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const storage = app.get<VerificationDocumentStorage>(VERIFICATION_DOCUMENT_STORAGE);
       const upload = vi.spyOn(storage, 'upload');
       try {
@@ -539,7 +547,7 @@ describe('Owner answers 9 (e2e)', () => {
   });
 
   it('a file whose bytes are not the declared image type is refused before storage (review minor 4)', async () => {
-    const runner = await makeUser(UserRole.RUNNER);
+    const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
     const res = await uploadDoc(runner, Buffer.from('%PDF-1.7 not an image'), 'image/jpeg', 'selfie').expect(400);
     expect(res.body).toMatchObject({ code: 'verification_document_type_invalid' });
     expect(await db().query('SELECT id FROM "runner_verifications" WHERE "runnerProfileId" = $1', [runner.profileId])).toEqual([]);
@@ -569,7 +577,7 @@ describe('Owner answers 9 (e2e)', () => {
     const later = () => new Date(Date.now() + 800 * 86_400_000);
 
     it('a view never restarts the clock; an audited re-review does; pending is never purged or re-reviewed', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
       const id = (await uploadDoc(runner, jpeg()).expect(201)).body.id as string;
       await approve(admin, runner, id);
@@ -608,8 +616,7 @@ describe('Owner answers 9 (e2e)', () => {
       await expect(
         db().query(`UPDATE "verification_document_access_log" SET note = NULL WHERE id = $1`, [rr.body.reReview.id]),
       ).rejects.toThrow(/append-only/);
-      const queue = await http().get('/api/v1/runners/verifications?limit=100').set(bearer(admin.token)).expect(200);
-      const listed = queue.body.items.find((v: { id: string }) => v.id === id);
+      const listed = await findInVerificationQueue(baseUrl, admin.token, id);
       expect(listed).toMatchObject({
         status: 'approved',
         reviewer: { id: admin.id, displayName: 'Verifier' },
@@ -627,7 +634,7 @@ describe('Owner answers 9 (e2e)', () => {
     });
 
     it('a new payment-identity check does not restart the clock; a new selfie does (row 191)', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
       const id = (await uploadDoc(runner, jpeg()).expect(201)).body.id as string;
       await approve(admin, runner, id);
@@ -858,7 +865,7 @@ describe('Owner answers 9 (e2e)', () => {
 
   describe('row 195: ID side', () => {
     it('a government ID upload needs front or back; a selfie takes none', async () => {
-      const runner = await makeUser(UserRole.RUNNER);
+      const runner = await makeUser(UserRole.RUNNER, undefined, { ready: false });
       const missing = await uploadDoc(runner, jpeg(), 'image/jpeg', 'government_id', null).expect(400);
       expect(missing.body).toMatchObject({ code: 'verification_document_side_invalid', allowed: ['front', 'back'] });
       await uploadDoc(runner, jpeg(), 'image/jpeg', 'government_id', 'side-ways').expect(400);

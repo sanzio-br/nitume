@@ -89,6 +89,16 @@ abstract final class NitumeDesignChoices {
   /// default black barrier is never used.
   static const Color modalScrim = Color(0x800B2545);
 
+  // ------------------------------------------------- capture side label
+
+  /// **Open** (runner `v-onboard-id.md` R-15, proposed): fill of the side
+  /// label chip on a captured ID photo (`Front` / `Back`, 11/600 white,
+  /// bottom-left). The spec says "blue-900 scrim chip"; the palette has no
+  /// blue-900, so the chip uses Deep Trust Blue `#0B2545` at full opacity,
+  /// which keeps the white label legible over any photo (the 50% scrim would
+  /// not on a light ID card). Flip here if the owner prefers the scrim.
+  static const Color captureSideLabelFill = NitumeColors.blue;
+
   // ------------------------------------------------- accessibility (decided)
 
   /// **Decided** (BOARD row 33): high-contrast chip text. The design-system

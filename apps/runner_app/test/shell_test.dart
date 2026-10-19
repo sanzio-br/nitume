@@ -43,12 +43,12 @@ void main() {
         t.widget<NitumeTabBar>(find.byType(NitumeTabBar)).currentIndex,
         tab.index,
       );
-      // The visible root view carries the tab title in its top bar.
+      // The visible root view carries its title in its top bar.
       expect(
         find
             .descendant(
               of: find.byType(NitumeTopBar),
-              matching: find.text(label),
+              matching: find.text(label == 'Jobs' ? 'Nearby jobs' : label),
             )
             .hitTestable(),
         findsOneWidget,

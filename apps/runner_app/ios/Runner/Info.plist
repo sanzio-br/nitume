@@ -55,8 +55,17 @@
 		<string>tel</string>
 		<string>mailto</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Nitume Runner uses the camera to photograph your ID, your selfie and job evidence.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Nitume Runner lets you choose a photo of your ID from your library.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Nitume Runner uses your location to show you nearby jobs and to tell the customer when you're on the way and when you've arrived.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>During a job Nitume Runner keeps sharing your location even when the app is closed, until you finish the task or go offline.</string>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>location</string>
 		<string>remote-notification</string>
 	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

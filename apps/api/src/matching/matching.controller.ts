@@ -3,7 +3,8 @@ import { AuthContext, Roles } from '../common/decorators/auth.decorators';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { StatusHistoryActor, UserRole } from '../common/enums';
 import { ErrandsService } from '../errands/errands.service';
-import { AssignErrandDto, DeclineAssignmentDto, PurchaseCheckQueryDto, QuoteErrandDto } from './dto/matching.dto';
+import { AssignErrandDto, DeclineAssignmentDto, ListCandidatesQueryDto, PurchaseCheckQueryDto, QuoteErrandDto } from './dto/matching.dto';
+import { CandidatesPage, CandidatesService } from './candidates.service';
 import { PurchaseCheck, PurchaseLimitService } from './purchase-limit.service';
 
 @Controller('errands')
@@ -11,7 +12,28 @@ export class MatchingController {
   constructor(
     private readonly errands: ErrandsService,
     private readonly purchaseLimits: PurchaseLimitService,
+    private readonly candidatesService: CandidatesService,
   ) {}
+
+  /**
+   * N-20 (rows 177, 178, 186, 187 (c), 204, 215): the runners an admin may
+   * offer the task to. `{ items: CandidateView[], nextCursor,
+   * eligibleRemaining, offlineCount, triedCount, requiredPurchase }`.
+   * Pool: active, verified, the task's category in skills, inside one of
+   * their service areas when areas are configured; busy runners and the
+   * runner holding the current offer are left out. Items carry `offline`,
+   * `tried` (declined | expired) and `ineligibleReason`
+   * (over_purchase_limit). `eligibleRemaining` counts online, untried,
+   * within-limit runners only. Sorted: online, untried, within the limit
+   * first, then nearest. `?limit` 1-100 (default 50), `?cursor` opaque.
+   * Read only: never expires the task. 404; 409 task_not_assignable
+   * (`status`) unless PAYMENT_CONFIRMED or RUNNER_ASSIGNED; 400 cursor_invalid.
+   */
+  @Get(':id/candidates')
+  @Roles(UserRole.ADMIN)
+  candidates(@Param('id', ParseUUIDPipe) id: string, @Query() query: ListCandidatesQueryDto): Promise<CandidatesPage> {
+    return this.candidatesService.list(id, { limit: query.limit, cursor: query.cursor ?? null });
+  }
 
   /**
    * Row 108: the task's required out-of-pocket purchase against a runner's
@@ -29,10 +51,10 @@ export class MatchingController {
   }
 
   /**
-   * Row 108: the current runner declines while the task is RUNNER_ASSIGNED
-   * because the required purchase is above their limit. The task keeps its
-   * status (no new state) and waits for an admin to reassign it. Errors: 409
-   * purchase_within_limit, assignment_not_declinable; 403 not the runner.
+   * Row 108, kept for existing clients: same as `POST /errands/:id/decline`
+   * with `reason: over_purchase_limit` (required here). Prefer the general
+   * decline (row 137). Errors: 409 purchase_within_limit,
+   * assignment_not_declinable, offer_expired; 403 not the runner.
    */
   @Post(':id/assignment/decline')
   @HttpCode(200)

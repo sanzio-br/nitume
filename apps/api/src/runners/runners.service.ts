@@ -23,6 +23,46 @@ import {
 } from './verification-storage/verification-document-storage';
 import { UsersService } from '../users/users.service';
 import { shortNameOf } from './short-name';
+import { ServiceArea, ServiceAreaOption, areasContaining, listedAreaIds, serviceAreaOptionsOf } from './service-areas';
+import { VerificationSummary, verificationSummaryOf } from './verification-summary';
+
+/** Skills a runner may choose in the MVP (OA-18: Business Tasks not offered). */
+export const OFFERED_SKILLS: readonly RunnerSkill[] = [
+  RunnerSkill.BUY_FOR_ME,
+  RunnerSkill.PICKUP_DELIVERY,
+  RunnerSkill.INSPECTION,
+  RunnerSkill.REPRESENTATION,
+  RunnerSkill.QUEUE_ADMIN,
+];
+
+const SKILL_ORDER: readonly RunnerSkill[] = Object.values(RunnerSkill);
+const bySkillOrder = (a: RunnerSkill, b: RunnerSkill): number => SKILL_ORDER.indexOf(a) - SKILL_ORDER.indexOf(b);
+
+/**
+ * `GET /runners/me` (RA-18): the runner's own view. No trust score, no
+ * stored location, no internal rates.
+ */
+export interface RunnerSelfView {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  /** First name + last initial (row 40); null until a name is set. */
+  shortName: string | null;
+  verificationLevel: VerificationLevel;
+  /** online | offline | busy (busy is server-set while a job is active, RA-20). */
+  availability: RunnerAvailability;
+  avgRating: string;
+  errandsCompleted: number;
+  completionRate: string;
+  /** Read-only for the runner (row 138), KES decimal string. */
+  maxPurchaseAdvance: string;
+  lastPingAt: Date | null;
+  /** Category values (row 115), in category order. */
+  skills: RunnerSkill[];
+  /** Listed areas only (row 116), by name. */
+  serviceAreas: ServiceAreaOption[];
+  verification: VerificationSummary;
+}
 
 /**
  * Lightweight public runner card embedded on errand responses (no PII: no
@@ -49,6 +89,7 @@ export interface PublicRunnerProfile {
   errandsCompleted: number;
   availability: RunnerAvailability;
   skills: RunnerSkill[];
+  /** Names of the runner's listed service areas (row 116). */
   serviceAreas: string[];
 }
 
@@ -128,6 +169,12 @@ export interface UploadedImage {
   size: number;
 }
 
+/** A runner in a task's pool by identity (see `RunnersService.poolFor`). */
+export interface PoolRunner {
+  profile: RunnerProfile;
+  displayName: string | null;
+}
+
 @Injectable()
 export class RunnersService {
   private readonly logger = new Logger(RunnersService.name);
@@ -199,7 +246,7 @@ export class RunnersService {
       errandsCompleted: profile.errandsCompleted,
       availability: profile.availability,
       skills: skills.map((s) => s.skill),
-      serviceAreas: serviceAreas.map((a) => a.area),
+      serviceAreas: this.listedAreas(serviceAreas.map((a) => a.area)).map((a) => a.name),
     };
   }
 
@@ -241,10 +288,238 @@ export class RunnersService {
     return { lat, lng, capturedAt: profile.lastPingAt };
   }
 
-  async setAvailability(userId: string, availability: RunnerAvailability): Promise<RunnerProfile> {
+  /**
+   * RA-8, RA-20. The runner sets `online` or `offline`; `busy` is set by the
+   * server while the runner holds an active job (400
+   * availability_server_managed when sent). While busy: `offline` is refused
+   * (409 runner_on_active_job), `online` changes nothing. Going online needs
+   * every required check approved (403 runner_not_verified, `verification`).
+   * Serialised with job start/end on the profile row lock.
+   */
+  async setAvailability(userId: string, availability: RunnerAvailability): Promise<RunnerSelfView> {
+    if (availability === RunnerAvailability.BUSY) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'availability_server_managed',
+        'Busy is set automatically while you are on a job',
+        { allowed: [RunnerAvailability.ONLINE, RunnerAvailability.OFFLINE] },
+      );
+    }
+    const id = (await this.profileByUserId(userId)).id;
+    await this.profiles.manager.transaction(async (manager) => {
+      const profile = await this.lockProfile(manager, id);
+      if (profile.availability === RunnerAvailability.BUSY) {
+        if (availability === RunnerAvailability.OFFLINE) {
+          throw new ApiError(
+            HttpStatus.CONFLICT,
+            'runner_on_active_job',
+            'Finish your active job before going offline',
+          );
+        }
+        return;
+      }
+      if (availability === RunnerAvailability.ONLINE) {
+        await this.assertVerified(profile.id, manager);
+      }
+      if (profile.availability !== availability) {
+        await manager.getRepository(RunnerProfile).update(profile.id, { availability });
+      }
+    });
+    return this.selfView(userId);
+  }
+
+  /** RA-8: required checks of a runner (row 126). */
+  async verificationSummary(runnerProfileId: string, manager?: EntityManager): Promise<VerificationSummary> {
+    const repo = manager ? manager.getRepository(RunnerVerification) : this.verifications;
+    const rows = await repo.find({
+      where: { runnerProfileId },
+      select: { id: true, verificationType: true, side: true, status: true, createdAt: true },
+    });
+    return verificationSummaryOf(rows);
+  }
+
+  /** 403 runner_not_verified (`verification`: the summary) unless every required check is approved. */
+  async assertVerified(runnerProfileId: string, manager?: EntityManager): Promise<VerificationSummary> {
+    const summary = await this.verificationSummary(runnerProfileId, manager);
+    if (!summary.verified) {
+      throw new ApiError(
+        HttpStatus.FORBIDDEN,
+        'runner_not_verified',
+        'You can go online and take jobs once your verification is approved',
+        { verification: summary },
+      );
+    }
+    return summary;
+  }
+
+  /**
+   * RA-8, RA-20, inside the caller's accept transaction: the runner must be
+   * verified (403 runner_not_verified), online (409 runner_offline) and not
+   * already on a job (409 runner_busy, one active job at a time); the
+   * profile becomes `busy`. The profile row stays locked until the caller
+   * commits, so two accepts by one runner cannot both pass.
+   */
+  async startJob(runnerProfileId: string, manager: EntityManager): Promise<void> {
+    const profile = await this.lockProfile(manager, runnerProfileId);
+    await this.assertVerified(profile.id, manager);
+    if (profile.availability === RunnerAvailability.BUSY) {
+      throw new ApiError(HttpStatus.CONFLICT, 'runner_busy', 'Finish your active job first');
+    }
+    if (profile.availability !== RunnerAvailability.ONLINE) {
+      throw new ApiError(HttpStatus.CONFLICT, 'runner_offline', 'Go online to accept jobs');
+    }
+    await manager.getRepository(RunnerProfile).update(profile.id, { availability: RunnerAvailability.BUSY });
+  }
+
+  /** RA-20, inside the caller's transaction: the job ended, `busy` -> `online`. */
+  async endJob(runnerProfileId: string, manager: EntityManager): Promise<void> {
+    const profile = await this.lockProfile(manager, runnerProfileId);
+    if (profile.availability === RunnerAvailability.BUSY) {
+      await manager.getRepository(RunnerProfile).update(profile.id, { availability: RunnerAvailability.ONLINE });
+    }
+  }
+
+  /**
+   * Runner `_shared.md` §9: the phone check is approved by the OTP sign-in.
+   * Called after a successful runner OTP verification; records one approved
+   * `phone` verification when none is approved yet (no reviewer).
+   * Idempotent under concurrent sign-ins: the check and the insert run under
+   * the runner profile's row lock, so a second sign-in waits and then sees
+   * the first one's row (no schema change, reviewer minor 8).
+   */
+  async ensurePhoneVerified(userId: string): Promise<void> {
+    const profile = await this.profiles.findOne({ where: { userId } });
+    if (!profile) {
+      return;
+    }
+    await this.profiles.manager.transaction(async (manager) => {
+      await this.lockProfile(manager, profile.id);
+      const repo = manager.getRepository(RunnerVerification);
+      const approved = await repo.count({
+        where: {
+          runnerProfileId: profile.id,
+          verificationType: RunnerVerificationType.PHONE,
+          status: VerificationStatus.APPROVED,
+        },
+      });
+      if (approved === 0) {
+        await repo.save(
+          repo.create({
+            runnerProfileId: profile.id,
+            verificationType: RunnerVerificationType.PHONE,
+            status: VerificationStatus.APPROVED,
+            documentS3Key: null,
+            reviewedAt: new Date(),
+          }),
+        );
+      }
+    });
+  }
+
+  /** RA-18: `GET /runners/me`. */
+  async selfView(userId: string): Promise<RunnerSelfView> {
     const profile = await this.profileByUserId(userId);
-    profile.availability = availability;
-    return this.profiles.save(profile);
+    const [skills, areas, names, verification] = await Promise.all([
+      this.skills.find({ where: { runnerProfileId: profile.id } }),
+      this.serviceAreas.find({ where: { runnerProfileId: profile.id } }),
+      this.users.displayNames([profile.userId]),
+      this.verificationSummary(profile.id),
+    ]);
+    const displayName = names.get(profile.userId) ?? null;
+    return {
+      id: profile.id,
+      userId: profile.userId,
+      displayName,
+      shortName: shortNameOf(displayName),
+      verificationLevel: profile.verificationLevel,
+      availability: profile.availability,
+      avgRating: profile.avgRating,
+      errandsCompleted: profile.errandsCompleted,
+      completionRate: profile.completionRate,
+      maxPurchaseAdvance: profile.maxPurchaseAdvance,
+      lastPingAt: profile.lastPingAt,
+      skills: skills.map((r) => r.skill).sort(bySkillOrder),
+      serviceAreas: this.listedAreas(areas.map((a) => a.area)),
+      verification,
+    };
+  }
+
+  /**
+   * The runners a task may go to by who they are (System Design §3.3
+   * "Pool"): an active account, every required check approved (row 126),
+   * the task's category in their skills (row 115) and, when service areas
+   * are configured (RUNNER_SERVICE_AREAS, row 212), one of their areas
+   * containing the task's first point (rows 116, 213). A task point inside
+   * no configured area has no pool. Without areas configured, or without a
+   * task point, the area rule is skipped. Availability (online, offline,
+   * busy), the purchase limit and earlier offers are the caller's to apply.
+   */
+  async poolFor(
+    category: RunnerSkill,
+    point: { lat: number; lng: number } | null,
+    manager?: EntityManager,
+  ): Promise<PoolRunner[]> {
+    const repo = <T extends object>(entity: new () => T, own: Repository<T>): Repository<T> =>
+      manager ? manager.getRepository(entity) : own;
+    let ids = (
+      await repo(RunnerSkillEntity, this.skills).find({ where: { skill: category }, select: { runnerProfileId: true } })
+    ).map((r) => r.runnerProfileId);
+    const areas = this.areaList();
+    if (ids.length > 0 && areas.length > 0 && point) {
+      const containing = areasContaining(point, areas);
+      if (containing.length === 0) {
+        return [];
+      }
+      const inArea = await repo(RunnerServiceArea, this.serviceAreas).find({
+        where: { runnerProfileId: In(ids), area: In(containing) },
+        select: { runnerProfileId: true },
+      });
+      const keep = new Set(inArea.map((r) => r.runnerProfileId));
+      ids = ids.filter((id) => keep.has(id));
+    }
+    if (ids.length === 0) {
+      return [];
+    }
+    // Sequential: with `manager` both reads share the caller's connection.
+    const profiles = await repo(RunnerProfile, this.profiles).find({ where: { id: In(ids) } });
+    const checks = await repo(RunnerVerification, this.verifications).find({
+      where: { runnerProfileId: In(ids) },
+      select: { id: true, runnerProfileId: true, verificationType: true, side: true, status: true, createdAt: true },
+    });
+    const byRunner = new Map<string, RunnerVerification[]>();
+    for (const c of checks) {
+      byRunner.set(c.runnerProfileId, [...(byRunner.get(c.runnerProfileId) ?? []), c]);
+    }
+    const verified = profiles.filter((p) => verificationSummaryOf(byRunner.get(p.id) ?? []).verified);
+    const active = await this.users.activeDisplayNames(verified.map((p) => p.userId));
+    return verified
+      .filter((p) => active.has(p.userId))
+      .map((p) => ({ profile: p, displayName: active.get(p.userId) ?? null }));
+  }
+
+  /** Row 116: the ops-configured areas, by name (`GET /runners/service-areas`). */
+  serviceAreaOptions(): { items: ServiceAreaOption[] } {
+    return { items: serviceAreaOptionsOf(this.areaList()) };
+  }
+
+  private areaList(): ServiceArea[] {
+    return this.config?.get<ServiceArea[]>('runners.serviceAreas', []) ?? [];
+  }
+
+  /** Stored area ids that are still listed, as options (by name); unlisted ids are left out. */
+  private listedAreas(ids: string[]): ServiceAreaOption[] {
+    const stored = new Set(ids);
+    return serviceAreaOptionsOf(this.areaList().filter((a) => stored.has(a.id)));
+  }
+
+  private async lockProfile(manager: EntityManager, id: string): Promise<RunnerProfile> {
+    const profile = await manager
+      .getRepository(RunnerProfile)
+      .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+    if (!profile) {
+      throw new NotFoundException('Runner profile not found');
+    }
+    return profile;
   }
 
   /**
@@ -667,31 +942,55 @@ export class RunnersService {
     };
   }
 
+  /**
+   * `PUT /runners/me/skills` (row 115): replaces the runner's skills with
+   * the given category values (1-5 of buy_for_me, pickup_delivery,
+   * inspection, representation, queue_admin). `business` is not offered in
+   * the MVP (OA-18): 400 skill_not_offered (`allowed`). Returns the saved
+   * skills in category order.
+   */
   async setSkills(userId: string, skillNames: RunnerSkill[]): Promise<RunnerSkill[]> {
     const profile = await this.profileByUserId(userId);
     const unique = [...new Set(skillNames)];
-    for (const skill of unique) {
-      const exists = await this.skills.findOne({
-        where: { runnerProfileId: profile.id, skill },
+    const refused = unique.filter((s) => !OFFERED_SKILLS.includes(s));
+    if (refused.length > 0) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'skill_not_offered', 'Choose from the offered task types', {
+        refused,
+        allowed: OFFERED_SKILLS,
       });
-      if (!exists) {
-        await this.skills.save(this.skills.create({ runnerProfileId: profile.id, skill }));
-      }
     }
-    const rows = await this.skills.find({ where: { runnerProfileId: profile.id } });
-    return rows.map((r) => r.skill);
+    await this.skills.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(RunnerSkillEntity);
+      const rows = await repo.find({ where: { runnerProfileId: profile.id } });
+      const stale = rows.filter((r) => !unique.includes(r.skill));
+      if (stale.length > 0) {
+        await repo.delete({ id: In(stale.map((r) => r.id)) });
+      }
+      const have = new Set(rows.map((r) => r.skill));
+      const fresh = unique.filter((s) => !have.has(s));
+      if (fresh.length > 0) {
+        await repo.save(fresh.map((skill) => repo.create({ runnerProfileId: profile.id, skill })));
+      }
+    });
+    return [...unique].sort(bySkillOrder);
   }
 
-  async setServiceAreas(userId: string, areas: string[]): Promise<string[]> {
+  /**
+   * `PUT /runners/me/service-areas` (row 116): replaces the runner's areas
+   * with listed area ids (0-50). 400 service_area_unknown (`unknown`) for an
+   * id not on the ops list. Returns the saved areas by name.
+   */
+  async setServiceAreas(userId: string, areas: string[]): Promise<ServiceAreaOption[]> {
     const profile = await this.profileByUserId(userId);
-    await this.serviceAreas.delete({ runnerProfileId: profile.id });
-    const rows = [...new Set(areas)].filter(Boolean).map((area) =>
-      this.serviceAreas.create({ runnerProfileId: profile.id, area }),
-    );
-    if (rows.length > 0) {
-      await this.serviceAreas.save(rows);
-    }
-    return [...new Set(areas)].filter(Boolean);
+    const ids = listedAreaIds(areas, this.areaList());
+    await this.serviceAreas.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(RunnerServiceArea);
+      await repo.delete({ runnerProfileId: profile.id });
+      if (ids.length > 0) {
+        await repo.save(ids.map((area) => repo.create({ runnerProfileId: profile.id, area })));
+      }
+    });
+    return this.listedAreas(ids);
   }
 
   /** Admin ops list: live runner directory with verification + load summary. */

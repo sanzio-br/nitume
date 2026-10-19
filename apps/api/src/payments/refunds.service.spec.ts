@@ -111,6 +111,13 @@ describe('RefundsService', () => {
     );
   });
 
+  it('both admin expiries open expired_after_payment (rows 102, 226)', () => {
+    for (const from of [ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.PAYMENT_CONFIRMED]) {
+      expect(triggerFor(from, TransitionGuard.ADMIN_EXPIRY, ErrandStatus.EXPIRED)).toBe(RefundTrigger.EXPIRED_AFTER_PAYMENT);
+      expect(triggerFor(from, undefined, ErrandStatus.EXPIRED)).toBe(RefundTrigger.EXPIRED_AFTER_PAYMENT);
+    }
+  });
+
   it('opens the review inside the cancelling transaction for every cancel path', async () => {
     const cases: [object, RefundTrigger][] = [
       [{ from: ErrandStatus.IN_PROGRESS, guard: TransitionGuard.PRICE_CHANGE_REJECTION }, RefundTrigger.PRICE_CHANGE_REJECTED],

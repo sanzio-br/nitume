@@ -121,3 +121,26 @@ describe('resolveIdCloudinary (row 162)', () => {
     ).toEqual({ cloudName: 'c', apiKey: 'ik', apiSecret: 'is' });
   });
 });
+
+describe('REDIS_KEY_PREFIX (row 224)', () => {
+  it('accepts unset, empty or a lowercase name ending in a colon', () => {
+    expect(() => validateEnv({ NODE_ENV: 'development' })).not.toThrow();
+    expect(() => validateEnv({ NODE_ENV: 'development', REDIS_KEY_PREFIX: '' })).not.toThrow();
+    expect(() => validateEnv({ NODE_ENV: 'development', REDIS_KEY_PREFIX: 'nitume_test:' })).not.toThrow();
+  });
+
+  it('refuses anything else', () => {
+    for (const bad of ['nitume_test', 'Nitume:', 'a:b:', '*:']) {
+      expect(() => validateEnv({ NODE_ENV: 'development', REDIS_KEY_PREFIX: bad })).toThrow(/REDIS_KEY_PREFIX/);
+    }
+  });
+});
+
+describe('ERRANDS_DEFAULT_DEADLINE_HOURS (row 221)', () => {
+  it('must be a positive number of hours', () => {
+    expect(() => validateEnv({ NODE_ENV: 'development', ERRANDS_DEFAULT_DEADLINE_HOURS: '24' })).not.toThrow();
+    for (const bad of ['0', '-1', 'soon']) {
+      expect(() => validateEnv({ NODE_ENV: 'development', ERRANDS_DEFAULT_DEADLINE_HOURS: bad })).toThrow(/ERRANDS_DEFAULT_DEADLINE_HOURS/);
+    }
+  });
+});

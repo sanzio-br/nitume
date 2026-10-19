@@ -23,6 +23,7 @@ import {
 import {
   CreateErrandDto,
   ErrandStatusFilterDto,
+  ExpireErrandDto,
   ListErrandsQueryDto,
   MerchantDetailsDto,
   ResolveDisputeDto,
@@ -35,6 +36,7 @@ import {
   ErrandView,
   ErrandsService,
   ListErrandViewsResponse,
+  withoutCustomerPricing,
 } from './errands.service';
 import { Errand } from './errand.entity';
 import { Quote } from './quote.entity';
@@ -70,6 +72,17 @@ export class ErrandsController {
         quoteRequested: query.quoteRequested,
       },
     );
+  }
+
+  /**
+   * Row 221: task defaults clients show but never hard-code.
+   * `defaultDeadlineHours`: without a `deadlineAt` on create, the task's
+   * deadline is creation time + this many hours (24); the customer
+   * `Flexible` caption reads it.
+   */
+  @Get('defaults')
+  defaults(): { defaultDeadlineHours: number } {
+    return { defaultDeadlineHours: this.errands.defaultDeadlineHours() };
   }
 
   /** Count of errands visible to the caller (e.g. customer profile "Tasks"). */
@@ -173,9 +186,9 @@ export class ErrandsController {
 
   @Get(':id/history')
   history(@Param('id') id: string, @CurrentUser() user: AuthContext) {
-    return this.errands.getById(id, { role: user.role, userId: user.userId }).then(() =>
-      this.errands.historyFor(id),
-    );
+    // Admin viewers: each row carries `actor { id, displayName }` (null for system rows).
+    const viewer = { role: user.role, userId: user.userId };
+    return this.errands.getById(id, viewer).then(() => this.errands.historyViewsFor(id, viewer));
   }
 
   @Post(':id/submit')
@@ -211,13 +224,36 @@ export class ErrandsController {
     @Body() dto: TransitionErrandDto,
   ): Promise<ErrandResult> {
     const actorType: StatusHistoryActor = this.actorTypeFor(user.role);
-    return this.errands.transition(
-      id,
-      dto.to,
-      { type: actorType, id: user.userId },
-      dto.note,
-      { role: user.role, userId: user.userId },
-    );
+    return this.errands
+      .transition(id, dto.to, { type: actorType, id: user.userId }, dto.note, { role: user.role, userId: user.userId })
+      .then((r) => (user.role === UserRole.RUNNER ? { ...r, errand: withoutCustomerPricing(r.errand) } : r));
+  }
+
+  /**
+   * Admin expiries, `{ reason, fromStatus? }` (reason 10–500 after
+   * trimming, kept as the history note):
+   * - RUNNER_ASSIGNED -> EXPIRED, "Expire task — no runner available"
+   *   (rows 187, 202, 203, 208), when `canExpire.noRunner`;
+   * - PAYMENT_CONFIRMED -> EXPIRED, "Expire task" (rows 201, 225, 226), when
+   *   `canExpire.deadlinePassed`.
+   * `fromStatus` names the action the admin chose (recommended); without it
+   * the task's status decides. 200 `{ errand, history }`. Errors: 400
+   * expiry_reason_invalid (`minLength`, `maxLength`); 404; 409
+   * expiry_not_allowed (`reason`: not_runner_assigned | not_payment_confirmed
+   * | not_expirable (with `status`) | deadline_passed | open_offer |
+   * eligible_runners_remain (`eligibleRemaining`) | deadline_not_passed).
+   * PATCH /errands/:id/status cannot do either transition for an admin
+   * (409 transition_requires_admin_expiry).
+   */
+  @Post(':id/expire')
+  @HttpCode(200)
+  @Roles(UserRole.ADMIN)
+  expire(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthContext,
+    @Body() dto: ExpireErrandDto,
+  ): Promise<ErrandResult> {
+    return this.errands.adminExpire(id, dto.reason, { type: StatusHistoryActor.ADMIN, id: user.userId }, dto.fromStatus);
   }
 
   private actorTypeFor(role: UserRole): StatusHistoryActor {

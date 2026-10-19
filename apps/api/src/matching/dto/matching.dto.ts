@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import { AssignmentDeclineReason } from '../../common/enums';
 import {
-  IsEnum,
+  IsIn,
   IsISO8601,
   IsNumber,
   IsOptional,
@@ -90,9 +90,12 @@ export class ListRunnersQueryDto {
   @IsString()
   cursor?: string;
 }
-/** POST /errands/:id/assignment/decline (row 108). Only `over_purchase_limit` today. */
+/**
+ * POST /errands/:id/assignment/decline (row 108, legacy over-limit route):
+ * only `over_purchase_limit`. The general decline takes the row-210 reasons.
+ */
 export class DeclineAssignmentDto {
-  @IsEnum(AssignmentDeclineReason)
+  @IsIn([AssignmentDeclineReason.OVER_PURCHASE_LIMIT])
   reason: AssignmentDeclineReason;
 }
 
@@ -100,4 +103,47 @@ export class PurchaseCheckQueryDto {
   @IsOptional()
   @IsUUID()
   runnerProfileId?: string;
+}
+
+/**
+ * POST /errands/:id/decline (rows 113, 134, 210, 229). `reason` is required:
+ * `over_purchase_limit` (checked against the limit), `too_far`,
+ * `not_available` or `other` (stored as given). Missing or any other value:
+ * 400 decline_reason_invalid with `allowed` (checked by the controller, so
+ * the error carries its code).
+ */
+export class DeclineOfferDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  reason?: string;
+}
+
+export class ListOffersQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  cursor?: string;
+}
+
+/** GET /errands/:id/candidates (N-20). */
+export class ListCandidatesQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  cursor?: string;
 }

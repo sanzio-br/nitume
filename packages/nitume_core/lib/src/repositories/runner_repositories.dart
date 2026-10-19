@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart' show DioMediaType, FormData, MultipartFile;
 
+import '../api/api_exception.dart';
 import '../api/nitume_api_client.dart';
 import '../models/enums.dart';
 import '../models/errand.dart';
@@ -10,32 +11,49 @@ import '../models/errand_activity.dart';
 import '../models/errand_details.dart';
 import '../models/json_utils.dart';
 import '../models/runner_account.dart';
+import '../models/runner_job.dart';
 import 'errand_activity_repositories.dart';
 import 'errand_repository.dart';
 
-/// R-19. The signed-in runner's account (`/runners/me*`), endpoints that
-/// exist on `main`.
+/// R-19. The signed-in runner's account (`/runners/me*`, service areas).
 ///
-/// Not here yet: job offers / decline (RA-1, owner row 113). The payout
+/// Offers, accept and decline are on [RunnerJobsRepository]. The payout
 /// ledger and payout requests are on `RunnerPayoutRepository`.
 class RunnerAccountRepository {
   RunnerAccountRepository(this._api);
 
   final NitumeApiClient _api;
 
-  /// `GET /runners/me`.
+  /// `GET /runners/me`: the runner's own view (RA-18). 404 without a
+  /// runner profile.
   Future<RunnerMe> me() => _api.getMap('/runners/me').then(RunnerMe.fromJson);
 
-  /// `PATCH /runners/me/availability`. Send only [RunnerAvailability.online]
-  /// or [RunnerAvailability.offline]; `busy` is meant to be server-set
-  /// (RA-20). The API does not yet refuse unverified runners (RA-8): the
-  /// screen must still gate the switch.
-  Future<RunnerMe> setAvailability(RunnerAvailability availability) => _api
-      .patchMap(
+  /// `PATCH /runners/me/availability` `{ availability }` → the updated
+  /// [RunnerMe] (RA-8, RA-20). Only [RunnerAvailability.online] or
+  /// [RunnerAvailability.offline]: `busy` is server-set and fails with
+  /// [ArgumentError] before sending. Sending `online` while busy changes
+  /// nothing.
+  ///
+  /// API errors (`NitumeApiException.code`):
+  /// - 400 [ApiErrorCodes.availabilityServerManaged] (`allowed`);
+  /// - 403 [ApiErrorCodes.runnerNotVerified]: going online before every
+  ///   required check is approved (`NitumeApiException.verificationSummary`);
+  /// - 409 [ApiErrorCodes.runnerOnActiveJob]: going offline while busy.
+  Future<RunnerMe> setAvailability(RunnerAvailability availability) async {
+    if (availability == RunnerAvailability.busy) {
+      throw ArgumentError.value(
+        availability,
+        'availability',
+        'Busy is set by the server',
+      );
+    }
+    return RunnerMe.fromJson(
+      await _api.patchMap(
         '/runners/me/availability',
         data: {'availability': availability.wire},
-      )
-      .then(RunnerMe.fromJson);
+      ),
+    );
+  }
 
   /// `GET /runners/me/verifications`, newest first.
   Future<List<RunnerVerification>> verifications() async =>
@@ -61,6 +79,27 @@ class RunnerAccountRepository {
           data: {'verificationType': type.wire},
         )
         .then(RunnerVerification.fromJson);
+  }
+
+  /// Interim payment-identity record (rows 218, 222; S-1): makes sure a
+  /// `payment_identity` verification is pending or approved so ops can do
+  /// the M-Pesa name match. Reads `GET /runners/me/verifications`; when the
+  /// newest `payment_identity` record is pending or approved it is returned
+  /// and nothing is sent, otherwise (none, or the newest was rejected)
+  /// `POST /runners/me/verifications` `{ verificationType:
+  /// 'payment_identity' }` creates a pending one. The API itself does not
+  /// de-duplicate, so always go through this call, never [addVerification].
+  ///
+  /// `v-onboard-selfie` calls it on `Submit for review →` (placement is the
+  /// screen's). Errors are the API's ([NitumeApiException]); a failed call
+  /// leaves the uploaded selfie as it is.
+  Future<RunnerVerification> ensurePaymentIdentityVerification() async {
+    final latest = RunnerVerification.latestByType(await verifications());
+    final current = latest[RunnerVerificationType.paymentIdentity];
+    if (current != null && current.status != VerificationStatus.rejected) {
+      return current;
+    }
+    return addVerification(RunnerVerificationType.paymentIdentity);
   }
 
   /// `POST /runners/me/verifications/documents` (multipart: `file`,
@@ -137,37 +176,76 @@ class RunnerAccountRepository {
         _ => '.jpg',
       };
 
-  /// `PUT /runners/me/skills` (1–20). Returns the saved skills. The skill
-  /// vocabulary is RQ-3 (open).
+  /// Most skills `PUT /runners/me/skills` takes (row 115).
+  static const maxSkills = 5;
+
+  /// Most service areas `PUT /runners/me/service-areas` takes.
+  static const maxServiceAreas = 50;
+
+  /// `PUT /runners/me/skills` `{ skills }`: replaces the runner's skills
+  /// with 1–[maxSkills] distinct values (row 115). Returns the saved skills
+  /// in category order. Throws [ArgumentError] before sending when there
+  /// are none or more than [maxSkills].
+  ///
+  /// API error: 400 [ApiErrorCodes.skillNotOffered] for a skill outside
+  /// [RunnerSkill.offered] (`refused`, `allowed`).
   Future<List<RunnerSkill>> setSkills(List<RunnerSkill> skills) async {
+    final unique = skills.toSet();
+    if (unique.isEmpty || unique.length > maxSkills) {
+      throw ArgumentError.value(
+        skills,
+        'skills',
+        'Choose 1 to $maxSkills skills',
+      );
+    }
     final data = await _api.put(
       '/runners/me/skills',
       data: {
-        'skills': [for (final s in skills) s.wire],
+        'skills': [for (final s in unique) s.wire],
       },
     );
-    return [
-      for (final s in (data as List? ?? const [])) RunnerSkill.fromWire('$s'),
-    ];
+    return RunnerSkill.listFromWire(data);
   }
 
-  /// `PUT /runners/me/service-areas` (≤ 50, each ≤ 64 characters). Returns
-  /// the saved, de-duplicated areas. The area list is RQ-4 (open).
-  Future<List<String>> setServiceAreas(List<String> areas) async {
+  /// `GET /runners/service-areas`: the ops-configured areas, by name (row
+  /// 116). Offer these in the area picker.
+  Future<List<ServiceAreaOption>> serviceAreas() async {
+    final data = await _api.getMap('/runners/service-areas');
+    return ServiceAreaOption.listFromJson(data['items']);
+  }
+
+  /// `PUT /runners/me/service-areas` `{ areas: ids }`: replaces the runner's
+  /// areas with 0–[maxServiceAreas] [ServiceAreaOption.id]s from
+  /// [serviceAreas]. Returns the saved areas by name. Throws [ArgumentError]
+  /// before sending above [maxServiceAreas].
+  ///
+  /// API error: 400 [ApiErrorCodes.serviceAreaUnknown] for an id not on the
+  /// list (`NitumeApiException.unknownServiceAreas`).
+  Future<List<ServiceAreaOption>> setServiceAreas(List<String> areaIds) async {
+    final unique = areaIds.toSet().toList();
+    if (unique.length > maxServiceAreas) {
+      throw ArgumentError.value(
+        areaIds,
+        'areaIds',
+        'At most $maxServiceAreas areas',
+      );
+    }
     final data = await _api.put(
       '/runners/me/service-areas',
-      data: {'areas': areas},
+      data: {'areas': unique},
     );
-    return [for (final a in (data as List? ?? const [])) '$a'];
+    return ServiceAreaOption.listFromJson(data);
   }
 }
 
-/// R-19. The runner's job: list, detail, runner transitions, notes,
-/// evidence and price-change requests. Endpoints that exist on `main`.
+/// R-19. The runner's offers and jobs: offers, the runner job view,
+/// accept / decline, runner transitions, notes, evidence and price-change
+/// requests.
 ///
-/// The detail is the customer-shaped `Errand` until the runner projection
-/// lands (RA-2): **never show [Errand.feeTotal] or any customer fee to a
-/// runner**. The runner fee, item amount and route are not available yet.
+/// Read the job through [job] / [offers] ([RunnerJobView], RA-2): it has the
+/// runner fee, item amount and route and no customer fees. [get] and
+/// [activeJobs] return the customer-shaped `Errand`: **never show
+/// [Errand.feeTotal] or any customer fee to a runner**.
 class RunnerJobsRepository {
   RunnerJobsRepository(this._api)
     : _errands = ErrandRepository(_api),
@@ -216,6 +294,71 @@ class RunnerJobsRepository {
     ErrandStatus.inProgress,
     ErrandStatus.awaitingCustomer,
   };
+
+  /// Largest page `GET /runners/me/offers` returns.
+  static const maxOffersPageSize = 50;
+
+  /// `GET /runners/me/offers`: open offers, newest first (RA-1). [limit] is
+  /// 1–[maxOffersPageSize] (API default 20); pass the previous page's
+  /// [RunnerOffersPage.nextCursor] as [cursor]. Offers past
+  /// [RunnerJobView.offerEndsAt] are not listed. Returned whatever the
+  /// runner's availability: hide them while offline.
+  ///
+  /// API error: 403 [ApiErrorCodes.runnerNotVerified] (`verification`).
+  Future<RunnerOffersPage> offers({int? limit, String? cursor}) async {
+    if (limit != null && (limit < 1 || limit > maxOffersPageSize)) {
+      throw RangeError.range(limit, 1, maxOffersPageSize, 'limit');
+    }
+    final data = await _api.getMap(
+      '/runners/me/offers',
+      query: {'limit': ?limit, 'cursor': ?cursor},
+    );
+    return RunnerOffersPage.fromJson(data);
+  }
+
+  /// `GET /runners/me/jobs/:errandId`: the runner's view of an offered or
+  /// held job (RA-2). 403 when the runner does not hold the current
+  /// assignment (also after a decline or a lapsed offer).
+  Future<RunnerJobView> job(String errandId) =>
+      _api.getMap('/runners/me/jobs/$errandId').then(RunnerJobView.fromJson);
+
+  /// `POST /errands/:id/accept`: RUNNER_ASSIGNED → RUNNER_EN_ROUTE (row
+  /// 113); the runner becomes busy. Returns the job and the history row.
+  ///
+  /// API errors (`NitumeApiException.code`):
+  /// - 403 [ApiErrorCodes.runnerNotVerified] (`verificationSummary`); a 403
+  ///   without a code when the offer is not this runner's;
+  /// - 409 [ApiErrorCodes.offerExpired] (`offerExpiresAt`; past the task
+  ///   deadline also `reason` task_deadline_passed and `deadlineAt`, see
+  ///   `isTaskDeadlinePassed`);
+  /// - 409 [ApiErrorCodes.runnerOffline], [ApiErrorCodes.runnerBusy];
+  /// - 409 [ApiErrorCodes.purchaseLimitExceeded] (`requiredPurchase`,
+  ///   `maxPurchaseAdvance`);
+  /// - 409 [ApiErrorCodes.illegalTransition] (the task left
+  ///   RUNNER_ASSIGNED).
+  Future<OfferAcceptResult> accept(String errandId) => _api
+      .postMap('/errands/$errandId/accept')
+      .then(OfferAcceptResult.fromJson);
+
+  /// `POST /errands/:id/decline` `{ reason }` (rows 108, 113, 134, 210,
+  /// 229). [reason] is required: one of the four [OfferDeclineReason]
+  /// values, picked in the R-23 `DeclineReasonDialog`; the API refuses a
+  /// missing reason with 400 [ApiErrorCodes.declineReasonInvalid].
+  /// [OfferDeclineReason.overPurchaseLimit] only while
+  /// [RunnerJobView.overPurchaseLimit]. The task stays RUNNER_ASSIGNED for
+  /// another runner.
+  ///
+  /// API errors: 400 [ApiErrorCodes.declineReasonInvalid] (`allowed`); 403
+  /// not the offered runner; 409 [ApiErrorCodes.offerExpired]; 409
+  /// [ApiErrorCodes.assignmentNotDeclinable] (`status`); 409
+  /// [ApiErrorCodes.purchaseWithinLimit] (`requiredPurchase`,
+  /// `maxPurchaseAdvance`).
+  Future<OfferDeclineResult> decline(
+    String errandId, {
+    required OfferDeclineReason reason,
+  }) => _api
+      .postMap('/errands/$errandId/decline', data: {'reason': reason.wire})
+      .then(OfferDeclineResult.fromJson);
 
   /// The runner's current job(s): `GET /errands?status=…` (runner-scoped
   /// to the current assignment by the API).

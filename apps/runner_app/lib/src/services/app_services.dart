@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:nitume_core/nitume_core.dart';
+import 'package:nitume_runner_device/nitume_runner_device.dart';
 
+import 'capture_files.dart';
 import 'push.dart';
 import 'session.dart';
 import 'shell_controller.dart';
@@ -13,14 +17,23 @@ class AppServices {
   AppServices({
     required this.session,
     required this.auth,
+    required this.account,
+    required this.jobs,
+    required this.notifications,
+    required this.capture,
+    required this.location,
+    required this.permissions,
+    required this.files,
     this.appConfig = const AppConfig(),
     this.push = const NoopPushService(),
+    DateTime Function()? clock,
     ShellController? shell,
-  }) : shell = shell ?? ShellController();
+  }) : shell = shell ?? ShellController(),
+       clock = clock ?? DateTime.now;
 
-  /// Production wiring against [baseUrl] (`_shared.md` §10). The socket,
-  /// location pinger and runner repositories join here once core-ui ships
-  /// them (R-19 … R-22).
+  /// Production wiring against [baseUrl] (`_shared.md` §10). The socket
+  /// and the location pinger join here once their producers exist (RA-4,
+  /// RA-5).
   static Future<AppServices> create({required String baseUrl}) async {
     late final SessionController session;
     final tokenStore = SecureTokenStore();
@@ -40,9 +53,19 @@ class AppServices {
         PushRegistration(push: push, devices: DevicesRepository(api)),
       ),
     );
+    final capture = ImagePickerCaptureSource();
+    // Captures orphaned when Android killed the app mid-pick (B-1).
+    unawaited(capture.discardLostCaptures().catchError((Object _) => 0));
     return AppServices(
       session: session,
       auth: auth,
+      account: RunnerAccountRepository(api),
+      jobs: RunnerJobsRepository(api),
+      notifications: NotificationsRepository(api),
+      capture: capture,
+      location: const GeolocatorPositionSource(),
+      permissions: const PermissionHandlerDevicePermissions(),
+      files: const IoCaptureFiles(),
       appConfig: AppConfig.fromEnvironment(onOpenLink: openExternalLink),
       push: push,
     );
@@ -50,6 +73,31 @@ class AppServices {
 
   final SessionController session;
   final AuthRepository auth;
+
+  /// R-19: `GET /runners/me`, availability, verifications and uploads.
+  final RunnerAccountRepository account;
+
+  /// R-19: offers, the runner job view, accept and decline.
+  final RunnerJobsRepository jobs;
+
+  /// Bell unread count.
+  final NotificationsRepository notifications;
+
+  /// Camera / gallery capture (`image_picker`, row 124).
+  final ImageCaptureSource capture;
+
+  /// Device location (`geolocator`, row 124). Read only while online
+  /// (row 123: nothing is collected offline).
+  final PositionSource location;
+
+  /// Camera permission and the system-settings shortcut.
+  final DevicePermissions permissions;
+
+  /// Reads captured images into memory.
+  final CaptureFiles files;
+
+  /// Wall clock for offer countdowns; tests pin it.
+  final DateTime Function() clock;
   final AppConfig appConfig;
   final ShellController shell;
 

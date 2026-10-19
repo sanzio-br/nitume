@@ -3,7 +3,7 @@
 - Mockup: **not drawn.** Required by OA-3 (authoritative REQUESTED → QUOTED → ACCEPTED flow after the wizard preview) and OA-5 (merchant payment route chosen at checkout). Built from design-system patterns and existing mockup components (`.stk-wrap`, `.form-card`, `.receipt-row`, `.chip` column, `.pm-card`, `.cta-fixed`). Copy is **(proposed)** unless marked "mockup".
 - Shared conventions: `_shared.md` (OA-n §0, fees and routes §8)
 - Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-owner-answers`
-- Status: matches-design (re-audited 2026-10-09 @ `c420265`)
+- Status: partial (round 14b, rows 236, 237: outside-area notice and the new-deadline step are new; the rest matches-design, re-audited 2026-10-09 @ `c420265`)
 
 ## Purpose
 One screen per errand with two main states, plus the expired-quote state of checkout and the "new quote requested" waiting state:
@@ -32,6 +32,7 @@ REQUESTED (waiting), QUOTED (checkout, expired quote, or new quote requested), A
    3. Body 13 slate-600, max width 260, margin-bottom 22.
 3. Task summary card (C-07, margin `0 20 14`): status chip (C-05) `Awaiting quote`; title 15.5/600 (margin `10 0 4`); meta Fira Code 12 slate-600 `#NT-10482 · Today, 10:03 AM`.
 4. Button stack (padding 0 20, gap 10): outline `Back to Home` (C-03); text button `Cancel task` in red (destructive, OA-13).
+5. **Outside every service area (row 236, decided 2026-10-19: notify the customer and let them cancel)**: in REQUESTED, QUOTED or ACCEPTED (ACCEPTED: an expired ACCEPTED quote being re-quoted), when the API flags the task as refused at quote (`outsideServiceArea: true` on the errand view, proposed field), the waiting block is replaced by heading `We can't take this task` and body `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.` (both proposed), and `Cancel task` becomes the C-01 primary action (the existing customer cancel, REQUESTED/QUOTED/ACCEPTED → CANCELLED). The notification copy is open (BOARD row 241: API wording vs this proposed wording). No new state. The same text comes as a notification (`v-notifications.md`).
 
 ## Layout — checkout state (QUOTED)
 1. Pushed header (C-10) title `Your quote`.
@@ -92,6 +93,8 @@ States:
   - No `Request a new quote` button here (one open request at a time). The request does not expire on the client; ops re-quote it (rows 68, 88).
   - A new quote (`quote:reissued` socket event, `errand:status_changed`, or the `errand.QUOTED` / new-quote push) switches to checkout with the new figures, `Valid until` from the new quote, and the route/payer cards shown again. On an ACCEPTED task the chip reads `Awaiting payment` and the CTA pays the new quote (row 72: the customer must accept/pay the new quote before anything proceeds).
   - Live region announces `Your new quote is ready.` on the switch.
+- **Chosen deadline already passed (row 237, decided 2026-10-19: refuse to start payment and ask for a new deadline)**: when a deadline the customer chose (`Today` / `Tomorrow`) has passed, either on load (`deadlineAt` non-null and in the past: before payment a non-null `deadlineAt` is always the customer's choice, row 239 (a)) or from the payment refusal (`v-payment.md`), the checkout CTA is replaced by a C-40 notice `Your deadline has passed. Choose a new one to continue.` and a C-01 `Choose a new deadline` that opens a bottom sheet with the `v-new-details` chips `Today`, `Tomorrow`, `Flexible` (C-16; `Today` hidden once 23:59 local has passed). Saving sends `PATCH /errands/:id` `{ deadlineAt }` (`Flexible` = `null`, so the 24 h default counts from payment, rows 235, 239) and returns to checkout. All copy proposed. The quote stands (built; BOARD row 242 open, recommended keep).
+- **Deadline line in the checkout summary (row 239 (a); proposed)**: the task summary card gets a line `Deadline` → the chosen time (12-hour EAT, Fira Code), or, when `deadlineAt` is null (`Flexible`), `No deadline yet. It starts when your payment is confirmed.` (Fira Sans).
 - Accepting: CTA spinner; on success push `v-payment`. Code `quote_expired`: switch to the expired state above (no snackbar). Error 409 (state already changed): reload the errand and route per Entry rules. Other errors: snackbar `Couldn't accept the quote. Try again.`
 - Load error: C-33 `Couldn't load this task.` + `Try again`.
 - Cancel error: snackbar `Couldn't cancel the task. Try again.`

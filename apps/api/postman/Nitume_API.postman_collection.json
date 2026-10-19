@@ -2574,6 +2574,262 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "12_Owner_Answers_Round_12_2026_10_19",
+      "item": [
+        {
+          "name": "Admin candidates (offline flagged, eligibleRemaining online only; cursor)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/candidates?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "candidates?limit=50"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner decline with a reason (over_purchase_limit | too_far | not_available | other)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"too_far\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/decline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "decline"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin errand detail (canExpire { noRunner, deadlinePassed }, expiry.fromStatus)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin expire task, no runner available (reason 10-500; 409 expiry_not_allowed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"No runner covers this area on Sundays\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/expire",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "expire"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "13_Owner_Answers_Round_13_2026_10_19",
+      "item": [
+        {
+          "name": "Admin expire a paid task past its deadline (fromStatus PAYMENT_CONFIRMED; 409 deadline_not_passed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "admin"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer unreachable after the deadline\",\n  \"fromStatus\": \"PAYMENT_CONFIRMED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/expire",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "expire"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Task defaults (defaultDeadlineHours for the Flexible caption)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/defaults",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "defaults"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner decline (reason required: over_purchase_limit | too_far | not_available | other)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"not_available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/decline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "decline"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

@@ -7,7 +7,9 @@ import {
 } from 'typeorm';
 import { RunnerSkill } from '../common/enums';
 
+/** One row per runner and skill (unique since migration 1790103100000, row 115). */
 @Entity('runner_skills')
+@Index('UQ_runner_skills_profile_skill', ['runnerProfileId', 'skill'], { unique: true })
 export class RunnerSkillEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

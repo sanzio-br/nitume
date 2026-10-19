@@ -70,8 +70,9 @@ export class Errand {
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
   finalPrice: string | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
-  deadlineAt: Date | null;
+  /** Rows 206, 221: always set (creation + 24 h by default); NOT NULL since 1790103300000. */
+  @Column({ type: 'timestamptz' })
+  deadlineAt: Date;
 
   @Column({
     type: 'enum',

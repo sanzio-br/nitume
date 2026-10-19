@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
@@ -22,6 +24,11 @@ class _FakePicker extends ImagePickerPlatform with MockPlatformInterfaceMixin {
     this.options = options;
     return result;
   }
+
+  LostDataResponse lost = LostDataResponse.empty();
+
+  @override
+  Future<LostDataResponse> getLostData() async => lost;
 }
 
 void main() {
@@ -83,6 +90,90 @@ void main() {
       final o = fake.options!;
       expect((o.maxWidth, o.maxHeight, o.imageQuality), (1600.0, 1600.0, 80));
       expect(o.requestFullMetadata, isFalse);
+    });
+
+    test('front camera: camera source, front lens, still compressed', () async {
+      await ImagePickerCaptureSource().takePhoto(from: CaptureFrom.frontCamera);
+      expect(fake.source, ImageSource.camera);
+      final o = fake.options!;
+      expect(o.preferredCameraDevice, CameraDevice.front);
+      expect((o.maxWidth, o.imageQuality), (1600.0, 80));
+    });
+
+    test('rear lens by default', () async {
+      await ImagePickerCaptureSource().takePhoto();
+      expect(fake.options!.preferredCameraDevice, CameraDevice.rear);
+      expect(CaptureFrom.camera.isCamera, isTrue);
+      expect(CaptureFrom.frontCamera.isCamera, isTrue);
+      expect(CaptureFrom.gallery.isCamera, isFalse);
+    });
+
+    test('gallery picks are not resized (B-1: no hidden full copy)', () async {
+      await ImagePickerCaptureSource().takePhoto(from: CaptureFrom.gallery);
+      expect(fake.source, ImageSource.gallery);
+      final o = fake.options!;
+      expect((o.maxWidth, o.maxHeight, o.imageQuality), (null, null, null));
+    });
+
+    test('discard removes the gallery copy and its uuid directory', () async {
+      final cache = await Directory.systemTemp.createTemp('nitume_cache');
+      addTearDown(() => cache.delete(recursive: true));
+      final dir = Directory(
+        '${cache.path}/3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b',
+      )..createSync();
+      final copy = File('${dir.path}/id.png')
+        ..writeAsBytesSync([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+      fake.result = XFile(copy.path, mimeType: 'image/jpeg');
+      final img = (await ImagePickerCaptureSource().takePhoto(
+        from: CaptureFrom.gallery,
+      ))!;
+      expect(img.scratchDirectory, dir.path);
+      expect(img.contentType, 'image/png', reason: 'bytes beat mimeType');
+      await img.discard();
+      await img.discard();
+      expect(copy.existsSync(), isFalse);
+      expect(dir.existsSync(), isFalse);
+      expect(cache.listSync(), isEmpty);
+    });
+
+    test('a camera file outside a uuid directory has no scratch dir', () {
+      expect(
+        ImagePickerCaptureSource.scratchDirectoryOf('/data/cache/scaled_x.jpg'),
+        isNull,
+      );
+    });
+
+    test('discardLostCaptures deletes kept photos on Android only', () async {
+      final cache = await Directory.systemTemp.createTemp('nitume_lost');
+      addTearDown(() => cache.delete(recursive: true));
+      final kept = File('${cache.path}/scaled_cap.jpg')..writeAsBytesSync([1]);
+      fake.lost = LostDataResponse(files: [XFile(kept.path)]);
+      expect(
+        await ImagePickerCaptureSource(isAndroid: false).discardLostCaptures(),
+        0,
+      );
+      expect(kept.existsSync(), isTrue);
+      expect(
+        await ImagePickerCaptureSource(isAndroid: true).discardLostCaptures(),
+        1,
+      );
+      expect(kept.existsSync(), isFalse);
+    });
+
+    test('content type: magic bytes, then mimeType, then extension', () async {
+      const sniff = ImagePickerCaptureSource.sniffImageType;
+      expect(sniff([0xFF, 0xD8, 0xFF, 0xE0]), 'image/jpeg');
+      expect(
+        sniff([...'RIFF'.codeUnits, 0, 0, 0, 0, ...'WEBP'.codeUnits]),
+        'image/webp',
+      );
+      expect(sniff([0, 0, 0, 24, ...'ftypheic'.codeUnits]), 'image/heic');
+      expect(sniff([0, 0, 0, 24, ...'ftypmif1'.codeUnits]), 'image/heif');
+      expect(sniff([1, 2, 3]), isNull);
+      final of = ImagePickerCaptureSource.contentTypeOf;
+      expect(await of(XFile('/nope/a.webp')), 'image/webp');
+      expect(await of(XFile('/nope/a', mimeType: 'image/png')), 'image/png');
+      expect(await of(XFile('/nope/a')), 'image/jpeg');
     });
 
     test('gallery on request; cancel returns null', () async {

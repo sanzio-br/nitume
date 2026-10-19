@@ -1,6 +1,8 @@
 @Tags(['golden'])
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
@@ -120,7 +122,11 @@ void main() {
               rows: [
                 ReceiptRow(label: 'Service fee', amount: '700.00'),
                 ReceiptRow(label: 'Runner fee', amount: '1500.00'),
-                ReceiptRow(label: 'Total paid', amount: '2200.00', isTotal: true),
+                ReceiptRow(
+                  label: 'Total paid',
+                  amount: '2200.00',
+                  isTotal: true,
+                ),
               ],
             ),
           ],
@@ -206,20 +212,24 @@ void main() {
           children: [
             NitumeButton.primary(
               label: 'Approve KSh 5,000 increase',
-              richLabel: TextSpan(children: [
-                const TextSpan(text: 'Approve '),
-                NumSpan.kes(5000),
-                const TextSpan(text: ' increase'),
-              ]),
+              richLabel: TextSpan(
+                children: [
+                  const TextSpan(text: 'Approve '),
+                  NumSpan.kes(5000),
+                  const TextSpan(text: ' increase'),
+                ],
+              ),
               onPressed: () {},
             ),
             NitumeButton.link(
               label: '+3 more in progress',
-              richLabel: const TextSpan(children: [
-                TextSpan(text: '+'),
-                NumSpan('3'),
-                TextSpan(text: ' more in progress'),
-              ]),
+              richLabel: const TextSpan(
+                children: [
+                  TextSpan(text: '+'),
+                  NumSpan('3'),
+                  TextSpan(text: ' more in progress'),
+                ],
+              ),
               onPressed: () {},
             ),
             const SectionLabel(
@@ -229,10 +239,12 @@ void main() {
             ),
             NitumeNotice(
               message: 'Pay the item amount: KSh 40,000',
-              richMessage: TextSpan(children: [
-                const TextSpan(text: 'Pay the item amount: '),
-                NumSpan.kes(40000),
-              ]),
+              richMessage: TextSpan(
+                children: [
+                  const TextSpan(text: 'Pay the item amount: '),
+                  NumSpan.kes(40000),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
             const Row(
@@ -345,4 +357,167 @@ void main() {
       matchesGoldenFile('goldens/runner_widgets.png'),
     );
   });
+
+  testWidgets('decline reason dialog', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        SizedBox(
+          width: 375,
+          child: DeclineReasonDialog(
+            overPurchaseLimit: true,
+            onDecline: (_) async {},
+          ),
+        ),
+      ),
+      surfaceSize: const Size(420, 640),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/decline_reason_dialog.png'),
+    );
+  });
+
+  testWidgets('notice tones (C3)', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        SizedBox(
+          width: 375,
+          child: Column(
+            children: [
+              const NitumeNotice(message: 'Go online to accept this offer.'),
+              const SizedBox(height: 10),
+              NitumeNotice(
+                message:
+                    'This photo is larger than 10 MB. Take it again or choose '
+                    'a smaller photo.',
+                richMessage: TextSpan(
+                  children: [
+                    const TextSpan(text: 'This photo is larger than '),
+                    const NumSpan('10 MB'),
+                    const TextSpan(
+                      text: '. Take it again or choose a smaller photo.',
+                    ),
+                  ],
+                ),
+                tone: NitumeNoticeTone.danger,
+              ),
+            ],
+          ),
+        ),
+      ),
+      surfaceSize: const Size(420, 220),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/notice_tones.png'),
+    );
+  });
+
+  testWidgets('empty state with title (C4)', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        const SizedBox(
+          width: 375,
+          child: NitumeEmptyState(
+            title: 'No offers right now',
+            message:
+                "We'll notify you when a job near you comes in. Keep the app "
+                'online.',
+          ),
+        ),
+      ),
+      surfaceSize: const Size(420, 220),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/empty_state_title.png'),
+    );
+  });
+
+  testWidgets('capture states (C1, C2)', (tester) async {
+    final photo = MemoryImage(_png);
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        SizedBox(
+          width: 375,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              CaptureThumbnailRow(
+                children: [
+                  CaptureThumbnail(
+                    state: CaptureState.uploaded,
+                    image: photo,
+                    label: 'Front',
+                    aspectRatio: 1.4,
+                    showLabelOnPhoto: true,
+                    onRemove: () {},
+                  ),
+                  CaptureThumbnail(
+                    state: CaptureState.empty,
+                    label: 'Back',
+                    aspectRatio: 1.4,
+                    selected: true,
+                    issue: CaptureIssue.notApproved,
+                    onRetake: () {},
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              CaptureThumbnailRow(
+                children: [
+                  CaptureThumbnail(
+                    state: CaptureState.empty,
+                    label: 'Front',
+                    aspectRatio: 1.4,
+                    issue: CaptureIssue.tooLarge,
+                    onRetake: () {},
+                  ),
+                  const CaptureThumbnail(
+                    state: CaptureState.empty,
+                    label: 'Back',
+                    aspectRatio: 1.4,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              CaptureDropZone(
+                title: 'Back of your ID',
+                caption: 'Tap to take a photo or upload',
+                height: 160,
+                onPick: () {},
+              ),
+              const SizedBox(height: 10),
+              CaptureDropZone(
+                caption: 'Center your face in the frame',
+                height: 160,
+                onPick: () {},
+                image: photo,
+                onRetake: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+      surfaceSize: const Size(420, 900),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/capture_states.png'),
+    );
+  });
 }
+
+// 1×1 transparent PNG (the captured photo stand-in).
+final _png = Uint8List.fromList(const [
+  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, //
+  0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+  0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+  0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+]);

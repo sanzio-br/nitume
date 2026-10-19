@@ -170,16 +170,27 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
   }
 
   /** Lazy, idempotent upsert of the payment_type reference table. */
+  /**
+   * Seeds the payment_type reference rows. Race-safe (row 223): several
+   * instances starting on an empty table may all see the same codes
+   * missing, so the insert is ON CONFLICT DO NOTHING on the unique `code`
+   * (IDX_payment_type_code) and the slower instance inserts nothing.
+   * Existing rows are never updated.
+   */
   async onApplicationBootstrap(): Promise<void> {
-    const existing = await this.paymentTypes.find();
-    const byCode = new Map(existing.map((t) => [t.code, t]));
-    for (const ref of PAYMENT_TYPES) {
-      if (!byCode.has(ref.code)) {
-        await this.paymentTypes.save(
-          this.paymentTypes.create({ ...ref }),
-        );
-      }
+    const existing = await this.paymentTypes.find({ select: { code: true } });
+    const have = new Set(existing.map((t) => t.code));
+    const missing = PAYMENT_TYPES.filter((ref) => !have.has(ref.code));
+    if (missing.length === 0) {
+      return;
     }
+    await this.paymentTypes
+      .createQueryBuilder()
+      .insert()
+      .into(PaymentType)
+      .values(missing.map((ref) => ({ ...ref })))
+      .orIgnore()
+      .execute();
   }
 
   /**

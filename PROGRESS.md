@@ -363,3 +363,30 @@ onboarding → profile → jobs → active job → job summary → earnings → 
   "Expire task — no runner available" specced; §3.3 RUNNER_ASSIGNED → EXPIRED actor S → S, A (row 208,
   owner to confirm).
 
+## 2026-10-19 — Owner answers 201–232, runner API batch 1, round 12/13
+
+**Merged to main (local, on owner instruction):** `feat/api-runner-1` (9f2b64e), `feat/core-runner-batch-1`
+(7dcdb30), `docs/owner-answers-12-specs` (e193382), `docs/board-owner-answers-12` (0824053).
+
+- Test safety (rows 198, 199, 219): e2e forced onto the dedicated `nitume_test` database with layered
+  guards; test DB reset around each run; append-only guards lifted only on the test DB; 89/89 e2e.
+- Runner API batch 1: skills as categories, service areas from config, runner self view and verification
+  summary, verification gate, server-set busy, offers/accept/decline, deadline expiry sweep.
+- Round 12 specs: §3.3 adds PAYMENT_CONFIRMED → EXPIRED (Admin, row 201).
+
+**Reviewed, awaiting owner merge:**
+- `feat/api-owner-answers-12`: admin "Expire task — no runner available", assign refused past deadline,
+  offers capped at deadline, decline reasons too_far/not_available/other (migration 1790103200000),
+  admin candidates read with offline runners flagged. 594 unit.
+- `feat/core-owner-answers-12`: decline reasons, R-23 DeclineReasonDialog, combined National ID status
+  (row 209). core 477.
+- `docs/owner-answers-13-specs` (with -r23): owner rows 220–232 folded.
+- `fix/angular-admin-round-12` + `docs/admin-round-12-audit`: admin findings 26, 30, 31 (merge after the
+  API branch). 250 unit.
+
+**In review / building:** `feat/api-owner-answers-13` (paid-task expire, deadline-passed feed item,
+default deadline 24 h + NOT NULL migration 1790103300000 — not applied to dev DB), `fix/api-payment-type-seed`
+(row 223), `feat/runner-batch-1` (runner onboarding + jobs screens).
+
+**Open:** owner rows 233 (tasks outside all service areas), 234 (no admin feed item on paid-task expire),
+235 (default deadline clock).

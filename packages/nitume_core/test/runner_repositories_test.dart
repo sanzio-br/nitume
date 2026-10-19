@@ -72,7 +72,7 @@ Map<String, dynamic> _errand([Map<String, dynamic>? extra]) => {
 
 void main() {
   group('RunnerAccountRepository', () {
-    test('me parses the raw profile; trust score is not exposed', () async {
+    test('me tolerates a profile without the self-view fields', () async {
       final a = _Adapter({'GET /runners/me': (200, _profile)});
       final me = await RunnerAccountRepository(_client(a)).me();
       expect(me.id, 'rp1');
@@ -80,20 +80,12 @@ void main() {
       expect(me.isOnline, isTrue);
       expect(me.completionRate, '98.70');
       expect(me.maxPurchaseAdvance, '3000.00');
-      expect(me.skills, isNull);
+      expect(me.skills, isEmpty);
+      expect(me.serviceAreas, isEmpty);
       expect(me.shortName, isNull);
-    });
-
-    test('me reads skills, areas and shortName when present (RA-10/18)', () {
-      final me = RunnerMe.fromJson({
-        ..._profile,
-        'shortName': 'Brian K.',
-        'skills': ['inspection'],
-        'serviceAreas': ['Nyali'],
-      });
-      expect(me.shortName, 'Brian K.');
-      expect(me.skills, [RunnerSkill.inspection]);
-      expect(me.serviceAreas, ['Nyali']);
+      expect(me.displayName, isNull);
+      expect(me.isVerified, isFalse);
+      expect(me.verification.checks, isEmpty);
     });
 
     test('setAvailability patches the wire value', () async {
@@ -147,11 +139,9 @@ void main() {
       final repo = RunnerAccountRepository(_client(a));
       final list = await repo.verifications();
       final latest = RunnerVerification.latestByType(list);
-      expect(latest[RunnerVerificationType.governmentId]!.id, 'v2');
-      expect(
-        latest[RunnerVerificationType.governmentId]!.status,
-        VerificationStatus.rejected,
-      );
+      // Row 209: the ID never uses "newest record wins".
+      expect(latest.containsKey(RunnerVerificationType.governmentId), isFalse);
+      expect(list.first.status, VerificationStatus.rejected);
       expect(latest[RunnerVerificationType.selfie]!.id, 'v3');
       expect(latest.containsKey(RunnerVerificationType.phone), isFalse);
 
@@ -167,19 +157,90 @@ void main() {
       );
     });
 
+    group('ensurePaymentIdentityVerification (S-1, row 218)', () {
+      Map<String, Object?> pi(String id, String status, String at) => {
+        'id': id,
+        'verificationType': 'payment_identity',
+        'status': status,
+        'createdAt': at,
+      };
+      const created = {
+        'id': 'new',
+        'verificationType': 'payment_identity',
+        'status': 'pending',
+      };
+
+      Future<(RunnerVerification, _Adapter)> run(List<Object?> list) async {
+        final a = _Adapter({
+          'GET /runners/me/verifications': (200, list),
+          'POST /runners/me/verifications': (201, created),
+        });
+        final v = await RunnerAccountRepository(_client(a))
+            .ensurePaymentIdentityVerification();
+        return (v, a);
+      }
+
+      test('none yet: creates a pending record', () async {
+        final (v, a) = await run([
+          {
+            'id': 's1',
+            'verificationType': 'selfie',
+            'status': 'pending',
+            'createdAt': '2026-10-12T08:00:00.000Z',
+          },
+        ]);
+        expect(v.id, 'new');
+        expect(a.calls, [
+          'GET /runners/me/verifications',
+          'POST /runners/me/verifications',
+        ]);
+        expect(a.bodies.last, {'verificationType': 'payment_identity'});
+      });
+
+      for (final status in ['pending', 'approved']) {
+        test('newest $status: skipped, returns it', () async {
+          final (v, a) = await run([
+            pi('p2', status, '2026-10-12T08:00:00.000Z'),
+            pi('p1', 'rejected', '2026-10-10T08:00:00.000Z'),
+          ]);
+          expect(v.id, 'p2');
+          expect(a.calls, ['GET /runners/me/verifications']);
+        });
+      }
+
+      test('newest rejected: creates a new one', () async {
+        final (v, a) = await run([
+          pi('p1', 'approved', '2026-10-01T08:00:00.000Z'),
+          pi('p2', 'rejected', '2026-10-12T08:00:00.000Z'),
+        ]);
+        expect(v.id, 'new');
+        expect(a.calls.last, 'POST /runners/me/verifications');
+      });
+    });
+
     test('skills and areas use PUT', () async {
       final a = _Adapter({
-        'PUT /runners/me/skills': (200, ['inspection', 'shopping']),
-        'PUT /runners/me/service-areas': (200, ['Nyali']),
+        'PUT /runners/me/skills': (200, ['inspection', 'buy_for_me']),
+        'PUT /runners/me/service-areas': (
+          200,
+          [
+            {'id': 'nyali', 'name': 'Nyali'},
+          ],
+        ),
       });
       final repo = RunnerAccountRepository(_client(a));
       expect(
-        await repo.setSkills([RunnerSkill.inspection, RunnerSkill.shopping]),
-        [RunnerSkill.inspection, RunnerSkill.shopping],
+        await repo.setSkills([RunnerSkill.checkItForMe, RunnerSkill.buyForMe]),
+        [RunnerSkill.buyForMe, RunnerSkill.checkItForMe],
       );
-      expect(await repo.setServiceAreas(['Nyali', 'Nyali']), ['Nyali']);
+      expect(await repo.setServiceAreas(['nyali', 'nyali']), [
+        const ServiceAreaOption(id: 'nyali', name: 'Nyali'),
+      ]);
       expect(a.bodies.first, {
-        'skills': ['inspection', 'shopping'],
+        'skills': ['inspection', 'buy_for_me'],
+      });
+      expect(a.bodies.last, {
+        'areas': ['nyali'],
       });
     });
   });

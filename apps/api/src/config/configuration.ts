@@ -1,3 +1,5 @@
+import { ServiceArea, parseServiceAreas } from '../runners/service-areas';
+
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'staging' | 'production';
   port: number;
@@ -14,6 +16,8 @@ export interface AppConfig {
   redis: {
     host: string;
     port: number;
+    /** Prefix on every app key (throttle, idempotency, caches); '' in dev/prod, `nitume_test:` in e2e (row 224). */
+    keyPrefix: string;
   };
   jwt: {
     accessSecret: string;
@@ -58,6 +62,8 @@ export interface AppConfig {
     urgentWithinHours: number;
     scheduledAfterHours: number;
     disputeWindowHours: number;
+    /** Row 221: deadlineAt = creation + this many hours when the customer gives none. */
+    defaultDeadlineHours: number;
   };
   runnerVerification: {
     /** console | cloudinary (defaults to the evidence driver: same provider, own folder). */
@@ -93,6 +99,10 @@ export interface AppConfig {
   matching: {
     /** Acceptance window of an admin-made offer (rows 114, 141). */
     adminOfferWindowSeconds: number;
+  };
+  runners: {
+    /** Ops-configured service areas (row 116), RUNNER_SERVICE_AREAS JSON. */
+    serviceAreas: ServiceArea[];
   };
   payments: {
     /** Active M-Pesa provider (row 73): console | payhero | daraja. */
@@ -189,6 +199,9 @@ export const configuration = (): AppConfig => ({
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: int(process.env.REDIS_PORT, 6379),
+    // Row 224: e2e runs set REDIS_KEY_PREFIX=nitume_test: so their throttle
+    // and idempotency keys never share names with a dev server's.
+    keyPrefix: process.env.REDIS_KEY_PREFIX ?? '',
   },
   jwt: {
     accessSecret:
@@ -276,6 +289,10 @@ export const configuration = (): AppConfig => ({
   errands: {
     urgentWithinHours: Number.parseFloat(process.env.ERRANDS_URGENT_WITHIN_HOURS ?? '4'),
     scheduledAfterHours: Number.parseFloat(process.env.ERRANDS_SCHEDULED_AFTER_HOURS ?? '72'),
+    // Row 221 (owner, 2026-10-19): every task has a deadline; without one from
+    // the customer it is creation time + 24 h. Read by clients through
+    // GET /errands/defaults, never hard-coded in an app.
+    defaultDeadlineHours: Number.parseFloat(process.env.ERRANDS_DEFAULT_DEADLINE_HOURS ?? '24'),
     // TODO(owner): dispute window length is not defined anywhere. After it,
     // the system moves COMPLETED -> CONFIRMED (payout eligibility).
     disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
@@ -305,6 +322,11 @@ export const configuration = (): AppConfig => ({
   // RUNNER_ASSIGNED for the admin to offer it to another runner.
   matching: {
     adminOfferWindowSeconds: int(process.env.MATCHING_ADMIN_OFFER_WINDOW_SECONDS, 600),
+  },
+  // Row 116 (owner, 2026-10-13): service areas are an ops-configured list.
+  // No admin screen yet (RA-24): JSON in RUNNER_SERVICE_AREAS, checked at start-up.
+  runners: {
+    serviceAreas: parseServiceAreas(process.env.RUNNER_SERVICE_AREAS),
   },
   // Evidence storage. `console` (dev default) logs uploads without storing;
   // `cloudinary` uploads to Cloudinary (needs CLOUDINARY_CLOUD_NAME/API_KEY/

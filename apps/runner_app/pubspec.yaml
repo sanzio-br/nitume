@@ -36,6 +36,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   nitume_core:
     path: ../../packages/nitume_core
+  # Runner-only device plugins behind nitume_core abstractions (row 124).
+  nitume_runner_device:
+    path: ../../packages/nitume_runner_device
 
 dev_dependencies:
   flutter_test:

@@ -67,10 +67,16 @@ export enum AssignmentStatus {
   ASSIGNED = 'assigned',
 }
 
-/** Why a runner declined an assignment (row 108). */
+/** Why a runner declined an assignment (rows 108, 210). */
 export enum AssignmentDeclineReason {
-  /** The task's required purchase is above the runner's max_purchase_advance. */
+  /** The task's required purchase is above the runner's max_purchase_advance (checked). */
   OVER_PURCHASE_LIMIT = 'over_purchase_limit',
+  /** Row 210: the task is too far for the runner (not checked). */
+  TOO_FAR = 'too_far',
+  /** Row 210: the runner cannot take it now (not checked). */
+  NOT_AVAILABLE = 'not_available',
+  /** Row 210: any other reason; no free text (row 229 open). */
+  OTHER = 'other',
 }
 
 export enum VerificationLevel {
@@ -101,14 +107,18 @@ export enum VerificationStatus {
   REJECTED = 'rejected',
 }
 
+/**
+ * Runner skills = the six task categories (owner row 115; migration
+ * 1790103100000 from the old shopping/documents/... vocabulary). Same wire
+ * values as ErrandCategory.
+ */
 export enum RunnerSkill {
-  SHOPPING = 'shopping',
+  BUY_FOR_ME = 'buy_for_me',
   PICKUP_DELIVERY = 'pickup_delivery',
   INSPECTION = 'inspection',
-  DOCUMENTS = 'documents',
-  PROPERTY_VISITS = 'property_visits',
-  QUEUING = 'queuing',
-  BUSINESS_ERRANDS = 'business_errands',
+  REPRESENTATION = 'representation',
+  QUEUE_ADMIN = 'queue_admin',
+  BUSINESS = 'business',
 }
 
 export enum DevicePlatform {
@@ -254,4 +264,6 @@ export enum NotificationEventType {
   ASSIGNMENT_DECLINED = 'assignment.declined',
   /** Admin feed: an admin offer lapsed unaccepted; the task needs another runner (row 157, N-20). */
   ASSIGNMENT_EXPIRED = 'assignment.expired',
+  /** Admin feed: a RUNNER_ASSIGNED task expired at its customer deadline (row 185). */
+  DEADLINE_PASSED = 'deadline_passed',
 }

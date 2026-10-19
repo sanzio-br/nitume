@@ -122,13 +122,36 @@ export class RunnersController {
     return this.runners.reReviewDocument(verificationId, user.userId, ip ?? null, dto.note);
   }
 
+  /**
+   * Row 116: the ops-configured service areas, `{ items: [{ id, name }] }`
+   * by name. `PUT /runners/me/service-areas` takes these ids.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('service-areas')
+  @Roles(UserRole.RUNNER, UserRole.ADMIN)
+  serviceAreas() {
+    return this.runners.serviceAreaOptions();
+  }
+
+  /**
+   * RA-18: the runner's own view (`RunnerSelfView`): shortName, skills,
+   * serviceAreas `[{ id, name }]`, availability, maxPurchaseAdvance and
+   * `verification { verified, checks[{ type, side, status }] }`. No trust
+   * score or stored location. 404 without a runner profile.
+   */
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @Roles(UserRole.RUNNER, UserRole.CUSTOMER, UserRole.ADMIN)
   getMine(@CurrentUser() user: AuthContext) {
-    return this.runners.profileByUserId(user.userId);
+    return this.runners.selfView(user.userId);
   }
 
+  /**
+   * RA-8, RA-20: `{ availability: online | offline }` -> `RunnerSelfView`.
+   * 400 availability_server_managed (busy); 403 runner_not_verified
+   * (online before every required check is approved); 409
+   * runner_on_active_job (offline while busy).
+   */
   @UseGuards(JwtAuthGuard)
   @Patch('me/availability')
   @Roles(UserRole.RUNNER)

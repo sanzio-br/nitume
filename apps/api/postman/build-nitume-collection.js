@@ -270,6 +270,19 @@ const collection = {
       req('Admin errand detail (lastAssignment, assignments[], offerWindowSeconds)', 'GET', '/errands/{{errand_id}}', 'admin'),
       post('Admin offer / re-offer a runner (409 runner_already_offered)', '/errands/{{errand_id}}/assign', '{\n  "runnerProfileId": "{{runner_id}}"\n}', 'admin'),
     ]),
+    folder('12_Owner_Answers_Round_12_2026_10_19', [
+      // Rows 201-215: deadline on assign, offers capped at the deadline, decline reasons, candidates, admin expire.
+      req('Admin candidates (offline flagged, eligibleRemaining online only; cursor)', 'GET', '/errands/{{errand_id}}/candidates?limit=50', 'admin'),
+      post('Runner decline with a reason (over_purchase_limit | too_far | not_available | other)', '/errands/{{errand_id}}/decline', '{\n  "reason": "too_far"\n}', 'runner'),
+      req('Admin errand detail (canExpire { noRunner, deadlinePassed }, expiry.fromStatus)', 'GET', '/errands/{{errand_id}}', 'admin'),
+      post('Admin expire task, no runner available (reason 10-500; 409 expiry_not_allowed)', '/errands/{{errand_id}}/expire', '{\n  "reason": "No runner covers this area on Sundays"\n}', 'admin'),
+    ]),
+    folder('13_Owner_Answers_Round_13_2026_10_19', [
+      // Rows 201, 221, 225, 226, 229: paid-task expire, task defaults, required decline reason.
+      post('Admin expire a paid task past its deadline (fromStatus PAYMENT_CONFIRMED; 409 deadline_not_passed)', '/errands/{{errand_id}}/expire', '{\n  "reason": "Customer unreachable after the deadline",\n  "fromStatus": "PAYMENT_CONFIRMED"\n}', 'admin'),
+      req('Task defaults (defaultDeadlineHours for the Flexible caption)', 'GET', '/errands/defaults', 'customer'),
+      post('Runner decline (reason required: over_purchase_limit | too_far | not_available | other)', '/errands/{{errand_id}}/decline', '{\n  "reason": "not_available"\n}', 'runner'),
+    ]),
   ],
 };
 

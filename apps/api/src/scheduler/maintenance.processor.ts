@@ -59,13 +59,21 @@ export class MaintenanceProcessor extends WorkerHost {
     return { paymentId, state };
   }
 
-  /** Lapsed offers: the assignment expires, the task stays RUNNER_ASSIGNED (row 157). */
-  async offerExpiry(): Promise<{ expired: string[] }> {
+  /**
+   * Row 185 first: RUNNER_ASSIGNED tasks past their customer deadline go
+   * EXPIRED (closing any open offer). Then lapsed offers: the assignment
+   * expires, the task stays RUNNER_ASSIGNED (row 157). Then rows 201, 220:
+   * PAYMENT_CONFIRMED tasks past their deadline are reported to ops (one
+   * feed item per task, no state change).
+   */
+  async offerExpiry(): Promise<{ expired: string[]; deadlineExpired: string[]; paidPastDeadline: string[] }> {
+    const deadlineExpired = await this.errands.expirePastDeadline();
     const expired = await this.errands.expireLapsedOffers();
-    if (expired.length > 0) {
-      this.logger.log(`Offer expiry: expired ${expired.length}`);
+    const paidPastDeadline = await this.errands.reportPaidPastDeadline();
+    if (expired.length > 0 || deadlineExpired.length > 0) {
+      this.logger.log(`Offer expiry: expired ${expired.length} offers, ${deadlineExpired.length} tasks past their deadline`);
     }
-    return { expired };
+    return { expired, deadlineExpired, paidPastDeadline };
   }
 
   /** Rows 154, 161, 175: securely delete ID/selfie images past their retention period. */
