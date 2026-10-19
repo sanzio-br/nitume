@@ -8,7 +8,7 @@ import 'helpers/pump.dart';
 
 /// R-23 `DeclineReasonDialog` (row 210, `v-jobs.md` "Decline reason picker").
 void main() {
-  late List<OfferDeclineReason?> sent;
+  late List<OfferDeclineReason> sent;
   late DeclineReasonOutcome? outcome;
 
   setUp(() {
@@ -19,8 +19,7 @@ void main() {
   Future<void> open(
     WidgetTester tester, {
     bool overPurchaseLimit = false,
-    bool reasonRequired = true,
-    Future<void> Function(OfferDeclineReason?)? onDecline,
+    Future<void> Function(OfferDeclineReason)? onDecline,
   }) async {
     await pumpThemed(
       tester,
@@ -32,7 +31,6 @@ void main() {
               outcome = await DeclineReasonDialog.show(
                 context,
                 overPurchaseLimit: overPurchaseLimit,
-                reasonRequired: reasonRequired,
                 onDecline:
                     onDecline ??
                     (r) async {
@@ -184,13 +182,20 @@ void main() {
     expect(sent, isEmpty);
   });
 
-  testWidgets('reasonRequired false allows a general decline', (tester) async {
-    await open(tester, reasonRequired: false);
-    expect(declineEnabled(tester), isTrue);
-    await tester.tap(declineButton());
+  testWidgets('a reason is always required (row 229)', (tester) async {
+    await open(tester);
+    expect(declineEnabled(tester), isFalse);
+    await tester.tap(declineButton(), warnIfMissed: false);
     await tester.pumpAndSettle();
-    expect(sent, [null]);
-    expect(outcome, DeclineReasonOutcome.declined);
+    expect(sent, isEmpty);
+    expect(
+      () => DeclineReasonDialog(
+        overPurchaseLimit: false,
+        onDecline: (_) async {},
+        reasonRequired: false,
+      ),
+      throwsAssertionError,
+    );
   });
 
   testWidgets('purchase_within_limit drops the over-limit row, stays open', (

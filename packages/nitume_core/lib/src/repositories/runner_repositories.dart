@@ -340,9 +340,10 @@ class RunnerJobsRepository {
       .postMap('/errands/$errandId/accept')
       .then(OfferAcceptResult.fromJson);
 
-  /// `POST /errands/:id/decline` `{ reason? }` (rows 108, 113, 134, 210).
-  /// [reason] is one of the four [OfferDeclineReason] values (the R-23
-  /// `DeclineReasonDialog` picks it); without it it is a general decline.
+  /// `POST /errands/:id/decline` `{ reason }` (rows 108, 113, 134, 210,
+  /// 229). [reason] is required: one of the four [OfferDeclineReason]
+  /// values, picked in the R-23 `DeclineReasonDialog`; the API refuses a
+  /// missing reason with 400 [ApiErrorCodes.declineReasonInvalid].
   /// [OfferDeclineReason.overPurchaseLimit] only while
   /// [RunnerJobView.overPurchaseLimit]. The task stays RUNNER_ASSIGNED for
   /// another runner.
@@ -354,9 +355,9 @@ class RunnerJobsRepository {
   /// `maxPurchaseAdvance`).
   Future<OfferDeclineResult> decline(
     String errandId, {
-    OfferDeclineReason? reason,
+    required OfferDeclineReason reason,
   }) => _api
-      .postMap('/errands/$errandId/decline', data: {'reason': ?reason?.wire})
+      .postMap('/errands/$errandId/decline', data: {'reason': reason.wire})
       .then(OfferDeclineResult.fromJson);
 
   /// The runner's current job(s): `GET /errands?status=…` (runner-scoped

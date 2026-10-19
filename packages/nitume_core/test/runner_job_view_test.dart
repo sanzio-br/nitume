@@ -363,8 +363,8 @@ void main() {
       expect(r.maxPurchaseAdvance, '1000.00');
       expect(r.overLimit, isTrue);
 
-      await repo.decline('e1');
-      expect(a.bodies.last, <String, Object?>{});
+      await repo.decline('e1', reason: OfferDeclineReason.other);
+      expect(a.bodies.last, {'reason': 'other'});
     });
 
     test('decline sends each row-210 reason and reads it back', () async {
@@ -458,7 +458,10 @@ void main() {
       final a = FakeApiAdapter({
         'POST /errands/e1/decline': (body['statusCode'] as int, body),
       });
-      return _failure(RunnerJobsRepository(fakeClient(a)).decline('e1'));
+      return _failure(
+        RunnerJobsRepository(fakeClient(a))
+            .decline('e1', reason: OfferDeclineReason.tooFar),
+      );
     }
 
     test('decline_reason_invalid lists the allowed reasons', () async {
