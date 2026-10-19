@@ -10,11 +10,19 @@ import '../theme/status_tone.dart';
 
 /// R-13. Capture drop zone (`.upload-box`): C-07 dashed card (2px
 /// slate-line dashes, card radius, white), centred 36px outline [icon] in
-/// blue and a [caption] in 12.5 slate-600.
+/// blue, an optional [title] (13/600 blue, the side being captured:
+/// `Front of your ID`) and a [caption] in 12.5 slate-600.
 ///
 /// UI only: tapping calls [onPick]; the screen opens the camera (or a
 /// picker sheet). [busy] disables it and shows a spinner while an upload
 /// runs. [height]: 220 (ID), 260 (selfie), 240 (evidence).
+///
+/// Captured state (`v-onboard-selfie`): with an [image] the zone shows the
+/// photo (card radius, cover) instead of the dashed card, with the R-15
+/// upload state from [captureState] (spinner, green check) and a C-03
+/// small `Retake` ([onRetake]) in the bottom-right corner. A failed upload
+/// adds `Not uploaded` + `Retry` ([onRetry]) under the zone. Tapping the
+/// photo does nothing.
 class CaptureDropZone extends StatelessWidget {
   const CaptureDropZone({
     super.key,
@@ -24,6 +32,12 @@ class CaptureDropZone extends StatelessWidget {
     this.height = 220,
     this.busy = false,
     this.semanticLabel,
+    this.title,
+    this.image,
+    this.captureState = CaptureState.uploaded,
+    this.onRetake,
+    this.retakeLabel = 'Retake',
+    this.onRetry,
   });
 
   /// `Tap to take a photo`, `Tap to take a photo or upload`.
@@ -34,18 +48,38 @@ class CaptureDropZone extends StatelessWidget {
   final bool busy;
 
   /// Button label for screen readers (`Take a photo of your ID front`);
-  /// defaults to [caption].
+  /// defaults to [title] and [caption].
   final String? semanticLabel;
+
+  /// Line above the caption (`Front of your ID`); `null` for none.
+  final String? title;
+
+  /// The captured photo; `null` shows the empty dashed zone.
+  final ImageProvider? image;
+
+  /// Upload state of [image] (default uploaded: green check);
+  /// [CaptureState.empty] shows no badge.
+  final CaptureState captureState;
+
+  /// `Retake` on the captured photo; `null` hides it.
+  final VoidCallback? onRetake;
+  final String retakeLabel;
+
+  /// `Retry` next to `Not uploaded` when [captureState] is failed.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final img = image;
+    if (img != null) return _captured(img);
     final enabled = onPick != null && !busy;
+    final title = this.title;
     return SizedBox(
       height: height,
       child: Semantics(
         button: true,
         enabled: enabled,
-        label: semanticLabel ?? caption,
+        label: semanticLabel ?? [?title, caption].join(', '),
         excludeSemantics: true,
         child: NitumeCard(
           border: NitumeCardBorder.dashed,
@@ -70,6 +104,17 @@ class CaptureDropZone extends StatelessWidget {
                 else
                   Icon(icon, size: 36, color: NitumeColors.blue),
                 const SizedBox(height: 10),
+                if (title != null) ...[
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: NitumeTextStyles.rowTitle.copyWith(
+                      fontSize: 13,
+                      color: NitumeColors.blue,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
                 Text(
                   caption,
                   textAlign: TextAlign.center,
@@ -80,6 +125,81 @@ class CaptureDropZone extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _captured(ImageProvider img) {
+    final state = captureState;
+    final uploading = state == CaptureState.uploading;
+    final words = switch (state) {
+      CaptureState.uploading => 'uploading',
+      CaptureState.uploaded => 'uploaded',
+      CaptureState.failed => 'not uploaded',
+      CaptureState.empty => null,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: height,
+          child: ClipRRect(
+            key: const ValueKey('capture-drop-zone-photo'),
+            borderRadius: BorderRadius.circular(NitumeDesignChoices.cardRadius),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Semantics(
+                  image: true,
+                  label: [?semanticLabel ?? title, 'photo', ?words].join(', '),
+                  child: Image(image: img, fit: BoxFit.cover),
+                ),
+                if (uploading)
+                  const Center(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: NitumeColors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(8),
+                        child: SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: NitumeColors.blue,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (state == CaptureState.uploaded)
+                  const Positioned(
+                    left: 10,
+                    bottom: 10,
+                    child: _UploadedBadge(),
+                  ),
+                if (onRetake != null)
+                  Positioned(
+                    right: 10,
+                    bottom: 10,
+                    child: NitumeButton.outline(
+                      label: retakeLabel,
+                      size: NitumeButtonSize.small,
+                      onPressed: uploading ? null : onRetake,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (state == CaptureState.failed)
+          _ProblemRow(
+            label: 'Not uploaded',
+            actionLabel: 'Retry',
+            onAction: onRetry,
+          ),
+      ],
     );
   }
 }

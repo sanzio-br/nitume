@@ -62,6 +62,128 @@ void main() {
     });
   });
 
+  group('CaptureDropZone title and captured state (C2)', () {
+    testWidgets('title 13/600 blue above the caption, spoken first', (
+      tester,
+    ) async {
+      await pumpThemed(
+        tester,
+        CaptureDropZone(
+          title: 'Front of your ID',
+          caption: 'Tap to take a photo or upload',
+          onPick: () {},
+        ),
+      );
+      final t = tester.widget<Text>(find.text('Front of your ID'));
+      expect(t.style!.fontSize, 13);
+      expect(t.style!.fontWeight, FontWeight.w600);
+      expect(t.style!.color, NitumeColors.blue);
+      expect(
+        tester.getTopLeft(find.text('Front of your ID')).dy,
+        lessThan(
+          tester.getTopLeft(find.text('Tap to take a photo or upload')).dy,
+        ),
+      );
+      expect(
+        find.bySemanticsLabel(
+          'Front of your ID, Tap to take a photo or upload',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('captured: photo, check badge, Retake; no pick', (
+      tester,
+    ) async {
+      var picks = 0, retakes = 0;
+      await pumpThemed(
+        tester,
+        CaptureDropZone(
+          caption: 'Center your face in the frame',
+          height: 260,
+          onPick: () => picks++,
+          image: MemoryImage(_png),
+          onRetake: () => retakes++,
+        ),
+      );
+      expect(find.byType(NitumeCard), findsNothing);
+      expect(find.text('Center your face in the frame'), findsNothing);
+      final clip = tester.widget<ClipRRect>(
+        find.byKey(const ValueKey('capture-drop-zone-photo')),
+      );
+      expect(
+        clip.borderRadius,
+        BorderRadius.circular(NitumeDesignChoices.cardRadius),
+      );
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('capture-drop-zone-photo')))
+            .height,
+        260,
+      );
+      expect(tester.widget<Image>(find.byType(Image)).fit, BoxFit.cover);
+      expect(
+        find.byKey(const ValueKey('capture-uploaded-badge')),
+        findsOneWidget,
+      );
+      final retake = tester.widget<NitumeButton>(find.byType(NitumeButton));
+      expect(retake.size, NitumeButtonSize.small);
+      await tester.tap(find.text('Retake'));
+      await tester.tap(find.byType(Image), warnIfMissed: false);
+      expect((picks, retakes), (0, 1));
+    });
+
+    testWidgets('captured uploading: spinner, Retake disabled', (tester) async {
+      var retakes = 0;
+      await pumpThemed(
+        tester,
+        CaptureDropZone(
+          caption: 'Center your face in the frame',
+          onPick: () {},
+          image: MemoryImage(_png),
+          captureState: CaptureState.uploading,
+          onRetake: () => retakes++,
+        ),
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('capture-uploaded-badge')),
+        findsNothing,
+      );
+      await tester.tap(find.text('Retake'), warnIfMissed: false);
+      expect(retakes, 0);
+    });
+
+    testWidgets('captured failed: Not uploaded + Retry under the zone', (
+      tester,
+    ) async {
+      var retries = 0;
+      await pumpThemed(
+        tester,
+        CaptureDropZone(
+          caption: 'Center your face in the frame',
+          onPick: () {},
+          image: MemoryImage(_png),
+          captureState: CaptureState.failed,
+          onRetry: () => retries++,
+        ),
+      );
+      expect(find.text('Not uploaded'), findsOneWidget);
+      await tester.tap(find.text('Retry'));
+      expect(retries, 1);
+      expect(
+        tester.getTopLeft(find.text('Not uploaded')).dy,
+        greaterThan(
+          tester
+              .getBottomLeft(
+                find.byKey(const ValueKey('capture-drop-zone-photo')),
+              )
+              .dy,
+        ),
+      );
+    });
+  });
+
   group('CaptureThumbnail (R-15)', () {
     testWidgets('empty tile shows icon and side label', (tester) async {
       await pumpThemed(
