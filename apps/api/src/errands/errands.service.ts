@@ -530,6 +530,24 @@ export const RUNNER_ACTIVE_JOB_STATES: ReadonlySet<ErrandStatus> = new Set([
   ErrandStatus.IN_PROGRESS,
 ]);
 
+/** A1: a held job's active set (`v-active`; row 211: busy + waiting/disputed). */
+export const HELD_ACTIVE_STATES: readonly ErrandStatus[] = [
+  ErrandStatus.RUNNER_EN_ROUTE,
+  ErrandStatus.ARRIVED,
+  ErrandStatus.IN_PROGRESS,
+  ErrandStatus.AWAITING_CUSTOMER,
+  ErrandStatus.DISPUTED,
+];
+
+/** A1: finished states a held job stays listed in for a while (the ended card, row 129). */
+export const HELD_FINISHED_STATES: readonly ErrandStatus[] = [
+  ErrandStatus.COMPLETED,
+  ErrandStatus.CONFIRMED,
+  ErrandStatus.SETTLED,
+  ErrandStatus.CANCELLED,
+  ErrandStatus.FAILED,
+];
+
 /** Row 185: the task's customer deadline has passed (deadlineAt null = no deadline). */
 export const deadlinePassed = (errand: { deadlineAt: Date | null }, now: Date = new Date()): boolean =>
   !!errand.deadlineAt && errand.deadlineAt.getTime() <= now.getTime();
@@ -1120,6 +1138,57 @@ export class ErrandsService {
    * (no deadline, or `offerExpiresAt` in the future) and before the task's
    * own deadline (row 185). Cursor over the offer's creation (opaque).
    */
+  /**
+   * A1: the jobs a runner holds, newest accept first: their **accepted**
+   * current assignment on a task in the active set (RUNNER_EN_ROUTE,
+   * ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER, DISPUTED), or in a finished
+   * state (COMPLETED, CONFIRMED, SETTLED, CANCELLED, FAILED) entered after
+   * `since`. Never open offers. Cursor over the assignment (opaque).
+   */
+  async heldJobsFor(
+    runnerProfileId: string,
+    opts: { since: Date; limit?: number; cursor?: string | null },
+  ): Promise<{ items: { errand: Errand; assignment: ErrandAssignment }[]; nextCursor: string | null }> {
+    const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+    const qb = this.assignments
+      .createQueryBuilder('a')
+      .innerJoin(Errand, 'e', 'e.id = a."errandId"')
+      .where('a."runnerProfileId" = :runnerProfileId', { runnerProfileId })
+      .andWhere('a.status = :accepted', { accepted: AssignmentStatus.ACCEPTED })
+      .andWhere(
+        `a.id = (SELECT a2.id FROM "errand_assignments" a2 WHERE a2."errandId" = a."errandId"
+                  ORDER BY a2."createdAt" DESC, a2.id DESC LIMIT 1)`,
+      )
+      .andWhere(
+        `(e.status IN (:...active) OR (e.status IN (:...finished) AND
+          (SELECT max(h."createdAt") FROM "errand_status_history" h
+            WHERE h."errandId" = e.id AND h."toStatus" = e.status) >= :since))`,
+        { active: HELD_ACTIVE_STATES, finished: HELD_FINISHED_STATES, since: opts.since },
+      )
+      .orderBy('a."createdAt"', 'DESC')
+      .addOrderBy('a.id', 'DESC')
+      .limit(limit + 1);
+    const decoded = decodeCursor(opts.cursor);
+    if (decoded) {
+      qb.andWhere('(a."createdAt", a.id) < (:cAt, :cId)', { cAt: new Date(decoded[0]), cId: decoded[1] });
+    }
+    const rows = await qb.getMany();
+    const page = rows.slice(0, limit);
+    const errands = page.length === 0 ? [] : await this.errands.find({ where: { id: In(page.map((a) => a.errandId)) } });
+    const byId = new Map(errands.map((e) => [e.id, e]));
+    const last = page[page.length - 1];
+    return {
+      items: page.flatMap((a) => {
+        const errand = byId.get(a.errandId);
+        return errand ? [{ errand, assignment: a }] : [];
+      }),
+      nextCursor:
+        rows.length > limit && last
+          ? Buffer.from(`${last.createdAt.toISOString()}::${last.id}`, 'utf-8').toString('base64')
+          : null,
+    };
+  }
+
   async openOffersFor(
     runnerProfileId: string,
     opts: { limit?: number; cursor?: string | null; now?: Date } = {},

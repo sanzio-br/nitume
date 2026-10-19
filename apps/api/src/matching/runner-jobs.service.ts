@@ -1,4 +1,5 @@
-import { ForbiddenException, HttpStatus, Injectable } from '@nestjs/common';
+import { ForbiddenException, HttpStatus, Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiError } from '../common/api-error';
 import { AssignmentDeclineReason, AssignmentStatus, ErrandCategory, ErrandStatus, ErrandUrgency, StatusHistoryActor } from '../common/enums';
 import { ErrandAssignment } from '../errands/errand-assignment.entity';
@@ -97,6 +98,7 @@ export class RunnerJobsService {
     private readonly ledger: RunnerPayoutsService,
     private readonly payments: PaymentsService,
     private readonly purchaseLimits: PurchaseLimitService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   /**
@@ -122,6 +124,34 @@ export class RunnerJobsService {
           extra.items.get(errand.id) ?? [],
           profile.id,
         ),
+      );
+    }
+    return { items, nextCursor: page.nextCursor };
+  }
+
+  /**
+   * `GET /runners/me/jobs` (A1): the jobs this runner accepted that are in
+   * the active set, or finished within `errands.receiptWindowHours` (24 h,
+   * row 129), as `RunnerJobView`s, newest accept first. Never open offers
+   * (those are `GET /runners/me/offers`).
+   */
+  async heldJobs(
+    userId: string,
+    opts: { limit?: number; cursor?: string | null } = {},
+    now: Date = new Date(),
+  ): Promise<{ items: RunnerJobView[]; nextCursor: string | null }> {
+    const profile = await this.runners.profileByUserId(userId);
+    const hours = this.config?.get<number>('errands.receiptWindowHours', 24) ?? 24;
+    const page = await this.errands.heldJobsFor(profile.id, {
+      since: new Date(now.getTime() - hours * 3_600_000),
+      limit: opts.limit,
+      cursor: opts.cursor ?? null,
+    });
+    const extra = await this.errands.locationsAndItemsFor(page.items.map((i) => i.errand.id));
+    const items: RunnerJobView[] = [];
+    for (const { errand, assignment } of page.items) {
+      items.push(
+        await this.project(errand, assignment, extra.locations.get(errand.id) ?? [], extra.items.get(errand.id) ?? [], profile.id),
       );
     }
     return { items, nextCursor: page.nextCursor };

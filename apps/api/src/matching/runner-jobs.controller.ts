@@ -28,7 +28,24 @@ export class RunnerJobsController {
     return this.jobs.offers(user.userId, { limit: query.limit, cursor: query.cursor ?? null });
   }
 
-  /** The runner projection of an offered or held job (`RunnerJobView`). 403 when not the runner's. */
+  /**
+   * A1: jobs this runner accepted, `{ items: RunnerJobView[], nextCursor }`
+   * (`?limit` 1-50, default 20; `?cursor` opaque): the active set
+   * (RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER, DISPUTED) and
+   * jobs that reached COMPLETED, CONFIRMED, SETTLED, CANCELLED or FAILED in
+   * the last 24 h. Never open offers.
+   */
+  @Get('runners/me/jobs')
+  held(@CurrentUser() user: AuthContext, @Query() query: ListOffersQueryDto) {
+    return this.jobs.heldJobs(user.userId, { limit: query.limit, cursor: query.cursor ?? null });
+  }
+
+  /**
+   * The runner projection of an offered or held job (`RunnerJobView`); a job
+   * the runner accepted stays readable after it ends. 403 `job_not_held`
+   * when the runner does not hold it (never offered, declined, lapsed,
+   * withdrawn, reassigned).
+   */
   @Get('runners/me/jobs/:errandId')
   job(@CurrentUser() user: AuthContext, @Param('errandId', ParseUUIDPipe) errandId: string) {
     return this.jobs.job(user.userId, errandId);
