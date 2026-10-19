@@ -196,6 +196,8 @@ class _DeclineReasonDialogState extends State<DeclineReasonDialog> {
       canPop: !_busy,
       child: NitumeDialog(
         title: DeclineReasonCopy.title,
+        // Spec accessibility: initial focus on the dialog title.
+        autofocusTitle: true,
         // C-35 body style, unchanged (ruling 2026-10-19).
         // Follows the shown rows: once `purchase_within_limit` drops the
         // over-limit row, the body no longer says the job is above it.

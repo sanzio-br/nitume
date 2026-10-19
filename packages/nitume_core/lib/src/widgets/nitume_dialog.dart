@@ -25,6 +25,7 @@ class NitumeDialog extends StatelessWidget {
     this.content,
     this.actions = const [],
     this.error,
+    this.autofocusTitle = false,
   });
 
   final String title;
@@ -41,6 +42,11 @@ class NitumeDialog extends StatelessWidget {
   /// Inline error under the buttons (red, OA-13), e.g. `Couldn't send your
   /// answer. Try again.`
   final String? error;
+
+  /// Opt-in: the title takes the initial focus when the dialog opens, so
+  /// assistive technology starts there (R-23). Off by default; other
+  /// dialogs keep the route's default focus.
+  final bool autofocusTitle;
 
   /// Max dialog width (`_shared.md` §4, C-35).
   static const double maxWidth = 335;
@@ -63,6 +69,9 @@ class NitumeDialog extends StatelessWidget {
     );
   }
 
+  Widget _maybeFocus(Widget title) =>
+      autofocusTitle ? Focus(autofocus: true, child: title) : title;
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -84,10 +93,12 @@ class NitumeDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Semantics(
-                header: true,
-                namesRoute: true,
-                child: Text(title, style: NitumeTextStyles.dialogTitle),
+              _maybeFocus(
+                Semantics(
+                  header: true,
+                  namesRoute: true,
+                  child: Text(title, style: NitumeTextStyles.dialogTitle),
+                ),
               ),
               if (body != null) ...[
                 const SizedBox(height: 8),

@@ -309,4 +309,67 @@ void main() {
     await tester.pumpAndSettle();
     expect(outcome, DeclineReasonOutcome.declined);
   });
+
+  testWidgets('initial focus is on the dialog title', (tester) async {
+    final handle = tester.ensureSemantics();
+    await open(tester);
+    final focus = FocusManager.instance.primaryFocus;
+    expect(focus, isNotNull);
+    expect(focus!.context, isNotNull);
+    expect(focus is FocusScopeNode, isFalse);
+    expect(
+      find.descendant(
+        of: find.byElementPredicate((e) => e == focus.context),
+        matching: find.text(DeclineReasonCopy.title),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.getSemantics(find.text(DeclineReasonCopy.title)),
+      matchesSemantics(
+        label: DeclineReasonCopy.title,
+        isHeader: true,
+        namesRoute: true,
+        isFocusable: true,
+        isFocused: true,
+        hasFocusAction: true,
+      ),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('NitumeDialog keeps default focus unless autofocusTitle', (
+    tester,
+  ) async {
+    await pumpThemed(
+      tester,
+      Builder(
+        builder: (context) => Center(
+          child: NitumeButton.primary(
+            label: 'Open',
+            onPressed: () => NitumeDialog.show<void>(
+              context,
+              builder: (_) => const NitumeDialog(title: 'Log out?'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(const NitumeDialog(title: 'x').autofocusTitle, isFalse);
+    final focus = FocusManager.instance.primaryFocus;
+    expect(
+      focus?.context == null ||
+          find
+              .descendant(
+                of: find.byElementPredicate((e) => e == focus!.context),
+                matching: find.text('Log out?'),
+              )
+              .evaluate()
+              .isEmpty ||
+          focus is FocusScopeNode,
+      isTrue,
+    );
+  });
 }
