@@ -136,5 +136,189 @@ void main() {
       await tester.tap(find.byTooltip('Retake'));
       expect((retries, removes), (1, 1));
     });
+
+    testWidgets('defaults: no outline, no side chip, no issue', (tester) async {
+      await pumpThemed(
+        tester,
+        _sized(
+          CaptureThumbnail(
+            state: CaptureState.uploaded,
+            image: MemoryImage(_png),
+            label: 'Front',
+          ),
+        ),
+      );
+      expect(
+        find.byKey(const ValueKey('capture-selected-outline')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('capture-side-label')), findsNothing);
+      expect(find.byType(StatusChip), findsNothing);
+      final badge = tester.getBottomLeft(
+        find.byKey(const ValueKey('capture-uploaded-badge')),
+      );
+      final tile = tester.getBottomLeft(find.byType(AspectRatio));
+      expect(badge.dx - tile.dx, 6);
+    });
+
+    testWidgets('selected: 2px blue outline and spoken', (tester) async {
+      var taps = 0;
+      await pumpThemed(
+        tester,
+        _sized(
+          CaptureThumbnail(
+            state: CaptureState.empty,
+            label: 'Back',
+            aspectRatio: 1.4,
+            selected: true,
+            onTap: () => taps++,
+          ),
+        ),
+      );
+      final box = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey('capture-selected-outline')),
+      );
+      expect(box.position, DecorationPosition.foreground);
+      final border = (box.decoration as BoxDecoration).border! as Border;
+      expect(border.top.color, NitumeColors.blue);
+      expect(border.top.width, 2);
+      expect(
+        find.bySemanticsLabel('Back, not captured, selected'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Back'));
+      expect(taps, 1);
+    });
+
+    testWidgets('side label chip on a captured photo; badge moves right', (
+      tester,
+    ) async {
+      await pumpThemed(
+        tester,
+        SizedBox(
+          width: 200,
+          child: CaptureThumbnail(
+            state: CaptureState.uploaded,
+            image: MemoryImage(_png),
+            label: 'Front',
+            aspectRatio: 1.4,
+            showLabelOnPhoto: true,
+          ),
+        ),
+      );
+      final chip = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey('capture-side-label')),
+      );
+      expect(
+        (chip.decoration as BoxDecoration).color,
+        NitumeDesignChoices.captureSideLabelFill,
+      );
+      final text = tester.widget<Text>(find.text('Front'));
+      expect(text.style!.color, NitumeColors.white);
+      expect(text.style!.fontSize, 11);
+      expect(text.style!.fontWeight, FontWeight.w600);
+      final tile = tester.getRect(find.byType(AspectRatio));
+      final chipRect = tester.getRect(
+        find.byKey(const ValueKey('capture-side-label')),
+      );
+      expect(chipRect.left - tile.left, 6);
+      expect(tile.bottom - chipRect.bottom, 6);
+      final badge = tester.getRect(
+        find.byKey(const ValueKey('capture-uploaded-badge')),
+      );
+      expect(tile.right - badge.right, 6);
+    });
+
+    testWidgets('side label chip only on a captured photo', (tester) async {
+      await pumpThemed(
+        tester,
+        _sized(
+          const CaptureThumbnail(
+            state: CaptureState.empty,
+            label: 'Front',
+            showLabelOnPhoto: true,
+          ),
+        ),
+      );
+      expect(find.byKey(const ValueKey('capture-side-label')), findsNothing);
+      expect(find.text('Front'), findsOneWidget);
+    });
+
+    testWidgets('Not approved: danger chip and Retake on an empty tile', (
+      tester,
+    ) async {
+      var retakes = 0;
+      await pumpThemed(
+        tester,
+        _sized(
+          CaptureThumbnail(
+            state: CaptureState.empty,
+            label: 'Back',
+            aspectRatio: 1.4,
+            selected: true,
+            issue: CaptureIssue.notApproved,
+            onRetake: () => retakes++,
+          ),
+        ),
+      );
+      final chip = tester.widget<StatusChip>(
+        find.byKey(const ValueKey('capture-issue-notApproved')),
+      );
+      expect(chip.label, 'Not approved');
+      expect(chip.tone, StatusTone.danger);
+      expect(chip.size, StatusChipSize.compact);
+      expect(
+        find.bySemanticsLabel('Back, not captured, selected, not approved'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Retake'));
+      expect(retakes, 1);
+    });
+
+    testWidgets('Too large replaces Not uploaded and hides the caption', (
+      tester,
+    ) async {
+      var retakes = 0, retries = 0;
+      await pumpThemed(
+        tester,
+        _sized(
+          CaptureThumbnail(
+            state: CaptureState.failed,
+            image: MemoryImage(_png),
+            label: 'Front',
+            caption: '10:31 AM',
+            issue: CaptureIssue.tooLarge,
+            onRetake: () => retakes++,
+            onRetry: () => retries++,
+          ),
+        ),
+      );
+      expect(find.text('Too large'), findsOneWidget);
+      expect(find.text('Not uploaded'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+      expect(find.text('10:31 AM'), findsNothing);
+      await tester.tap(find.text('Retake'));
+      expect((retakes, retries), (1, 0));
+    });
+
+    testWidgets('issue without onRetake shows the chip only', (tester) async {
+      await pumpThemed(
+        tester,
+        _sized(
+          const CaptureThumbnail(
+            state: CaptureState.empty,
+            issue: CaptureIssue.tooLarge,
+          ),
+        ),
+      );
+      expect(find.text('Too large'), findsOneWidget);
+      expect(find.text('Retake'), findsNothing);
+    });
   });
 }
+
+/// A 200px-wide, top-left tile so the aspect ratio fits the test surface.
+Widget _sized(Widget child) => Align(
+  alignment: Alignment.topLeft,
+  child: SizedBox(width: 200, child: child),
+);
