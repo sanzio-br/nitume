@@ -28,9 +28,13 @@ export const PING_STATES: ReadonlySet<ErrandStatus> = new Set([
   ErrandStatus.IN_PROGRESS,
 ]);
 
-/** Redis GEO set of last positions (§4.2 `runner:locations`); members are runner profile ids. */
-export const RUNNER_GEO_KEY = 'runner:locations';
-/** Per-runner live position (JSON, TTL `location.liveTtlSeconds`); the GEO set has no per-member TTL. */
+/**
+ * Per-runner live position (JSON, TTL `location.liveTtlSeconds`, §4.2
+ * "ephemeral, TTL 60 s"). The §4.2 GEO set (`runner:locations`) is not
+ * written: nothing reads it yet and its members have no TTL, so it would
+ * keep every runner's last position (reviewer B1, row 247). It returns
+ * with pruning once matching reads it.
+ */
 export const runnerLiveKey = (runnerProfileId: string): string => `runner:location:${runnerProfileId}`;
 
 /** What subscribers of `locationChannel(errandId)` receive. */
@@ -344,7 +348,6 @@ export class LocationIngestService {
   }
 
   private async storeLive(runnerProfileId: string, ping: ParsedPing): Promise<void> {
-    await this.redis.geoAdd(RUNNER_GEO_KEY, ping.lng, ping.lat, runnerProfileId);
     await this.redis.set(
       runnerLiveKey(runnerProfileId),
       JSON.stringify({
@@ -358,7 +361,11 @@ export class LocationIngestService {
     );
   }
 
-  /** Every ping moves the last-known position; the first and every Nth also join the trail (§4.2). */
+  /**
+   * Every ping moves the last-known position; the first and every Nth job
+   * ping also join the trail (§4.2). Idle pings (no errandId) never do (row
+   * 247 proposal: only job pings are ever stored).
+   */
   private async enqueuePersist(runnerProfileId: string, ping: ParsedPing): Promise<void> {
     const n = await this.redis.incrementWithTtl(`location:count:${runnerProfileId}`, 3600);
     const every = this.cfg('trailEveryN', 10);
@@ -368,7 +375,7 @@ export class LocationIngestService {
       lat: ping.lat,
       lng: ping.lng,
       capturedAt: ping.capturedAt.toISOString(),
-      trail: n % every === 1 || every === 1,
+      trail: ping.errandId !== null && (n % every === 1 || every === 1),
     };
     // Positions are ephemeral: one attempt, never kept once done.
     await this.queue.add(LOCATION_PERSIST_JOB, data, { attempts: 1, removeOnComplete: true, removeOnFail: 100 });

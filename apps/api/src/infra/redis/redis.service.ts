@@ -44,11 +44,6 @@ export class RedisService {
     return (await this.client.set(key, value, 'PX', ttlMs, 'NX')) === 'OK';
   }
 
-  /** GEOADD one member (§4.2 live location cache). */
-  async geoAdd(key: string, lng: number, lat: number, member: string): Promise<void> {
-    await this.client.geoadd(key, lng, lat, member);
-  }
-
   /**
    * PUBLISH. Channels are not keys, so ioredis does not prefix them; callers
    * build names with `channel()` to keep the row-224 test isolation.

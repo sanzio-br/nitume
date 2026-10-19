@@ -9,7 +9,6 @@ import {
 } from '../common/enums';
 import {
   LocationIngestService,
-  RUNNER_GEO_KEY,
   arrivalPointOf,
   parsePing,
   runnerLiveKey,
@@ -44,7 +43,6 @@ const build = (opts: {
   };
   const redis = {
     setIfAbsentMs: vi.fn(() => Promise.resolve(opts.throttleFree ?? true)),
-    geoAdd: vi.fn(() => Promise.resolve()),
     set: vi.fn(() => Promise.resolve()),
     publish: vi.fn(() => Promise.resolve(1)),
     channel: vi.fn((n: string) => `pfx:${n}`),
@@ -116,7 +114,6 @@ describe('LocationIngestService.ingest (RA-4)', () => {
     const ack = await service.ingest(runnerUser, ping({ errandId: ERRAND, accuracy: 8 }), NOW);
     expect(ack).toEqual({ ok: true, status: ErrandStatus.RUNNER_EN_ROUTE });
     expect(redis.setIfAbsentMs).toHaveBeenCalledWith('location:throttle:u-r1', '1', 2000);
-    expect(redis.geoAdd).toHaveBeenCalledWith(RUNNER_GEO_KEY, 36.8219, -1.2921, 'rp-1');
     expect(redis.set).toHaveBeenCalledWith(runnerLiveKey('rp-1'), expect.any(String), 60);
     expect(redis.publish).toHaveBeenCalledWith(`pfx:location:errand:${ERRAND}`, expect.any(String));
     const message = JSON.parse((redis.publish.mock.calls[0] as unknown as [string, string])[1]) as Record<string, unknown>;
@@ -161,8 +158,9 @@ describe('LocationIngestService.ingest (RA-4)', () => {
     await expect(service.ingest(runnerUser, ping(), NOW)).resolves.toEqual({ ok: true });
     expect(redis.publish).not.toHaveBeenCalled();
     expect(errands.findByIds).not.toHaveBeenCalled();
-    expect(redis.geoAdd).toHaveBeenCalled();
-    expect(queue.add).toHaveBeenCalledWith('location-persist', expect.objectContaining({ errandId: null }), expect.anything());
+    expect(redis.set).toHaveBeenCalledWith(runnerLiveKey('rp-1'), expect.any(String), 60);
+    // Row 247 proposal: an idle ping never joins the trail.
+    expect(queue.add).toHaveBeenCalledWith('location-persist', expect.objectContaining({ errandId: null, trail: false }), expect.anything());
   });
 
   it('refuses non-runners and malformed or stale pings before any Redis write', async () => {
@@ -182,13 +180,13 @@ describe('LocationIngestService.ingest (RA-4)', () => {
   it('drops pings faster than the minimum interval', async () => {
     const { service, redis } = build({ throttleFree: false });
     await expect(service.ingest(runnerUser, ping(), NOW)).resolves.toEqual({ ok: false, error: 'rate_limited' });
-    expect(redis.geoAdd).not.toHaveBeenCalled();
+    expect(redis.set).not.toHaveBeenCalled();
   });
 
   it('ignores an offline runner (row 123)', async () => {
     const { service, redis } = build({ availability: RunnerAvailability.OFFLINE });
     await expect(service.ingest(runnerUser, ping(), NOW)).resolves.toEqual({ ok: false, error: 'runner_offline' });
-    expect(redis.geoAdd).not.toHaveBeenCalled();
+    expect(redis.set).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -211,7 +209,7 @@ describe('LocationIngestService.ingest (RA-4)', () => {
         status,
       });
       expect(redis.publish).not.toHaveBeenCalled();
-      expect(redis.geoAdd).not.toHaveBeenCalled();
+      expect(redis.set).not.toHaveBeenCalled();
     },
   );
 
