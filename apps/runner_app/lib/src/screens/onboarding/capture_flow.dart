@@ -6,8 +6,8 @@ import 'package:nitume_core/nitume_core.dart';
 import '../../services/app_services.dart';
 import '../../util/display.dart';
 
-/// A captured ID or selfie photo held in memory. The file in app storage is
-/// deleted as soon as it is read (never kept on the device).
+/// A captured ID or selfie photo held in memory only. The capture files are
+/// discarded as soon as the bytes are read.
 class LocalPhoto {
   const LocalPhoto(this.bytes, this.contentType);
 
@@ -51,8 +51,9 @@ NitumeNotice tooLargeNotice({required String tail}) => NitumeNotice(
   ),
 );
 
-/// Captures one photo from [from], reads it into memory and deletes the
-/// file. Returns `null` when the runner cancelled. Throws [PhotoProblem]
+/// Captures one photo from [from], reads it into memory and discards the
+/// capture (the file and any scratch copy the picker made, B-1). Returns
+/// `null` when the runner cancelled. Throws [PhotoProblem]
 /// when the photo cannot be sent (checked before any upload, row 163).
 Future<LocalPhoto?> capturePhoto(AppServices s, CaptureFrom from) async {
   final shot = await s.capture.takePhoto(from: from);
@@ -63,7 +64,7 @@ Future<LocalPhoto?> capturePhoto(AppServices s, CaptureFrom from) async {
   } on Object {
     throw PhotoProblem.bad;
   } finally {
-    await s.files.delete(shot.path);
+    await shot.discard();
   }
   if (bytes.isEmpty) throw PhotoProblem.bad;
   if (!VerificationDocumentRules.fitsSizeLimit(bytes.length)) {

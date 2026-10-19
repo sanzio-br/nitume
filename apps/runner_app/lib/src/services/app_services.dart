@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:nitume_core/nitume_core.dart';
 import 'package:nitume_runner_device/nitume_runner_device.dart';
@@ -51,13 +53,16 @@ class AppServices {
         PushRegistration(push: push, devices: DevicesRepository(api)),
       ),
     );
+    final capture = ImagePickerCaptureSource();
+    // Captures orphaned when Android killed the app mid-pick (B-1).
+    unawaited(capture.discardLostCaptures().catchError((Object _) => 0));
     return AppServices(
       session: session,
       auth: auth,
       account: RunnerAccountRepository(api),
       jobs: RunnerJobsRepository(api),
       notifications: NotificationsRepository(api),
-      capture: ImagePickerCaptureSource(),
+      capture: capture,
       location: const GeolocatorPositionSource(),
       permissions: const PermissionHandlerDevicePermissions(),
       files: const IoCaptureFiles(),
@@ -88,7 +93,7 @@ class AppServices {
   /// Camera permission and the system-settings shortcut.
   final DevicePermissions permissions;
 
-  /// Reads and deletes captured images in app storage.
+  /// Reads captured images into memory.
   final CaptureFiles files;
 
   /// Wall clock for offer countdowns; tests pin it.

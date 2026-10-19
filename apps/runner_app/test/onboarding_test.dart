@@ -197,7 +197,8 @@ void main() {
       await _pickFromSheet(t, 'Take photo');
       expect(b.capture.calls, [CaptureFrom.camera]);
       expect(b.account.uploads.single.$2, _front);
-      expect(b.files.deleted, ['/app/capture-1.jpg']);
+      // B-1: the capture (and any picker scratch copy) is discarded.
+      expect(b.capture.discarded, ['/app/capture-1.jpg']);
       // The back is selected next.
       expect(find.text('Back of your ID'), findsOneWidget);
 
@@ -218,14 +219,20 @@ void main() {
       expect(find.byType(OnboardSelfieScreen), findsOneWidget);
     });
 
-    testWidgets('a photo above 10 MB is never sent', (t) async {
+    testWidgets('a gallery photo above 10 MB is discarded, never sent', (
+      t,
+    ) async {
       final b = TestBackend();
       b.account.records = [];
+      // Gallery picks are no longer downscaled: the full-size original.
       b.files.size = VerificationDocumentRules.maxBytes + 1;
+      b.capture.next = '/cache/uuid/original.jpg';
       await b.pumpScreen(t, const OnboardIdScreen());
 
-      await _pickFromSheet(t, 'Take photo');
+      await _pickFromSheet(t, 'Choose from gallery');
+      expect(b.capture.calls, [CaptureFrom.gallery]);
       expect(b.account.uploads, isEmpty);
+      expect(b.capture.discarded, ['/cache/uuid/original.jpg']);
       expect(
         find.text(
           'This photo is larger than 10 MB. Take it again or choose a '

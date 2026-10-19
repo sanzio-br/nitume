@@ -425,11 +425,23 @@ class FakeNotifications extends NotificationsRepository {
   Future<int> unreadCount() async => unread;
 }
 
-/// Returns [next] (a path) for every capture; records the source.
+/// A capture that records [discard] instead of touching the file system.
+class _FakeCaptured extends CapturedImage {
+  const _FakeCaptured(this.owner, {required super.path, super.contentType});
+
+  final FakeCapture owner;
+
+  @override
+  Future<void> discard() async => owner.discarded.add(path);
+}
+
+/// Returns [next] (a path) for every capture; records the source and every
+/// discarded capture.
 class FakeCapture implements ImageCaptureSource {
   String? next = '/app/capture-1.jpg';
   String contentType = 'image/jpeg';
   final calls = <CaptureFrom>[];
+  final discarded = <String>[];
 
   @override
   Future<CapturedImage?> takePhoto({
@@ -437,7 +449,9 @@ class FakeCapture implements ImageCaptureSource {
   }) async {
     calls.add(from);
     final p = next;
-    return p == null ? null : CapturedImage(path: p, contentType: contentType);
+    return p == null
+        ? null
+        : _FakeCaptured(this, path: p, contentType: contentType);
   }
 }
 
@@ -454,16 +468,12 @@ final _png = Uint8List.fromList(const [
 /// In-memory files: every path reads a small PNG, or [size] bytes when set.
 class FakeFiles implements CaptureFiles {
   int? size;
-  final deleted = <String>[];
 
   @override
   Future<Uint8List> read(String path) async {
     final n = size;
     return n == null ? _png : Uint8List(n);
   }
-
-  @override
-  Future<void> delete(String path) async => deleted.add(path);
 }
 
 class FakeLocation implements PositionSource {
