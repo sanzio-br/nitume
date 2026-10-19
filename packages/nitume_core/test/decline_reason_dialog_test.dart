@@ -79,6 +79,10 @@ void main() {
     await open(tester);
     expect(find.text(DeclineReasonCopy.title), findsOneWidget);
     expect(find.text(DeclineReasonCopy.body), findsOneWidget);
+    // C-35 body style: 13.5 slate-600.
+    final body = tester.widget<Text>(find.text(DeclineReasonCopy.body));
+    expect(body.style?.fontSize, 13.5);
+    expect(body.style?.color, NitumeColors.slate600);
     expect(find.text(DeclineReasonCopy.reasonsLabel), findsOneWidget);
     expect(row(OfferDeclineReason.overPurchaseLimit), findsNothing);
     for (final r in [

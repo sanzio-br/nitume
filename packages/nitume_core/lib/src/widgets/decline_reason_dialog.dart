@@ -66,7 +66,7 @@ enum DeclineReasonOutcome {
 /// R-23 (row 210). The decline confirmation with a reason picker, one
 /// component for `v-jobs` and `v-job-detail`.
 ///
-/// C-35 [NitumeDialog] shell: title, body (over-limit variant when
+/// C-35 [NitumeDialog] shell, unchanged: title, body (over-limit variant when
 /// [overPurchaseLimit]), the label [DeclineReasonCopy.reasonsLabel] and one
 /// radio group of C-16 [NitumeRadioRow]s (selected = blue fill, white
 /// label). `Above my purchase limit` is listed first and pre-selected only
@@ -193,19 +193,16 @@ class _DeclineReasonDialogState extends State<DeclineReasonDialog> {
       canPop: !_busy,
       child: NitumeDialog(
         title: DeclineReasonCopy.title,
+        // C-35 body style, unchanged (ruling 2026-10-19).
+        body: widget.overPurchaseLimit
+            ? DeclineReasonCopy.bodyOverLimit
+            : DeclineReasonCopy.body,
         content: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 4),
-            // Spec body: 13 slate-600.
-            Text(
-              widget.overPurchaseLimit
-                  ? DeclineReasonCopy.bodyOverLimit
-                  : DeclineReasonCopy.body,
-              style: NitumeTextStyles.muted,
-            ),
-            const SizedBox(height: 14),
+            // Label margin-top 14 (C-35 adds 4 above the content).
+            const SizedBox(height: 10),
             Text(
               DeclineReasonCopy.reasonsLabel,
               style: NitumeTextStyles.chip.copyWith(color: NitumeColors.blue),
