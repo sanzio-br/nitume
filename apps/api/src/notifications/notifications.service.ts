@@ -1,11 +1,13 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Queue } from 'bullmq';
 import { IsNull, Repository } from 'typeorm';
 import {
   AssignmentDeclineReason,
+  AssignmentStatus,
+  ErrandCategory,
   ErrandStatus,
   NotificationChannel,
   NotificationEventType,
@@ -14,6 +16,11 @@ import {
 import { Errand } from '../errands/errand.entity';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { NOTIFICATIONS_QUEUE } from '../infra/queue/queues';
+import { BUDGET_CATEGORIES } from '../errands/errand-rules';
+import { ErrandsService } from '../errands/errands.service';
+import { MerchantRoute } from '../payments/payment-views';
+import { PaymentsService } from '../payments/payments.service';
+import { RunnersService } from '../runners/runners.service';
 import { DevicesService } from '../users/devices.service';
 import { UsersService } from '../users/users.service';
 import {
@@ -103,7 +110,107 @@ export type FeedJob =
   /** Admin-facing (rows 201, 220): a PAYMENT_CONFIRMED task is past its deadline; not expired. Once per task. */
   | { kind: 'paid_deadline_passed'; errandId: string; reference: string }
   /** Customer (row 236): the quote was refused, the task is inside no service area. Once per task. */
-  | { kind: 'outside_service_area'; errandId: string; reference: string };
+  | { kind: 'outside_service_area'; errandId: string; reference: string }
+  /** Runner (RA-6, row 139): to the runner holding the accepted job. */
+  | { kind: 'runner_job'; errandId: string; event: RunnerJobEvent; toPrice?: string };
+
+/** RA-6 / A9: the job events a runner is told about (`v-notifications.md`, final copy). */
+export type RunnerJobEvent =
+  | 'cancelled'
+  | 'failed'
+  | 'confirmed'
+  | 'disputed'
+  | 'dispute_resolved'
+  | 'price_change_approved'
+  | 'price_change_rejected';
+
+/** `_shared.md` §7: display names for `{task}` when the task has no title. */
+const CATEGORY_DISPLAY: Record<ErrandCategory, string> = {
+  [ErrandCategory.BUY_FOR_ME]: 'Buy For Me',
+  [ErrandCategory.PICKUP_DELIVERY]: 'Get It For Me',
+  [ErrandCategory.INSPECTION]: 'Check It For Me',
+  [ErrandCategory.REPRESENTATION]: 'Go There For Me',
+  [ErrandCategory.QUEUE_ADMIN]: 'Wait For Me',
+  [ErrandCategory.BUSINESS]: 'Business Tasks',
+};
+
+/**
+ * Runner copy, word for word from `v-notifications.md` (row 139). Titles
+ * are exact (row 188). `itemBought`: `send_to_runner` with an item amount
+ * (the row-129 receipt sentence).
+ */
+export const runnerJobCopy = (
+  event: RunnerJobEvent,
+  ctx: { task: string; itemBought: boolean; toPrice?: string },
+): FeedCopy => {
+  const receipt = ctx.itemBought ? ' If you already bought the item, upload the receipt within 24 hours.' : '';
+  switch (event) {
+    case 'cancelled':
+      return {
+        eventType: NotificationEventType.ERRAND_CANCELLED,
+        title: 'Job cancelled',
+        body: `${ctx.task} was cancelled, so there's no runner fee.${receipt}`,
+      };
+    case 'failed':
+      return {
+        eventType: NotificationEventType.ERRAND_FAILED,
+        title: 'Job ended as failed',
+        body: `${ctx.task} ended as failed, so there's no runner fee.${receipt}`,
+      };
+    case 'confirmed':
+      return {
+        eventType: NotificationEventType.ERRAND_COMPLETED,
+        title: 'Customer confirmed the job',
+        body: `${ctx.task}. Your runner fee becomes payable when the review window closes.`,
+      };
+    case 'disputed':
+      return {
+        eventType: NotificationEventType.ERRAND_DISPUTED,
+        title: 'Customer reported a problem',
+        body: `Our team is reviewing ${ctx.task}. We'll tell you the outcome.`,
+      };
+    case 'dispute_resolved':
+      return {
+        eventType: NotificationEventType.DISPUTE_RESOLVED,
+        title: 'Problem resolved',
+        body: `Our team has decided on ${ctx.task}. Open the job to see the outcome.`,
+      };
+    case 'price_change_approved':
+      return {
+        eventType: NotificationEventType.PRICE_CHANGE_APPROVED,
+        title: 'Price change approved',
+        body: `New item amount for ${ctx.task}: ${formatKsh(ctx.toPrice)}.`,
+      };
+    case 'price_change_rejected':
+      return {
+        eventType: NotificationEventType.PRICE_CHANGE_REJECTED,
+        title: 'Price change not approved',
+        body: `Continue ${ctx.task} at the original amount, or contact support.`,
+      };
+  }
+};
+
+/**
+ * RA-6: the runner event for a status change, or null. Never the runner's
+ * own transitions (`v-notifications.md`), never before an accept.
+ */
+export const runnerEventFor = (event: { status: ErrandStatus; from?: ErrandStatus | null; actor: string }): RunnerJobEvent | null => {
+  if (event.actor === 'runner') {
+    return null;
+  }
+  switch (event.status) {
+    case ErrandStatus.CANCELLED:
+      return event.from === ErrandStatus.DISPUTED ? 'dispute_resolved' : 'cancelled';
+    case ErrandStatus.FAILED:
+      return 'failed';
+    case ErrandStatus.COMPLETED:
+      return event.from === ErrandStatus.DISPUTED ? 'dispute_resolved' : 'confirmed';
+    case ErrandStatus.DISPUTED:
+      return 'disputed';
+    default:
+      return null;
+  }
+};
 
 /** Feed jobs whose recipients are the admins, not the errand's customer. */
 const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>([
@@ -149,6 +256,9 @@ export class NotificationsService {
     @Inject(PUSH_SENDER)
     private readonly push: PushSender,
     private readonly users?: UsersService,
+    @Optional() private readonly errandsService?: ErrandsService,
+    @Optional() private readonly runners?: RunnersService,
+    @Optional() private readonly payments?: PaymentsService,
   ) {}
 
   async listForUser(
@@ -190,6 +300,11 @@ export class NotificationsService {
   /** Errand status change -> queued feed item (published statuses only). */
   @OnEvent(ERrandStatusChangedEvent, { async: true })
   async onStatusChanged(event: StatusChangedEvent): Promise<void> {
+    // RA-6: the runner's own item (the worker finds the runner who accepted).
+    const runnerEvent = runnerEventFor(event);
+    if (runnerEvent) {
+      await this.enqueue({ kind: 'runner_job', errandId: event.errandId, event: runnerEvent });
+    }
     // EXPIRED is queued from `errand.expired`, once the refund review is known.
     // Statuses without customer copy (RUNNER_ASSIGNED, rows 182, 183) send nothing.
     if (!notificationEventTypeFor(event.status) || event.status === ErrandStatus.EXPIRED || !statusCopy(event.status)) {
@@ -218,6 +333,22 @@ export class NotificationsService {
       fromPrice: event.fromPrice,
       toPrice: event.toPrice,
     });
+  }
+
+  /**
+   * RA-6: price change decided -> the runner. A customer reject cancels the
+   * task (`cancelled`), told through the status change instead.
+   */
+  @OnEvent('price_change.decided', { async: true })
+  async onPriceChangeDecided(event: { errandId: string; outcome: string; toPrice: string }): Promise<void> {
+    if (event.outcome === 'approved' || event.outcome === 'rejected') {
+      await this.enqueue({
+        kind: 'runner_job',
+        errandId: event.errandId,
+        event: event.outcome === 'approved' ? 'price_change_approved' : 'price_change_rejected',
+        toPrice: event.toPrice,
+      });
+    }
   }
 
   @OnEvent('refund.updated', { async: true })
@@ -374,6 +505,9 @@ export class NotificationsService {
    * Returns the first row written, or null.
    */
   async deliverFeed(job: FeedJob): Promise<AppNotification | null> {
+    if (job.kind === 'runner_job') {
+      return this.deliverRunnerFeed(job);
+    }
     const copy = copyFor(job);
     if (!copy) {
       return null;
@@ -395,12 +529,40 @@ export class NotificationsService {
       const profile = await this.customers.findOne({ where: { id: errand.customerId } });
       recipients = profile ? [profile.userId] : [];
     }
+    return this.writeFeed(recipients, errand.id, copy);
+  }
+
+  /**
+   * RA-6: one feed row (+ push) for the runner on the job's accepted
+   * assignment; nothing when no runner accepted it (row 197).
+   */
+  private async deliverRunnerFeed(job: Extract<FeedJob, { kind: 'runner_job' }>): Promise<AppNotification | null> {
+    if (!this.errandsService || !this.runners) {
+      return null;
+    }
+    const errand = await this.errands.findOne({ where: { id: job.errandId } });
+    const holder = errand ? await this.errandsService.activeAssignmentFor(errand.id) : null;
+    if (!errand || holder?.status !== AssignmentStatus.ACCEPTED) {
+      return null;
+    }
+    const runner = await this.runners.profileById(holder.runnerProfileId);
+    const hasItem = BUDGET_CATEGORIES.has(errand.category) && Number(errand.budget ?? 0) > 0;
+    const itemBought =
+      (job.event === 'cancelled' || job.event === 'failed') &&
+      hasItem &&
+      (await this.payments?.primaryRouteFor(errand.id)) === MerchantRoute.SEND_TO_RUNNER;
+    const task = errand.title?.trim() || CATEGORY_DISPLAY[errand.category] || 'Your job';
+    const copy = runnerJobCopy(job.event, { task, itemBought, toPrice: job.toPrice });
+    return this.writeFeed([runner.userId], errand.id, copy);
+  }
+
+  private async writeFeed(recipients: string[], errandId: string, copy: FeedCopy): Promise<AppNotification | null> {
     let first: AppNotification | null = null;
     for (const userId of recipients) {
       const row = await this.notifications.save(
         this.notifications.create({
           userId,
-          errandId: errand.id,
+          errandId,
           eventType: copy.eventType,
           title: copy.title,
           body: copy.body,
@@ -555,6 +717,9 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         body: `The customer's deadline for ${job.reference} passed before any runner accepted. The task has expired.`,
       };
     // Row 236; owner copy, row 241.
+    // Written by deliverRunnerFeed (needs the errand and the runner).
+    case 'runner_job':
+      return null;
     case 'outside_service_area':
       return {
         eventType: NotificationEventType.OUTSIDE_SERVICE_AREA,

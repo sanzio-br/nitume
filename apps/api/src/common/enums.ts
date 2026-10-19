@@ -268,4 +268,10 @@ export enum NotificationEventType {
   DEADLINE_PASSED = 'deadline_passed',
   /** Customer: the task was refused at quote, inside no service area; they may cancel (row 236). */
   OUTSIDE_SERVICE_AREA = 'service_area.outside',
+  /** Runner (RA-6, row 139): ops resolved the dispute on a job the runner held. */
+  DISPUTE_RESOLVED = 'dispute.resolved',
+  /** Runner (RA-6): the customer approved the runner's price change. */
+  PRICE_CHANGE_APPROVED = 'price_change.approved',
+  /** Runner (RA-6, row 55): an admin rejected the runner's price change; the task continues. */
+  PRICE_CHANGE_REJECTED = 'price_change.rejected',
 }
