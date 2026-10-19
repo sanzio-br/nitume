@@ -245,6 +245,25 @@ void main() {
       );
       expect(OfferDeclineReason.tryFromWire('tired'), isNull);
     });
+
+    test('OfferDeclineReason row-210 values, parsed tolerantly', () {
+      expect(
+        {for (final r in OfferDeclineReason.values) r.wire},
+        {'over_purchase_limit', 'too_far', 'not_available', 'other'},
+      );
+      expect(
+        OfferDeclineReason.tryFromWire('too_far'),
+        OfferDeclineReason.tooFar,
+      );
+      expect(
+        OfferDeclineReason.tryFromWire(' NOT_AVAILABLE '),
+        OfferDeclineReason.notAvailable,
+      );
+      expect(OfferDeclineReason.tryFromWire('other'), OfferDeclineReason.other);
+      expect(OfferDeclineReason.tryFromWire(null), isNull);
+      expect(OfferDeclineReason.tryFromWire(3), isNull);
+      expect(OfferDeclineReason.tryFromWire(''), isNull);
+    });
   });
 
   group('RunnerJobsRepository offers and jobs', () {
@@ -346,6 +365,27 @@ void main() {
 
       await repo.decline('e1');
       expect(a.bodies.last, <String, Object?>{});
+    });
+
+    test('decline sends each row-210 reason and reads it back', () async {
+      for (final reason in OfferDeclineReason.values) {
+        final a = FakeApiAdapter({
+          'POST /errands/e1/decline': (
+            200,
+            {
+              'errandId': 'e1',
+              'runnerProfileId': 'rp1',
+              'assignmentId': 'a1',
+              'status': 'declined',
+              'declineReason': reason.wire,
+            },
+          ),
+        });
+        final r = await RunnerJobsRepository(fakeClient(a))
+            .decline('e1', reason: reason);
+        expect(a.bodies.last, {'reason': reason.wire});
+        expect(r.declineReason, reason);
+      }
     });
   });
 

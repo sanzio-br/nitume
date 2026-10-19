@@ -5,20 +5,34 @@ import 'errand_location.dart';
 import 'json_utils.dart';
 
 /// Why a runner declines an offer (`POST /errands/:id/decline`, rows 108,
-/// 113). Declining without a reason is a general decline.
+/// 113, 210). Wire values are the API enum, lowercase snake_case. Declining
+/// without a reason is a general decline (the API keeps the reason
+/// optional). Screen labels live in `DeclineReasonCopy`.
 enum OfferDeclineReason {
   /// The task's required purchase is above the runner's purchase limit.
   /// Only accepted while [RunnerJobView.overPurchaseLimit] (409
   /// `purchase_within_limit` otherwise).
-  overPurchaseLimit('over_purchase_limit');
+  overPurchaseLimit('over_purchase_limit'),
+
+  /// The task is too far away (row 210).
+  tooFar('too_far'),
+
+  /// The runner is not available right now (row 210).
+  notAvailable('not_available'),
+
+  /// Any other reason; no free text is stored (row 210).
+  other('other');
 
   const OfferDeclineReason(this.wire);
   final String wire;
 
-  /// `null` for an absent or unknown value.
+  /// Tolerant parse (trims, ignores case); `null` for an absent or unknown
+  /// value.
   static OfferDeclineReason? tryFromWire(Object? v) {
+    if (v is! String) return null;
+    final s = v.trim().toLowerCase();
     for (final e in values) {
-      if (e.wire == v) return e;
+      if (e.wire == s) return e;
     }
     return null;
   }

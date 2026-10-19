@@ -319,8 +319,9 @@ class RunnerJobsRepository {
       .postMap('/errands/$errandId/accept')
       .then(OfferAcceptResult.fromJson);
 
-  /// `POST /errands/:id/decline` `{ reason? }` (rows 108, 113, 134). Without
-  /// [reason] it is a general decline; with
+  /// `POST /errands/:id/decline` `{ reason? }` (rows 108, 113, 134, 210).
+  /// [reason] is one of the four [OfferDeclineReason] values (the R-23
+  /// `DeclineReasonDialog` picks it); without it it is a general decline.
   /// [OfferDeclineReason.overPurchaseLimit] only while
   /// [RunnerJobView.overPurchaseLimit]. The task stays RUNNER_ASSIGNED for
   /// another runner.

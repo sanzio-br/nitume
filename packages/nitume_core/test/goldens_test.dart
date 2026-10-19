@@ -120,7 +120,11 @@ void main() {
               rows: [
                 ReceiptRow(label: 'Service fee', amount: '700.00'),
                 ReceiptRow(label: 'Runner fee', amount: '1500.00'),
-                ReceiptRow(label: 'Total paid', amount: '2200.00', isTotal: true),
+                ReceiptRow(
+                  label: 'Total paid',
+                  amount: '2200.00',
+                  isTotal: true,
+                ),
               ],
             ),
           ],
@@ -206,20 +210,24 @@ void main() {
           children: [
             NitumeButton.primary(
               label: 'Approve KSh 5,000 increase',
-              richLabel: TextSpan(children: [
-                const TextSpan(text: 'Approve '),
-                NumSpan.kes(5000),
-                const TextSpan(text: ' increase'),
-              ]),
+              richLabel: TextSpan(
+                children: [
+                  const TextSpan(text: 'Approve '),
+                  NumSpan.kes(5000),
+                  const TextSpan(text: ' increase'),
+                ],
+              ),
               onPressed: () {},
             ),
             NitumeButton.link(
               label: '+3 more in progress',
-              richLabel: const TextSpan(children: [
-                TextSpan(text: '+'),
-                NumSpan('3'),
-                TextSpan(text: ' more in progress'),
-              ]),
+              richLabel: const TextSpan(
+                children: [
+                  TextSpan(text: '+'),
+                  NumSpan('3'),
+                  TextSpan(text: ' more in progress'),
+                ],
+              ),
               onPressed: () {},
             ),
             const SectionLabel(
@@ -229,10 +237,12 @@ void main() {
             ),
             NitumeNotice(
               message: 'Pay the item amount: KSh 40,000',
-              richMessage: TextSpan(children: [
-                const TextSpan(text: 'Pay the item amount: '),
-                NumSpan.kes(40000),
-              ]),
+              richMessage: TextSpan(
+                children: [
+                  const TextSpan(text: 'Pay the item amount: '),
+                  NumSpan.kes(40000),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
             const Row(
@@ -343,6 +353,26 @@ void main() {
     await expectLater(
       find.byKey(const ValueKey('golden')),
       matchesGoldenFile('goldens/runner_widgets.png'),
+    );
+  });
+
+  testWidgets('decline reason dialog', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        SizedBox(
+          width: 375,
+          child: DeclineReasonDialog(
+            overPurchaseLimit: true,
+            onDecline: (_) async {},
+          ),
+        ),
+      ),
+      surfaceSize: const Size(420, 640),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/decline_reason_dialog.png'),
     );
   });
 }
