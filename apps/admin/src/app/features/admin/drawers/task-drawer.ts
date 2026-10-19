@@ -13,6 +13,7 @@ import { QuoteSectionComponent } from './quote.section';
 import { MerchantDetailsSectionComponent } from './merchant-details.section';
 import { RefundLinkSectionComponent } from './refund-link.section';
 import { RunnerPayoutsLinkSectionComponent } from '../payouts/runner-payouts-link.section';
+import { TaskOfferSectionComponent } from './task-offer.section';
 
 /**
  * Admin actions by state (§3.3): the first quote only from REQUESTED; a
@@ -37,7 +38,8 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
 
 /**
  * Task drawer: errand detail (`GET /errands/:id`) + status history. Sections:
- * summary, items, locations, merchant payment details, quote, admin actions
+ * summary, items, locations, runner (offer state), merchant payment details,
+ * quote, admin actions
  * (Issue quote / Assign runner), refund link, status history.
  * Re-mounted each time the drawer opens, so it fetches on init.
  */
@@ -55,6 +57,7 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
     MerchantDetailsSectionComponent,
     RefundLinkSectionComponent,
     RunnerPayoutsLinkSectionComponent,
+    TaskOfferSectionComponent,
   ],
   template: `
     @if (s.detailLoading()) {
@@ -140,6 +143,8 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
           </div>
         </section>
       }
+
+      <app-task-offer-section [errand]="d" />
 
       <app-merchant-details-section [errand]="d" />
 
