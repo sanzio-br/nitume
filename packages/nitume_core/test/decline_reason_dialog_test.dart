@@ -211,6 +211,8 @@ void main() {
     expect(find.byType(DeclineReasonDialog), findsOneWidget);
     expect(find.text(DeclineReasonCopy.errorWithinLimit), findsOneWidget);
     expect(row(OfferDeclineReason.overPurchaseLimit), findsNothing);
+    expect(find.text(DeclineReasonCopy.bodyOverLimit), findsNothing);
+    expect(find.text(DeclineReasonCopy.body), findsOneWidget);
     expect(declineEnabled(tester), isFalse);
 
     await tester.tap(row(OfferDeclineReason.tooFar));

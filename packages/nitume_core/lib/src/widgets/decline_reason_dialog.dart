@@ -194,7 +194,9 @@ class _DeclineReasonDialogState extends State<DeclineReasonDialog> {
       child: NitumeDialog(
         title: DeclineReasonCopy.title,
         // C-35 body style, unchanged (ruling 2026-10-19).
-        body: widget.overPurchaseLimit
+        // Follows the shown rows: once `purchase_within_limit` drops the
+        // over-limit row, the body no longer says the job is above it.
+        body: _overLimitShown
             ? DeclineReasonCopy.bodyOverLimit
             : DeclineReasonCopy.body,
         content: Column(
