@@ -67,10 +67,16 @@ export enum AssignmentStatus {
   ASSIGNED = 'assigned',
 }
 
-/** Why a runner declined an assignment (row 108). */
+/** Why a runner declined an assignment (rows 108, 210). */
 export enum AssignmentDeclineReason {
-  /** The task's required purchase is above the runner's max_purchase_advance. */
+  /** The task's required purchase is above the runner's max_purchase_advance (checked). */
   OVER_PURCHASE_LIMIT = 'over_purchase_limit',
+  /** Row 210: the task is too far for the runner (not checked). */
+  TOO_FAR = 'too_far',
+  /** Row 210: the runner cannot take it now (not checked). */
+  NOT_AVAILABLE = 'not_available',
+  /** Row 210: any other reason; no free text (row 229 open). */
+  OTHER = 'other',
 }
 
 export enum VerificationLevel {

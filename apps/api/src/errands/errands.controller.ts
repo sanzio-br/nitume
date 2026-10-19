@@ -23,6 +23,7 @@ import {
 import {
   CreateErrandDto,
   ErrandStatusFilterDto,
+  ExpireErrandDto,
   ListErrandsQueryDto,
   MerchantDetailsDto,
   ResolveDisputeDto,
@@ -215,6 +216,28 @@ export class ErrandsController {
     return this.errands
       .transition(id, dto.to, { type: actorType, id: user.userId }, dto.note, { role: user.role, userId: user.userId })
       .then((r) => (user.role === UserRole.RUNNER ? { ...r, errand: withoutCustomerPricing(r.errand) } : r));
+  }
+
+  /**
+   * Admin "Expire task — no runner available" (rows 187, 202, 203, 208):
+   * RUNNER_ASSIGNED -> EXPIRED, actor admin, `{ reason }` required (10–500
+   * after trimming) and kept as the history note. Allowed only when the
+   * detail's `canExpire.noRunner` is true. 200 `{ errand, history }`.
+   * Errors: 400 expiry_reason_invalid (`minLength`, `maxLength`); 404;
+   * 409 expiry_not_allowed (`reason`: not_runner_assigned (`status`) |
+   * deadline_passed | open_offer | eligible_runners_remain
+   * (`eligibleRemaining`)). PATCH /errands/:id/status cannot do this
+   * transition for an admin (409 transition_requires_admin_expiry).
+   */
+  @Post(':id/expire')
+  @HttpCode(200)
+  @Roles(UserRole.ADMIN)
+  expire(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthContext,
+    @Body() dto: ExpireErrandDto,
+  ): Promise<ErrandResult> {
+    return this.errands.expireNoRunner(id, dto.reason, { type: StatusHistoryActor.ADMIN, id: user.userId });
   }
 
   private actorTypeFor(role: UserRole): StatusHistoryActor {

@@ -58,12 +58,13 @@ export class RunnerJobsController {
   }
 
   /**
-   * Decline the offer `{ reason?: 'over_purchase_limit' }` (rows 113, 134):
+   * Decline the offer `{ reason?: 'over_purchase_limit' | 'too_far' |
+   * 'not_available' | 'other' }` (rows 113, 134, 210):
    * the task stays RUNNER_ASSIGNED for another runner; this runner is not
    * offered it again (row 178). 200 `{ errandId, runnerProfileId,
    * requiredPurchase, maxPurchaseAdvance, overLimit, assignmentId, status:
-   * 'declined', declineReason }`. Errors: 400 decline_reason_invalid
-   * (`allowed`); 403 not the offered runner; 409 offer_expired; 409
+   * 'declined', declineReason }`. Only `over_purchase_limit` is checked
+   * against the limit. Errors: 400 decline_reason_invalid (`allowed`); 403 not the offered runner; 409 offer_expired; 409
    * assignment_not_declinable; 409 purchase_within_limit (reason sent while
    * within the limit).
    */

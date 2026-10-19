@@ -436,9 +436,12 @@ describe('Runner API batch 1 (e2e)', () => {
       const bad = await http()
         .post(`/api/v1/errands/${errand.id}/decline`)
         .set(bearer(runner.token))
-        .send({ reason: 'too_far' })
+        .send({ reason: 'busy' })
         .expect(400);
-      expect(bad.body).toMatchObject({ code: 'decline_reason_invalid', allowed: ['over_purchase_limit'] });
+      expect(bad.body).toMatchObject({
+        code: 'decline_reason_invalid',
+        allowed: ['over_purchase_limit', 'too_far', 'not_available', 'other'],
+      });
       const declined = await http()
         .post(`/api/v1/errands/${errand.id}/decline`)
         .set(bearer(runner.token))
@@ -519,7 +522,7 @@ describe('Runner API batch 1 (e2e)', () => {
       }
     });
 
-    it('a PAYMENT_CONFIRMED task past its deadline is left as is and can still be assigned (row 201 open)', async () => {
+    it('a PAYMENT_CONFIRMED task past its deadline is left as is and can no longer be assigned (rows 201, 214)', async () => {
       const customer = await makeUser(UserRole.CUSTOMER);
       const admin = await makeUser(UserRole.ADMIN);
       const runner = await makeUser(UserRole.RUNNER);
@@ -531,7 +534,9 @@ describe('Runner API batch 1 (e2e)', () => {
       expect(await app.get(ErrandsService).expirePastDeadline(new Date(), 100, [errand.id])).toEqual([]);
       const detail = await http().get(`/api/v1/errands/${errand.id}`).set(bearer(admin.token)).expect(200);
       expect(detail.body).toMatchObject({ status: 'PAYMENT_CONFIRMED', deadlinePassed: true });
-      await assign(admin, errand.id, runner);
+      const refused = await assign(admin, errand.id, runner, 409);
+      expect(refused.body).toMatchObject({ code: 'task_deadline_passed', deadlineAt: expect.any(String) });
+      expect((await db().query('SELECT status::text AS s FROM "errands" WHERE id = $1', [errand.id]))[0].s).toBe('PAYMENT_CONFIRMED');
     });
   });
 });

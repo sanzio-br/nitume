@@ -23,7 +23,7 @@ import {
 } from './verification-storage/verification-document-storage';
 import { UsersService } from '../users/users.service';
 import { shortNameOf } from './short-name';
-import { ServiceArea, ServiceAreaOption, listedAreaIds, serviceAreaOptionsOf } from './service-areas';
+import { ServiceArea, ServiceAreaOption, areasContaining, listedAreaIds, serviceAreaOptionsOf } from './service-areas';
 import { VerificationSummary, verificationSummaryOf } from './verification-summary';
 
 /** Skills a runner may choose in the MVP (OA-18: Business Tasks not offered). */
@@ -167,6 +167,12 @@ export interface UploadedImage {
   buffer: Buffer;
   mimetype: string;
   size: number;
+}
+
+/** A runner in a task's pool by identity (see `RunnersService.poolFor`). */
+export interface PoolRunner {
+  profile: RunnerProfile;
+  displayName: string | null;
 }
 
 @Injectable()
@@ -436,6 +442,59 @@ export class RunnersService {
       serviceAreas: this.listedAreas(areas.map((a) => a.area)),
       verification,
     };
+  }
+
+  /**
+   * The runners a task may go to by who they are (System Design §3.3
+   * "Pool"): an active account, every required check approved (row 126),
+   * the task's category in their skills (row 115) and, when service areas
+   * are configured (RUNNER_SERVICE_AREAS, row 212), one of their areas
+   * containing the task's first point (rows 116, 213). A task point inside
+   * no configured area has no pool. Without areas configured, or without a
+   * task point, the area rule is skipped. Availability (online, offline,
+   * busy), the purchase limit and earlier offers are the caller's to apply.
+   */
+  async poolFor(
+    category: RunnerSkill,
+    point: { lat: number; lng: number } | null,
+    manager?: EntityManager,
+  ): Promise<PoolRunner[]> {
+    const repo = <T extends object>(entity: new () => T, own: Repository<T>): Repository<T> =>
+      manager ? manager.getRepository(entity) : own;
+    let ids = (
+      await repo(RunnerSkillEntity, this.skills).find({ where: { skill: category }, select: { runnerProfileId: true } })
+    ).map((r) => r.runnerProfileId);
+    const areas = this.areaList();
+    if (ids.length > 0 && areas.length > 0 && point) {
+      const containing = areasContaining(point, areas);
+      if (containing.length === 0) {
+        return [];
+      }
+      const inArea = await repo(RunnerServiceArea, this.serviceAreas).find({
+        where: { runnerProfileId: In(ids), area: In(containing) },
+        select: { runnerProfileId: true },
+      });
+      const keep = new Set(inArea.map((r) => r.runnerProfileId));
+      ids = ids.filter((id) => keep.has(id));
+    }
+    if (ids.length === 0) {
+      return [];
+    }
+    // Sequential: with `manager` both reads share the caller's connection.
+    const profiles = await repo(RunnerProfile, this.profiles).find({ where: { id: In(ids) } });
+    const checks = await repo(RunnerVerification, this.verifications).find({
+      where: { runnerProfileId: In(ids) },
+      select: { id: true, runnerProfileId: true, verificationType: true, side: true, status: true, createdAt: true },
+    });
+    const byRunner = new Map<string, RunnerVerification[]>();
+    for (const c of checks) {
+      byRunner.set(c.runnerProfileId, [...(byRunner.get(c.runnerProfileId) ?? []), c]);
+    }
+    const verified = profiles.filter((p) => verificationSummaryOf(byRunner.get(p.id) ?? []).verified);
+    const active = await this.users.activeDisplayNames(verified.map((p) => p.userId));
+    return verified
+      .filter((p) => active.has(p.userId))
+      .map((p) => ({ profile: p, displayName: active.get(p.userId) ?? null }));
   }
 
   /** Row 116: the ops-configured areas, by name (`GET /runners/service-areas`). */

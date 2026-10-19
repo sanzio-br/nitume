@@ -257,3 +257,85 @@ describe('ensurePhoneVerified (runner _shared.md §9)', () => {
     expect(lock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('poolFor: the task pool by identity (rows 115, 116, 126, 212, 213)', () => {
+  const approved = (id: string) =>
+    allApproved().map((c, i) => ({ ...c, id: `${id}-v${i}`, runnerProfileId: id }));
+  const where = (w: Record<string, unknown>) => w as { runnerProfileId?: { value: string[] }; id?: { value: string[] }; area?: { value: string[] } };
+
+  const buildPool = (areas: typeof AREAS | [] = AREAS) => {
+    const skills = [
+      { runnerProfileId: 'rp-a', skill: RunnerSkill.BUY_FOR_ME },
+      { runnerProfileId: 'rp-b', skill: RunnerSkill.BUY_FOR_ME },
+      { runnerProfileId: 'rp-c', skill: RunnerSkill.BUY_FOR_ME },
+      { runnerProfileId: 'rp-d', skill: RunnerSkill.BUY_FOR_ME },
+      { runnerProfileId: 'rp-x', skill: RunnerSkill.INSPECTION },
+    ];
+    const serviceAreas = [
+      { runnerProfileId: 'rp-a', area: 'cbd' },
+      { runnerProfileId: 'rp-b', area: 'cbd' },
+      { runnerProfileId: 'rp-c', area: 'westlands' },
+      { runnerProfileId: 'rp-d', area: 'cbd' },
+    ];
+    const profiles = ['rp-a', 'rp-b', 'rp-c', 'rp-d', 'rp-x'].map((id) => ({
+      id,
+      userId: `u-${id}`,
+      availability: RunnerAvailability.OFFLINE,
+    }));
+    const checks = [...approved('rp-a'), ...approved('rp-b'), ...approved('rp-c'), ...approved('rp-x')];
+    const skillRepo = {
+      find: vi.fn(({ where: w }: { where: { skill: RunnerSkill } }) => Promise.resolve(skills.filter((s) => s.skill === w.skill))),
+    };
+    const areaRepo = {
+      find: vi.fn(({ where: w }: { where: Record<string, unknown> }) =>
+        Promise.resolve(
+          serviceAreas.filter(
+            (a) => where(w).runnerProfileId?.value.includes(a.runnerProfileId) && where(w).area?.value.includes(a.area),
+          ),
+        ),
+      ),
+    };
+    const profileRepo = {
+      find: vi.fn(({ where: w }: { where: Record<string, unknown> }) =>
+        Promise.resolve(profiles.filter((p) => where(w).id?.value.includes(p.id))),
+      ),
+    };
+    const verificationRepo = {
+      find: vi.fn(({ where: w }: { where: Record<string, unknown> }) =>
+        Promise.resolve(checks.filter((c) => where(w).runnerProfileId?.value.includes(c.runnerProfileId))),
+      ),
+    };
+    // rp-b's account is suspended: not returned as active.
+    const users = {
+      activeDisplayNames: vi.fn((ids: string[]) =>
+        Promise.resolve(new Map(ids.filter((id) => id !== 'u-rp-b').map((id) => [id, id === 'u-rp-a' ? 'Amina W' : null]))),
+      ),
+    };
+    const config = { get: vi.fn((k: string, d: unknown) => (k === 'runners.serviceAreas' ? areas : d)) };
+    const service = new RunnersService(
+      profileRepo as never,
+      verificationRepo as never,
+      skillRepo as never,
+      areaRepo as never,
+      users as never,
+      undefined,
+      config as never,
+    );
+    return { service };
+  };
+
+  it('keeps active, verified runners with the skill whose area contains the task point', async () => {
+    const { service } = buildPool();
+    // CBD point (not Westlands): rp-a only. rp-b suspended, rp-c in Westlands, rp-d unverified, rp-x other skill.
+    const pool = await service.poolFor(RunnerSkill.BUY_FOR_ME, { lat: -1.2864, lng: 36.8172 + 0.015 });
+    expect(pool.map((r) => [r.profile.id, r.displayName])).toEqual([['rp-a', 'Amina W']]);
+  });
+
+  it('a point inside no configured area has no pool; without areas configured the area rule is skipped', async () => {
+    expect(await buildPool().service.poolFor(RunnerSkill.BUY_FOR_ME, { lat: -1.319, lng: 36.7073 })).toEqual([]);
+    const noAreas = await buildPool([]).service.poolFor(RunnerSkill.BUY_FOR_ME, { lat: -1.319, lng: 36.7073 });
+    expect(noAreas.map((r) => r.profile.id).sort()).toEqual(['rp-a', 'rp-c']);
+    const noPoint = await buildPool().service.poolFor(RunnerSkill.BUY_FOR_ME, null);
+    expect(noPoint.map((r) => r.profile.id).sort()).toEqual(['rp-a', 'rp-c']);
+  });
+});

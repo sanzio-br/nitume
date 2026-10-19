@@ -19,6 +19,12 @@ import { ErrandStatus, StatusHistoryActor } from '../common/enums';
 export enum TransitionGuard {
   /** Only via rejecting a pending price-change request (price-change module). */
   PRICE_CHANGE_REJECTION = 'price_change_rejection',
+  /**
+   * Admin "Expire task — no runner available" (rows 187, 202, 203, 208):
+   * only through `POST /errands/:id/expire`, which checks the availability
+   * rule and the required reason.
+   */
+  ADMIN_EXPIRY = 'admin_expiry',
 }
 
 export interface ErrandTransition {
@@ -26,6 +32,8 @@ export interface ErrandTransition {
   allowedActors: StatusHistoryActor[];
   /** When set, the transition is only legal through that specific flow. */
   guard?: TransitionGuard;
+  /** A guard that applies to one actor only (the other actors are unguarded). */
+  actorGuards?: Partial<Record<StatusHistoryActor, TransitionGuard>>;
 }
 
 const C = StatusHistoryActor.CUSTOMER;
@@ -56,7 +64,13 @@ export const ERRAND_TRANSITIONS: Record<ErrandStatus, ErrandTransition[]> = {
   [ErrandStatus.RUNNER_ASSIGNED]: [
     { to: ErrandStatus.RUNNER_EN_ROUTE, allowedActors: [R] },
     { to: ErrandStatus.CANCELLED, allowedActors: [A] },
-    { to: ErrandStatus.EXPIRED, allowedActors: [S] },
+    // S: the deadline sweep (row 185). A: the audited "Expire task — no
+    // runner available" (rows 187, 202, 208), guarded.
+    {
+      to: ErrandStatus.EXPIRED,
+      allowedActors: [S, A],
+      actorGuards: { [A]: TransitionGuard.ADMIN_EXPIRY },
+    },
   ],
   [ErrandStatus.RUNNER_EN_ROUTE]: [
     { to: ErrandStatus.ARRIVED, allowedActors: [R, S] },
@@ -110,9 +124,13 @@ export class ErrandStateMachine {
     return ERRAND_TRANSITIONS[from]?.find((t) => t.to === to)?.allowedActors ?? [];
   }
 
-  /** Guard required for `from -> to`, or null when the transition is unguarded. */
-  static guardFor(from: ErrandStatus, to: ErrandStatus): TransitionGuard | null {
-    return ERRAND_TRANSITIONS[from]?.find((t) => t.to === to)?.guard ?? null;
+  /**
+   * Guard required for `from -> to` (for `actor`, when given), or null when
+   * the transition is unguarded for them.
+   */
+  static guardFor(from: ErrandStatus, to: ErrandStatus, actor?: StatusHistoryActor): TransitionGuard | null {
+    const t = ERRAND_TRANSITIONS[from]?.find((x) => x.to === to);
+    return t?.guard ?? (actor ? t?.actorGuards?.[actor] : undefined) ?? null;
   }
 
   static actorCanPerform(
