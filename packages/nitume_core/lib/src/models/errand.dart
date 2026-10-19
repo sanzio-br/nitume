@@ -253,3 +253,27 @@ String? _nullableDecimalString(Object? value) {
 
 DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value) : null;
+
+/// Task defaults clients show but never hard-code (`GET /errands/defaults`,
+/// row 221).
+class ErrandDefaults {
+  const ErrandDefaults({this.defaultDeadlineHours});
+
+  /// Hours from creation to the deadline the API sets when the customer
+  /// gives none (24 today); `null` when the API did not send a usable
+  /// value, so the caption is hidden rather than guessed.
+  final double? defaultDeadlineHours;
+
+  /// [defaultDeadlineHours] as a [Duration] (minute precision).
+  Duration? get defaultDeadline {
+    final h = defaultDeadlineHours;
+    return h == null ? null : Duration(minutes: (h * 60).round());
+  }
+
+  factory ErrandDefaults.fromJson(Map<String, dynamic> json) {
+    final h = parseDouble(json['defaultDeadlineHours']);
+    return ErrandDefaults(
+      defaultDeadlineHours: h != null && h.isFinite && h > 0 ? h : null,
+    );
+  }
+}

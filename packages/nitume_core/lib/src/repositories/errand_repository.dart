@@ -98,6 +98,12 @@ class ErrandRepository {
     return (data['count'] as num?)?.toInt() ?? 0;
   }
 
+  /// Task defaults (`GET /errands/defaults`, row 221):
+  /// `{ defaultDeadlineHours }` for the customer `Flexible` deadline caption
+  /// (`v-new-details`). Any signed-in role may read it.
+  Future<ErrandDefaults> defaults() async =>
+      ErrandDefaults.fromJson(await _api.getMap('/errands/defaults'));
+
   /// One errand with its assignment (`GET /errands/:id`).
   Future<Errand> get(String errandId) async =>
       Errand.fromJson(await _api.getMap('/errands/$errandId'));
