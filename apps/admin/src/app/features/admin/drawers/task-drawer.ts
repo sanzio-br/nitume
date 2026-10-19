@@ -29,6 +29,29 @@ export function taskActions(status: string): { quote: boolean; assign: boolean }
   return { quote: status === 'REQUESTED', assign: status === 'PAYMENT_CONFIRMED' };
 }
 
+/** States before payment: `deadlineAt` may still be null (customer chose `Flexible`, row 239). */
+const PRE_PAYMENT_STATUSES: ReadonlySet<string> = new Set([
+  'DRAFT',
+  'REQUESTED',
+  'QUOTED',
+  'ACCEPTED',
+]);
+
+/**
+ * Read-only `Deadline` row (`drawer-task-offer.md` Layout 2, rows 239, 243):
+ * the chosen time (Fira Code); `No deadline yet` (Fira Sans) when
+ * `deadlineAt` is null before payment; no row for a CANCELLED task without
+ * one. Any other null keeps the built `—`. Admins never edit a deadline.
+ */
+export function deadlineRow(
+  status: string,
+  deadlineAt: string | null | undefined,
+): { at: string; text?: undefined } | { at: null; text: string } | null {
+  if (deadlineAt) return { at: deadlineAt };
+  if (status === 'CANCELLED') return null;
+  return { at: null, text: PRE_PAYMENT_STATUSES.has(status) ? 'No deadline yet' : '—' };
+}
+
 /**
  * `Status history` caption actor: `Admin · {admin name}` when the API names
  * the admin (`actor.displayName`, admin viewers), else the actor type as
@@ -108,9 +131,16 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
           <div class="drawer-row">
             <span>Urgency</span><b class="txt">{{ title(d.urgency ?? 'standard') }}</b>
           </div>
-          <div class="drawer-row">
-            <span>Deadline</span><b>{{ formatDateTime(d.deadlineAt ?? null) }}</b>
-          </div>
+          @if (deadlineRow(d.status, d.deadlineAt); as dl) {
+            <div class="drawer-row">
+              <span>Deadline</span>
+              @if (dl.at) {
+                <b>{{ formatDateTime(dl.at) }}</b>
+              } @else {
+                <b class="txt">{{ dl.text }}</b>
+              }
+            </div>
+          }
           <div class="drawer-row">
             <span>Created</span><b>{{ timeAgo(d.createdAt) }}</b>
           </div>
@@ -396,6 +426,7 @@ export class TaskDrawerComponent implements OnInit {
   protected readonly formatKsh = formatKsh;
   protected readonly formatKshExact = formatKshExact;
   protected readonly formatDateTime = formatDateTime;
+  protected readonly deadlineRow = deadlineRow;
   protected readonly statusLabel = statusLabel;
   protected readonly historyActor = historyActor;
 }
