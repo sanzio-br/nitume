@@ -731,3 +731,45 @@ Spec-only update; no screen re-audited. Full decision list, API items and System
 ### Questions for the owner (new)
 - Row 201: open on the BOARD, with its follow-up (which exit ops use).
 - AQ-22 … AQ-27: `_shared.md` §8.
+
+## Owner answers round 12 (rows 201–218, 2026-10-19), applied on `docs/owner-answers-12-specs`
+
+Spec-only update; no screen re-audited. Full decision list and API items: `docs/audits/runner-gap-report.md` §15. System Design §3.3 now has **PAYMENT_CONFIRMED → EXPIRED, actor Admin** (row 201, owner-approved).
+
+### What changed
+- `drawer-task-offer.md`:
+  - Rows 201, 214: PAYMENT_CONFIRMED past its deadline keeps the `Deadline passed` chip, loses `Assign`, and gets **`Expire task`** (A-07 outline; confirm with a required 10–500 reason, proposed AQ-28; result; errors); new EXPIRED variant **Expired by ops after the deadline**; feed body pending row 220 (the old `Deadline passed, not offered · {task}` proposal is withdrawn).
+  - Rows 202, 203, 208: the `Expire task — no runner available` rule and required reason are decided; availability flag renamed `canExpire.noRunner`.
+  - Row 205: `Offer ends` = `offerExpiresAt`, capped at the deadline. Row 206: `No deadline` only on legacy tasks. Row 207: no pre-offer exception.
+  - Row 210: `Reason` labels `Too far away`, `Not available`, `Other reason`.
+  - Rows 211, 215: busy runners not listed; offline runners selectable under `Show offline runners ({n})` (proposed, AQ-31).
+  - Row 216: approved feed copy. Round 11 minors: `runner_already_offered` notices; history note `Customer deadline passed` as built.
+  - Data rebased on `feat/api-runner-1` (`lastAssignment`, `assignments[]`, `offerWindowSeconds`, `deadlinePassed`, `expiry`, history `actor`, the deadline sweep are built there).
+- `_shared.md`: §1 rows 201–218; N-20; §8 AQ-22 … AQ-27 closed, AQ-28 … AQ-31 and rows 220, 221 open.
+- `p-runners-verification-documents.md`: no change (row 209 concerns the Runner app's single ID row; the admin lists each side; rows 217, 218 need no admin UI).
+
+### Findings against `main` (new)
+29. **blocker**: `apps/admin/src/app/features/admin/drawers/task-drawer.ts`, `panels/task-queue.panel.ts`.
+    - Design (rows 201, 214): PAYMENT_CONFIRMED past its deadline: `Deadline passed` chip and flag, no `Assign`, `Expire task` with reason, the Expired by ops after the deadline variant, `deadline_passed` feed item.
+    - Code: none; `Assign runner` shows on every PAYMENT_CONFIRMED task (`task-drawer.ts:22-23`, `task-queue.panel.ts:136-137`).
+    - Fix: after api-contract items 1–7 (§15). Replaces finding 27.
+30. **minor**: same files.
+    - Design (row 210): decline reason labels in the `Declined` row.
+    - Code: no offer section.
+    - Fix: with finding 16 (offer section), after api-contract item 9.
+31. **minor**: same files.
+    - Design (row 215): `Show offline runners ({n})` in the Reassign dialog; offline is never an assign refusal.
+    - Code: the assign dialog lists every runner, with no availability grouping.
+    - Fix: after api-contract item 11 (candidates read).
+32. **minor**: same files.
+    - Design (round 11 minor 4): `runner_already_offered` notices by `previousStatus`.
+    - Code: none (generic error).
+    - Fix: with the Reassign dialog.
+- Finding 26 now reads `canExpire.noRunner` and a required reason (decided, rows 202, 203). Finding 27 is closed into 29.
+
+### Handoff
+- api-contract: `runner-gap-report.md` §15 items 1–13.
+- web-parity: findings 29–32, plus the open 16–26 and 28.
+
+### Questions for the owner (new)
+- Rows 220, 221 (open on the BOARD); AQ-28 … AQ-31 (`_shared.md` §8).

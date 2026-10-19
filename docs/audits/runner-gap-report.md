@@ -623,3 +623,88 @@ Spec-only update; no screen re-audited. System Design edited under row 147 (§2.
 - AQ-26: should every errand carry a `deadlineAt`? It is optional on create today.
 - AQ-27: what is an "approved exception" before an offer (row 186)? None exists; would it need a schema change?
 - Full wording: admin `_shared.md` §8 and `drawer-task-offer.md`.
+
+> Round 12 (2026-10-19): every question above is answered (rows 201–207); see §15.
+
+## 15. Owner answers rows 201–218 (2026-10-19), applied on `docs/owner-answers-12-specs`
+
+Spec-only update; no screen re-audited. Code checked read-only on `feat/api-runner-1` @ `87d3076` (reviewed, merge gated on row 219) and `feat/core-runner-batch-1` @ `861fb43`.
+
+### Decisions applied
+| Row | Decision | Files |
+|---|---|---|
+| 201, 214 | PAYMENT_CONFIRMED past its deadline is never auto-expired; ops feed item `Deadline passed`; **new §3.3 transition PAYMENT_CONFIRMED → EXPIRED, actor Admin** (owner-approved), through an admin `Expire task` after the deadline; assign refused after the deadline, no indirect assign→expire path. Feed body open (row 220) | System Design §3.3, §4.4, changelog; admin `drawer-task-offer.md`, `_shared.md`; customer `_shared.md`, `v-notifications.md`; runner `_shared.md` §0/§6 |
+| 202, 203, 208 | `Expire task — no runner available`: RUNNER_ASSIGNED, no open offer, deadline not passed, no eligible online runner left (offline/busy don't prevent it); reason required 10–500; RUNNER_ASSIGNED → EXPIRED by S or A | System Design §3.3; admin specs |
+| 204 | Offline/busy runners do not block exhaustion; only eligible online runners count | System Design §3.3, §3.4; admin `drawer-task-offer.md` Data |
+| 205 | An open offer ends at once at `deadlineAt`; `offerExpiresAt` never beyond it | System Design §3.3; runner `_shared.md` §6, `v-jobs.md`, `v-job-detail.md`; admin `drawer-task-offer.md` |
+| 206 | `deadlineAt` required on every task; contract default when the customer gives none (value and backfill: row 221, open) | System Design §2.2, §3.3; customer `v-new-details.md`; admin `drawer-task-offer.md`; runner `v-job-detail.md` |
+| 207 | No pre-offer purchase-limit exception; below-limit runners stay ineligible | System Design §3.3; admin, runner specs |
+| 209 | National ID: `Verified` only if both sides approved; rejected if either rejected; else `In review` if either pending. "Newest record wins" across sides dropped | System Design §10; runner `_shared.md` §9, `v-onboard-pending.md`, `v-onboard-id.md`, `v-profile.md`. Admin `p-runners-verification-documents.md`: no change (it lists each side as its own row) |
+| 210 | Decline reasons `over_purchase_limit`, `too_far`, `not_available`, `other` (schema approved); reason picker | System Design §2.2; runner `v-jobs.md` (new "Decline reason picker", R-23), `v-job-detail.md`, `_shared.md`; admin `drawer-task-offer.md` (labels) |
+| 211 | Busy = RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS only | System Design §3.3; runner `_shared.md` §6, `v-jobs.md`, `v-active.md` (several active-set jobs, proposed `Other jobs`) |
+| 212, 213 | Service areas stay server config `RUNNER_SERVICE_AREAS`; circle areas; first point task site → pickup → drop-off | System Design §2.2, §3.3, §3.4; runner `v-edit-skills.md`, `v-jobs.md`; admin `_shared.md` |
+| 215 | Admin may assign an offline runner; online-only is for the pool | System Design §3.3, §3.4; admin `drawer-task-offer.md` (`Show offline runners`); runner `v-jobs.md` (offline offers) |
+| 216 | Ops copy approved (RUNNER_ASSIGNED deadline expiry; decline without reason) | System Design §4.4; admin `drawer-task-offer.md` |
+| 217 | OTP sign-in records the phone check approved | System Design §10; runner `_shared.md` §9, `v-onboard-pending.md`, `v-onboard-selfie.md` |
+| 218 | Automatic payment-identity check and `POST /runners/me/verifications/submit` deferred (row 222); interim `POST /runners/me/verifications` | System Design §10; runner `v-onboard-selfie.md`, `v-onboard-pending.md` |
+
+Already matching on `feat/api-runner-1` (nothing to build): 211 (`RUNNER_ACTIVE_JOB_STATES`), 213 (`service-areas.ts`, `FIRST_POINT_ORDER`), 215 (assign refuses unverified, busy and over-limit runners, never offline ones), 216 (`notifications.service.ts` copy), 217 (`ensurePhoneVerified`), 209 for the gate (`verification-summary.ts` requires front and back each approved).
+
+### Round 11 reviewer minors (closed)
+1. Offer close at the deadline labelled proposed → now decided by row 205 everywhere (`v-jobs.md`, `v-job-detail.md`, runner `_shared.md` §6, `drawer-task-offer.md`, System Design §3.3).
+2. History note aligned: `Customer deadline passed` is the built `DEADLINE_EXPIRY_NOTE`; `No eligible runners left` stays proposed (`drawer-task-offer.md` activity row and Data).
+3. Accept after the deadline pinned to 409 `offer_expired` with `reason: 'task_deadline_passed'` (the built code) in `v-jobs.md`, `v-job-detail.md`, runner `_shared.md` §6, System Design §3.3.
+4. `runner_already_offered` mapped in the admin Reassign errors (`drawer-task-offer.md`), by `previousStatus`.
+5. `v-onboard-id.md` tile extensions (selected outline, tap-to-select, side label chip, per-tile `Retake`) marked proposed / EXTENDS MOCKUP.
+
+### API items for api-contract (numbered; branch after `feat/api-runner-1` merges, or on it if the orchestrator prefers)
+1. **Rows 201, 214**: `POST /errands/:id/assign` on a **PAYMENT_CONFIRMED** task past `deadlineAt` → 409 `task_deadline_passed` (today `errands.service.ts` `assign` refuses only RUNNER_ASSIGNED: "PAYMENT_CONFIRMED is held for row 201").
+2. **Row 201**: transition PAYMENT_CONFIRMED → EXPIRED, actor A only (never S); guard: status PAYMENT_CONFIRMED and `deadlineAt ≤ now`; reason required 10–500 after trimming (proposed AQ-28, the row-203 rule); history row with actor, id, time, `note`; 409 `expiry_not_allowed` `{ reason: 'deadline_not_passed' | 'not_payment_confirmed' }`, 400 `expiry_reason_invalid`.
+3. **Row 201 + row 102**: N-16 refund review `expired_after_payment` must also open on PAYMENT_CONFIRMED → EXPIRED (today only RUNNER_ASSIGNED → EXPIRED). Customer `errand.EXPIRED` notification on this transition too (proposed, AQ-29; same title and body).
+4. **Row 201**: one admin feed item `deadline_passed` per PAYMENT_CONFIRMED task when its deadline passes, no state change (the sweep selects them without transitioning; idempotent per task). Title `Deadline passed`; body pending row 220 (do not reuse row 216's "The task has expired.").
+5. **Rows 187, 202, 203, 208**: the RUNNER_ASSIGNED admin expire (not built on `feat/api-runner-1`): guard RUNNER_ASSIGNED, no open offer, deadline not passed, `eligibleRemaining = 0` over **online** eligible runners; reason required 10–500; 409 `expiry_not_allowed` `{ reason }`.
+6. **Availability flags**: `canExpire { noRunner, deadlinePassed }` on the admin errand detail (proposed shape, replaces `canExpireNoRunner`). Route: one `POST /errands/:id/expire` `{ reason }` for both, or `PATCH /errands/:id/status`; api-contract's choice.
+7. **Expiry view**: add `fromStatus` to `expiry` (tells the two admin expiries apart); later `trigger: 'matching_exhausted'` with note `No eligible runners left` when exhaustion is built (row 179).
+8. **Row 205**: every new offer `offerExpiresAt` = min(now + window, `deadlineAt`) (today `now + adminOfferWindowSeconds`, `errands.service.ts` assign); same rule for auto-offers later.
+9. **Row 210**: enum migration on `errand_assignment_decline_reason_enum` adding `too_far`, `not_available`, `other`; decline DTO and 400 `decline_reason_invalid` `allowed` list; `purchase_within_limit` stays for `over_purchase_limit` only; the admin views already return `declineReason`.
+10. **Rows 206, 221**: `deadlineAt` default at create when absent (value pending row 221), then NOT NULL migration with the row-221 backfill; expose the default (e.g. `defaultDeadlineHours` on a config read) for the customer `Flexible` caption.
+11. **Row 215**: the candidates read (N-20, proposed) returns offline-but-otherwise-eligible runners flagged `offline: true`, outside `eligibleRemaining`.
+12. **Row 204 / AQ-30**: when exhaustion is built, count only eligible online runners; how a task never offered with an empty online pool is treated waits for AQ-30.
+13. **Check (security, minor)**: `POST /runners/me/verifications` accepts a client `documentS3Key`. With restricted ID storage (rows 125, 162) a runner should not be able to attach an arbitrary storage key; refuse it for runner callers (the interim payment-identity record, row 218, needs no key).
+
+### core-ui items (numbered)
+1. **Row 210**: `OfferDeclineReason` (`feat/core-runner-batch-1`, `models/runner_job.dart`) gains `tooFar`, `notAvailable`, `other` (wire `too_far`, `not_available`, `other`); decline sends the chosen value; 409 `purchase_within_limit` code constant.
+2. **Row 210**: R-23 `DeclineReasonDialog` (C-35 + C-16 `NitumeRadioRow`, spec in `v-jobs.md` "Decline reason picker"), one widget for `v-jobs` and `v-job-detail`.
+3. **Row 209**: a combined National ID status on `RunnerVerificationDocuments` (e.g. `nationalIdStatus` → approved | rejected | pending | missing, plus which side is rejected), the row-209 rule; legacy side-less records ignored (proposed).
+4. **Row 218**: a repository call to create the pending `payment_identity` record (`POST /runners/me/verifications`), skipped when one is pending or approved.
+
+### flutter-runner items (screens not built; build to the updated specs)
+1. `v-jobs` / `v-job-detail`: R-23 decline dialog; offline offers notice (row 215); busy rules (row 211).
+2. `v-active`: several active-set jobs (`Other jobs`, proposed, row 211).
+3. `v-onboard-pending`, `v-profile`: combined National ID status and the side caption (row 209); phone row `Verified` (row 217).
+4. `v-onboard-id`: per-side rejected state (row 209).
+5. `v-onboard-selfie`: interim payment-identity call on submit (row 218).
+
+### flutter-customer items
+1. `v-new-details`: the `Flexible` caption, **after row 221** and API item 10. Nothing else; PAYMENT_CONFIRMED → EXPIRED reaches the existing EXPIRED screen.
+
+### web-parity items
+Admin findings 29–32 in `docs/audits/admin-gap-report.md` (round 12).
+
+### Built screens that conflict
+| Area | Branch @ file | Conflict | Fix owner |
+|---|---|---|---|
+| Core decline reasons | `feat/core-runner-batch-1` @ `models/runner_job.dart:9-20` | Only `over_purchase_limit` | core-ui (item 1) |
+| Core ID grouping | `main` @ `models/runner_account.dart:218-280` | Groups sides; no combined status | core-ui (item 3) |
+| Admin task drawer / queue | `main` @ `task-drawer.ts`, `task-queue.panel.ts` | No PAYMENT_CONFIRMED expire, no reason labels, no offline runners (with findings 16–28) | web-parity, after api-contract |
+| Customer details wizard | `main` @ `wizard/details_screen.dart` | No `Flexible` caption | flutter-customer, after row 221 |
+| Runner app | `main` | None (screens not built) | — |
+
+### New questions for the owner
+- Row 220 (open): ops feed body for a PAYMENT_CONFIRMED task past its deadline.
+- Row 221 (open): default `deadlineAt` and backfill.
+- AQ-28: PAYMENT_CONFIRMED `Expire task` uses the same dialog and required 10–500 reason? Recommended yes.
+- AQ-29: send the customer the usual `errand.EXPIRED` notification on PAYMENT_CONFIRMED → EXPIRED? Recommended yes.
+- AQ-30: is a task never offered, with no eligible runner online, "exhausted"? Proposed no (exhaustion needs at least one offer made).
+- AQ-31: offline runners in the Reassign dialog as a collapsed, selectable group? Proposed yes.
+- RQ-32: must the runner pick a decline reason (UI), and is `Other reason` without text enough? Proposed yes to both.
