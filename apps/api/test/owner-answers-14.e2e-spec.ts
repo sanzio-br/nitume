@@ -172,6 +172,22 @@ describe('Owner answers round 14 (e2e)', () => {
     locations: [{ pointType: 'dropoff', lat: point.lat, lon: point.lng, addressText: 'Test point' }],
   });
 
+  /** Waits for the notifications worker to write a feed row. */
+  const feedRows = async (userId: string, eventType: string, errandId: string, min = 1): Promise<Record<string, unknown>[]> => {
+    let rows: Record<string, unknown>[] = [];
+    for (let i = 0; i < 40; i += 1) {
+      rows = await db().query(
+        'SELECT * FROM "notifications" WHERE "userId" = $1 AND "eventType" = $2 AND "errandId" = $3',
+        [userId, eventType, errandId],
+      );
+      if (rows.length >= min) {
+        return rows;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return rows;
+  };
+
   const NAIROBI = { lat: -1.2864, lng: 36.8172 };
   const MOMBASA = { lat: -4.04, lng: 39.7 };
 
@@ -219,11 +235,84 @@ describe('Owner answers round 14 (e2e)', () => {
         .send({ total: 1000, baseFee: 600, distanceFee: 400 })
         .expect(422);
       expect(quote.body).toMatchObject({ code: 'location_outside_service_area', pointType: 'dropoff' });
+      // Row 236: the customer is told once, however often the quote is retried, and may cancel.
+      await http()
+        .post(`/api/v1/errands/${requested.id}/quote`)
+        .set(bearer(admin.token))
+        .send({ total: 1000, baseFee: 600, distanceFee: 400 })
+        .expect(422);
+      const told = await feedRows(customer.id, 'service_area.outside', requested.id);
+      expect(told).toHaveLength(1);
+      expect(told[0]).toMatchObject({ title: 'Outside our service area' });
+      await new Promise((r) => setTimeout(r, 1_500));
+      const count = async (errandId: string) =>
+        Number(
+          (
+            await db().query(
+              `SELECT COUNT(*) AS n FROM "notifications" WHERE "userId" = $1 AND "eventType" = 'service_area.outside' AND "errandId" = $2`,
+              [customer.id, errandId],
+            )
+          )[0].n,
+        );
+      expect(await count(requested.id)).toBe(1);
+      // A refused submit sends nothing (the customer sees the 422 directly).
+      expect(await count(draft.id)).toBe(0);
       const statuses: { id: string; s: string }[] = await db().query(
         'SELECT id, status::text AS s FROM "errands" WHERE id = ANY($1)',
         [[draft.id, requested.id]],
       );
       expect(Object.fromEntries(statuses.map((r) => [r.id, r.s]))).toEqual({ [draft.id]: 'DRAFT', [requested.id]: 'REQUESTED' });
+    });
+  });
+
+  describe('row 236: the customer cancels a task refused as out-of-area', () => {
+    it('REQUESTED -> CANCELLED by the customer stays allowed', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const task = await createErrand(customer, at(MOMBASA));
+      await http().post(`/api/v1/errands/${task.id}/submit`).set(bearer(customer.token)).expect(201);
+      onlyArea('oa14-nbo3', NAIROBI);
+      await http().patch(`/api/v1/errands/${task.id}/status`).set(bearer(customer.token)).send({ to: 'CANCELLED' }).expect(200);
+    });
+  });
+
+  describe('row 237: no payment after the deadline; the customer sets a new one', () => {
+    it('refuses to start payment once the deadline passed, then pays after a new deadline', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const task = await createErrand(customer, { deadlineAt: new Date(Date.now() + 3_600_000).toISOString() });
+      await http().post(`/api/v1/errands/${task.id}/submit`).set(bearer(customer.token)).expect(201);
+      await http()
+        .post(`/api/v1/errands/${task.id}/quote`)
+        .set(bearer(admin.token))
+        .send({ total: 1000, baseFee: 600, distanceFee: 400 })
+        .expect(201);
+      await http().patch(`/api/v1/errands/${task.id}/status`).set(bearer(customer.token)).send({ to: 'ACCEPTED' }).expect(200);
+      await db().query(`UPDATE "errands" SET "deadlineAt" = now() - interval '1 minute' WHERE id = $1`, [task.id]);
+
+      const refused = await http().post(`/api/v1/payments/${task.id}/initiate`).set(bearer(customer.token)).send({}).expect(409);
+      expect(refused.body).toMatchObject({ code: 'deadline_passed_before_payment', deadlineAt: expect.any(String) });
+
+      const past = await http()
+        .patch(`/api/v1/errands/${task.id}`)
+        .set(bearer(customer.token))
+        .send({ deadlineAt: new Date(Date.now() - 60_000).toISOString() })
+        .expect(400);
+      expect(past.body.code).toBe('deadline_in_past');
+      const [{ title: before }]: { title: string | null }[] = await db().query('SELECT title FROM "errands" WHERE id = $1', [task.id]);
+      const next = new Date(Date.now() + 2 * 3_600_000).toISOString();
+      const moved = await http().patch(`/api/v1/errands/${task.id}`).set(bearer(customer.token)).send({ deadlineAt: next }).expect(200);
+      expect(moved.body).toMatchObject({ deadlineAt: next, urgency: 'urgent', title: before });
+
+      const init = await http().post(`/api/v1/payments/${task.id}/initiate`).set(bearer(customer.token)).send({}).expect(201);
+      await http().post('/api/v1/payments/mpesa/callback').send({ reference: init.body.reference, resultCode: 0 }).expect(201);
+      const paid = await http().get(`/api/v1/errands/${task.id}`).set(bearer(customer.token)).expect(200);
+      expect(paid.body).toMatchObject({ status: 'PAYMENT_CONFIRMED', deadlineAt: next });
+      const late = await http()
+        .patch(`/api/v1/errands/${task.id}`)
+        .set(bearer(customer.token))
+        .send({ deadlineAt: new Date(Date.now() + 5 * 3_600_000).toISOString() })
+        .expect(409);
+      expect(late.body).toMatchObject({ code: 'deadline_not_editable', status: 'PAYMENT_CONFIRMED' });
     });
   });
 });
