@@ -105,7 +105,7 @@
 | 203 | (2026-10-19) Expire reason required, 10–500 characters | drawer-task-offer, N-20 |
 | 204 | (2026-10-19) Offline/busy runners do not block exhaustion; only eligible online runners count | N-20, drawer-task-offer (Data) |
 | 205 | (2026-10-19) An open offer ends at once when `deadlineAt` passes; `offerExpiresAt` never beyond the deadline | N-20, drawer-task-offer (`Offer ends`, Reassign line) |
-| 206 | (2026-10-19) Every task has `deadlineAt`, required at creation, contract default when the customer gives none; no indefinite tasks. Default (row 221): creation + 24 h; backfill open tasks `createdAt` + 24 h, closed tasks their closing time; then NOT NULL | drawer-task-offer (`No deadline` only on legacy tasks) |
+| 206 | (2026-10-19) Every task has `deadlineAt`, required at creation, contract default when the customer gives none; no indefinite tasks. Read with rows 235, 239 (a), 240: the default is 24 h from payment, NULL before payment (CHECK), backfilled unpaid values cleared | drawer-task-offer (`No deadline yet` before payment) |
 | 207 | (2026-10-19) No pre-offer purchase-limit exception; runners below the limit stay ineligible | drawer-task-offer (Reassign list) |
 | 208 | (2026-10-19) RUNNER_ASSIGNED → EXPIRED by System or Admin confirmed | none (System Design §3.3) |
 | 210 | (2026-10-19) Decline reasons `over_purchase_limit`, `too_far`, `not_available`, `other` (schema approved); runner reason picker | drawer-task-offer (`Reason` labels) |
@@ -127,6 +127,10 @@
 | 236 | (2026-10-19) A task refused at quote (outside every service area): notify the customer and let them cancel; no admin cancel transition | drawer-task-requote |
 | 237 | (2026-10-19) Refuse to start payment once a customer-chosen deadline has passed; the customer picks a new deadline | none (customer screens) |
 | 238 | (2026-10-19) The row-221 backfill stays as built | none |
+| 240 | (2026-10-19) Backfilled deadlines on unpaid tasks cleared to NULL; their clock starts at payment | drawer-task-offer (`No deadline yet`) |
+| 242 | (2026-10-19) The quote is kept when the deadline changes after quoting | drawer-task-requote (no re-quote prompt) |
+| 243 | (2026-10-19) Only the customer may set a new deadline before payment: **no admin deadline edit** in any admin screen | drawer-task-offer |
+| 244 | (2026-10-19) The customer may switch back to `Flexible` before payment | none (customer) |
 | 142 | (2026-10-16) "Ordinary approval is capped at min(verified item amount paid to Nitume, runner max_purchase_advance) and must not silently override the runner's limit. Paying above max_purchase_advance needs an explicit exceptional override with an auditable reason and actor." Not the earlier "raise the runner's limit first" | drawer-runner-payout (§5 2b), drawer-runner-purchase-limit, N-21 |
 | 143 | (2026-10-16) No payout-time promise/SLA anywhere; status only | p-payout-requests (and the runner copy it triggers) |
 | 144 | (2026-10-16) Runner ID/selfie images kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; never indefinitely; retention configurable; access restricted and logged throughout | p-runners-verification-documents |
