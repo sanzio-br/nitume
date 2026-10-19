@@ -411,3 +411,14 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 
 **Open:** owner rows 240–244; PR push blocked by permissions (owner to push release/owner-merge-2026-10-19).
 
+## 2026-10-19 (close-out)
+
+- Merged `feat/api-deadline-from-payment` (rows 233, 235–244 incl. row 241 owner copy) and
+  `docs/owner-answers-16-specs`. Owner decision rows 201–244 resolved (218 deferred, tracked in 222).
+- Dev DB `nitume` migrated through 1790103500000 with the normal migration command. Result: 16 paid tasks
+  have deadline = createdAt + 24 h (already past, so unassignable; "Deadline passed" ops items will be written
+  by the first deadline sweep once the API runs); the QUOTED task stays Flexible (no deadline); no open offers,
+  no status changes, no refund reviews, no new notifications.
+- Tests on merged main: API 637 unit + 108 e2e (nitume_test), admin 250, core 509, runner_device 13,
+  customer 131, runner 67.
+
