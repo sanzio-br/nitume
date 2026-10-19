@@ -3,6 +3,16 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Android 13+ push permission (FCM, row 31); asked once after sign-in. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- ID, selfie and evidence photos (row 124). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Location while online and during a job (rows 123, 124), asked after
+         x-location-disclosure. Background only during the live job window
+         through a location foreground service. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <application
         android:label="Nitume Runner"
         android:name="${applicationName}"

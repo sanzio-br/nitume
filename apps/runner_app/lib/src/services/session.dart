@@ -68,6 +68,7 @@ class SessionController extends ChangeNotifier {
   bool _suspended = false;
   bool _wrongAccount = false;
   bool _loggingOut = false;
+  bool _freshSignIn = false;
 
   SessionStatus get status => _status;
 
@@ -95,8 +96,18 @@ class SessionController extends ChangeNotifier {
     return w;
   }
 
+  /// True once after an OTP sign-in (and its name capture) reached
+  /// [SessionStatus.signedIn]: the app then runs the onboarding routing
+  /// (D-1, `v-auth-otp` step 3). A restored session lands on the shell.
+  bool takeFreshSignIn() {
+    final f = _freshSignIn && _status == SessionStatus.signedIn;
+    if (f) _freshSignIn = false;
+    return f;
+  }
+
   /// Restores a persisted session.
   Future<void> restore() async {
+    _freshSignIn = false;
     _set(SessionStatus.restoring);
     final tokens = await _auth.restoreSession();
     if (tokens == null) {
@@ -137,6 +148,7 @@ class SessionController extends ChangeNotifier {
     } on NitumeApiException {
       // Keep the verify response's user.
     }
+    _freshSignIn = true;
     _signIn(user);
   }
 
@@ -156,6 +168,7 @@ class SessionController extends ChangeNotifier {
     }
     await _dropSession();
     _loggingOut = false;
+    _freshSignIn = false;
     _set(SessionStatus.signedOut);
   }
 
@@ -195,9 +208,7 @@ class SessionController extends ChangeNotifier {
   void _signIn(AppUser user) {
     _user = user;
     final name = user.displayName?.trim() ?? '';
-    // TODO(flutter-runner): route to onboarding (v-onboard-id / pending)
-    // from GET /runners/me + verifications once core R-19 and the
-    // onboarding screens land (v-auth-otp routing step 3).
+    // Onboarding routing (step 3) runs in the app on [takeFreshSignIn].
     _set(name.isEmpty ? SessionStatus.needsName : SessionStatus.signedIn);
     if (name.isNotEmpty) {
       _push.registerAfterSignIn().catchError((Object _) {});
