@@ -157,6 +157,12 @@ describe('PaymentsService.initiate after the deadline (row 237)', () => {
     expect(stk.initiateStk).not.toHaveBeenCalled();
   });
 
+  it('never refuses a Flexible task: it has no deadline until payment (rows 235, 239)', async () => {
+    const { service, stk } = build({ deadlineAt: null });
+    await service.initiate('e-1', user);
+    expect(stk.initiateStk).toHaveBeenCalledTimes(1);
+  });
+
   it('pays normally while the deadline is ahead', async () => {
     const { service, stk } = build({ deadlineAt: new Date(Date.now() + 3_600_000) });
     await service.initiate('e-1', user);

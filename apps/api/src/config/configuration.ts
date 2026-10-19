@@ -62,7 +62,7 @@ export interface AppConfig {
     urgentWithinHours: number;
     scheduledAfterHours: number;
     disputeWindowHours: number;
-    /** Row 221: deadlineAt = creation + this many hours when the customer gives none. */
+    /** Rows 221, 235: a Flexible task (no customer deadline) gets payment confirmation + this many hours. */
     defaultDeadlineHours: number;
   };
   runnerVerification: {
@@ -289,8 +289,8 @@ export const configuration = (): AppConfig => ({
   errands: {
     urgentWithinHours: Number.parseFloat(process.env.ERRANDS_URGENT_WITHIN_HOURS ?? '4'),
     scheduledAfterHours: Number.parseFloat(process.env.ERRANDS_SCHEDULED_AFTER_HOURS ?? '72'),
-    // Row 221 (owner, 2026-10-19): every task has a deadline; without one from
-    // the customer it is creation time + 24 h. Read by clients through
+    // Rows 221, 235, 239 (owner, 2026-10-19): a task without a customer
+    // deadline gets payment confirmation + 24 h. Read by clients through
     // GET /errands/defaults, never hard-coded in an app.
     defaultDeadlineHours: Number.parseFloat(process.env.ERRANDS_DEFAULT_DEADLINE_HOURS ?? '24'),
     // TODO(owner): dispute window length is not defined anywhere. After it,
