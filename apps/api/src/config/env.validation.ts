@@ -1,3 +1,5 @@
+import { parseServiceAreas } from '../runners/service-areas';
+
 /**
  * Fail-fast environment checks run by ConfigModule before any provider is
  * built. Returns the env unchanged; throws to stop the process.
@@ -57,5 +59,7 @@ export const validateEnv = (env: Record<string, unknown>): Record<string, unknow
   if (retention !== undefined && !(Number.parseInt(retention, 10) > 0)) {
     throw new Error(`RUNNER_ID_RETENTION_DAYS must be a positive number of days (got '${retention}')`);
   }
+  // Row 116: a malformed service-area list stops the start-up, not a request.
+  parseServiceAreas(str(env.RUNNER_SERVICE_AREAS));
   return env;
 };

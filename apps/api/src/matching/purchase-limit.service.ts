@@ -1,6 +1,7 @@
-import { ForbiddenException, HttpStatus, Injectable } from '@nestjs/common';
+import { ForbiddenException, HttpStatus, Injectable, OnModuleInit } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 import { ApiError } from '../common/api-error';
-import { AssignmentDeclineReason, UserRole } from '../common/enums';
+import { AssignmentDeclineReason, RunnerAvailability, UserRole } from '../common/enums';
 import { ErrandAssignment } from '../errands/errand-assignment.entity';
 import { ErrandsService, ViewerContext } from '../errands/errands.service';
 import { RunnerPayoutsService } from '../payments/runner-payouts.service';
@@ -28,12 +29,75 @@ export interface PurchaseCheck {
  * purchase exceeds their configured limit."
  */
 @Injectable()
-export class PurchaseLimitService {
+export class PurchaseLimitService implements OnModuleInit {
   constructor(
     private readonly errands: ErrandsService,
     private readonly runners: RunnersService,
     private readonly ledger: RunnerPayoutsService,
   ) {}
+
+  /**
+   * Rows 113, 186 (owner, 2026-10-16): a runner whose max_purchase_advance
+   * is below the task's required purchase cannot accept it and is not
+   * offered it. There is no approved pre-accept exception record (the row
+   * 142 exception is decided at reimbursement review), so the limit applies
+   * as stored. Row 126: an unverified runner is not offered a task either.
+   */
+  onModuleInit(): void {
+    this.errands.onRunnerAccept(async (manager, { errandId, runnerProfileId }) => {
+      const check = await this.checkIn(manager, errandId, runnerProfileId);
+      if (check.overLimit) {
+        throw new ApiError(HttpStatus.CONFLICT, 'purchase_limit_exceeded', "This job's purchase is above your purchase limit", {
+          requiredPurchase: check.requiredPurchase,
+          maxPurchaseAdvance: check.maxPurchaseAdvance,
+        });
+      }
+    });
+    this.errands.onAssign(async (manager, { errandId, runnerProfileId }) => {
+      const summary = await this.runners.verificationSummary(runnerProfileId, manager);
+      if (!summary.verified) {
+        throw new ApiError(HttpStatus.CONFLICT, 'runner_not_eligible', 'This runner is not verified yet', {
+          reason: 'not_verified',
+          runnerProfileId,
+        });
+      }
+      // Row 187 (c): a runner on another accepted/active task is not eligible.
+      const runner = await this.runners.profileById(runnerProfileId, manager);
+      if (runner.availability === RunnerAvailability.BUSY) {
+        throw new ApiError(HttpStatus.CONFLICT, 'runner_not_eligible', 'This runner is on another job', {
+          reason: 'runner_busy',
+          runnerProfileId,
+        });
+      }
+      const check = await this.checkIn(manager, errandId, runnerProfileId);
+      if (check.overLimit) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'runner_not_eligible',
+          "The task's purchase is above this runner's purchase limit",
+          {
+            reason: 'over_purchase_limit',
+            runnerProfileId,
+            requiredPurchase: check.requiredPurchase,
+            maxPurchaseAdvance: check.maxPurchaseAdvance,
+          },
+        );
+      }
+    });
+  }
+
+  /** The purchase check inside a transaction (no access check). */
+  async checkIn(manager: EntityManager | undefined, errandId: string, runnerProfileId: string): Promise<PurchaseCheck> {
+    const runner = await this.runners.profileById(runnerProfileId, manager);
+    const required = await this.ledger.itemPaidToNitume(errandId, manager);
+    return {
+      errandId,
+      runnerProfileId: runner.id,
+      requiredPurchase: required.toFixed(2),
+      maxPurchaseAdvance: Number(runner.maxPurchaseAdvance).toFixed(2),
+      overLimit: required > Number(runner.maxPurchaseAdvance),
+    };
+  }
 
   /**
    * Runner on the current assignment: their own check. Admin: for
@@ -70,27 +134,21 @@ export class PurchaseLimitService {
   }
 
   /**
-   * The current runner declines because the required purchase is above their
-   * limit. 409 `purchase_within_limit` when it is not (other declines are not
-   * part of row 108); 409 `assignment_not_declinable` after RUNNER_ASSIGNED.
+   * The offered runner declines (rows 108, 113). With `over_purchase_limit`
+   * the limit is checked (409 `purchase_within_limit` when the purchase is
+   * within it); without a reason nothing is checked. Such declines are never
+   * counted against the runner (no runner metric reads declines). 409
+   * `assignment_not_declinable` after RUNNER_ASSIGNED, 409 `offer_expired`.
    */
   async decline(
     errandId: string,
     runnerUserId: string,
-    reason: AssignmentDeclineReason,
-  ): Promise<PurchaseCheck & { assignmentId: string; status: string; declineReason: AssignmentDeclineReason }> {
+    reason: AssignmentDeclineReason | null,
+  ): Promise<PurchaseCheck & { assignmentId: string; status: string; declineReason: AssignmentDeclineReason | null }> {
     let check: PurchaseCheck | null = null;
     const assignment = await this.errands.declineAssignment(errandId, runnerUserId, reason, async (manager, ctx) => {
-      const runner = await this.runners.profileById(ctx.runnerProfileId);
-      const required = await this.ledger.itemPaidToNitume(errandId, manager);
-      check = {
-        errandId,
-        runnerProfileId: runner.id,
-        requiredPurchase: required.toFixed(2),
-        maxPurchaseAdvance: Number(runner.maxPurchaseAdvance).toFixed(2),
-        overLimit: required > Number(runner.maxPurchaseAdvance),
-      };
-      if (!check.overLimit) {
+      check = await this.checkIn(manager, errandId, ctx.runnerProfileId);
+      if (reason === AssignmentDeclineReason.OVER_PURCHASE_LIMIT && !check.overLimit) {
         throw new ApiError(
           HttpStatus.CONFLICT,
           'purchase_within_limit',

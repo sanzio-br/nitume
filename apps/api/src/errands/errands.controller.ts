@@ -35,6 +35,7 @@ import {
   ErrandView,
   ErrandsService,
   ListErrandViewsResponse,
+  withoutCustomerPricing,
 } from './errands.service';
 import { Errand } from './errand.entity';
 import { Quote } from './quote.entity';
@@ -173,9 +174,9 @@ export class ErrandsController {
 
   @Get(':id/history')
   history(@Param('id') id: string, @CurrentUser() user: AuthContext) {
-    return this.errands.getById(id, { role: user.role, userId: user.userId }).then(() =>
-      this.errands.historyFor(id),
-    );
+    // Admin viewers: each row carries `actor { id, displayName }` (null for system rows).
+    const viewer = { role: user.role, userId: user.userId };
+    return this.errands.getById(id, viewer).then(() => this.errands.historyViewsFor(id, viewer));
   }
 
   @Post(':id/submit')
@@ -211,13 +212,9 @@ export class ErrandsController {
     @Body() dto: TransitionErrandDto,
   ): Promise<ErrandResult> {
     const actorType: StatusHistoryActor = this.actorTypeFor(user.role);
-    return this.errands.transition(
-      id,
-      dto.to,
-      { type: actorType, id: user.userId },
-      dto.note,
-      { role: user.role, userId: user.userId },
-    );
+    return this.errands
+      .transition(id, dto.to, { type: actorType, id: user.userId }, dto.note, { role: user.role, userId: user.userId })
+      .then((r) => (user.role === UserRole.RUNNER ? { ...r, errand: withoutCustomerPricing(r.errand) } : r));
   }
 
   private actorTypeFor(role: UserRole): StatusHistoryActor {

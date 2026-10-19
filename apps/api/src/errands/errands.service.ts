@@ -5,7 +5,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { UsersService } from '../users/users.service';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -172,6 +174,14 @@ export type ErrandView = Errand & {
   lastAssignment?: ErrandAssignmentView | null;
   /** Admin detail only: the admin offer window in seconds (MATCHING_ADMIN_OFFER_WINDOW_SECONDS). */
   offerWindowSeconds?: number;
+  /**
+   * Admin views (row 185): true when `deadlineAt` is at or before now and
+   * the task is still RUNNER_ASSIGNED or PAYMENT_CONFIRMED (no runner
+   * accepted). False without a deadline.
+   */
+  deadlinePassed?: boolean;
+  /** Admin detail of an EXPIRED task: how it expired. Null otherwise. */
+  expiry?: ErrandExpiryView | null;
 };
 
 /** States in which the assigned runner may write `runnerNotes`. */
@@ -345,6 +355,32 @@ export interface MerchantDetailsUpdatedEvent {
 /** Domain event emitted after a runner declines an assignment (row 108). */
 export const ASSIGNMENT_DECLINED_EVENT = 'assignment.declined';
 
+/** Row 185: the sweep expired a RUNNER_ASSIGNED task at its customer deadline (admin feed `deadline_passed`). */
+export const TASK_DEADLINE_EXPIRED_EVENT = 'errand.deadline_expired';
+
+export interface TaskDeadlineExpiredEvent {
+  errandId: string;
+  reference: string;
+  deadlineAt: string;
+  /** The offer that was still open and closed with the task (row 205 proposal), else null. */
+  closedOffer: { assignmentId: string; runnerProfileId: string } | null;
+}
+
+/** History note of the row-185 expiry; also how `expiry.trigger` is recognised. */
+export const DEADLINE_EXPIRY_NOTE = 'Customer deadline passed';
+
+/** How an EXPIRED task got there (admin views, round-11 item 6), derived from its history row. */
+export interface ErrandExpiryView {
+  /** `deadline_passed` (row 185) | `admin` | `system` (any other system expiry, e.g. pre-round-9 offer lapses). */
+  trigger: 'deadline_passed' | 'admin' | 'system';
+  at: Date;
+  by: { id: string; displayName: string | null } | null;
+  note: string | null;
+}
+
+/** History row with its actor's display name (round-11 item 6). */
+export type ErrandHistoryView = ErrandStatusHistory & { actor: { id: string; displayName: string | null } | null };
+
 /** Row 157: the offer-expiry job expired an admin offer; the task waits for a new runner. */
 export const ASSIGNMENT_EXPIRED_EVENT = 'assignment.expired';
 
@@ -361,7 +397,8 @@ export interface AssignmentDeclinedEvent {
   reference: string;
   assignmentId: string;
   runnerProfileId: string;
-  reason: AssignmentDeclineReason;
+  /** `over_purchase_limit` (row 108) or null (no reason given, row 113). */
+  reason: AssignmentDeclineReason | null;
 }
 
 /**
@@ -370,8 +407,46 @@ export interface AssignmentDeclinedEvent {
  */
 export type DeclineGuard = (
   manager: EntityManager,
-  ctx: { errandId: string; runnerProfileId: string; reason: AssignmentDeclineReason },
+  ctx: { errandId: string; runnerProfileId: string; reason: AssignmentDeclineReason | null },
 ) => Promise<void>;
+
+/**
+ * Runs inside the runner's accept transaction (errand and runner profile
+ * locked, RUNNER_ASSIGNED -> RUNNER_EN_ROUTE); throwing refuses the accept.
+ * The matching module checks the purchase limit here (rows 113, 186).
+ */
+export type AcceptGuard = (
+  manager: EntityManager,
+  ctx: { errandId: string; runnerProfileId: string },
+) => Promise<void>;
+
+/**
+ * Runs inside the admin assign transaction (errand locked) before the offer
+ * is written; throwing refuses the assign. Matching checks the runner's
+ * eligibility here (row 186: purchase limit).
+ */
+export type AssignGuard = (
+  manager: EntityManager,
+  ctx: { errandId: string; runnerProfileId: string },
+) => Promise<void>;
+
+/**
+ * RA-20: states in which the accepted runner is on the job, so the runner
+ * is `busy` (one active job at a time). Leaving this set (AWAITING_CUSTOMER,
+ * FAILED, CANCELLED, DISPUTED) frees the runner.
+ */
+export const RUNNER_ACTIVE_JOB_STATES: ReadonlySet<ErrandStatus> = new Set([
+  ErrandStatus.RUNNER_EN_ROUTE,
+  ErrandStatus.ARRIVED,
+  ErrandStatus.IN_PROGRESS,
+]);
+
+/** Row 185: the task's customer deadline has passed (deadlineAt null = no deadline). */
+export const deadlinePassed = (errand: Pick<Errand, 'deadlineAt'>, now: Date = new Date()): boolean =>
+  !!errand.deadlineAt && errand.deadlineAt.getTime() <= now.getTime();
+
+const deadlinePassedFor = (e: Pick<Errand, 'status' | 'deadlineAt'>): boolean =>
+  (e.status === ErrandStatus.RUNNER_ASSIGNED || e.status === ErrandStatus.PAYMENT_CONFIRMED) && deadlinePassed(e);
 
 /** States in which an admin may replace an expired quote (rows 46, 72). */
 const REQUOTABLE = new Set<ErrandStatus>([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]);
@@ -397,6 +472,8 @@ export class ErrandsService {
   private readonly confirmationHooks: ConfirmationHook[] = [];
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
   private readonly requoteGuards: RequoteGuard[] = [];
+  private readonly acceptGuards: AcceptGuard[] = [];
+  private readonly assignGuards: AssignGuard[] = [];
 
   private readonly logger = new Logger(ErrandsService.name);
 
@@ -421,6 +498,7 @@ export class ErrandsService {
     @InjectRepository(Quote)
     private readonly quotes: Repository<Quote>,
     private readonly config?: ConfigService,
+    @Optional() private readonly users?: UsersService,
   ) {}
 
   private urgencyThresholds() {
@@ -524,6 +602,10 @@ export class ErrandsService {
    * errand (owner customer, assigned runner, admin). 404 until quoted.
    */
   async latestQuoteFor(errandId: string, viewer: ViewerContext): Promise<Quote> {
+    if (viewer.role === UserRole.RUNNER) {
+      // RA-2: the quote carries the service fee and the customer's total.
+      throw new ForbiddenException('Runners do not see the customer quote');
+    }
     await this.getById(errandId, viewer);
     const quote = await this.quotes.findOne({
       where: { errandId },
@@ -556,8 +638,50 @@ export class ErrandsService {
       view.assignments = all.map((a) => toAssignmentView(a, summaries.get(a.runnerProfileId) ?? null));
       view.lastAssignment = view.assignments[0] ?? null;
       view.offerWindowSeconds = this.adminOfferWindowSeconds();
+      view.deadlinePassed = deadlinePassedFor(view);
+      view.expiry = view.status === ErrandStatus.EXPIRED ? await this.expiryOf(errandId) : null;
     }
     return view;
+  }
+
+  /** The RUNNER_ASSIGNED -> EXPIRED history row as an expiry view (admin, round-11 item 6). */
+  private async expiryOf(errandId: string): Promise<ErrandExpiryView | null> {
+    const row = await this.history.findOne({
+      where: { errandId, toStatus: ErrandStatus.EXPIRED },
+      order: { createdAt: 'DESC' },
+    });
+    if (!row) {
+      return null;
+    }
+    const names = row.actorId && this.users ? await this.users.displayNames([row.actorId]) : new Map<string, string>();
+    return {
+      trigger:
+        row.actorType === StatusHistoryActor.ADMIN
+          ? 'admin'
+          : row.note === DEADLINE_EXPIRY_NOTE
+            ? 'deadline_passed'
+            : 'system',
+      at: row.createdAt,
+      by: row.actorId ? { id: row.actorId, displayName: names.get(row.actorId) ?? null } : null,
+      note: row.note ?? null,
+    };
+  }
+
+  /**
+   * `GET /errands/:id/history` (round-11 item 6). Admin viewers get each
+   * row's `actor { id, displayName }` (null for system rows). Customers and
+   * runners get the plain rows: no actor names (reviewer B2).
+   */
+  async historyViewsFor(errandId: string, viewer: ViewerContext): Promise<ErrandStatusHistory[] | ErrandHistoryView[]> {
+    const rows = await this.historyFor(errandId);
+    if (viewer.role !== UserRole.ADMIN) {
+      return rows;
+    }
+    const ids = [...new Set(rows.map((r) => r.actorId).filter((v): v is string => !!v))];
+    const names = ids.length > 0 && this.users ? await this.users.displayNames(ids) : new Map<string, string>();
+    return rows.map((r) =>
+      Object.assign(r, { actor: r.actorId ? { id: r.actorId, displayName: names.get(r.actorId) ?? null } : null }),
+    );
   }
 
   /** `listFor` with each item carrying its current assignment (batched). */
@@ -569,6 +693,9 @@ export class ErrandsService {
     const items = await this.withAssignments(page.items, viewer);
     if (viewer.role === UserRole.ADMIN && items.length > 0) {
       await this.attachLastAssignments(items);
+      for (const item of items) {
+        item.deadlinePassed = deadlinePassedFor(item);
+      }
     }
     return { items, nextCursor: page.nextCursor };
   }
@@ -633,6 +760,77 @@ export class ErrandsService {
   ): Promise<ErrandAssignment | null> {
     const repo = manager ? manager.getRepository(ErrandAssignment) : this.assignments;
     return repo.findOne({ where: { errandId, runnerProfileId }, order: { createdAt: 'DESC' } });
+  }
+
+  /**
+   * RA-1: open offers of a runner, newest first: RUNNER_ASSIGNED errands
+   * whose current assignment is this runner's `assigned` offer, still open
+   * (no deadline, or `offerExpiresAt` in the future) and before the task's
+   * own deadline (row 185). Cursor over the offer's creation (opaque).
+   */
+  async openOffersFor(
+    runnerProfileId: string,
+    opts: { limit?: number; cursor?: string | null; now?: Date } = {},
+  ): Promise<{ items: { errand: Errand; assignment: ErrandAssignment }[]; nextCursor: string | null }> {
+    const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+    const now = opts.now ?? new Date();
+    const qb = this.assignments
+      .createQueryBuilder('a')
+      .innerJoin(Errand, 'e', 'e.id = a."errandId"')
+      .where('a."runnerProfileId" = :runnerProfileId', { runnerProfileId })
+      .andWhere('a.status = :open', { open: AssignmentStatus.ASSIGNED })
+      .andWhere('e.status = :assigned', { assigned: ErrandStatus.RUNNER_ASSIGNED })
+      .andWhere('(a."offerExpiresAt" IS NULL OR a."offerExpiresAt" > :now)', { now })
+      .andWhere('(e."deadlineAt" IS NULL OR e."deadlineAt" > :now)', { now })
+      .andWhere(
+        `a.id = (SELECT a2.id FROM "errand_assignments" a2 WHERE a2."errandId" = a."errandId"
+                  ORDER BY a2."createdAt" DESC, a2.id DESC LIMIT 1)`,
+      )
+      .orderBy('a."createdAt"', 'DESC')
+      .addOrderBy('a.id', 'DESC')
+      .limit(limit + 1);
+    const decoded = decodeCursor(opts.cursor);
+    if (decoded) {
+      qb.andWhere('(a."createdAt", a.id) < (:cAt, :cId)', { cAt: new Date(decoded[0]), cId: decoded[1] });
+    }
+    const rows = await qb.getMany();
+    const page = rows.slice(0, limit);
+    const errands = page.length === 0 ? [] : await this.errands.find({ where: { id: In(page.map((a) => a.errandId)) } });
+    const byId = new Map(errands.map((e) => [e.id, e]));
+    const last = page[page.length - 1];
+    return {
+      items: page.flatMap((a) => {
+        const errand = byId.get(a.errandId);
+        return errand ? [{ errand, assignment: a }] : [];
+      }),
+      nextCursor:
+        rows.length > limit && last
+          ? Buffer.from(`${last.createdAt.toISOString()}::${last.id}`, 'utf-8').toString('base64')
+          : null,
+    };
+  }
+
+  /** Locations and items of errands (no access check), for runner projections. */
+  async locationsAndItemsFor(
+    errandIds: string[],
+  ): Promise<{ locations: Map<string, ErrandLocationView[]>; items: Map<string, ErrandItemView[]> }> {
+    const ids = [...new Set(errandIds)].filter(Boolean);
+    if (ids.length === 0) {
+      return { locations: new Map(), items: new Map() };
+    }
+    const [locationRows, itemRows] = await Promise.all([
+      this.locations.find({ where: { errandId: In(ids) } }),
+      this.items.find({ where: { errandId: In(ids) } }),
+    ]);
+    const locations = new Map<string, ErrandLocationView[]>();
+    for (const [k, rows] of groupBy(locationRows, (l) => l.errandId)) {
+      locations.set(k, rows.map(toLocationView));
+    }
+    const items = new Map<string, ErrandItemView[]>();
+    for (const [k, rows] of groupBy(itemRows, (i) => i.errandId)) {
+      items.set(k, rows.map(toItemView));
+    }
+    return { locations, items };
   }
 
   private derivedFields(
@@ -749,12 +947,13 @@ export class ErrandsService {
         a && (!customer || a.status === AssignmentStatus.ACCEPTED || acceptedInHistory.has(errand.id))
           ? toAssignmentView(a, summaries.get(a.runnerProfileId) ?? null)
           : null;
-      return Object.assign(errand, {
+      const view = Object.assign(errand, {
         assignment,
         locations: (locationsBy.get(errand.id) ?? []).map(toLocationView),
         items: (itemsBy.get(errand.id) ?? []).map(toItemView),
         ...this.derivedFields(errand, newestQuote.get(errand.id) ?? null),
       });
+      return viewer?.role === UserRole.RUNNER ? withoutCustomerPricing(view) : view;
     });
   }
 
@@ -1185,7 +1384,30 @@ export class ErrandsService {
     }
     await this.enforceSubject(manager, errand, actor, subject);
     if (accepting) {
-      await this.acceptOffer(manager, errandId);
+      const offer = await this.acceptOffer(manager, errandId);
+      // Row 185: past the customer deadline the task cannot be accepted any
+      // more, even before the sweep has expired it. Same code as a lapsed offer.
+      if (deadlinePassed(errand)) {
+        throw new ApiError(HttpStatus.CONFLICT, 'offer_expired', 'This task has passed its deadline and can no longer be accepted', {
+          offerExpiresAt: offer?.offerExpiresAt?.toISOString() ?? null,
+          reason: 'task_deadline_passed',
+          deadlineAt: (errand.deadlineAt as Date).toISOString(),
+        });
+      }
+      if (offer) {
+        // RA-8, RA-20: verified, online, no other job; the runner becomes busy.
+        await this.runners.startJob(offer.runnerProfileId, manager);
+        for (const g of this.acceptGuards) {
+          await g(manager, { errandId, runnerProfileId: offer.runnerProfileId });
+        }
+      }
+    }
+    // RA-20: the runner is free again once the job leaves the active states.
+    if (RUNNER_ACTIVE_JOB_STATES.has(fromStatus) && !RUNNER_ACTIVE_JOB_STATES.has(to)) {
+      const holder = await this.activeAssignmentFor(errandId, manager);
+      if (holder) {
+        await this.runners.endJob(holder.runnerProfileId, manager);
+      }
     }
     let acceptedQuote: Quote | null = null;
     if (fromStatus === ErrandStatus.QUOTED && to === ErrandStatus.ACCEPTED) {
@@ -1327,7 +1549,7 @@ export class ErrandsService {
    * Accepted in time, the assignment becomes `accepted` (decidedAt = now),
    * so its offerExpiresAt no longer reads as an open offer.
    */
-  private async acceptOffer(manager: EntityManager, errandId: string, now = new Date()): Promise<void> {
+  private async acceptOffer(manager: EntityManager, errandId: string, now = new Date()): Promise<ErrandAssignment | null> {
     const current = await this.activeAssignmentFor(errandId, manager);
     if (current?.offerExpiresAt && current.offerExpiresAt.getTime() <= now.getTime()) {
       throw new ApiError(
@@ -1343,6 +1565,85 @@ export class ErrandsService {
         decidedAt: now,
       });
     }
+    return current;
+  }
+
+  /** Registers a check run inside every runner accept (see `AcceptGuard`). */
+  onRunnerAccept(guard: AcceptGuard): void {
+    this.acceptGuards.push(guard);
+  }
+
+  /** Registers a check run inside every admin assign (see `AssignGuard`). */
+  onAssign(guard: AssignGuard): void {
+    this.assignGuards.push(guard);
+  }
+
+  /**
+   * Row 185 (owner, 2026-10-16): "RUNNER_ASSIGNED has two independent paths
+   * to EXPIRED: (1) the customer deadlineAt is reached with no runner
+   * accepted; (2) matching exhausted." This is path (1), run by the
+   * `offer-expiry` maintenance job before the lapse sweep: RUNNER_ASSIGNED
+   * -> EXPIRED (system) for every task whose `deadlineAt` has passed. The
+   * transition runs the termination hooks (refund review for a paid task,
+   * row 102), closes any open offer as `expired` and emits
+   * `errand.status_changed` (the customer's EXPIRED notification). Each
+   * errand is re-checked under its row lock; one failing never stops the
+   * batch. PAYMENT_CONFIRMED tasks are not touched (row 201 open). Returns
+   * the ids it expired.
+   */
+  async expirePastDeadline(
+    now: Date = new Date(),
+    limit = 100,
+    /** Restrict to these errands (tests on a shared database). */
+    onlyIds?: string[],
+  ): Promise<string[]> {
+    const qb = this.errands
+      .createQueryBuilder('e')
+      .select('e.id', 'id')
+      .where('e.status = :assigned', { assigned: ErrandStatus.RUNNER_ASSIGNED })
+      .andWhere('e."deadlineAt" IS NOT NULL AND e."deadlineAt" <= :now', { now });
+    if (onlyIds) {
+      qb.andWhere('e.id IN (:...onlyIds)', { onlyIds: onlyIds.length > 0 ? onlyIds : ['00000000-0000-0000-0000-000000000000'] });
+    }
+    const due = await qb.orderBy('e."deadlineAt"', 'ASC').limit(limit).getRawMany<{ id: string }>();
+    const expired: string[] = [];
+    for (const { id } of due) {
+      try {
+        const done = await this.inTx(async (manager): Promise<TaskDeadlineExpiredEvent | null> => {
+          const errand = await manager
+            .getRepository(Errand)
+            .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+          if (errand?.status !== ErrandStatus.RUNNER_ASSIGNED || !deadlinePassed(errand, now)) {
+            return null; // Accepted, cancelled or re-dated meanwhile.
+          }
+          // Row 205 (open, proposal built): an offer still open at the deadline ends with the task.
+          const open = await this.activeAssignmentFor(id, manager);
+          await this.performTransition(manager, id, ErrandStatus.EXPIRED, { type: StatusHistoryActor.SYSTEM }, DEADLINE_EXPIRY_NOTE);
+          return {
+            errandId: id,
+            reference: errand.reference,
+            deadlineAt: (errand.deadlineAt as Date).toISOString(),
+            closedOffer:
+              open?.status === AssignmentStatus.ASSIGNED
+                ? { assignmentId: open.id, runnerProfileId: open.runnerProfileId }
+                : null,
+          };
+        });
+        if (done) {
+          expired.push(id);
+          setImmediate(() => {
+            // An offered runner loses access: the realtime gateway re-checks the room.
+            // job:offer_withdrawn waits for the runner room (RA-5).
+            this.events.emit('errand.access_changed', { errandId: id });
+            this.events.emit(TASK_DEADLINE_EXPIRED_EVENT, done);
+          });
+        }
+      } catch (err) {
+        const code = err instanceof ApiError ? err.code : err instanceof Error ? err.constructor.name : String(err);
+        this.logger.warn(`Deadline expiry skipped errand ${id}: ${code} (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+    return expired;
   }
 
   /**
@@ -1772,6 +2073,14 @@ export class ErrandsService {
       const locked = await manager
         .getRepository(Errand)
         .findOne({ where: { id: errandId }, lock: { mode: 'pessimistic_write' } });
+      // Row 185: past the customer deadline a RUNNER_ASSIGNED task is no
+      // longer offered or reassigned. PAYMENT_CONFIRMED is held for row 201
+      // (round-11 item 7): assigning it still works.
+      if (locked?.status === ErrandStatus.RUNNER_ASSIGNED && deadlinePassed(locked)) {
+        throw new ApiError(HttpStatus.CONFLICT, 'task_deadline_passed', 'This task has passed its deadline and can no longer be offered', {
+          deadlineAt: (locked.deadlineAt as Date).toISOString(),
+        });
+      }
       if (locked?.status === ErrandStatus.RUNNER_ASSIGNED && (await this.expireLapsedOfferIn(manager, errandId, new Date()))) {
         lapsed = true; // The admin is acting on it already: no feed item.
       }
@@ -1793,6 +2102,9 @@ export class ErrandsService {
             : "This runner's offer for this task lapsed. Choose another runner.",
           { runnerProfileId, previousStatus: previous.status, assignmentId: previous.id },
         );
+      }
+      for (const g of this.assignGuards) {
+        await g(manager, { errandId, runnerProfileId });
       }
       const reassign =
         locked?.status === ErrandStatus.RUNNER_ASSIGNED &&
@@ -1822,18 +2134,24 @@ export class ErrandsService {
   }
 
   /**
-   * The runner on the current assignment declines it (row 108). Only while
-   * the errand is RUNNER_ASSIGNED (before RUNNER_EN_ROUTE): the assignment
-   * becomes `declined` with the reason, the errand keeps its status (§3.3,
-   * no new state) and waits for an admin to reassign it. A decline never
-   * starts or changes an expiry deadline (row 155). `guard` runs in the transaction with the errand locked.
-   * Errors: 409 `assignment_not_declinable` (`status`), 403 not the runner.
+   * The offered runner declines (rows 108, 113, 137). Only while the errand
+   * is RUNNER_ASSIGNED and the offer is open: the assignment becomes
+   * `declined` (with the reason, if any), the errand keeps its status (§3.3,
+   * no new state) and waits for an admin to offer it to another runner; the
+   * runner is never offered this task again (row 178). A decline never
+   * starts or changes an expiry deadline (row 155) and never expires the
+   * task (row 167). No runner metric reads declines. `guard` runs in the
+   * transaction with the errand locked.
+   * Errors: 409 `assignment_not_declinable` (`status`); 409 `offer_expired`
+   * (`offerExpiresAt`) once the offer's deadline has passed; 403 not the
+   * offered runner.
    */
   async declineAssignment(
     errandId: string,
     runnerUserId: string,
-    reason: AssignmentDeclineReason,
+    reason: AssignmentDeclineReason | null,
     guard?: DeclineGuard,
+    now: Date = new Date(),
   ): Promise<ErrandAssignment> {
     let event: AssignmentDeclinedEvent | null = null;
     const saved = await this.inTx(async (manager) => {
@@ -1850,6 +2168,8 @@ export class ErrandsService {
         order: { createdAt: 'DESC' },
       });
       if (!runner || !current || current.runnerProfileId !== runner.id) {
+        // The sweep may already have closed this runner's offer (row 157).
+        await this.refuseExpiredOffer(manager, errandId, { type: StatusHistoryActor.RUNNER, id: runner?.id ?? null });
         throw new ForbiddenException('You are not assigned to this errand');
       }
       if (errand.status !== ErrandStatus.RUNNER_ASSIGNED) {
@@ -1860,9 +2180,14 @@ export class ErrandsService {
           { status: errand.status },
         );
       }
+      if (current.offerExpiresAt && current.offerExpiresAt.getTime() <= now.getTime()) {
+        throw new ApiError(HttpStatus.CONFLICT, 'offer_expired', 'This offer has expired', {
+          offerExpiresAt: current.offerExpiresAt.toISOString(),
+        });
+      }
       await guard?.(manager, { errandId, runnerProfileId: runner.id, reason });
       current.status = AssignmentStatus.DECLINED;
-      current.decidedAt = new Date();
+      current.decidedAt = now;
       current.declineReason = reason;
       const out = await assignmentRepo.save(current);
       event = {
@@ -2023,6 +2348,20 @@ export class ErrandsService {
     return repo.save(row);
   }
 }
+
+/**
+ * RA-2: a runner never reads the customer's price: no quoted or final price
+ * (the fee basis), no fee total, no quote expiry. The runner fee and item
+ * amount come from `GET /runners/me/jobs/:errandId`.
+ */
+export const withoutCustomerPricing = <T extends Partial<ErrandView>>(view: T): T =>
+  Object.assign(view, {
+    quotedPrice: null,
+    finalPrice: null,
+    feeTotal: null,
+    quoteExpiresAt: null,
+    quoteAcceptanceRequired: false,
+  });
 
 const groupBy = <T>(rows: T[], key: (row: T) => string): Map<string, T[]> => {
   const out = new Map<string, T[]>();

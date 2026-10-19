@@ -13,6 +13,8 @@ import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { PaymentsService } from '../src/payments/payments.service';
+import { deleteRunnerVerifications, readyRunner } from './support/runner-fixtures';
+import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
  * Contract checks for the owner answers 7 (BOARD rows 140, 141: a
@@ -49,6 +51,8 @@ describe('Owner answers 7 (e2e)', () => {
       profileId = (await app.get(CustomersService).createForUser(user.id)).id;
     } else if (role === UserRole.RUNNER) {
       profileId = (await app.get(RunnersService).createForUser(user.id)).id;
+      // RA-8: verified and online, so assign and accept work.
+      await readyRunner(app.get(DataSource), profileId);
     }
     return { id: user.id, token: tokenFor(user), profileId };
   };
@@ -79,22 +83,22 @@ describe('Owner answers 7 (e2e)', () => {
       // Payments and refund reviews reference price_change_requests.
       await ds.query('DELETE FROM "payments" WHERE "errandId" = ANY($1)', [errandIds]);
       // Overrides reference refund reviews and runner lines (row 136).
-      await ds.query('ALTER TABLE "task_exposure_overrides" DISABLE TRIGGER USER');
-      await ds.query('DELETE FROM "task_exposure_overrides" WHERE "errandId" = ANY($1)', [errandIds]);
-      await ds.query('ALTER TABLE "task_exposure_overrides" ENABLE TRIGGER USER');
+      await withAppendOnlyGuardLifted(ds, 'task_exposure_overrides', async (query) => {
+        await query('DELETE FROM "task_exposure_overrides" WHERE "errandId" = ANY($1)', [errandIds]);
+      });
       // Corrections are append-only (DB trigger): lift it for the cleanup only.
-      await ds.query('ALTER TABLE "refund_payout_corrections" DISABLE TRIGGER USER');
-      await ds.query(
-        `DELETE FROM "refund_payout_corrections" WHERE "refundReviewId" IN
-           (SELECT id FROM "refund_reviews" WHERE "errandId" = ANY($1))`,
-        [errandIds],
-      );
-      await ds.query('ALTER TABLE "refund_payout_corrections" ENABLE TRIGGER USER');
+      await withAppendOnlyGuardLifted(ds, 'refund_payout_corrections', async (query) => {
+        await query(
+          `DELETE FROM "refund_payout_corrections" WHERE "refundReviewId" IN
+             (SELECT id FROM "refund_reviews" WHERE "errandId" = ANY($1))`,
+          [errandIds],
+        );
+      });
       // The runner payout ledger is append-only too (rows 107).
-      await ds.query('ALTER TABLE "runner_payout_lines" DISABLE TRIGGER USER');
-      await ds.query('DELETE FROM "runner_payout_lines" WHERE "relatedLineId" IS NOT NULL AND "errandId" = ANY($1)', [errandIds]);
-      await ds.query('DELETE FROM "runner_payout_lines" WHERE "errandId" = ANY($1)', [errandIds]);
-      await ds.query('ALTER TABLE "runner_payout_lines" ENABLE TRIGGER USER');
+      await withAppendOnlyGuardLifted(ds, 'runner_payout_lines', async (query) => {
+        await query('DELETE FROM "runner_payout_lines" WHERE "relatedLineId" IS NOT NULL AND "errandId" = ANY($1)', [errandIds]);
+        await query('DELETE FROM "runner_payout_lines" WHERE "errandId" = ANY($1)', [errandIds]);
+      });
       await ds.query('DELETE FROM "refund_reviews" WHERE "errandId" = ANY($1)', [errandIds]);
       const tables: { table_name: string }[] = await ds.query(
         `SELECT table_name FROM information_schema.columns
@@ -114,6 +118,7 @@ describe('Owner answers 7 (e2e)', () => {
            (SELECT id FROM "customer_profiles" WHERE "userId" = ANY($1))`,
         [userIds],
       );
+      await deleteRunnerVerifications(ds, userIds);
       await ds.query('DELETE FROM "runner_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "customer_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "users" WHERE "id" = ANY($1)', [userIds]);

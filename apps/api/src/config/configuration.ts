@@ -1,3 +1,5 @@
+import { ServiceArea, parseServiceAreas } from '../runners/service-areas';
+
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'staging' | 'production';
   port: number;
@@ -93,6 +95,10 @@ export interface AppConfig {
   matching: {
     /** Acceptance window of an admin-made offer (rows 114, 141). */
     adminOfferWindowSeconds: number;
+  };
+  runners: {
+    /** Ops-configured service areas (row 116), RUNNER_SERVICE_AREAS JSON. */
+    serviceAreas: ServiceArea[];
   };
   payments: {
     /** Active M-Pesa provider (row 73): console | payhero | daraja. */
@@ -305,6 +311,11 @@ export const configuration = (): AppConfig => ({
   // RUNNER_ASSIGNED for the admin to offer it to another runner.
   matching: {
     adminOfferWindowSeconds: int(process.env.MATCHING_ADMIN_OFFER_WINDOW_SECONDS, 600),
+  },
+  // Row 116 (owner, 2026-10-13): service areas are an ops-configured list.
+  // No admin screen yet (RA-24): JSON in RUNNER_SERVICE_AREAS, checked at start-up.
+  runners: {
+    serviceAreas: parseServiceAreas(process.env.RUNNER_SERVICE_AREAS),
   },
   // Evidence storage. `console` (dev default) logs uploads without storing;
   // `cloudinary` uploads to Cloudinary (needs CLOUDINARY_CLOUD_NAME/API_KEY/

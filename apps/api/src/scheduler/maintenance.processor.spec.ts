@@ -12,6 +12,7 @@ const build = () => {
   const errands = {
     confirmPastDisputeWindow: vi.fn(() => Promise.resolve(['e-1'])),
     expireLapsedOffers: vi.fn(() => Promise.resolve(['e-9'])),
+    expirePastDeadline: vi.fn(() => Promise.resolve(['e-8'])),
   };
   const payments = {
     settleConfirmed: vi.fn(() => Promise.resolve(['e-1', 'e-0'])),
@@ -46,10 +47,15 @@ describe('MaintenanceProcessor (rows 26, 50, 52)', () => {
     expect(order).toEqual(['confirm', 'settle']);
   });
 
-  it('offer-expiry expires lapsed offers (row 141)', async () => {
+  it('offer-expiry expires tasks past their deadline first (row 185), then lapsed offers (row 141)', async () => {
     const { processor, errands } = build();
-    await expect(processor.process({ name: OFFER_EXPIRY_JOB } as never)).resolves.toEqual({ expired: ['e-9'] });
-    expect(errands.expireLapsedOffers).toHaveBeenCalled();
+    await expect(processor.process({ name: OFFER_EXPIRY_JOB } as never)).resolves.toEqual({
+      expired: ['e-9'],
+      deadlineExpired: ['e-8'],
+    });
+    expect(errands.expirePastDeadline.mock.invocationCallOrder[0]).toBeLessThan(
+      errands.expireLapsedOffers.mock.invocationCallOrder[0],
+    );
   });
 
   it('stk-reconcile resolves TIMEOUT payments', async () => {
