@@ -48,6 +48,17 @@ export interface CandidatesPage {
   requiredPurchase: string;
 }
 
+/**
+ * Rows 167, 177, 178, 204, 227 (owner, 2026-10-19): matching is exhausted
+ * when the task has had at least one offer ("a task never offered to anyone
+ * is not exhausted; exhaustion needs at least one offer made"), has no open
+ * offer, and no eligible online runner is left (offline and busy runners do
+ * not count). Not wired to any transition yet: row 179 holds back automatic
+ * exhaustion until the full pool exists.
+ */
+export const matchingExhausted = (input: { offersMade: number; openOffer: boolean; eligibleRemaining: number }): boolean =>
+  input.offersMade > 0 && !input.openOffer && input.eligibleRemaining === 0;
+
 /** States the candidates read answers for: before the first offer, and while re-offering. */
 const CANDIDATE_STATUSES: ReadonlySet<ErrandStatus> = new Set([
   ErrandStatus.PAYMENT_CONFIRMED,
@@ -141,10 +152,9 @@ export class CandidatesService implements OnModuleInit {
    * The whole sorted list and its counts. With `manager`, assignments and
    * the purchase are read inside the caller's transaction.
    *
-   * TODO(BOARD row 227, open): whether a task never offered to anyone, with
-   * `eligibleRemaining = 0`, counts as "matching exhausted" is not decided.
-   * Nothing moves a task to EXPIRED on this count today (row 179 holds back
-   * automatic exhaustion); keep it that way until row 227 is answered.
+   * Exhaustion is decided by `matchingExhausted` (rows 204, 227). Nothing
+   * moves a task to EXPIRED on this count today: row 179 holds back
+   * automatic exhaustion.
    */
   async compute(errandId: string, manager?: EntityManager): Promise<Omit<CandidatesPage, 'nextCursor'>> {
     const [errand] = await this.errands.findByIds([errandId]);

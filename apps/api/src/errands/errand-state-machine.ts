@@ -20,9 +20,8 @@ export enum TransitionGuard {
   /** Only via rejecting a pending price-change request (price-change module). */
   PRICE_CHANGE_REJECTION = 'price_change_rejection',
   /**
-   * Admin "Expire task — no runner available" (rows 187, 202, 203, 208):
-   * only through `POST /errands/:id/expire`, which checks the availability
-   * rule and the required reason.
+   * The admin expiries (rows 187, 201, 202, 203, 208, 225): only through
+   * `POST /errands/:id/expire`, which checks the rule and the required reason.
    */
   ADMIN_EXPIRY = 'admin_expiry',
 }
@@ -60,6 +59,9 @@ export const ERRAND_TRANSITIONS: Record<ErrandStatus, ErrandTransition[]> = {
   ],
   [ErrandStatus.PAYMENT_CONFIRMED]: [
     { to: ErrandStatus.RUNNER_ASSIGNED, allowedActors: [A, S] },
+    // Rows 201, 225 (owner, 2026-10-19): admin "Expire task" on a paid task
+    // never offered, only after its deadline; never the system.
+    { to: ErrandStatus.EXPIRED, allowedActors: [A], guard: TransitionGuard.ADMIN_EXPIRY },
   ],
   [ErrandStatus.RUNNER_ASSIGNED]: [
     { to: ErrandStatus.RUNNER_EN_ROUTE, allowedActors: [R] },

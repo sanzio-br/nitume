@@ -58,25 +58,31 @@ export class RunnerJobsController {
   }
 
   /**
-   * Decline the offer `{ reason?: 'over_purchase_limit' | 'too_far' |
-   * 'not_available' | 'other' }` (rows 113, 134, 210):
+   * Decline the offer `{ reason: 'over_purchase_limit' | 'too_far' |
+   * 'not_available' | 'other' }` (rows 113, 134, 210; required, row 229):
    * the task stays RUNNER_ASSIGNED for another runner; this runner is not
    * offered it again (row 178). 200 `{ errandId, runnerProfileId,
    * requiredPurchase, maxPurchaseAdvance, overLimit, assignmentId, status:
    * 'declined', declineReason }`. Only `over_purchase_limit` is checked
-   * against the limit. Errors: 400 decline_reason_invalid (`allowed`); 403 not the offered runner; 409 offer_expired; 409
+   * against the limit. Errors: 400 decline_reason_invalid (`allowed`;
+   * also when `reason` is missing); 403 not the offered runner; 409 offer_expired; 409
    * assignment_not_declinable; 409 purchase_within_limit (reason sent while
    * within the limit).
    */
   @Post('errands/:id/decline')
   @HttpCode(200)
   decline(@CurrentUser() user: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DeclineOfferDto) {
+    // Row 229 (owner, 2026-10-19): the runner must pick a reason. No shipped
+    // client declines without one, so a missing reason is refused too.
     const reason = dto.reason ?? null;
-    if (reason !== null && !DECLINE_REASONS.includes(reason)) {
-      throw new ApiError(HttpStatus.BAD_REQUEST, 'decline_reason_invalid', 'Unknown decline reason', {
-        allowed: DECLINE_REASONS,
-      });
+    if (reason === null || !DECLINE_REASONS.includes(reason)) {
+      throw new ApiError(
+        HttpStatus.BAD_REQUEST,
+        'decline_reason_invalid',
+        reason === null ? 'Choose a decline reason' : 'Unknown decline reason',
+        { allowed: DECLINE_REASONS },
+      );
     }
-    return this.jobs.decline(user.userId, id, reason as AssignmentDeclineReason | null);
+    return this.jobs.decline(user.userId, id, reason as AssignmentDeclineReason);
   }
 }

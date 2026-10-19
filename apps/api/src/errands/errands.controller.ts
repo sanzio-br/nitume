@@ -74,6 +74,17 @@ export class ErrandsController {
     );
   }
 
+  /**
+   * Row 221: task defaults clients show but never hard-code.
+   * `defaultDeadlineHours`: without a `deadlineAt` on create, the task's
+   * deadline is creation time + this many hours (24); the customer
+   * `Flexible` caption reads it.
+   */
+  @Get('defaults')
+  defaults(): { defaultDeadlineHours: number } {
+    return { defaultDeadlineHours: this.errands.defaultDeadlineHours() };
+  }
+
   /** Count of errands visible to the caller (e.g. customer profile "Tasks"). */
   @Get('count')
   count(
@@ -219,15 +230,20 @@ export class ErrandsController {
   }
 
   /**
-   * Admin "Expire task — no runner available" (rows 187, 202, 203, 208):
-   * RUNNER_ASSIGNED -> EXPIRED, actor admin, `{ reason }` required (10–500
-   * after trimming) and kept as the history note. Allowed only when the
-   * detail's `canExpire.noRunner` is true. 200 `{ errand, history }`.
-   * Errors: 400 expiry_reason_invalid (`minLength`, `maxLength`); 404;
-   * 409 expiry_not_allowed (`reason`: not_runner_assigned (`status`) |
-   * deadline_passed | open_offer | eligible_runners_remain
-   * (`eligibleRemaining`)). PATCH /errands/:id/status cannot do this
-   * transition for an admin (409 transition_requires_admin_expiry).
+   * Admin expiries, `{ reason, fromStatus? }` (reason 10–500 after
+   * trimming, kept as the history note):
+   * - RUNNER_ASSIGNED -> EXPIRED, "Expire task — no runner available"
+   *   (rows 187, 202, 203, 208), when `canExpire.noRunner`;
+   * - PAYMENT_CONFIRMED -> EXPIRED, "Expire task" (rows 201, 225, 226), when
+   *   `canExpire.deadlinePassed`.
+   * `fromStatus` names the action the admin chose (recommended); without it
+   * the task's status decides. 200 `{ errand, history }`. Errors: 400
+   * expiry_reason_invalid (`minLength`, `maxLength`); 404; 409
+   * expiry_not_allowed (`reason`: not_runner_assigned | not_payment_confirmed
+   * | not_expirable (with `status`) | deadline_passed | open_offer |
+   * eligible_runners_remain (`eligibleRemaining`) | deadline_not_passed).
+   * PATCH /errands/:id/status cannot do either transition for an admin
+   * (409 transition_requires_admin_expiry).
    */
   @Post(':id/expire')
   @HttpCode(200)
@@ -237,7 +253,7 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
     @Body() dto: ExpireErrandDto,
   ): Promise<ErrandResult> {
-    return this.errands.expireNoRunner(id, dto.reason, { type: StatusHistoryActor.ADMIN, id: user.userId });
+    return this.errands.adminExpire(id, dto.reason, { type: StatusHistoryActor.ADMIN, id: user.userId }, dto.fromStatus);
   }
 
   private actorTypeFor(role: UserRole): StatusHistoryActor {

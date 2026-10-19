@@ -106,10 +106,11 @@ export class PurchaseCheckQueryDto {
 }
 
 /**
- * POST /errands/:id/decline (rows 113, 134, 210). `reason` is optional:
+ * POST /errands/:id/decline (rows 113, 134, 210, 229). `reason` is required:
  * `over_purchase_limit` (checked against the limit), `too_far`,
- * `not_available` or `other` (stored as given). Any other value: 400
- * decline_reason_invalid with `allowed` (checked by the controller).
+ * `not_available` or `other` (stored as given). Missing or any other value:
+ * 400 decline_reason_invalid with `allowed` (checked by the controller, so
+ * the error carries its code).
  */
 export class DeclineOfferDto {
   @IsOptional()

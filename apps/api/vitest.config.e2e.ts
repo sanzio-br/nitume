@@ -33,7 +33,9 @@ export default defineConfig({
     // cleanup (deleting its users) races another's fan-outs (e.g. the admin
     // feed writes a row for every active admin).
     fileParallelism: false,
-    env: { QUEUE_PREFIX: testQueuePrefix, DATABASE_NAME: testDatabaseName },
+    // Row 224: app Redis keys (throttle, idempotency, ...) get `<test prefix>:`
+    // too, so the global cleanup may delete them; limits are unchanged.
+    env: { QUEUE_PREFIX: testQueuePrefix, DATABASE_NAME: testDatabaseName, REDIS_KEY_PREFIX: `${testQueuePrefix}:` },
     globalSetup: ['./test/support/e2e-global-setup.ts'],
     setupFiles: ['./test/support/e2e-guard.ts'],
   },

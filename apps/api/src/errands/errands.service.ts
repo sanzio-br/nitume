@@ -189,8 +189,8 @@ export type ErrandView = Errand & {
    *   RUNNER_ASSIGNED, no open offer, deadline not passed, and no eligible
    *   online runner left (`eligibleRemaining = 0` on the candidates read;
    *   offline and busy runners do not count, row 204).
-   * - `deadlinePassed` (row 201): the PAYMENT_CONFIRMED "Expire task". Always
-   *   false until that action is built (rows 225, 226 open).
+   * - `deadlinePassed` (rows 201, 225): the PAYMENT_CONFIRMED "Expire task" —
+   *   PAYMENT_CONFIRMED and `deadlineAt` passed.
    */
   canExpire?: { noRunner: boolean; deadlinePassed: boolean };
 };
@@ -377,6 +377,20 @@ export interface TaskDeadlineExpiredEvent {
   closedOffer: { assignmentId: string; runnerProfileId: string } | null;
 }
 
+/**
+ * Rows 201, 220: a paid task never offered (PAYMENT_CONFIRMED) is past its
+ * customer deadline. No state change: ops get one `deadline_passed` feed
+ * item per task (the notifications module keeps it to one) and end it with
+ * the admin "Expire task" or contact the customer.
+ */
+export const PAID_TASK_DEADLINE_PASSED_EVENT = 'errand.paid_deadline_passed';
+
+export interface PaidTaskDeadlinePassedEvent {
+  errandId: string;
+  reference: string;
+  deadlineAt: string;
+}
+
 /** History note of the row-185 expiry; also how `expiry.trigger` is recognised. */
 export const DEADLINE_EXPIRY_NOTE = 'Customer deadline passed';
 
@@ -384,7 +398,7 @@ export const DEADLINE_EXPIRY_NOTE = 'Customer deadline passed';
 export interface ErrandExpiryView {
   /** `deadline_passed` (row 185) | `admin` | `system` (any other system expiry, e.g. pre-round-9 offer lapses). */
   trigger: 'deadline_passed' | 'admin' | 'system';
-  /** The status the task expired from: RUNNER_ASSIGNED (or PAYMENT_CONFIRMED once row 201's action is built). */
+  /** The status the task expired from: RUNNER_ASSIGNED, or PAYMENT_CONFIRMED (row 201's admin "Expire task"). */
   fromStatus: ErrandStatus | null;
   at: Date;
   by: { id: string; displayName: string | null } | null;
@@ -455,7 +469,7 @@ export const RUNNER_ACTIVE_JOB_STATES: ReadonlySet<ErrandStatus> = new Set([
 ]);
 
 /** Row 185: the task's customer deadline has passed (deadlineAt null = no deadline). */
-export const deadlinePassed = (errand: Pick<Errand, 'deadlineAt'>, now: Date = new Date()): boolean =>
+export const deadlinePassed = (errand: { deadlineAt: Date | null }, now: Date = new Date()): boolean =>
   !!errand.deadlineAt && errand.deadlineAt.getTime() <= now.getTime();
 
 const deadlinePassedFor = (e: Pick<Errand, 'status' | 'deadlineAt'>): boolean =>
@@ -473,13 +487,27 @@ const ASSIGNABLE_STATUSES: ReadonlySet<ErrandStatus> = new Set([
  * task's `deadlineAt` when that comes first. No deadline: the full window.
  */
 export const offerExpiryFor = (
-  errand: Pick<Errand, 'deadlineAt'> | null | undefined,
+  errand: { deadlineAt: Date | null } | null | undefined,
   windowSeconds: number,
   now: Date = new Date(),
 ): Date => {
   const window = now.getTime() + windowSeconds * 1000;
   const deadline = errand?.deadlineAt?.getTime();
   return new Date(deadline !== undefined && deadline < window ? deadline : window);
+};
+
+/**
+ * Rows 201, 225: the PAYMENT_CONFIRMED "Expire task" is allowed once the
+ * task's `deadlineAt` has passed (never by the system). Null when allowed.
+ */
+const paidExpiryBlocker = (
+  errand: Pick<Errand, 'status' | 'deadlineAt'>,
+  now: Date = new Date(),
+): { reason: ExpiryRefusal } | null => {
+  if (errand.status !== ErrandStatus.PAYMENT_CONFIRMED) {
+    return { reason: 'not_payment_confirmed' };
+  }
+  return deadlinePassed(errand, now) ? null : { reason: 'deadline_not_passed' };
 };
 
 /** States in which an admin may replace an expired quote (rows 46, 72). */
@@ -504,14 +532,27 @@ export const EXPIRY_REASON_MIN = 10;
 export const EXPIRY_REASON_MAX = 500;
 
 /** Why `POST /errands/:id/expire` was refused (409 `expiry_not_allowed`, `reason`). */
-export type ExpiryRefusal = 'not_runner_assigned' | 'deadline_passed' | 'open_offer' | 'eligible_runners_remain';
+export type ExpiryRefusal =
+  | 'not_runner_assigned'
+  | 'not_payment_confirmed'
+  | 'not_expirable'
+  | 'deadline_passed'
+  | 'deadline_not_passed'
+  | 'open_offer'
+  | 'eligible_runners_remain';
 
 const expiryRefusalMessage: Record<ExpiryRefusal, string> = {
   not_runner_assigned: 'Only a task waiting for a runner to accept can be expired this way',
+  not_payment_confirmed: 'Only a paid task that was never offered can be expired this way',
+  not_expirable: 'This task cannot be expired by an admin',
   deadline_passed: 'The deadline has passed, so this task expires automatically',
+  deadline_not_passed: "The customer's deadline hasn't passed yet. Assign a runner instead",
   open_offer: 'This task has an open offer. Wait for the runner to answer',
   eligible_runners_remain: 'Eligible runners are still available. Offer the task to one of them',
 };
+
+/** The two admin expire actions, by the status they expire from. */
+export type AdminExpiryFrom = ErrandStatus.RUNNER_ASSIGNED | ErrandStatus.PAYMENT_CONFIRMED;
 
 /**
  * Eligible online runners left for a task (rows 177, 178, 186, 204),
@@ -557,6 +598,11 @@ export class ErrandsService {
     @Optional() private readonly users?: UsersService,
   ) {}
 
+  /** Row 221: hours from creation to the default deadline (`errands.defaultDeadlineHours`, 24). */
+  defaultDeadlineHours(): number {
+    return this.config?.get<number>('errands.defaultDeadlineHours', 24) ?? 24;
+  }
+
   private urgencyThresholds() {
     return {
       urgentWithinHours: this.config?.get<number>('errands.urgentWithinHours', 4) ?? 4,
@@ -569,8 +615,11 @@ export class ErrandsService {
     dto: CreateErrandDto,
     actor: ActorReference,
   ): Promise<{ errand: ErrandView; history: ErrandStatusHistory }> {
-    const deadlineAt = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
-    assertDeadlineInFuture(deadlineAt);
+    // Rows 206, 221: every task has a deadline. A client deadline must be in
+    // the future; without one it is now + the default (24 h).
+    const given = dto.deadlineAt ? new Date(dto.deadlineAt) : null;
+    assertDeadlineInFuture(given);
+    const deadlineAt = given ?? new Date(Date.now() + this.defaultDeadlineHours() * 3_600_000);
     assertLocationsFit(
       dto.category,
       dto.locations.map((l) => l.pointType),
@@ -696,7 +745,10 @@ export class ErrandsService {
       view.offerWindowSeconds = this.adminOfferWindowSeconds();
       view.deadlinePassed = deadlinePassedFor(view);
       view.expiry = view.status === ErrandStatus.EXPIRED ? await this.expiryOf(errandId) : null;
-      view.canExpire = { noRunner: (await this.noRunnerExpiryBlocker(errand, all)) === null, deadlinePassed: false };
+      view.canExpire = {
+        noRunner: (await this.noRunnerExpiryBlocker(errand, all)) === null,
+        deadlinePassed: paidExpiryBlocker(errand) === null,
+      };
     }
     return view;
   }
@@ -737,19 +789,32 @@ export class ErrandsService {
   }
 
   /**
-   * `POST /errands/:id/expire` (admin): "Expire task — no runner available"
-   * (rows 187, 202, 203, 208). RUNNER_ASSIGNED -> EXPIRED with actor
-   * `admin`; the history row keeps the admin id, the time and the trimmed
-   * reason as `note`. As on every RUNNER_ASSIGNED -> EXPIRED: an open offer
-   * is closed, a paid task gets its refund review (row 102,
-   * `expired_after_payment`) and the customer the `errand.EXPIRED`
-   * notification (row 158 copy). Errors: 400 `expiry_reason_invalid`
-   * (`minLength`, `maxLength`); 404; 409 `expiry_not_allowed` with `reason`
-   * `not_runner_assigned` (`status`) | `deadline_passed` | `open_offer` |
-   * `eligible_runners_remain` (`eligibleRemaining`). A PAYMENT_CONFIRMED task
-   * answers `not_runner_assigned` until row 201's action is built.
+   * `POST /errands/:id/expire` (admin), the two audited admin expiries. The
+   * transition is chosen by `fromStatus` when the client sends it (the
+   * action the admin saw), else by the task's status:
+   * - RUNNER_ASSIGNED: "Expire task — no runner available" (rows 187, 202,
+   *   203, 208): no open offer, deadline not passed, no eligible online
+   *   runner left. An open offer past its own deadline is closed with the
+   *   task.
+   * - PAYMENT_CONFIRMED: "Expire task" (rows 201, 225, 226): only once
+   *   `deadlineAt` has passed.
+   * Both need a reason of 10–500 characters after trimming, kept as the
+   * history note with actor `admin` (id, time). Both open the
+   * `expired_after_payment` refund review for a paid task (row 102) and send
+   * the customer the usual `errand.EXPIRED` (row 158 copy); no admin feed
+   * item (row 232). Errors: 400 `expiry_reason_invalid` (`minLength`,
+   * `maxLength`); 404; 409 `expiry_not_allowed` with `reason`:
+   * `not_runner_assigned` | `not_payment_confirmed` (`status`; the task is
+   * no longer in the status the client named) | `not_expirable` (`status`;
+   * no `fromStatus` and neither status) | `deadline_passed` | `open_offer` |
+   * `eligible_runners_remain` (`eligibleRemaining`) | `deadline_not_passed`.
    */
-  async expireNoRunner(errandId: string, reason: string | undefined | null, actor: ActorReference): Promise<ErrandResult> {
+  async adminExpire(
+    errandId: string,
+    reason: string | undefined | null,
+    actor: ActorReference,
+    fromStatus?: AdminExpiryFrom,
+  ): Promise<ErrandResult> {
     const note = (reason ?? '').trim();
     if (note.length < EXPIRY_REASON_MIN || note.length > EXPIRY_REASON_MAX) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'expiry_reason_invalid', 'Give a reason (10–500 characters)', {
@@ -763,12 +828,24 @@ export class ErrandsService {
         throw new NotFoundException('Errand not found');
       }
       const now = new Date();
-      const assignments = await this.assignmentsOf(errandId, manager);
-      const blocker = await this.noRunnerExpiryBlocker(errand, assignments, manager, now);
+      const from =
+        fromStatus ??
+        (errand.status === ErrandStatus.RUNNER_ASSIGNED || errand.status === ErrandStatus.PAYMENT_CONFIRMED
+          ? errand.status
+          : null);
+      let blocker: { reason: ExpiryRefusal; eligibleRemaining?: number } | null;
+      if (from === null) {
+        blocker = { reason: 'not_expirable' };
+      } else if (from === ErrandStatus.PAYMENT_CONFIRMED) {
+        blocker = paidExpiryBlocker(errand, now);
+      } else {
+        blocker = await this.noRunnerExpiryBlocker(errand, await this.assignmentsOf(errandId, manager), manager, now);
+      }
       if (blocker) {
+        const statusRefusal = ['not_runner_assigned', 'not_payment_confirmed', 'not_expirable'].includes(blocker.reason);
         throw new ApiError(HttpStatus.CONFLICT, 'expiry_not_allowed', expiryRefusalMessage[blocker.reason], {
           ...blocker,
-          ...(blocker.reason === 'not_runner_assigned' ? { status: errand.status } : {}),
+          ...(statusRefusal ? { status: errand.status } : {}),
         });
       }
       return this.performTransition(
@@ -1799,6 +1876,56 @@ export class ErrandsService {
       }
     }
     return expired;
+  }
+
+  /**
+   * Rows 201, 220: emits `PAID_TASK_DEADLINE_PASSED_EVENT` for every
+   * PAYMENT_CONFIRMED task whose `deadlineAt` has passed. Never changes a
+   * task (row 201: never auto-expire it). Run by the `offer-expiry`
+   * maintenance job; the notifications module queues at most one feed item
+   * per task, so repeating a task on every run is harmless. Walks the whole
+   * set in pages of `pageSize` (oldest deadline first, then id). Returns the
+   * ids it reported.
+   */
+  async reportPaidPastDeadline(
+    now: Date = new Date(),
+    pageSize = 200,
+    /** Restrict to these errands (tests on a shared database). */
+    onlyIds?: string[],
+  ): Promise<string[]> {
+    const reported: string[] = [];
+    let after: { deadlineAt: Date; id: string } | null = null;
+    for (;;) {
+      const qb = this.errands
+        .createQueryBuilder('e')
+        .select(['e.id', 'e.reference', 'e.deadlineAt'])
+        .where('e.status = :status', { status: ErrandStatus.PAYMENT_CONFIRMED })
+        .andWhere('e."deadlineAt" <= :now', { now });
+      if (onlyIds) {
+        qb.andWhere('e.id IN (:...onlyIds)', { onlyIds: onlyIds.length > 0 ? onlyIds : ['00000000-0000-0000-0000-000000000000'] });
+      }
+      if (after) {
+        qb.andWhere('(e."deadlineAt" > :afterAt OR (e."deadlineAt" = :afterAt AND e.id > :afterId))', {
+          afterAt: after.deadlineAt,
+          afterId: after.id,
+        });
+      }
+      const page = await qb.orderBy('e."deadlineAt"', 'ASC').addOrderBy('e.id', 'ASC').limit(pageSize).getMany();
+      for (const e of page) {
+        const event: PaidTaskDeadlinePassedEvent = {
+          errandId: e.id,
+          reference: e.reference,
+          deadlineAt: (e.deadlineAt as Date).toISOString(),
+        };
+        reported.push(e.id);
+        setImmediate(() => this.events.emit(PAID_TASK_DEADLINE_PASSED_EVENT, event));
+      }
+      const last = page.at(-1);
+      if (page.length < pageSize || !last) {
+        return reported;
+      }
+      after = { deadlineAt: last.deadlineAt as Date, id: last.id };
+    }
   }
 
   /**

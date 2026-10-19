@@ -453,7 +453,7 @@ describe('Runner API batch 1 (e2e)', () => {
       await http().get(`/api/v1/runners/me/jobs/${errand.id}`).set(bearer(runner.token)).expect(403);
     });
 
-    it('a decline without a reason is plain; over_purchase_limit within the limit is refused', async () => {
+    it('a decline needs a reason (row 229); over_purchase_limit within the limit is refused', async () => {
       const customer = await makeUser(UserRole.CUSTOMER);
       const admin = await makeUser(UserRole.ADMIN);
       const runner = await makeUser(UserRole.RUNNER);
@@ -465,9 +465,19 @@ describe('Runner API batch 1 (e2e)', () => {
         .send({ reason: 'over_purchase_limit' })
         .expect(409);
       expect(within.body.code).toBe('purchase_within_limit');
-      const plain = await http().post(`/api/v1/errands/${errand.id}/decline`).set(bearer(runner.token)).send({}).expect(200);
-      expect(plain.body).toMatchObject({ status: 'declined', declineReason: null });
-      const again = await http().post(`/api/v1/errands/${errand.id}/decline`).set(bearer(runner.token)).send({}).expect(403);
+      const missing = await http().post(`/api/v1/errands/${errand.id}/decline`).set(bearer(runner.token)).send({}).expect(400);
+      expect(missing.body).toMatchObject({ code: 'decline_reason_invalid', allowed: ['over_purchase_limit', 'too_far', 'not_available', 'other'] });
+      const plain = await http()
+        .post(`/api/v1/errands/${errand.id}/decline`)
+        .set(bearer(runner.token))
+        .send({ reason: 'other' })
+        .expect(200);
+      expect(plain.body).toMatchObject({ status: 'declined', declineReason: 'other' });
+      const again = await http()
+        .post(`/api/v1/errands/${errand.id}/decline`)
+        .set(bearer(runner.token))
+        .send({ reason: 'other' })
+        .expect(403);
       expect(again.body.statusCode).toBe(403);
     });
   });

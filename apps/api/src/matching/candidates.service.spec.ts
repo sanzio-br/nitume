@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../common/api-error';
 import { AssignmentStatus, ErrandCategory, ErrandStatus, RunnerAvailability } from '../common/enums';
-import { CandidatesService } from './candidates.service';
+import { CandidatesService, matchingExhausted } from './candidates.service';
 
 const TASK = { lat: -1.2864, lng: 36.8172 };
 
@@ -129,5 +129,14 @@ describe('CandidatesService (N-20; rows 177, 178, 186, 187 c, 204, 215)', () => 
     expect(runners.poolFor).toHaveBeenCalledWith('buy_for_me', TASK, manager);
     expect(errands.assignmentsOf).toHaveBeenCalledWith('e-1', manager);
     expect(ledger.itemPaidToNitume).toHaveBeenCalledWith('e-1', manager);
+  });
+});
+
+describe('matchingExhausted (rows 204, 227)', () => {
+  it('needs at least one offer made, no open offer and no eligible online runner left', () => {
+    expect(matchingExhausted({ offersMade: 0, openOffer: false, eligibleRemaining: 0 })).toBe(false);
+    expect(matchingExhausted({ offersMade: 2, openOffer: false, eligibleRemaining: 0 })).toBe(true);
+    expect(matchingExhausted({ offersMade: 2, openOffer: true, eligibleRemaining: 0 })).toBe(false);
+    expect(matchingExhausted({ offersMade: 2, openOffer: false, eligibleRemaining: 1 })).toBe(false);
   });
 });

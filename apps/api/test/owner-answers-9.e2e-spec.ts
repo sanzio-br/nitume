@@ -81,6 +81,8 @@ describe('Owner answers 9 (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Row 224: RedisService keys carry the e2e prefix (REDIS_KEY_PREFIX=nitume_test:),
+    // so this removes only this run's nitume_test:idem:* keys, never a dev server's.
     await app.get(RedisService).del(...redisKeys);
     const ds = app.get(DataSource);
     if (errandIds.length > 0) {

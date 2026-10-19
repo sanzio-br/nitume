@@ -5,6 +5,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsISO8601,
   IsLatitude,
@@ -105,6 +106,11 @@ export class CreateErrandDto {
   @Max(1_000_000)
   budget?: number;
 
+  /**
+   * Optional on the wire (rows 206, 221): without it the task's deadline is
+   * creation + `defaultDeadlineHours` (GET /errands/defaults). A past value
+   * is refused (400 deadline_in_past).
+   */
   @IsOptional()
   @IsISO8601({ strict: true })
   deadlineAt?: string;
@@ -258,4 +264,13 @@ export class ExpireErrandDto {
   @IsString()
   @MaxLength(2000)
   reason?: string;
+
+  /**
+   * Which action the admin chose: RUNNER_ASSIGNED ("Expire task — no runner
+   * available") or PAYMENT_CONFIRMED ("Expire task", rows 201, 225).
+   * Recommended; without it the server picks by the task's status.
+   */
+  @IsOptional()
+  @IsIn([ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.PAYMENT_CONFIRMED])
+  fromStatus?: ErrandStatus.RUNNER_ASSIGNED | ErrandStatus.PAYMENT_CONFIRMED;
 }
