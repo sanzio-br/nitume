@@ -1,11 +1,12 @@
 import { ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../common/api-error';
 import { AssignmentDeclineReason, AssignmentStatus, ErrandStatus, StatusHistoryActor } from '../common/enums';
 import { RunnerProfile } from '../runners/runner-profile.entity';
 import { ErrandAssignment } from './errand-assignment.entity';
 import { ErrandStatusHistory } from './errand-status-history.entity';
 import { Errand } from './errand.entity';
-import { ASSIGNMENT_DECLINED_EVENT, ErrandsService } from './errands.service';
+import { ASSIGNMENT_DECLINED_EVENT, ErrandsService, offerExpiryFor } from './errands.service';
 
 const OVER = AssignmentDeclineReason.OVER_PURCHASE_LIMIT;
 
@@ -213,6 +214,57 @@ describe('general decline and assign checks (rows 113, 178, 185, 186)', () => {
       code: 'task_deadline_passed',
     });
     expect(rows).toHaveLength(1);
+  });
+
+  it('refuses to assign a PAYMENT_CONFIRMED task past its deadline: no indirect expiry path (rows 201, 214)', async () => {
+    const { service, errand, rows } = build(ErrandStatus.PAYMENT_CONFIRMED);
+    errand.deadlineAt = new Date(Date.now() - 1_000);
+    const err = await service.assign('e-1', 'rp-1', { type: StatusHistoryActor.ADMIN, id: 'admin-1' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: 'task_deadline_passed',
+      deadlineAt: errand.deadlineAt.toISOString(),
+    });
+    expect(errand.status).toBe(ErrandStatus.PAYMENT_CONFIRMED);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('caps a new offer at the task deadline when it comes before the window ends (row 205)', async () => {
+    const soon = build(ErrandStatus.PAYMENT_CONFIRMED);
+    soon.errand.deadlineAt = new Date(Date.now() + 60_000);
+    const capped = await soon.service.assign('e-1', 'rp-1', { type: StatusHistoryActor.ADMIN, id: 'admin-1' });
+    expect(capped.assignment.offerExpiresAt).toEqual(soon.errand.deadlineAt);
+
+    const later = build(ErrandStatus.PAYMENT_CONFIRMED);
+    later.errand.deadlineAt = new Date(Date.now() + 3 * 3_600_000);
+    const before = Date.now();
+    const full = await later.service.assign('e-1', 'rp-1', { type: StatusHistoryActor.ADMIN, id: 'admin-1' });
+    const ms = (full.assignment.offerExpiresAt as Date).getTime() - before;
+    expect(ms).toBeGreaterThanOrEqual(600_000 - 50);
+    expect(ms).toBeLessThan(600_000 + 1_000);
+  });
+
+  it('offerExpiryFor: min(now + window, deadlineAt); no deadline = the full window', () => {
+    const now = new Date('2026-10-19T10:00:00Z');
+    expect(offerExpiryFor({ deadlineAt: null }, 600, now)).toEqual(new Date('2026-10-19T10:10:00Z'));
+    expect(offerExpiryFor({ deadlineAt: new Date('2026-10-19T10:04:00Z') }, 600, now)).toEqual(new Date('2026-10-19T10:04:00Z'));
+    expect(offerExpiryFor({ deadlineAt: new Date('2026-10-19T12:00:00Z') }, 600, now)).toEqual(new Date('2026-10-19T10:10:00Z'));
+    expect(offerExpiryFor(null, 90, now)).toEqual(new Date('2026-10-19T10:01:30Z'));
+  });
+
+  it('refuses a decline once the task deadline passed, even on an older uncapped offer (row 205)', async () => {
+    const { service, errand, rows } = build(ErrandStatus.RUNNER_ASSIGNED, [
+      { runnerProfileId: 'rp-1', status: AssignmentStatus.ASSIGNED, offerExpiresAt: new Date(Date.now() + 60_000) },
+    ]);
+    errand.deadlineAt = new Date(Date.now() - 1_000);
+    const err = await service.declineAssignment('e-1', 'u-run', null).catch((e: unknown) => e);
+    expect((err as ApiError).getResponse()).toMatchObject({
+      code: 'offer_expired',
+      reason: 'task_deadline_passed',
+      deadlineAt: errand.deadlineAt.toISOString(),
+    });
+    expect(rows[0].status).toBe(AssignmentStatus.ASSIGNED);
   });
 
   it('runs the assign guards before writing the offer', async () => {
