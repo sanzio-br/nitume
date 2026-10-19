@@ -19,7 +19,7 @@ None.
 ## Layout (top to bottom)
 1. C-10 header: `Selfie check`, step `Step 2 of 2`.
 2. Intro 13 slate-600, padding 0 20, margin-bottom 14.
-3. R-13 drop zone, height 260: outline person-in-frame icon, caption. Tap → **front camera only** (no gallery for the selfie, proposed; manual comparison by ops, row 126). After capture the zone shows the photo (r 16, cover) with `Retake` (C-03 small) and the upload state.
+3. R-13 drop zone, height 260: outline person-in-frame icon, caption. Tap → **front camera only** (no gallery for the selfie, proposed; manual comparison by ops, row 126). After capture the zone shows the photo (r 16, cover) with `Retake` (C-03 small) and the upload state. A selfie already on the server (pending or approved, opened again later) shows the R-15 thumbnail in its uploaded state with `Retake` and no image: the app never downloads ID or selfie images (ruling 2026-10-19).
 4. Fixed bottom C-01 `Submit for review →`.
 
 ## Components
@@ -47,7 +47,7 @@ Privacy line 11.5 slate-600 under the hint, the same as `v-onboard-id` (row 158 
 
 ## Accessibility and mobile
 - Front camera opens with a face guide overlay; the shutter button has a label `Take selfie`.
-- The selfie is never stored in the device gallery.
+- The selfie is never saved to the gallery; the picked or shot image is read into memory, then the capture file and any scratch copy the picker made are deleted (`CapturedImage.discard`), and captures orphaned when Android killed the app mid-pick are deleted at the next start (`discardLostCaptures`); copies outside the app, such as the runner's own gallery photo or a system camera app's copy, are not the app's to delete (corrected 2026-10-19, B-1).
 - Screen-reader users get the instruction read before the camera opens.
 
 ## Decisions (owner, 2026-10-13)

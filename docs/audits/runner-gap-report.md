@@ -847,7 +847,7 @@ Build health:
 - Too large: checked before upload and on 413, with `10 MB` in Fira Code. Bad type and bad photo copy as specced.
 - The `Leave verification?` dialog on the first run.
 - Hint and privacy line; the link is hidden without the URL.
-- `Continue →` only when both sides are uploaded. Photos are read into memory and the file is deleted.
+- `Continue →` only when both sides are uploaded. Photos are read into memory (file deletion as corrected in §17.3).
 
 #### v-onboard-selfie: PASS (interim C2, C6; open item S-1)
 - Copy as in the mockup. The size and type checks are shared with the ID screen. `Retake`. `Submit for review →` replaces the onboarding stack with `v-onboard-pending`.
@@ -925,4 +925,37 @@ Open from §17: S-1 (orchestrator), m-4 and C1–C6 (core-ui), the bell route (w
   - core-ui: let R-04 take a rich meta (spans), with `NumSpan` for numbers.
   - flutter-runner: build the meta from spans in `offer_presentation.dart` `offerMeta`.
   - This does not reopen the v-jobs PASS for F-1; m-6 is a follow-up minor.
-- Still to correct after the B-1 fix lands: the claim that the captured file is deleted (§17 v-onboard-id; `v-onboard-id.md`, `v-onboard-selfie.md`).
+- The captured-file claim is corrected in §17.3 after the B-1 fix (`bcae361`).
+
+### 17.3 Re-audit 2026-10-19 (`feat/runner-batch-1` @ `e2069dd`, with core `feat/core-runner-batch-2` merged in `b6c2fa6`)
+Build health: `flutter analyze` clean; `flutter test` 67 pass. Still no literal colours or font families in `lib/`.
+
+Changes checked:
+- **B-1** (`bcae361`): the picked or shot image is read into memory, then the capture file and any scratch copy the picker made are deleted (`CapturedImage.discard`), and captures orphaned when Android killed the app mid-pick are deleted at the next start (`discardLostCaptures`); copies outside the app, such as the runner's own gallery photo or a system camera app's copy, are not the app's to delete.
+- **Core C1–C3, C6** (`8d08b0b`):
+  - R-15 `selected` outline (2 px blue), `issue` (`notApproved`, `tooLarge`) with `Retake`, and the side label on the photo.
+  - R-13 `title` slot and captured state.
+  - C-40 danger tone on the 10 MB notice.
+  - `CaptureFrom.frontCamera` for the selfie.
+- **`NitumeFixedCta`, empty-state titles, required reason** (`b7d04f7`): the local `FixedCta` copy is gone (m-4 closed). The `v-jobs` empty and offline states now have a title and a body (C4 closed). R-23 `reasonRequired` stays required.
+- **S-1** (`28290b0`): `Submit for review →` calls `ensurePaymentIdentityVerification` (it creates the pending `payment_identity` record unless a pending or approved one exists; a rejected one is created again), then replaces the stack with `v-onboard-pending`. On failure: C-40 `Couldn't submit. Check your connection and try again.` (the proposed copy in `v-onboard-selfie.md`); the selfie stays uploaded. **S-1 closed.**
+- **m-6** (`e2069dd`): `richMeta` puts Fira Sans words with `NumSpan` numbers (distance, item amount). **m-6 closed.**
+
+Rulings:
+- A selfie already on the server shows the R-15 thumbnail (uploaded state, `Retake`) with no image: accepted (the app never downloads ID or selfie images). `v-onboard-selfie.md` updated.
+- Too large leaves the tile empty with the `tooLarge` issue and `Retake`: accepted. `v-onboard-id.md` updated.
+- The side label on a captured tile is a solid `#0B2545` (`blue`) chip with white text: accepted. `v-onboard-id.md` R-15 amended.
+- Runner `_shared.md` §3: offer meta in Sans with Code only on the numbers.
+
+### Verdicts
+| Screen | Verdict |
+|---|---|
+| v-onboard-id | **PASS** (C1, C2 now real; no stand-ins left) |
+| v-onboard-selfie | **PASS** (C2, C6 real; S-1 closed) |
+| v-onboard-pending | **PASS** |
+| x-location-disclosure | **PASS** (unchanged) |
+| runner/shell (D-1) | **PASS** (unchanged) |
+| v-jobs | **PASS** (m-6 closed; C4, C5 real) |
+| v-job-detail | **PASS** (`NitumeFixedCta`) |
+
+Still open: the bell route (with `v-notifications`); RA-4 and RA-5 (API).
