@@ -893,3 +893,8 @@ Spec-only update; no screen re-audited.
   - `v-new-details.md`: `Flexible` keeps sending no `deadlineAt`; a new caption `No fixed time. We'll set a deadline of {duration} from when you submit.` (proposed; `{duration}` Fira Code, from an API value).
   - Finding C-12-1 (**minor**, `apps/customer_app/lib/src/screens/wizard/details_screen.dart` deadline chips, around `:302`): Design: the caption under `Flexible`. Code: none. Fix: after row 221 and API item 10 (`runner-gap-report.md` §15). Status `partial` until then.
 - Row 201's earlier customer note in round 11 above is superseded.
+
+## Owner answers round 13 (rows 221, 226, 2026-10-19), applied on `docs/owner-answers-13-specs`
+
+- **Row 221** (decided): the default deadline is creation + 24 h. Finding C-12-1 (`v-new-details` `Flexible` caption) is no longer held by an owner question. It still needs the API value and a core accessor (`runner-gap-report.md` §16, api item 3 and core-ui item 2). Status stays `partial`.
+- **Row 226** (decided): the admin's PAYMENT_CONFIRMED → EXPIRED sends the usual `errand.EXPIRED` and opens a refund review. No customer app change (existing screen and copy).

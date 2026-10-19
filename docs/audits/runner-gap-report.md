@@ -746,3 +746,52 @@ Read-only check of `apps/api/src/runners/runners.service.ts` `poolFor` and `apps
 Also seen, and matching the spec: busy runners are not listed (`availability = busy` plus the holders of another job, rows 187 (c), 211); offline runners are flagged `offline`, kept out of `eligibleRemaining` and counted in `offlineCount` (row 215); tried runners are marked `declined | expired` (row 178); over-limit runners are marked `ineligibleReason: over_purchase_limit` (rows 186, 207); the first point is taken in the order task site, pickup, drop-off (row 213); the candidates read changes no state.
 
 New owner question: **AQ-32**, tasks located outside every configured service area (above).
+
+## 16. Owner answers rows 220, 221, 225–229, 231, 232 (2026-10-19), applied on `docs/owner-answers-13-specs`
+
+Spec-only update; no screen re-audited. The API state was read on `feat/api-owner-answers-12` @ `b47d9f2`, which built §15 items 1, 5–9, 11 and 13 (nothing to build). Row 233 (a task inside no service area; AQ-32) stays open.
+
+### Decisions applied
+| Row | Decision | Files |
+|---|---|---|
+| 220 | PAYMENT_CONFIRMED deadline feed: `Deadline passed` / `The customer's deadline for {ref} passed before a runner was assigned. Expire the task or contact the customer.` | System Design §3.3, §4.4; admin `drawer-task-offer.md`, `_shared.md` |
+| 221 | Default `deadlineAt` = creation + 24 h (api-contract to confirm against the category rules); backfill open tasks `createdAt` + 24 h, closed tasks their closing time; then NOT NULL. The customer caption reads the default from the API | System Design §2.2, §3.3; customer `v-new-details.md`, `_shared.md`; runner `_shared.md`; admin specs |
+| 225 | The PAYMENT_CONFIRMED `Expire task` uses the same confirm dialog and a required 10–500 reason | System Design §3.3; admin specs |
+| 226 | That expiry sends the usual `errand.EXPIRED` and opens an `expired_after_payment` refund review; the dialog sentence `The customer is told no runner was available.` is now unconditional | System Design §3.3, §4.4; admin `drawer-task-offer.md`; customer `_shared.md`, `v-notifications.md` |
+| 227 | A task never offered is not exhausted; exhaustion needs at least one offer made | System Design §3.3; admin `drawer-task-offer.md`, `_shared.md`; runner `_shared.md` |
+| 228 | Offline runners as a collapsed, selectable `Show offline runners ({n})` group | admin `drawer-task-offer.md` |
+| 229 | The runner must pick a decline reason; `Other reason` has no free-text box | System Design §2.2; runner `v-jobs.md`, `v-job-detail.md`, `_shared.md` |
+| 231 | Plain decline feed body also for `too_far`, `not_available`, `other` (already built that way) | System Design §4.4; admin `drawer-task-offer.md` |
+| 232 | No admin feed item after the admin's own `Expire task — no runner available` (already built that way). Read for the PAYMENT_CONFIRMED `Expire task` too: the admin acts there as well. This is a design-auditor reading; the owner's words name only the RUNNER_ASSIGNED action | System Design §3.3; admin specs |
+
+### API items for api-contract (numbered; all unblocked)
+1. **Rows 201, 225, 226, 232**: PAYMENT_CONFIRMED → EXPIRED, actor A only.
+   - Route: extend `POST /errands/:id/expire` (the server picks the transition by status), or use a sibling route; api-contract's choice.
+   - Guard: PAYMENT_CONFIRMED and `deadlineAt ≤ now`. Otherwise 409 `expiry_not_allowed` `{ reason: 'deadline_not_passed' | 'not_payment_confirmed' }`.
+   - Reason: required, 10–500 after trimming (400 `expiry_reason_invalid`). It becomes the history note.
+   - Side effects: the customer `errand.EXPIRED` (existing copy), and N-16 `expired_after_payment` extended to this from-state. No admin feed item.
+   - `canExpire.deadlinePassed` becomes true when the action is allowed; `expiry.fromStatus = PAYMENT_CONFIRMED`.
+2. **Rows 201, 220**: one `deadline_passed` admin feed item per PAYMENT_CONFIRMED task when its deadline passes. No state change, idempotent per task, owner copy (row 220).
+3. **Row 221**:
+   - Default `deadlineAt` = creation + 24 h when the customer sends none (confirm against the category rules; if a category needs another default, ask before building).
+   - Backfill migration: open tasks get `createdAt` + 24 h; closed tasks get their closing time (the time of the terminal history row). Then `deadline_at` NOT NULL and `CreateErrandDto.deadlineAt` stays optional on the wire.
+   - Expose the default (e.g. `defaultDeadlineHours` on a public config read) for the customer caption.
+   - `assertDeadlineInFuture` keeps refusing a past `deadlineAt` from the client.
+4. **Row 227**: when exhaustion is built (after row 179), only tasks with at least one offer can be exhausted.
+5. Row 233 (open): build nothing for out-of-area tasks.
+
+### core-ui items
+1. **Row 229**: R-23 `reasonRequired` must stay `true` in both screens. Optional: remove the flag, since the owner settled it. No other change; R-23 and `nationalIdStatus` passed (§15.1).
+2. **Row 221**: a core accessor for the default deadline value (API item 3), for the customer caption.
+
+### flutter-runner items
+1. Use R-23 with a required reason (row 229) in `v-jobs` and `v-job-detail`. No other change from round 13.
+
+### flutter-customer items
+1. `v-new-details`: the `Flexible` caption (row 221), after API item 3 and core-ui item 2. `{duration}` comes from the API, never hard-coded.
+
+### web-parity items
+Admin findings 29 (now unblocked: API items 1–2) and 31 (offline group, decided row 228). See `admin-gap-report.md` round 13.
+
+### New questions for the owner
+None. Row 233 (AQ-32) is still open.

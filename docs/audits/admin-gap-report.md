@@ -773,3 +773,28 @@ Spec-only update; no screen re-audited. Full decision list and API items: `docs/
 
 ### Questions for the owner (new)
 - Rows 220, 221 (open on the BOARD); AQ-28 … AQ-31 (`_shared.md` §8).
+
+## Owner answers round 13 (rows 220, 221, 225–228, 231, 232, 2026-10-19), applied on `docs/owner-answers-13-specs`
+
+Spec-only update; no screen re-audited. API state and items: `runner-gap-report.md` §16.
+
+### What changed in `drawer-task-offer.md` and `_shared.md`
+- PAYMENT_CONFIRMED `Expire task`: the dialog and the required 10–500 reason are decided (row 225). The body now always includes `The customer is told no runner was available.` (row 226). Side effects: customer `errand.EXPIRED` and refund review, no admin feed item (rows 226, 232).
+- RUNNER_ASSIGNED `Expire task — no runner available`: no admin feed item (row 232).
+- Feed copy decided: the PAYMENT_CONFIRMED `Deadline passed` body (row 220); the plain decline body for `too_far`, `not_available`, `other` (row 231).
+- Offline runners group decided (row 228). A never-offered task is not exhausted (row 227). Default deadline and backfill (row 221).
+- Data rebased on `feat/api-owner-answers-12` (`POST /errands/:id/expire`, `canExpire`, `expiry.fromStatus`, candidates with `offline`).
+- §8: AQ-28 … AQ-31 closed; AQ-32 (row 233) open.
+
+### Findings (updates)
+- 29 (**blocker**): unchanged in scope. Its copy is now all decided. Unblocked once api §16 items 1–2 are built.
+- 31 (**minor**): the offline group is decided (row 228). It can be built now on `GET /errands/:id/candidates` (`offline`, `offlineCount`) from `feat/api-owner-answers-12`.
+- 26 (**blocker**): it can be built now on `POST /errands/:id/expire` and `canExpire.noRunner`. No feed item after success (row 232).
+- 30 (**minor**): the `Declined` reason labels can be built now.
+
+### Handoff
+- api-contract: `runner-gap-report.md` §16 items 1–4.
+- web-parity: findings 16–26 and 28–32. Items 26, 30 and 31 can go now; 29 waits for api §16 items 1–2.
+
+### Questions for the owner (new)
+None. Row 233 is still open.
