@@ -20,9 +20,11 @@ const build = (
     tokens?: string[];
     results?: object[];
     admins?: string[];
+    existing?: boolean;
   } = {},
 ) => {
   const notifications = {
+    exists: vi.fn(() => Promise.resolve(opts.existing ?? false)),
     create: vi.fn((row: object) => row),
     save: vi.fn((row: object) => Promise.resolve({ id: 'n-1', ...row })),
     findOne: vi.fn(() =>
@@ -597,6 +599,46 @@ describe('assignment_declined with the row-210 reasons', () => {
     });
     const job = (queue.add.mock.calls as unknown[][])[0][1] as Parameters<typeof copyFor>[0];
     expect(copyFor(job)?.body).toBe('The runner declined NT-7: the purchase is above their limit. Assign another runner.');
+  });
+});
+
+describe('paid_deadline_passed admin feed (rows 201, 220)', () => {
+  const event = { errandId: 'e-1', reference: 'NT-7', deadlineAt: '2026-10-19T10:00:00.000Z' };
+
+  it('has the row-220 owner copy under the deadline_passed event type', () => {
+    expect(copyFor({ kind: 'paid_deadline_passed', errandId: 'e-1', reference: 'NT-7' })).toEqual({
+      eventType: 'deadline_passed',
+      title: 'Deadline passed',
+      body: "The customer's deadline for NT-7 passed before a runner was assigned. Expire the task or contact the customer.",
+    });
+  });
+
+  it('is queued once per task under a per-task job id', async () => {
+    const { service, queue, notifications } = build();
+    await service.onPaidTaskDeadlinePassed(event);
+    expect(notifications.exists).toHaveBeenCalledWith({ where: { errandId: 'e-1', eventType: 'deadline_passed' } });
+    expect(queue.add).toHaveBeenCalledWith(
+      FEED_JOB,
+      { kind: 'paid_deadline_passed', errandId: 'e-1', reference: 'NT-7' },
+      { jobId: 'paid-deadline-passed-e-1' },
+    );
+  });
+
+  it('is not queued again once the task has its item', async () => {
+    const { service, queue } = build({ existing: true });
+    await service.onPaidTaskDeadlinePassed(event);
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('the worker writes one row per active admin, and nothing when the item already exists', async () => {
+    const fresh = build({ admins: ['admin-1', 'admin-2'] });
+    await fresh.service.deliverFeed({ kind: 'paid_deadline_passed', errandId: 'e-1', reference: 'NT-7' });
+    expect(fresh.notifications.save).toHaveBeenCalledTimes(2);
+    expect(fresh.notifications.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'admin-1', title: 'Deadline passed' }));
+
+    const done = build({ existing: true });
+    await expect(done.service.deliverFeed({ kind: 'paid_deadline_passed', errandId: 'e-1', reference: 'NT-7' })).resolves.toBeNull();
+    expect(done.notifications.save).not.toHaveBeenCalled();
   });
 });
 

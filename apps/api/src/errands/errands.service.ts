@@ -377,6 +377,20 @@ export interface TaskDeadlineExpiredEvent {
   closedOffer: { assignmentId: string; runnerProfileId: string } | null;
 }
 
+/**
+ * Rows 201, 220: a paid task never offered (PAYMENT_CONFIRMED) is past its
+ * customer deadline. No state change: ops get one `deadline_passed` feed
+ * item per task (the notifications module keeps it to one) and end it with
+ * the admin "Expire task" or contact the customer.
+ */
+export const PAID_TASK_DEADLINE_PASSED_EVENT = 'errand.paid_deadline_passed';
+
+export interface PaidTaskDeadlinePassedEvent {
+  errandId: string;
+  reference: string;
+  deadlineAt: string;
+}
+
 /** History note of the row-185 expiry; also how `expiry.trigger` is recognised. */
 export const DEADLINE_EXPIRY_NOTE = 'Customer deadline passed';
 
@@ -1854,6 +1868,56 @@ export class ErrandsService {
       }
     }
     return expired;
+  }
+
+  /**
+   * Rows 201, 220: emits `PAID_TASK_DEADLINE_PASSED_EVENT` for every
+   * PAYMENT_CONFIRMED task whose `deadlineAt` has passed. Never changes a
+   * task (row 201: never auto-expire it). Run by the `offer-expiry`
+   * maintenance job; the notifications module queues at most one feed item
+   * per task, so repeating a task on every run is harmless. Walks the whole
+   * set in pages of `pageSize` (oldest deadline first, then id). Returns the
+   * ids it reported.
+   */
+  async reportPaidPastDeadline(
+    now: Date = new Date(),
+    pageSize = 200,
+    /** Restrict to these errands (tests on a shared database). */
+    onlyIds?: string[],
+  ): Promise<string[]> {
+    const reported: string[] = [];
+    let after: { deadlineAt: Date; id: string } | null = null;
+    for (;;) {
+      const qb = this.errands
+        .createQueryBuilder('e')
+        .select(['e.id', 'e.reference', 'e.deadlineAt'])
+        .where('e.status = :status', { status: ErrandStatus.PAYMENT_CONFIRMED })
+        .andWhere('e."deadlineAt" <= :now', { now });
+      if (onlyIds) {
+        qb.andWhere('e.id IN (:...onlyIds)', { onlyIds: onlyIds.length > 0 ? onlyIds : ['00000000-0000-0000-0000-000000000000'] });
+      }
+      if (after) {
+        qb.andWhere('(e."deadlineAt" > :afterAt OR (e."deadlineAt" = :afterAt AND e.id > :afterId))', {
+          afterAt: after.deadlineAt,
+          afterId: after.id,
+        });
+      }
+      const page = await qb.orderBy('e."deadlineAt"', 'ASC').addOrderBy('e.id', 'ASC').limit(pageSize).getMany();
+      for (const e of page) {
+        const event: PaidTaskDeadlinePassedEvent = {
+          errandId: e.id,
+          reference: e.reference,
+          deadlineAt: (e.deadlineAt as Date).toISOString(),
+        };
+        reported.push(e.id);
+        setImmediate(() => this.events.emit(PAID_TASK_DEADLINE_PASSED_EVENT, event));
+      }
+      const last = page.at(-1);
+      if (page.length < pageSize || !last) {
+        return reported;
+      }
+      after = { deadlineAt: last.deadlineAt as Date, id: last.id };
+    }
   }
 
   /**
