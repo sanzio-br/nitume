@@ -135,7 +135,7 @@ Owner: "Exit = new Admin 'Expire task' action from PAYMENT_CONFIRMED after the d
 
 **Result**:
 - PAYMENT_CONFIRMED → EXPIRED, actor `admin`; the history row records the admin id, the time and the reason (`note`); no schema change.
-- Side effects (decided, row 226): the customer `errand.EXPIRED` notification with the unchanged title `No runner available` and row-158 body, and a refund review (row 102, trigger `expired_after_payment`). Admin feed item: pending BOARD row 234 (design-auditor reading of row 232; recommended none); until answered, none is sent.
+- Side effects (decided, row 226): the customer `errand.EXPIRED` notification with the unchanged title `No runner available` and row-158 body, and a refund review (row 102, trigger `expired_after_payment`). No admin feed item (decided, owner 2026-10-19, row 234).
 - Success notice A-11 `Task expired.`; the section switches to **Expired by ops after the deadline**; the queue row loses its `Deadline passed` chip and leaves `Needs a runner`.
 - Activity row: `{from} → Expired` with the built status labels for PAYMENT_CONFIRMED and EXPIRED, caption `Admin · {admin name} · {time}`, the reason on its own line.
 
@@ -240,9 +240,9 @@ No copy says the task expired after a single lapse or decline. No copy mentions 
   - `canExpire { noRunner, deadlinePassed }` on the admin detail (`deadlinePassed` always false until the PAYMENT_CONFIRMED action exists); `expiry.fromStatus`.
   - `GET /errands/:id/candidates` with `offline`, `tried`, `ineligibleReason`, `eligibleRemaining` (online only), `offlineCount`, `triedCount` (rows 204, 215).
 - **Still needed (api-contract; `docs/audits/runner-gap-report.md` §16)**, all unblocked by the 2026-10-19 answers:
-  - Row 201 + 225 + 226: PAYMENT_CONFIRMED → EXPIRED, actor A only, through the same `POST /errands/:id/expire` (server picks the transition by status) or its own route, api-contract's choice; guard: status PAYMENT_CONFIRMED and `deadlineAt` passed (409 `expiry_not_allowed` `{ reason: 'deadline_not_passed' | 'not_payment_confirmed' }`); reason required 10–500; history with admin and reason; side effects: customer `errand.EXPIRED` and refund review `expired_after_payment` (N-16 extended to this from-state); admin feed item pending BOARD row 234 (design-auditor reading of row 232; recommended none), so build none (the safe default; not blocking); `canExpire.deadlinePassed` turns true when allowed.
+  - Row 201 + 225 + 226: PAYMENT_CONFIRMED → EXPIRED, actor A only, through the same `POST /errands/:id/expire` (server picks the transition by status) or its own route, api-contract's choice; guard: status PAYMENT_CONFIRMED and `deadlineAt` passed (409 `expiry_not_allowed` `{ reason: 'deadline_not_passed' | 'not_payment_confirmed' }`); reason required 10–500; history with admin and reason; side effects: customer `errand.EXPIRED` and refund review `expired_after_payment` (N-16 extended to this from-state); no admin feed item (row 234, decided; as built); `canExpire.deadlinePassed` turns true when allowed.
   - Row 201 + 220: one `deadline_passed` feed item per PAYMENT_CONFIRMED task when its deadline passes (no state change, idempotent per task), owner copy above.
-  - Row 221: default `deadlineAt` = creation + 24 h when absent (api-contract to confirm against the category rules), backfill (open tasks `createdAt` + 24 h, closed tasks their closing time), then NOT NULL; expose the default for the customer caption.
+  - Rows 221, 235: when the customer gives no deadline, `deadlineAt` = PAYMENT_CONFIRMED time + 24 h (row 235; a provisional value before payment is api-contract's design, a new column needs the owner); backfill and NOT NULL as row 221; expose the 24 h for the customer caption.
   - Row 227: when exhaustion is built, a task never offered is not exhausted.
 - **Matching exhausted (rows 167, 177–179, 186, 187, 204; to build, api-contract N-20)**:
   - **Eligible pool per task** (System Design §3.3 "Pool"):
@@ -285,7 +285,9 @@ Decided: AQ-12, AQ-17, AQ-18, AQ-19, rows 185, 186, RQ-31, and on 2026-10-19 row
 
 Decided 2026-10-19 (round 13): rows 220, 221, 225 (AQ-28), 226 (AQ-29), 227 (AQ-30), 228 (AQ-31), 231, 232.
 
-Open: row 233 (a task whose location is inside no configured service area always has an empty pool; accept it at creation?). No drawer change until answered; ops assign by hand, cancel or expire.
+Decided 2026-10-19 (round 14): row 233 (a task inside no configured service area is refused at quote and create; no drawer change, tasks created before the check is built are handled by hand: assign, cancel or expire), row 234 (no feed item after the admin's PAYMENT_CONFIRMED `Expire task`), row 235 (a defaulted deadline counts 24 h from payment confirmation, so a `Flexible` task reaches PAYMENT_CONFIRMED with its full window).
+
+Open: none for this drawer.
 
 ## Current vs design
 `main`: the drawer's `Assign runner` shows only at PAYMENT_CONFIRMED (`task-drawer.ts:22-23`) and says `Runner assigned.` on success (`:305`). The queue's `Assign` shows only at PAYMENT_CONFIRMED (`task-queue.panel.ts:136-137`). There is no `Runner` section, no offer, decline, lapse or deadline state, no way to re-offer a RUNNER_ASSIGNED task and no expire action. The `Status history` shows the actor type and the note but no admin name (`:157-176`).
