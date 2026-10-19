@@ -258,4 +258,54 @@ void main() {
       expect(a.bodies.single, {'title': 'Flat check'});
     });
   });
+
+  group('Errand.outsideServiceArea (row 236)', () {
+    test('true only when the API sends true', () {
+      expect(
+        Errand.fromJson(_errand('QUOTED', {'outsideServiceArea': true}))
+            .outsideServiceArea,
+        isTrue,
+      );
+      expect(
+        Errand.fromJson(_errand('QUOTED', {'outsideServiceArea': false}))
+            .outsideServiceArea,
+        isFalse,
+      );
+    });
+
+    test('missing, null or junk reads as false', () {
+      expect(Errand.fromJson(_errand('QUOTED')).outsideServiceArea, isFalse);
+      for (final v in [null, 'true', 1]) {
+        expect(
+          Errand.fromJson(_errand('REQUESTED', {'outsideServiceArea': v}))
+              .outsideServiceArea,
+          isFalse,
+          reason: '$v',
+        );
+      }
+    });
+
+    test('read from GET /errands/:id and the list', () async {
+      final a = FakeApiAdapter({
+        'GET /errands/e1': (
+          200,
+          _errand('ACCEPTED', {'outsideServiceArea': true}),
+        ),
+        'GET /errands': (
+          200,
+          {
+            'items': [
+              _errand('REQUESTED', {'outsideServiceArea': true}),
+              {..._errand('QUOTED'), 'id': 'e2'},
+            ],
+            'nextCursor': null,
+          },
+        ),
+      });
+      final repo = ErrandRepository(fakeClient(a));
+      expect((await repo.get('e1')).outsideServiceArea, isTrue);
+      final page = await repo.list();
+      expect(page.items.map((e) => e.outsideServiceArea), [true, false]);
+    });
+  });
 }
