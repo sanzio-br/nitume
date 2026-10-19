@@ -5,6 +5,14 @@
  */
 export const NOTIFICATIONS_QUEUE = 'notifications';
 export const MAINTENANCE_QUEUE = 'maintenance';
+/**
+ * Runner location writes (§4.2, §9): the last-known position on
+ * `runner_profiles`, the sampled `runner_locations` trail, and the
+ * geofenced ARRIVED (§4.3). The socket handler never writes PostgreSQL.
+ */
+export const LOCATION_QUEUE = 'location';
+export const LOCATION_PERSIST_JOB = 'location-persist';
+export const GEOFENCE_ARRIVAL_JOB = 'geofence-arrival';
 
 /**
  * Whether this process runs queue workers and schedules repeatable jobs.

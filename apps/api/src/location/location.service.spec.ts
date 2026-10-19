@@ -80,3 +80,23 @@ describe('LocationService.trackingFor (A-3)', () => {
     expect(snap.runnerLocation).toBeNull();
   });
 });
+
+describe('LocationService.trackingFor live position (RA-4, row 247)', () => {
+  it('prefers the Redis live position over runner_profiles', async () => {
+    const { errands, runners } = build(ErrandStatus.IN_PROGRESS);
+    const live = { liveFor: vi.fn(() => Promise.resolve({ lat: -1.1, lng: 36.9, capturedAt: new Date('2026-10-19T10:00:00Z') })) };
+    const service = new LocationService(errands as never, runners as never, live as never);
+    const snap = await service.trackingFor('e-1', viewer);
+    expect(live.liveFor).toHaveBeenCalledWith('runner-1');
+    expect(snap.runnerLocation).toEqual({ lat: -1.1, lng: 36.9, capturedAt: new Date('2026-10-19T10:00:00Z') });
+    expect(runners.lastKnownLocation).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the last-known value when Redis has none', async () => {
+    const { errands, runners } = build(ErrandStatus.IN_PROGRESS);
+    const live = { liveFor: vi.fn(() => Promise.resolve(null)) };
+    const service = new LocationService(errands as never, runners as never, live as never);
+    const snap = await service.trackingFor('e-1', viewer);
+    expect(snap.runnerLocation?.lat).toBe(-4.05);
+  });
+});

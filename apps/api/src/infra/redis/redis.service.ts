@@ -39,6 +39,37 @@ export class RedisService {
     return (await this.client.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK';
   }
 
+  /** SET NX with a TTL in milliseconds: true when this call created the key. */
+  async setIfAbsentMs(key: string, value: string, ttlMs: number): Promise<boolean> {
+    return (await this.client.set(key, value, 'PX', ttlMs, 'NX')) === 'OK';
+  }
+
+  /** GEOADD one member (§4.2 live location cache). */
+  async geoAdd(key: string, lng: number, lat: number, member: string): Promise<void> {
+    await this.client.geoadd(key, lng, lat, member);
+  }
+
+  /**
+   * PUBLISH. Channels are not keys, so ioredis does not prefix them; callers
+   * build names with `channel()` to keep the row-224 test isolation.
+   */
+  async publish(channel: string, message: string): Promise<number> {
+    return this.client.publish(channel, message);
+  }
+
+  /** A channel name carrying the configured key prefix (row 224). */
+  channel(name: string): string {
+    return `${this.client.options.keyPrefix ?? ''}${name}`;
+  }
+
+  /**
+   * A new connection for SUBSCRIBE/PSUBSCRIBE (a subscribed connection
+   * cannot run other commands). The caller must `quit()` it.
+   */
+  createSubscriber(): Redis {
+    return this.client.duplicate();
+  }
+
   /** Runs a Lua script atomically (EVAL). */
   async evalScript(script: string, keys: string[], args: (string | number)[]): Promise<unknown> {
     return this.client.eval(script, keys.length, ...keys, ...args);

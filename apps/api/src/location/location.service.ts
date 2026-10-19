@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ErrandPointType, ErrandStatus } from '../common/enums';
 import { ErrandsService, ViewerContext } from '../errands/errands.service';
+import { LocationIngestService } from './location-ingest.service';
 import {
   RunnerPublicSummary,
   RunnersService,
@@ -44,6 +45,7 @@ export class LocationService {
   constructor(
     private readonly errands: ErrandsService,
     private readonly runners: RunnersService,
+    @Optional() private readonly live?: LocationIngestService,
   ) {}
 
   async trackingFor(errandId: string, viewer: ViewerContext): Promise<TrackingSnapshot> {
@@ -53,8 +55,12 @@ export class LocationService {
     // customer, so there is no runner (and no position) to share before accept.
     const runnerId = errand.assignment?.runner?.id ?? null;
     const live = LIVE_TRACKING_STATUSES.has(errand.status) && runnerId !== null;
+    // Redis live position first (§4.2; the only store while row 247 is
+    // open), then the last-known value on runner_profiles.
     const runnerLocation =
-      live && runnerId ? await this.runners.lastKnownLocation(runnerId) : null;
+      live && runnerId
+        ? ((await this.live?.liveFor(runnerId)) ?? (await this.runners.lastKnownLocation(runnerId)))
+        : null;
 
     return {
       errandId: errand.id,
