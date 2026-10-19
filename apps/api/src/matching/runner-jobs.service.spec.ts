@@ -87,8 +87,14 @@ describe('RunnerJobsService (RA-1, RA-2)', () => {
   });
 
   it('the job view is only for the runner holding the current assignment', async () => {
-    await expect(build({ holder: 'rp-2' }).service.job('u-1', 'e-1')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(build({ holder: 'rp-2' }).service.job('u-1', 'e-1')).rejects.toMatchObject({ code: 'job_not_held', status: 403 });
     await expect(build().service.job('u-1', 'e-1')).resolves.toMatchObject({ id: 'e-1' });
+  });
+
+  it('codes the errand access refusal as job_not_held too (A2)', async () => {
+    const built = build();
+    built.errands.getById.mockRejectedValueOnce(new ForbiddenException());
+    await expect(built.service.job('u-1', 'e-1')).rejects.toMatchObject({ code: 'job_not_held' });
   });
 
   it('accept is the runner RUNNER_ASSIGNED -> RUNNER_EN_ROUTE transition', async () => {

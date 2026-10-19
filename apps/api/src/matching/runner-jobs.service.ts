@@ -1,4 +1,5 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, HttpStatus, Injectable } from '@nestjs/common';
+import { ApiError } from '../common/api-error';
 import { AssignmentDeclineReason, AssignmentStatus, ErrandCategory, ErrandStatus, ErrandUrgency, StatusHistoryActor } from '../common/enums';
 import { ErrandAssignment } from '../errands/errand-assignment.entity';
 import { BUDGET_CATEGORIES } from '../errands/errand-rules';
@@ -65,6 +66,15 @@ export interface RunnerJobView {
   assignment: RunnerJobAssignment;
 }
 
+/**
+ * A2: 403 `job_not_held` = this runner does not hold the job (never
+ * offered, declined, offer lapsed or withdrawn, reassigned). A job the
+ * runner accepted stays readable after it ends (the accepted assignment
+ * stays current), so the app maps this code to "access revoked".
+ */
+const jobNotHeld = (): ApiError =>
+  new ApiError(HttpStatus.FORBIDDEN, 'job_not_held', 'This job is not assigned to you');
+
 const FIRST_POINT_ORDER = ['task_site', 'pickup', 'dropoff'];
 
 const firstPointOf = (locations: ErrandLocationView[]): ErrandLocationView | null =>
@@ -124,11 +134,16 @@ export class RunnerJobsService {
    */
   async job(userId: string, errandId: string): Promise<RunnerJobView> {
     const viewer: ViewerContext = { role: 'runner', userId };
-    const errand = await this.errands.getById(errandId, viewer);
+    let errand: Errand;
+    try {
+      errand = await this.errands.getById(errandId, viewer);
+    } catch (err) {
+      throw err instanceof ForbiddenException ? jobNotHeld() : err;
+    }
     const profile = await this.runners.profileByUserId(userId);
     const assignment = await this.errands.activeAssignmentFor(errandId);
     if (assignment?.runnerProfileId !== profile.id) {
-      throw new ForbiddenException('You do not have access to this errand');
+      throw jobNotHeld();
     }
     const extra = await this.errands.locationsAndItemsFor([errandId]);
     return this.project(errand, assignment, extra.locations.get(errandId) ?? [], extra.items.get(errandId) ?? [], profile.id);
