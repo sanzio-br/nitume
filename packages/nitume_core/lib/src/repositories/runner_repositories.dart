@@ -81,6 +81,27 @@ class RunnerAccountRepository {
         .then(RunnerVerification.fromJson);
   }
 
+  /// Interim payment-identity record (rows 218, 222; S-1): makes sure a
+  /// `payment_identity` verification is pending or approved so ops can do
+  /// the M-Pesa name match. Reads `GET /runners/me/verifications`; when the
+  /// newest `payment_identity` record is pending or approved it is returned
+  /// and nothing is sent, otherwise (none, or the newest was rejected)
+  /// `POST /runners/me/verifications` `{ verificationType:
+  /// 'payment_identity' }` creates a pending one. The API itself does not
+  /// de-duplicate, so always go through this call, never [addVerification].
+  ///
+  /// `v-onboard-selfie` calls it on `Submit for review →` (placement is the
+  /// screen's). Errors are the API's ([NitumeApiException]); a failed call
+  /// leaves the uploaded selfie as it is.
+  Future<RunnerVerification> ensurePaymentIdentityVerification() async {
+    final latest = RunnerVerification.latestByType(await verifications());
+    final current = latest[RunnerVerificationType.paymentIdentity];
+    if (current != null && current.status != VerificationStatus.rejected) {
+      return current;
+    }
+    return addVerification(RunnerVerificationType.paymentIdentity);
+  }
+
   /// `POST /runners/me/verifications/documents` (multipart: `file`,
   /// `verificationType` and, for an ID, `side`): stores one ID side or
   /// selfie in restricted storage and creates a `pending` record (rows 125,
@@ -319,9 +340,10 @@ class RunnerJobsRepository {
       .postMap('/errands/$errandId/accept')
       .then(OfferAcceptResult.fromJson);
 
-  /// `POST /errands/:id/decline` `{ reason? }` (rows 108, 113, 134, 210).
-  /// [reason] is one of the four [OfferDeclineReason] values (the R-23
-  /// `DeclineReasonDialog` picks it); without it it is a general decline.
+  /// `POST /errands/:id/decline` `{ reason }` (rows 108, 113, 134, 210,
+  /// 229). [reason] is required: one of the four [OfferDeclineReason]
+  /// values, picked in the R-23 `DeclineReasonDialog`; the API refuses a
+  /// missing reason with 400 [ApiErrorCodes.declineReasonInvalid].
   /// [OfferDeclineReason.overPurchaseLimit] only while
   /// [RunnerJobView.overPurchaseLimit]. The task stays RUNNER_ASSIGNED for
   /// another runner.
@@ -333,9 +355,9 @@ class RunnerJobsRepository {
   /// `maxPurchaseAdvance`).
   Future<OfferDeclineResult> decline(
     String errandId, {
-    OfferDeclineReason? reason,
+    required OfferDeclineReason reason,
   }) => _api
-      .postMap('/errands/$errandId/decline', data: {'reason': ?reason?.wire})
+      .postMap('/errands/$errandId/decline', data: {'reason': reason.wire})
       .then(OfferDeclineResult.fromJson);
 
   /// The runner's current job(s): `GET /errands?status=…` (runner-scoped

@@ -157,6 +157,67 @@ void main() {
       );
     });
 
+    group('ensurePaymentIdentityVerification (S-1, row 218)', () {
+      Map<String, Object?> pi(String id, String status, String at) => {
+        'id': id,
+        'verificationType': 'payment_identity',
+        'status': status,
+        'createdAt': at,
+      };
+      const created = {
+        'id': 'new',
+        'verificationType': 'payment_identity',
+        'status': 'pending',
+      };
+
+      Future<(RunnerVerification, _Adapter)> run(List<Object?> list) async {
+        final a = _Adapter({
+          'GET /runners/me/verifications': (200, list),
+          'POST /runners/me/verifications': (201, created),
+        });
+        final v = await RunnerAccountRepository(_client(a))
+            .ensurePaymentIdentityVerification();
+        return (v, a);
+      }
+
+      test('none yet: creates a pending record', () async {
+        final (v, a) = await run([
+          {
+            'id': 's1',
+            'verificationType': 'selfie',
+            'status': 'pending',
+            'createdAt': '2026-10-12T08:00:00.000Z',
+          },
+        ]);
+        expect(v.id, 'new');
+        expect(a.calls, [
+          'GET /runners/me/verifications',
+          'POST /runners/me/verifications',
+        ]);
+        expect(a.bodies.last, {'verificationType': 'payment_identity'});
+      });
+
+      for (final status in ['pending', 'approved']) {
+        test('newest $status: skipped, returns it', () async {
+          final (v, a) = await run([
+            pi('p2', status, '2026-10-12T08:00:00.000Z'),
+            pi('p1', 'rejected', '2026-10-10T08:00:00.000Z'),
+          ]);
+          expect(v.id, 'p2');
+          expect(a.calls, ['GET /runners/me/verifications']);
+        });
+      }
+
+      test('newest rejected: creates a new one', () async {
+        final (v, a) = await run([
+          pi('p1', 'approved', '2026-10-01T08:00:00.000Z'),
+          pi('p2', 'rejected', '2026-10-12T08:00:00.000Z'),
+        ]);
+        expect(v.id, 'new');
+        expect(a.calls.last, 'POST /runners/me/verifications');
+      });
+    });
+
     test('skills and areas use PUT', () async {
       final a = _Adapter({
         'PUT /runners/me/skills': (200, ['inspection', 'buy_for_me']),
