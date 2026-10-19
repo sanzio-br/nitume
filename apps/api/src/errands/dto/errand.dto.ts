@@ -5,6 +5,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsISO8601,
   IsLatitude,
@@ -258,4 +259,13 @@ export class ExpireErrandDto {
   @IsString()
   @MaxLength(2000)
   reason?: string;
+
+  /**
+   * Which action the admin chose: RUNNER_ASSIGNED ("Expire task — no runner
+   * available") or PAYMENT_CONFIRMED ("Expire task", rows 201, 225).
+   * Recommended; without it the server picks by the task's status.
+   */
+  @IsOptional()
+  @IsIn([ErrandStatus.RUNNER_ASSIGNED, ErrandStatus.PAYMENT_CONFIRMED])
+  fromStatus?: ErrandStatus.RUNNER_ASSIGNED | ErrandStatus.PAYMENT_CONFIRMED;
 }
