@@ -228,6 +228,15 @@ Status: **exists** = in `packages/nitume_core` on `main` (class named); **change
 
 ### 4.2 New for the runner surface (R-xx, core-ui)
 
+**Status on `main` @ `ccd8a1d` (checked 2026-10-19, `docs/runner-v-active-spec`)**: R-01, R-02, R-04 … R-08, R-10 … R-23 are built in `packages/nitume_core` (R-20 … R-22 with the device side in `packages/nitume_runner_device`). Read "NEW" in the table below as the original status. R-09 is served by C-24 `MenuRow` (`leadingIcon`, `subtitle` built). Open changes for the `v-active` family, numbered C-V1 … C-V7 in `docs/audits/runner-gap-report.md` §21:
+- C-V1 R-22: discard the picker file once the app keeps its copy (B-1 for evidence).
+- C-V2 R-22: a job-scoped uploader that outlives the screen.
+- C-V3 R-19: held jobs in the runner projection, without open offers, plus a working-state set.
+- C-V4 R-19: the job view after the job ends (with API A2).
+- C-V5 R-20: background-access request per platform (RQ-33).
+- C-V6 `RealtimeEvents` `price_change:decided`.
+- C-V7 new R-24 `SuccessMark`.
+
 | Id | Component | Design-system pattern | Status |
 |---|---|---|---|
 | R-01 | `runnerStatusPresentation(ErrandStatus)`: runner label + tone (§6). Separate from the customer map C-06, which must not change | — | NEW |
@@ -253,6 +262,7 @@ Status: **exists** = in `packages/nitume_core` on `main` (class named); **change
 | R-21 | `OfflineActionQueue`: persists runner status transitions and evidence uploads made without connectivity and replays them in order on reconnect (§7.2), with an idempotency key per action (RA-17) | — | NEW |
 | R-22 | `EvidenceUploader`: camera capture (RQ-12) → compress (long edge 1600 px, JPEG 80) → `POST /errands/:id/evidence` with `capturedAt`, `lat`, `lon`; per-item progress and retry; through R-21 when offline | — | NEW |
 | R-23 | `DeclineReasonDialog` (row 210): C-35 dialog with title, body (over-limit variant), label `Why are you declining?` and a C-16 `NitumeRadioRow` group of the reasons (`Above my purchase limit` only when over the limit, pre-selected), outline `Decline` (enabled once a reason is chosen) + primary `Keep offer`; returns the chosen reason. Full spec: `v-jobs.md` "Decline reason picker" | — (not drawn) + design-system list/radio pattern | NEW |
+| R-24 | `SuccessMark`: 70px circle green-050 with a 28px green check (complete state, allowed); semantics `Done`. Used by `v-job-summary`; the customer STK view draws the same circle in app code today (`stk_view.dart`), so core-ui promotes it (C-V7) | mockup `v-job-summary` `.profile-avatar-lg` with green-050 | NEW |
 
 ## 5. Layout constants
 
@@ -344,6 +354,14 @@ Reimbursement and payout rules shown in the app:
 - **Socket** (core `RealtimeClient`, rows 23, 29): one connection per session. The runner joins `errand:{id}` for each job it holds (`errand:join`; the API allows the current runner) and receives `errand:status_changed`, `evidence:uploaded`, `errand:access_revoked`. Needed and missing (RA-5): room `runner:{runnerId}` (§4.2 `runner:{runnerId}:status`) joined **by the server** on connect from the authenticated runner (row 139: never a client-supplied room id), with `job:offered`, `job:offer_withdrawn` (expired, reassigned or cancelled) and `price_change:decided` (approved / rejected / customer cancelled). Event names only through core `RealtimeEvents`.
 - **Polling fallback** only while the socket is disconnected: offers 20 s, active job 15 s, earnings on screen open and pull-to-refresh. Banner `Reconnecting…` (C-40) after 5 s disconnected.
 - **Location pings** (RA-4, rows 27, 65, 123): emit `location:ping { lat, lng, errandId, accuracy, ts }` every 4–8 s or 15 m moved while the runner holds a job in RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS (from the moment they accept); stop at AWAITING_CUSTOMER, on any terminal state, on reassignment. While online without a job: every 30 s without `errandId`. **Offline: no pings and no collection at all** (the pinger and the location stream stop). Background location only during the live window, behind `x-location-disclosure`.
+- **Background permission** (amended 2026-10-19, proposed, RQ-33 / RQ-34):
+  - `x-location-disclosure` asks for when-in-use only.
+  - The background step comes at the first job start on `v-active`: a short in-app disclosure, then Android "Allow all the time" (a dialog on Android 10, the settings page on 11+). On iOS, the recommended option needs no "Always": the `location` background mode keeps a running job's updates going.
+  - A refusal never blocks the job; pings then run in the foreground only, and `v-active` shows a notice.
+  - After a force-quit, pings stop until the app is opened again; on opening, a working job restarts them at once.
+  - Copy must never claim sharing continues "when the app is closed".
+- **Several held jobs (row 211)**: pings carry the `errandId` of the **working** job (RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS; at most one). Jobs in AWAITING_CUSTOMER or DISPUTED never get pings. With no working job and online, the 30 s idle pings apply.
+- **Stored location** (System Design §4.2: about every 10th ping goes to `runner_locations`): retention not decided, RQ-35.
 - **Android foreground-service notification** (final, confirmed 2026-10-14; built in `nitume_runner_device` `geolocator_position_source.dart`): title `Nitume Runner`, text `Sharing your location for your active job.` It is shown only while background collection runs, which is only during a job (RUNNER_EN_ROUTE … IN_PROGRESS). The 30 s pings while online without a job are foreground-only and show no notification; if that ever changes, the text must change too (proposed `Sharing your location while you're online.`).
 - **Navigation**: `Navigate` opens Google Maps turn-by-turn through `url_launcher` (`google.navigation:q=lat,lng` on Android, `https://www.google.com/maps/dir/?api=1&destination=lat,lng` elsewhere; §5). No in-app navigation.
 - **Push** (row 31): register the FCM token after sign-in (`POST /users/me/devices`, runner role allowed), remove on log out. Runner notification kinds and copy: `v-notifications.md` (row 139; API: RA-6). Deep links: job offer → `v-job-detail`; job assigned/started/cancelled/failed/disputed/confirmed → `v-active` (or the ended-job state); price change decided → `v-active`; payout sent / reversal / correction → `v-earnings`; rating → `v-profile`; verification decided → `v-onboard-pending`; unknown with `errandId` → `v-active` if it is the current job, else nothing.
