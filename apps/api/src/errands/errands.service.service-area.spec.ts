@@ -130,3 +130,68 @@ describe('row 233: tasks inside no service area', () => {
     expect(draft.emit).not.toHaveBeenCalledWith(OUTSIDE_SERVICE_AREA_EVENT, expect.anything());
   });
 });
+
+/** Row 236 (C-14-2): `outsideServiceArea` on the customer errand view. */
+describe('row 236: outsideServiceArea on the errand view', () => {
+  const viewFor = (status: ErrandStatus, inArea: (p: { lat: number; lng: number }) => boolean) => {
+    const errand = { id: 'e-1', customerId: 'c-1', status, quotedPrice: null } as unknown as Errand;
+    const stored = [
+      { errandId: 'e-1', pointType: ErrandPointType.DROPOFF, coordinates: { coordinates: [DROPOFF.lng, DROPOFF.lat] } },
+      { errandId: 'e-1', pointType: ErrandPointType.PICKUP, coordinates: { coordinates: [PICKUP.lng, PICKUP.lat] } },
+    ];
+    const inServiceArea = vi.fn(inArea);
+    const none = { find: vi.fn(() => Promise.resolve([])) };
+    const service = new ErrandsService(
+      {} as never,
+      { findOne: vi.fn(() => Promise.resolve(errand)), find: vi.fn(() => Promise.resolve([errand])) } as never,
+      { find: vi.fn(() => Promise.resolve(stored)) } as never,
+      none as never,
+      none as never,
+      none as never,
+      {} as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      { inServiceArea, publicSummaries: vi.fn(() => Promise.resolve(new Map())) } as never,
+      none as never,
+    );
+    Object.assign(service, { canView: () => Promise.resolve(true) });
+    return { service, inServiceArea };
+  };
+  const CUSTOMER = { role: 'customer', userId: 'u-1' } as never;
+  const ADMIN_VIEWER = { role: 'admin', userId: 'a-1' } as never;
+
+  it.each([ErrandStatus.REQUESTED, ErrandStatus.QUOTED, ErrandStatus.ACCEPTED])(
+    'is true for a %s task whose first point is outside every area (the quote check)',
+    async (status) => {
+      const { service, inServiceArea } = viewFor(status, () => false);
+      const view = await service.getDetail('e-1', CUSTOMER);
+      expect(view.outsideServiceArea).toBe(true);
+      // Same point as the quote refusal: the pickup, not the drop-off.
+      expect(inServiceArea).toHaveBeenCalledWith(expect.objectContaining(PICKUP));
+    },
+  );
+
+  it('is false when the first point is inside an area (a drop-off outside does not count)', async () => {
+    const { service } = viewFor(ErrandStatus.REQUESTED, (p) => p.lat === PICKUP.lat);
+    expect((await service.getDetail('e-1', CUSTOMER)).outsideServiceArea).toBe(false);
+  });
+
+  it.each([ErrandStatus.DRAFT, ErrandStatus.PAYMENT_CONFIRMED, ErrandStatus.CANCELLED])(
+    'is false in %s (no quote is attempted there), without running the area check',
+    async (status) => {
+      const { service, inServiceArea } = viewFor(status, () => false);
+      expect((await service.getDetail('e-1', CUSTOMER)).outsideServiceArea).toBe(false);
+      expect(inServiceArea).not.toHaveBeenCalled();
+    },
+  );
+
+  it('is not part of the admin view (the admin spec does not use it)', async () => {
+    const { service } = viewFor(ErrandStatus.REQUESTED, () => false);
+    Object.assign(service, {
+      assignments: { find: vi.fn(() => Promise.resolve([])) },
+      noRunnerExpiryBlocker: () => Promise.resolve({ reason: 'not_runner_assigned' }),
+    });
+    const view = await service.getDetail('e-1', ADMIN_VIEWER);
+    expect(view).not.toHaveProperty('outsideServiceArea');
+  });
+});

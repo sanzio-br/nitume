@@ -161,6 +161,16 @@ export type ErrandView = Errand & {
    */
   quoteAcceptanceRequired: boolean;
   /**
+   * Customer views only (row 236, C-14-2): true when the task is REQUESTED,
+   * QUOTED or ACCEPTED and its first point (task site, else pickup, else
+   * drop-off) is inside no configured service area, i.e. a quote or
+   * re-quote is refused now with 422 `location_outside_service_area`. The
+   * customer is told and may cancel. Recomputed on every read against the
+   * current RUNNER_SERVICE_AREAS (no stored flag): it turns false again if
+   * the areas grow to cover the task. Always false with no area configured.
+   */
+  outsideServiceArea?: boolean;
+  /**
    * Admin detail only (row 157, drawer-task-offer): every assignment of the
    * task, newest first, whatever its status (open, accepted, declined,
    * expired), for "Earlier offers" and to skip runners already offered.
@@ -540,6 +550,9 @@ const DEADLINE_EDITABLE: ReadonlySet<ErrandStatus> = new Set([
 /** States in which an admin may replace an expired quote (rows 46, 72). */
 const REQUOTABLE = new Set<ErrandStatus>([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]);
 
+/** Row 236: the statuses in which `quote` runs the row-233 area check (REQUESTED plus re-quote). */
+const QUOTE_AREA_CHECKED = new Set<ErrandStatus>([ErrandStatus.REQUESTED, ...REQUOTABLE]);
+
 /** An admin dispute resolution about to commit (see `onDisputeResolved`). */
 export interface DisputeResolutionInTx {
   errandId: string;
@@ -643,6 +656,18 @@ export class ErrandsService {
     }
   }
 
+  /**
+   * Row 236: `outsideServiceArea` of the customer view; the same test as the
+   * quote refusal (`assertInServiceArea` on the stored points).
+   */
+  private outsideServiceAreaOf(status: ErrandStatus, points: readonly ErrandLocationView[]): boolean {
+    if (!QUOTE_AREA_CHECKED.has(status)) {
+      return false;
+    }
+    const first = firstPointOf(points);
+    return first !== null && !this.runners.inServiceArea(first);
+  }
+
   /** The row-233 check on a stored task (submit, quote), inside the caller's transaction. */
   private async assertStoredInServiceArea(manager: EntityManager, errandId: string): Promise<void> {
     const rows = await manager.getRepository(ErrandLocation).find({ where: { errandId } });
@@ -735,6 +760,8 @@ export class ErrandsService {
         locations: savedLocations.map(toLocationView),
         items: savedItems.map(toItemView),
         ...this.derivedFields(saved, null),
+        // Row 236: a new task is a DRAFT (and passed the row-233 check).
+        outsideServiceArea: false,
       });
       return { errand: view, history };
     });
@@ -1230,12 +1257,16 @@ export class ErrandsService {
         a && (!customer || a.status === AssignmentStatus.ACCEPTED || acceptedInHistory.has(errand.id))
           ? toAssignmentView(a, summaries.get(a.runnerProfileId) ?? null)
           : null;
-      const view = Object.assign(errand, {
+      const locations = (locationsBy.get(errand.id) ?? []).map(toLocationView);
+      const view: ErrandView = Object.assign(errand, {
         assignment,
-        locations: (locationsBy.get(errand.id) ?? []).map(toLocationView),
+        locations,
         items: (itemsBy.get(errand.id) ?? []).map(toItemView),
         ...this.derivedFields(errand, newestQuote.get(errand.id) ?? null),
       });
+      if (customer) {
+        view.outsideServiceArea = this.outsideServiceAreaOf(errand.status, locations);
+      }
       return viewer?.role === UserRole.RUNNER ? withoutCustomerPricing(view) : view;
     });
   }
@@ -2172,7 +2203,7 @@ export class ErrandsService {
         lock: { mode: 'pessimistic_write' },
       });
       // Row 233: no quote or re-quote for a task inside no service area.
-      if (current && (current.status === ErrandStatus.REQUESTED || REQUOTABLE.has(current.status))) {
+      if (current && QUOTE_AREA_CHECKED.has(current.status)) {
         await this.assertStoredInServiceArea(manager, errandId);
       }
       if (current && REQUOTABLE.has(current.status)) {
