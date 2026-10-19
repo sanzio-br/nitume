@@ -499,6 +499,17 @@ export type AcceptGuard = (
 ) => Promise<void>;
 
 /**
+ * Runs inside the runner's IN_PROGRESS -> AWAITING_CUSTOMER transaction
+ * (errand locked) and returns what is still missing; a non-empty list
+ * refuses the step with 409 `evidence_required` (`missing`). The evidence
+ * module registers the §3.3 "evidence uploaded" check here (RA-11).
+ */
+export type CompletionCheck = (
+  manager: EntityManager,
+  ctx: { errandId: string; runnerUserId: string },
+) => Promise<string[]>;
+
+/**
  * Runs inside the admin assign transaction (errand locked) before the offer
  * is written; throwing refuses the assign. Matching checks the runner's
  * eligibility here (row 186: purchase limit).
@@ -637,6 +648,7 @@ export class ErrandsService {
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
   private readonly requoteGuards: RequoteGuard[] = [];
   private readonly acceptGuards: AcceptGuard[] = [];
+  private readonly completionChecks: CompletionCheck[] = [];
   private readonly assignGuards: AssignGuard[] = [];
 
   private readonly logger = new Logger(ErrandsService.name);
@@ -1777,6 +1789,18 @@ export class ErrandsService {
         }
       }
     }
+    // §3.3 "IN_PROGRESS -> AWAITING_CUSTOMER: runner (evidence uploaded)", RA-11.
+    if (fromStatus === ErrandStatus.IN_PROGRESS && to === ErrandStatus.AWAITING_CUSTOMER && actor.id) {
+      const missing: string[] = [];
+      for (const check of this.completionChecks) {
+        missing.push(...(await check(manager, { errandId, runnerUserId: actor.id })));
+      }
+      if (missing.length > 0) {
+        throw new ApiError(HttpStatus.CONFLICT, 'evidence_required', 'Upload the required evidence before finishing', {
+          missing: [...new Set(missing)],
+        });
+      }
+    }
     // RA-20: the runner is free again once the job leaves the active states.
     if (RUNNER_ACTIVE_JOB_STATES.has(fromStatus) && !RUNNER_ACTIVE_JOB_STATES.has(to)) {
       const holder = await this.activeAssignmentFor(errandId, manager);
@@ -1986,6 +2010,11 @@ export class ErrandsService {
   /** Registers a check run inside every runner accept (see `AcceptGuard`). */
   onRunnerAccept(guard: AcceptGuard): void {
     this.acceptGuards.push(guard);
+  }
+
+  /** RA-11: registers a check for the runner's IN_PROGRESS -> AWAITING_CUSTOMER step. */
+  onRunnerCompletion(check: CompletionCheck): void {
+    this.completionChecks.push(check);
   }
 
   /** Registers a check run inside every admin assign (see `AssignGuard`). */
@@ -2226,6 +2255,37 @@ export class ErrandsService {
       take: limit,
     });
     return rows.map((r) => r.id);
+  }
+
+  /**
+   * Row 129 (RA-12): on a CANCELLED or FAILED task the runner may upload
+   * receipts and claim item spend for `errands.receiptWindowHours` (24)
+   * after the task ended (the history row that ended it). Null for any
+   * other status.
+   */
+  async receiptWindowFor(errandId: string): Promise<{ endedAt: Date; windowEndsAt: Date } | null> {
+    const ended = await this.history.findOne({
+      where: { errandId, toStatus: In([ErrandStatus.CANCELLED, ErrandStatus.FAILED]) },
+      order: { createdAt: 'DESC' },
+    });
+    if (!ended) {
+      return null;
+    }
+    const hours = this.config?.get<number>('errands.receiptWindowHours', 24) ?? 24;
+    return { endedAt: ended.createdAt, windowEndsAt: new Date(ended.createdAt.getTime() + hours * 3_600_000) };
+  }
+
+  /** 409 `reimbursement_window_closed` (`endedAt`, `windowEndsAt`) once the row-129 window has passed. */
+  async assertReceiptWindowOpen(errandId: string, now: Date = new Date()): Promise<void> {
+    const window = await this.receiptWindowFor(errandId);
+    if (window && window.windowEndsAt.getTime() <= now.getTime()) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'reimbursement_window_closed',
+        'The upload window for this task has closed. Contact support with your receipt.',
+        { endedAt: window.endedAt.toISOString(), windowEndsAt: window.windowEndsAt.toISOString() },
+      );
+    }
   }
 
   async historyFor(errandId: string): Promise<ErrandStatusHistory[]> {

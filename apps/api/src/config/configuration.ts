@@ -64,6 +64,8 @@ export interface AppConfig {
     disputeWindowHours: number;
     /** Rows 221, 235: a Flexible task (no customer deadline) gets payment confirmation + this many hours. */
     defaultDeadlineHours: number;
+    /** Row 129: a runner may upload receipts and claim item spend this long after CANCELLED/FAILED. */
+    receiptWindowHours: number;
   };
   runnerVerification: {
     /** console | cloudinary (defaults to the evidence driver: same provider, own folder). */
@@ -315,6 +317,8 @@ export const configuration = (): AppConfig => ({
     // TODO(owner): dispute window length is not defined anywhere. After it,
     // the system moves COMPLETED -> CONFIRMED (payout eligibility).
     disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
+    // Row 129 (owner, 2026-10-13): 24 h after CANCELLED/FAILED, then ops.
+    receiptWindowHours: Number.parseFloat(process.env.ERRANDS_RECEIPT_WINDOW_HOURS ?? '24'),
   },
   // Rows 125, 144, 154, 161: runner ID/selfie images in restricted storage,
   // kept for a configurable period after the runner's last retention event,
