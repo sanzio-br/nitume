@@ -20,7 +20,7 @@ In-app feed of task events (quote ready, runner en route, price change, completi
 | `errand.AWAITING_CUSTOMER` | `v-evidence-confirm` if still AWAITING_CUSTOMER, else `v-task-detail` |
 | `errand.COMPLETED`, `errand.CONFIRMED`, `errand.SETTLED`, `errand.CANCELLED`, `errand.FAILED`, `errand.DISPUTED` | `v-task-detail` |
 | `errand.EXPIRED` (new, owner 2026-10-16; needs api-contract) | `v-task-detail` (which shows `Start a new task`) |
-| `service_area.outside` (row 236; built on the api branch through the notifications queue, once per task). Copy open, BOARD row 241: API `Outside our service area` / `We can't take {ref}: its location is outside the areas we serve. You can cancel this task, or create a new one with a location inside a service area.` vs spec (proposed) `We can't take this task` / `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.` | `x-awaiting-quote` |
+| `service_area.outside` (row 236; built on the api branch through the notifications queue, once per task). **Owner copy (row 241, decided 2026-10-19)**: title `We can't take this task`, message `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.` | `x-awaiting-quote` |
 | price change requested (type missing) | Track + `v-price-auth` modal if still pending |
 | payment confirmed / failed (types missing) | `v-task-detail` / `v-payment` |
 | item payment confirmed / failed, `send_to_runner` (types missing, row 42) | `x-merchant-payment` |
