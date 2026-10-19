@@ -70,6 +70,8 @@ Errand errand({
   String? feeTotal,
   bool quoteAcceptanceRequired = false,
   DateTime? quoteRequestedAt,
+  DateTime? deadlineAt,
+  bool outsideServiceArea = false,
 }) => Errand(
   id: id,
   customerId: 'u1',
@@ -86,6 +88,8 @@ Errand errand({
   feeTotal: feeTotal,
   quoteAcceptanceRequired: quoteAcceptanceRequired,
   quoteRequestedAt: quoteRequestedAt,
+  deadlineAt: deadlineAt,
+  outsideServiceArea: outsideServiceArea,
   createdAt: _epoch,
   updatedAt: updatedAt ?? _epoch,
   locations: const [
@@ -178,9 +182,43 @@ class FakeErrands extends ErrandRepository {
 
   void put(Errand e) => byId[e.id] = e;
 
+  /// `GET /errands/defaults`; [defaultsError] makes it fail.
+  ErrandDefaults defaultsValue = const ErrandDefaults(
+    defaultDeadlineHours: 24,
+    defaultDeadlineStartsAt: DeadlineClockStart.paymentConfirmed,
+  );
+  Object? defaultsError;
+
+  @override
+  Future<ErrandDefaults> defaults() async {
+    final e = defaultsError;
+    if (e != null) throw e;
+    return defaultsValue;
+  }
+
+  /// `PATCH /errands/:id { deadlineAt }` calls; `null` = Flexible.
+  final deadlines = <(String, DateTime?)>[];
+  Object? deadlineError;
+
+  @override
+  Future<Errand> setDeadline(String errandId, DateTime? deadlineAt) async {
+    deadlines.add((errandId, deadlineAt));
+    final err = deadlineError;
+    if (err != null) throw err;
+    return _with(errandId, deadlineAt: () => deadlineAt);
+  }
+
+  /// Thrown by [create] (once, then cleared) when set.
+  Object? createError;
+
   @override
   Future<ErrandTransitionResult> create(CreateErrandRequest request) async {
     created.add(request);
+    final ce = createError;
+    if (ce != null) {
+      createError = null;
+      throw ce;
+    }
     final e = Errand(
       id: 'new1',
       customerId: 'u1',
@@ -333,19 +371,26 @@ class FakeErrands extends ErrandRepository {
         );
   }
 
-  Errand _withStatus(String id, ErrandStatus status) {
+  Errand _withStatus(String id, ErrandStatus status) =>
+      _with(id, status: status);
+
+  Errand _with(
+    String id, {
+    ErrandStatus? status,
+    DateTime? Function()? deadlineAt,
+  }) {
     final e = byId[id]!;
     final next = Errand(
       id: e.id,
       customerId: e.customerId,
       category: e.category,
       description: e.description,
-      status: status,
+      status: status ?? e.status,
       urgency: e.urgency,
       budget: e.budget,
       quotedPrice: e.quotedPrice,
       finalPrice: e.finalPrice,
-      deadlineAt: e.deadlineAt,
+      deadlineAt: deadlineAt == null ? e.deadlineAt : deadlineAt(),
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
       assignment: e.assignment,
@@ -359,6 +404,7 @@ class FakeErrands extends ErrandRepository {
       quoteAcceptanceRequired: e.quoteAcceptanceRequired,
       quoteExpiresAt: e.quoteExpiresAt,
       quoteRequestedAt: e.quoteRequestedAt,
+      outsideServiceArea: e.outsideServiceArea,
     );
     put(next);
     return next;
