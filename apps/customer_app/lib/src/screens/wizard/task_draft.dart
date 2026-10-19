@@ -23,6 +23,24 @@ enum DeadlineChoice {
     ),
     DeadlineChoice.flexible => null,
   };
+
+  /// `Today` is offered only until 23:59 local today (new-deadline sheet,
+  /// row 237): after that it would be in the past.
+  bool isAvailableAt(DateTime now) =>
+      this != DeadlineChoice.today ||
+      now.isBefore(DeadlineChoice.today.deadlineFrom(now)!);
+
+  /// The chip a stored deadline reads as: `null` deadline → `Flexible`;
+  /// 23:59 local today / tomorrow → `Today` / `Tomorrow`; anything else
+  /// (e.g. a passed deadline) → no chip.
+  static DeadlineChoice? matching(DateTime? deadlineAt, DateTime now) {
+    if (deadlineAt == null) return DeadlineChoice.flexible;
+    final local = deadlineAt.toLocal();
+    for (final c in const [DeadlineChoice.today, DeadlineChoice.tomorrow]) {
+      if (c.deadlineFrom(now) == local) return c;
+    }
+    return null;
+  }
 }
 
 /// A chosen place with coordinates (the API requires `lat`/`lon`).
@@ -72,6 +90,20 @@ class TaskDraft {
   /// Set once `POST /errands` created the DRAFT, so a retry only submits.
   String? createdErrandId;
   bool submitted = false;
+
+  /// Row 233: the places the API refused (`location_outside_service_area`)
+  /// and the point it checked. Cleared by choosing another place.
+  ({DraftPlace? first, DraftPlace? dropoff, ErrandPointType? point})?
+  outsideArea;
+
+  /// True while the places the API refused are still the chosen ones:
+  /// `Submit task →` stays disabled until a location changes.
+  bool get locationRefused {
+    final r = outsideArea;
+    return r != null &&
+        identical(r.first, first) &&
+        identical(r.dropoff, dropoff);
+  }
 
   /// True once step 2 holds anything worth a discard confirm.
   bool get hasData =>

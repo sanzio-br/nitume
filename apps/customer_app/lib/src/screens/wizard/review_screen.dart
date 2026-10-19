@@ -7,6 +7,19 @@ import '../../widgets/common.dart';
 import 'category_screen.dart';
 import 'task_draft.dart';
 
+/// How `v-new-review` was left, other than a plain Back.
+sealed class ReviewExit {
+  const ReviewExit();
+}
+
+/// `Change location` after `location_outside_service_area` (row 233):
+/// `v-new-details` scrolls to the refused field ([pointType], when sent).
+final class ReviewExitChangeLocation extends ReviewExit {
+  const ReviewExitChangeLocation(this.pointType);
+
+  final ErrandPointType? pointType;
+}
+
 /// `v-new-review`: step 3, submit the task for its authoritative quote
 /// (OA-3). Nothing is paid here.
 ///
@@ -49,6 +62,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
       await Nav.toAwaitingQuote(navigator.context, id);
     } on NitumeApiException catch (e) {
       if (!mounted) return;
+      if (e.isLocationOutsideServiceArea) {
+        _refusedOutsideArea(e);
+        return;
+      }
       setState(() => _submitting = false);
       if (e.statusCode == 400 && _d.createdErrandId == null) {
         showSnack(context, e.message);
@@ -59,8 +76,35 @@ class _ReviewScreenState extends State<ReviewScreen> {
     }
   }
 
+  /// Row 233: no task is taken. A DRAFT already created (refused at
+  /// submit) holds the old location and has no location edit, so it is
+  /// cancelled (DRAFT → CANCELLED, OA-9) and the next submit creates a new
+  /// one.
+  void _refusedOutsideArea(NitumeApiException e) {
+    final draftId = _d.createdErrandId;
+    if (draftId != null) {
+      _d.createdErrandId = null;
+      context.services.errands
+          .transition(draftId, ErrandStatus.cancelled)
+          .then((_) {}, onError: (Object _) {});
+    }
+    setState(() {
+      _submitting = false;
+      _d.outsideArea = (
+        first: _d.first,
+        dropoff: _d.dropoff,
+        point: e.pointTypeDetail,
+      );
+    });
+  }
+
+  void _changeLocation() =>
+      Navigator.of(context)
+          .pop(ReviewExitChangeLocation(_d.outsideArea?.point));
+
   @override
   Widget build(BuildContext context) {
+    final refused = _d.locationRefused;
     final budget = _d.hasBudget ? _d.budget ?? 0 : 0;
     final preview = context.services.appConfig.quotePreviewEnabled;
     const itemLine =
@@ -127,6 +171,26 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   ),
                 ),
               ),
+            if (refused)
+              // Row 233: shown instead of the snackbar, above the CTA.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const NitumeNotice(
+                      message:
+                          "We don't cover this location yet. Choose a place "
+                          'inside the areas we serve.',
+                    ),
+                    const SizedBox(height: 10),
+                    NitumeButton.outline(
+                      label: 'Change location',
+                      onPressed: _changeLocation,
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
         cta: FixedCta(
@@ -134,7 +198,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
             label: 'Submit task →',
             expand: true,
             loading: _submitting,
-            onPressed: _submit,
+            // Disabled until a location changes (row 233).
+            onPressed: refused ? null : _submit,
           ),
         ),
       ),

@@ -4,6 +4,7 @@ import 'package:nitume_core/nitume_core.dart';
 import '../../services/app_services.dart';
 import '../../services/saved_place_search.dart';
 import '../../widgets/common.dart';
+import '../../widgets/deadline_widgets.dart';
 import 'category_screen.dart';
 import 'review_screen.dart';
 import 'task_draft.dart';
@@ -31,14 +32,26 @@ class _DetailsScreenState extends State<DetailsScreen> {
   bool _showErrors = false;
   List<SavedAddress> _saved = const [];
 
+  /// `GET /errands/defaults` (rows 221, 235): the `Flexible` caption reads
+  /// the default deadline from here, never a hard-coded value.
+  ErrandDefaults? _defaults;
+
   @override
   void initState() {
     super.initState();
-    context.services.account
+    final services = context.services;
+    services.account
         .addresses()
         .then((list) {
           if (mounted) setState(() => _saved = list);
         })
+        .catchError((Object _) {});
+    services.errands
+        .defaults()
+        .then((d) {
+          if (mounted) setState(() => _defaults = d);
+        })
+        // No value: the caption stays hidden.
         .catchError((Object _) {});
   }
 
@@ -116,28 +129,40 @@ class _DetailsScreenState extends State<DetailsScreen> {
     return e;
   }
 
-  void _continue() {
+  void _scrollTo(_F field) {
+    final ctx = _keys[field]!.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 250),
+        alignment: 0.1,
+      );
+    }
+  }
+
+  Future<void> _continue() async {
     _markTypedWithoutPick();
     final errors = _validate();
     if (errors.isNotEmpty) {
       setState(() => _showErrors = true);
-      final first = _F.values.firstWhere(errors.containsKey);
-      final ctx = _keys[first]!.currentContext;
-      if (ctx != null) {
-        Scrollable.ensureVisible(
-          ctx,
-          duration: const Duration(milliseconds: 250),
-          alignment: 0.1,
-        );
-      }
+      _scrollTo(_F.values.firstWhere(errors.containsKey));
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+    final exit = await Navigator.of(context).push(
+      MaterialPageRoute<ReviewExit>(
         settings: const RouteSettings(name: WizardRoutes.review),
         builder: (_) => ReviewScreen(draft: _d),
       ),
     );
+    // Row 233: back from `Change location` to the refused location field
+    // (task site, else pickup, else drop-off).
+    if (exit is ReviewExitChangeLocation && mounted) {
+      _scrollTo(
+        exit.pointType == ErrandPointType.dropoff && _d.twoPoints
+            ? _F.dropoff
+            : _F.first,
+      );
+    }
   }
 
   void _changed(VoidCallback update) {
@@ -292,16 +317,25 @@ class _DetailsScreenState extends State<DetailsScreen> {
               ),
             _Card(
               label: 'Deadline',
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (final c in DeadlineChoice.values)
-                    NitumeChoiceChip(
-                      label: c.label,
-                      selected: _d.deadline == c,
-                      onSelected: () => setState(() => _d.deadline = c),
-                    ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final c in DeadlineChoice.values)
+                        NitumeChoiceChip(
+                          label: c.label,
+                          selected: _d.deadline == c,
+                          onSelected: () => setState(() => _d.deadline = c),
+                        ),
+                    ],
+                  ),
+                  // Today and Tomorrow get no caption (the chip says it).
+                  if (_d.deadline == DeadlineChoice.flexible)
+                    if (flexibleDeadlineDefault(_defaults) case final d?)
+                      FlexibleDeadlineCaption(duration: d),
                 ],
               ),
             ),

@@ -171,3 +171,14 @@ String chargedAmount(Payment p) {
       ? addDecimals(fees, p.merchantAmount)
       : fees;
 }
+
+/// A default-deadline length for copy: `24 hours`, `1 hour`; other lengths
+/// as `1 h 30 min` (`v-new-details` Flexible caption, rows 221, 235).
+String formatHours(Duration duration) {
+  final minutes = duration.inMinutes;
+  if (minutes > 0 && minutes % 60 == 0) {
+    final h = minutes ~/ 60;
+    return h == 1 ? '1 hour' : '$h hours';
+  }
+  return formatDurationMin(duration);
+}
