@@ -30,6 +30,10 @@ import {
   type QuoteErrandResult,
 } from '../../../core/api-types';
 
+/** 422 `location_outside_service_area` (row 233, `drawer-task-requote.md` Errors). */
+export const OUTSIDE_SERVICE_AREA_COPY =
+  "This task's location is outside every service area, so it can't be quoted. The customer is told and can cancel it.";
+
 const COMPONENT_LABELS: Record<QuoteComponent, string> = {
   baseFee: 'Base fee',
   distanceFee: 'Distance fee',
@@ -333,6 +337,9 @@ export class QuoteDialogComponent {
       this.notice.set({ tone: 'danger', text: FORBIDDEN_COPY });
     } else if (err.status === 404) {
       this.notice.set({ tone: 'info', text: 'This task no longer exists.' });
+    } else if (err.code === 'location_outside_service_area') {
+      // Row 233 / 236: refused at quote; the dialog stays open, the API message is never shown.
+      this.notice.set({ tone: 'danger', text: OUTSIDE_SERVICE_AREA_COPY });
     } else if (err.code === 'quote_expiry_in_past') {
       // The expiry passed while the dialog was open (row 83).
       this.notice.set({ tone: 'danger', text: 'The expiry time has passed. Choose a later time.' });
