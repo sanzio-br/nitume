@@ -15,6 +15,7 @@ abstract final class OfferCopy {
   static const youPayReimbursed =
       'You pay, reimbursed after the customer confirms';
   static const distanceUnavailable = 'Distance unavailable';
+  static const photosRequired = 'Photos required';
 }
 
 /// `title` when set, else the category display name (row 41).
@@ -57,18 +58,19 @@ String? howItsPaid(RunnerJobView o) => switch (o.merchantRoute) {
 };
 
 /// Offer card meta line (Fira Code, ` · ` separated, only parts that
-/// exist): `1.2 km away · Item KSh 5,000 · Customer pays the merchant`.
-/// No duration (row 120); no evidence part (the offer view carries no
-/// evidence requirement).
+/// exist): `1.2 km away · Photos required · Item KSh 5,000 · Customer
+/// pays the merchant`. No duration; `Photos required` on every offer (row
+/// 120: the generic evidence checklist, a fixed line, not an API field).
 String? offerMeta(RunnerJobView o, DevicePosition? fix) {
   final km = offerDistanceKm(o, fix);
   final item = o.itemAmount;
   final parts = [
     if (km != null) '${formatDistanceKm(km)} away',
+    OfferCopy.photosRequired,
     if (item != null) 'Item ${formatKes(item)}',
     if (item != null) ?howItsPaid(o),
   ];
-  return parts.isEmpty ? null : parts.join(' · ');
+  return parts.join(' · ');
 }
 
 /// Over-limit notice on the offer card (row 108; a fallback since row 186).

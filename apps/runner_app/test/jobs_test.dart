@@ -56,13 +56,14 @@ void main() {
       expect(_inCard('e1', 'Check It For Me'), findsOneWidget);
       expect(_inCard('e1', 'KSh 1,750'), findsOneWidget);
       expect(_inCard('e1', 'Check apartment — Nyali'), findsOneWidget);
-      expect(_inCard('e1', '1.2 km away'), findsOneWidget);
+      expect(_inCard('e1', '1.2 km away · Photos required'), findsOneWidget);
       // No title: the category name (row 41); purchase terms (§8).
       expect(_inCard('e2', 'Buy For Me'), findsNWidgets(2));
       expect(
         _inCard(
           'e2',
-          '1.2 km away · Item KSh 5,000 · Customer pays the merchant',
+          '1.2 km away · Photos required · Item KSh 5,000 · '
+              'Customer pays the merchant',
         ),
         findsOneWidget,
       );
@@ -223,6 +224,7 @@ void main() {
       expect(find.text('Go online to accept this offer.'), findsOneWidget);
       // No device fix offline: no distance.
       expect(find.textContaining('km away'), findsNothing);
+      expect(_inCard('e1', 'Photos required'), findsOneWidget);
 
       await t.tap(_inCard('e1', 'Accept'));
       await t.pumpAndSettle();
