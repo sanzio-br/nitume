@@ -4,7 +4,9 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:socket_io_client/socket_io_client.dart' as sio;
 
+import '../device/location_pinger.dart';
 import 'realtime_client.dart';
+import 'runner_realtime.dart';
 
 /// Supplies the current access token for a (re)connect; `null` when signed
 /// out. Usually `() async => (await tokenStore.read())?.accessToken`.
@@ -52,9 +54,14 @@ typedef RealtimeTransportFactory = RealtimeTransport Function(
 /// `errand:access_revoked` (round 4). On `errand:access_revoked` the errand
 /// is no longer re-joined after a reconnect.
 ///
+/// Runner side ([RunnerRealtimeClient], RA-4, RA-5): forwards `job:offered`,
+/// `job:offer_withdrawn` and `price_change:decided` (the server puts a
+/// runner's sockets in their own room; nothing to join), and sends
+/// `location:ping` with [sendLocationPing].
+///
 /// One app-wide instance; call [connect] after sign-in and [disconnect] on
 /// log out. [dispose] closes the streams.
-class SocketIoRealtimeClient implements RealtimeClient {
+class SocketIoRealtimeClient implements RealtimeClient, RunnerRealtimeClient {
   SocketIoRealtimeClient({
     required this.url,
     this.tokenProvider,
@@ -90,7 +97,8 @@ class SocketIoRealtimeClient implements RealtimeClient {
   /// reused.
   final AccessTokenProvider? tokenProvider;
 
-  /// How long [joinErrand] waits for the server's ack.
+  /// How long [joinErrand] and [sendLocationPing] wait for the server's
+  /// ack.
   final Duration ackTimeout;
 
   final RealtimeTransportFactory _transportFactory;
@@ -106,6 +114,9 @@ class SocketIoRealtimeClient implements RealtimeClient {
   final _merchantChanges = StreamController<MerchantDetailsChanged>.broadcast();
   final _quoteRequests = StreamController<QuoteRequested>.broadcast();
   final _revocations = StreamController<ErrandAccessRevoked>.broadcast();
+  final _jobOffers = StreamController<JobOffered>.broadcast();
+  final _withdrawals = StreamController<JobOfferWithdrawn>.broadcast();
+  final _priceDecisions = StreamController<PriceChangeDecided>.broadcast();
 
   final _rooms = <String>{};
   RealtimeTransport? _transport;
@@ -150,6 +161,37 @@ class SocketIoRealtimeClient implements RealtimeClient {
   @override
   Stream<ErrandAccessRevoked> get accessRevocations => _revocations.stream;
 
+  @override
+  Stream<JobOffered> get jobOffers => _jobOffers.stream;
+
+  @override
+  Stream<JobOfferWithdrawn> get jobOfferWithdrawals => _withdrawals.stream;
+
+  @override
+  Stream<PriceChangeDecided> get priceChangeDecisions => _priceDecisions.stream;
+
+  @override
+  Future<LocationPingAck> sendLocationPing(LocationPing ping) {
+    final t = _transport;
+    if (t == null || !_current.isConnected) {
+      return Future.value(const LocationPingAck.notSent());
+    }
+    final done = Completer<LocationPingAck>();
+    final timer = Timer(ackTimeout, () {
+      if (!done.isCompleted) done.complete(const LocationPingAck.notSent());
+    });
+    t.emitWithAck(RealtimeEvents.locationPing, ping.toJson(), (ack) {
+      timer.cancel();
+      if (done.isCompleted) return;
+      done.complete(
+        ack is Map
+            ? LocationPingAck.fromJson(ack.cast<String, dynamic>())
+            : const LocationPingAck.notSent(),
+      );
+    });
+    return done.future;
+  }
+
   /// Rooms that are re-joined on reconnect.
   @visibleForTesting
   Set<String> get joinedErrands => Set.unmodifiable(_rooms);
@@ -189,6 +231,9 @@ class SocketIoRealtimeClient implements RealtimeClient {
       _merchantChanges.close(),
       _quoteRequests.close(),
       _revocations.close(),
+      _jobOffers.close(),
+      _withdrawals.close(),
+      _priceDecisions.close(),
     ]);
   }
 
@@ -276,6 +321,19 @@ class SocketIoRealtimeClient implements RealtimeClient {
       _rooms.remove(revoked.errandId);
       return revoked;
     }, _revocations);
+    _listen(t, RealtimeEvents.jobOffered, JobOffered.fromJson, _jobOffers);
+    _listen(
+      t,
+      RealtimeEvents.jobOfferWithdrawn,
+      JobOfferWithdrawn.fromJson,
+      _withdrawals,
+    );
+    _listen(
+      t,
+      RealtimeEvents.priceChangeDecided,
+      PriceChangeDecided.fromJson,
+      _priceDecisions,
+    );
     t.connect();
   }
 

@@ -280,7 +280,7 @@ class RunnerJobsRepository {
     ErrandStatus.disputed,
   };
 
-  /// Ended states a held job stays listed by [heldJobs] for
+  /// Ended states a held job stays listed by [heldJobsPage] for
   /// [endedJobWindow] (CANCELLED / FAILED: the receipt window, row 129;
   /// COMPLETED / CONFIRMED / SETTLED: until the runner leaves the job).
   static const recentlyEndedStatuses = {
@@ -291,7 +291,8 @@ class RunnerJobsRepository {
     ErrandStatus.failed,
   };
 
-  /// How long an ended job stays in [heldJobs] (row 129).
+  /// How long an ended job stays in [heldJobsPage] (row 129; the API
+  /// applies it, from `errands.receiptWindowHours`).
   static const endedJobWindow = Duration(hours: 24);
 
   /// Finished set (`_shared.md` §6).
@@ -343,15 +344,15 @@ class RunnerJobsRepository {
 
   /// `GET /runners/me/jobs/:errandId`: the runner's view of an offered or
   /// held job (RA-2), also after the job ended for the runner who accepted
-  /// it (DISPUTED … SETTLED, CANCELLED, FAILED; API item A2). 403 when the
-  /// runner does not hold the current assignment: reassigned, never
-  /// accepted (row 197), or after a decline or a lapsed offer. Prefer
-  /// [readJob] for a held job, which turns that 403 into
+  /// it (DISPUTED … SETTLED, CANCELLED, FAILED; A2). 403
+  /// [ApiErrorCodes.jobNotHeld] when the runner does not hold it: never
+  /// offered, declined, offer lapsed or withdrawn, reassigned (row 197).
+  /// Prefer [readJob] for a held job, which turns that 403 into
   /// [RunnerJobAccessRevoked].
   Future<RunnerJobView> job(String errandId) =>
       _api.getMap('/runners/me/jobs/$errandId').then(RunnerJobView.fromJson);
 
-  /// [job], with the "no longer yours" 403 as a result instead of an error
+  /// [job], with the "not yours" 403 as a result instead of an error
   /// (C-V4): [RunnerJobAvailable] with the view, or [RunnerJobAccessRevoked]
   /// (`v-active`: `This job is no longer assigned to you.`). Other errors
   /// are thrown as by [job].
@@ -364,71 +365,62 @@ class RunnerJobsRepository {
     }
   }
 
-  /// True for the 403 the API answers on a job this runner no longer holds
-  /// (reassigned, or never accepted): a 403 without a code. A coded 403
-  /// (e.g. [ApiErrorCodes.runnerNotVerified], [ApiErrorCodes.roleMismatch],
-  /// [ApiErrorCodes.accountSuspended]) is something else.
+  /// True for the 403 the API answers on a job this runner does not hold:
+  /// code [ApiErrorCodes.jobNotHeld], or a 403 without a code (older
+  /// servers). Other coded 403s (e.g. [ApiErrorCodes.runnerNotVerified],
+  /// [ApiErrorCodes.roleMismatch], [ApiErrorCodes.accountSuspended]) are
+  /// something else.
   static bool isAccessRevoked(Object error) =>
       error is NitumeApiException &&
       error.statusCode == 403 &&
-      error.code == null;
+      (error.code == ApiErrorCodes.jobNotHeld || error.code == null);
 
-  /// Largest page `GET /errands` returns.
-  static const _maxListPage = 100;
+  /// Largest page `GET /runners/me/jobs` returns.
+  static const maxHeldJobsPageSize = 50;
 
-  /// Most pages [heldJobs] reads of the active set (it is small: at most
-  /// one working job plus the AWAITING_CUSTOMER / DISPUTED ones).
-  static const _maxActivePages = 5;
+  /// Most pages [heldJobs] reads (the held set is small: at most one
+  /// working job plus the AWAITING_CUSTOMER / DISPUTED and recently ended
+  /// ones).
+  static const _maxHeldPages = 5;
 
-  /// The runner's held jobs (C-V3) as [RunnerJobView]s, **accepted
-  /// assignments only** (no open offers): every job in [activeStatuses],
-  /// plus jobs in [recentlyEndedStatuses] last updated within
-  /// [endedJobWindow] of [now]. The working job (at most one, in
-  /// [workingStatuses]) comes first, then newest first. The screen picks
-  /// the job to show (`v-active` selection rule).
-  ///
-  /// Until API item A1 gives one list call in runner projection, this is
-  /// `GET /errands?status=…` (ids only; open offers and the customer shape
-  /// are dropped) then [readJob] per job; a job that answers
-  /// [RunnerJobAccessRevoked] meanwhile is left out. The ended window uses
-  /// the errand's `updatedAt`, since the list has no end time; the receipt
-  /// window itself is the CANCELLED / FAILED history time (row 129).
-  /// Ended jobs come from the newest 100 ended errands.
-  Future<List<RunnerJobView>> heldJobs({DateTime? now}) async {
-    final at = (now ?? DateTime.now()).toUtc();
-    final ids = <String>[];
+  /// `GET /runners/me/jobs` (A1): one page of the jobs this runner
+  /// **accepted**, newest accept first, as [RunnerJobView]s: the
+  /// [activeStatuses] set plus jobs that reached a [recentlyEndedStatuses]
+  /// state within the last [endedJobWindow] (server-side). Never open
+  /// offers. [limit] is 1–[maxHeldJobsPageSize] (API default 20); pass the
+  /// previous page's [RunnerOffersPage.nextCursor] as [cursor] (same page
+  /// shape as [offers]).
+  Future<RunnerOffersPage> heldJobsPage({int? limit, String? cursor}) async {
+    if (limit != null && (limit < 1 || limit > maxHeldJobsPageSize)) {
+      throw RangeError.range(limit, 1, maxHeldJobsPageSize, 'limit');
+    }
+    final data = await _api.getMap(
+      '/runners/me/jobs',
+      query: {'limit': ?limit, 'cursor': ?cursor},
+    );
+    return RunnerOffersPage.fromJson(data);
+  }
+
+  /// Every held job (C-V3) from [heldJobsPage], the working job (at most
+  /// one, in [workingStatuses]) first, then in the API's order (newest
+  /// accept first). The screen picks the job to show (`v-active`
+  /// selection rule). Defensive: an item whose assignment is not
+  /// `accepted` is left out.
+  Future<List<RunnerJobView>> heldJobs() async {
+    final held = <RunnerJobView>[];
+    final seen = <String>{};
     String? cursor;
-    for (var page = 0; page < _maxActivePages; page++) {
-      final p = await _errands.list(
-        statuses: activeStatuses,
-        limit: _maxListPage,
-        cursor: cursor,
-      );
-      ids.addAll(p.items.map((e) => e.id));
+    for (var page = 0; page < _maxHeldPages; page++) {
+      final p = await heldJobsPage(limit: maxHeldJobsPageSize, cursor: cursor);
+      for (final j in p.items) {
+        if (j.assignment.status == AssignmentStatus.accepted &&
+            seen.add(j.id)) {
+          held.add(j);
+        }
+      }
       cursor = p.nextCursor;
       if (cursor == null) break;
     }
-    final ended = await _errands.list(
-      statuses: recentlyEndedStatuses,
-      limit: _maxListPage,
-    );
-    for (final e in ended.items) {
-      final updated = e.updatedAt;
-      if (updated == null || at.difference(updated) >= endedJobWindow) {
-        continue;
-      }
-      ids.add(e.id);
-    }
-    final unique = ids.toSet().toList();
-    final reads = await Future.wait(unique.map(readJob));
-    final held = [
-      for (final r in reads)
-        if (r case RunnerJobAvailable(:final job)
-            when job.assignment.status == AssignmentStatus.accepted &&
-                (activeStatuses.contains(job.status) ||
-                    recentlyEndedStatuses.contains(job.status)))
-          job,
-    ];
     return [
       ...held.where((j) => workingStatuses.contains(j.status)),
       ...held.where((j) => !workingStatuses.contains(j.status)),
@@ -491,26 +483,53 @@ class RunnerJobsRepository {
   /// Throws [ArgumentError] unless it is a runner transition; the API also
   /// checks the actor.
   /// [note] (≤ 500) carries the reason for RUNNER_EN_ROUTE → FAILED.
+  /// [idempotencyKey] (RA-17, the offline queue's action id) goes in the
+  /// `Idempotency-Key` header: a replay returns the first result.
+  ///
+  /// API errors: 409 [ApiErrorCodes.illegalTransition]; 409
+  /// [ApiErrorCodes.evidenceRequired] (`missing`); with a key, 400
+  /// [ApiErrorCodes.idempotencyKeyInvalid], 409
+  /// [ApiErrorCodes.idempotencyKeyReused] and
+  /// [ApiErrorCodes.idempotencyInProgress].
   Future<ErrandTransitionResult> transition(
     String errandId, {
     required ErrandStatus from,
     required ErrandStatus to,
     String? note,
-  }) {
+    String? idempotencyKey,
+  }) async {
     if (!(runnerTransitions[from]?.contains(to) ?? false)) {
       throw ArgumentError('Not a runner transition: ${from.wire} → ${to.wire}');
     }
-    return _errands.transition(errandId, to, note: note);
+    if (idempotencyKey == null) {
+      return _errands.transition(errandId, to, note: note);
+    }
+    return ErrandTransitionResult.fromJson(
+      await _api.patchMap(
+        '/errands/$errandId/status',
+        data: {'to': to.wire, 'note': ?note},
+        headers: _idempotency(idempotencyKey),
+      ),
+    );
   }
 
+  static Map<String, String> _idempotency(String key) => {
+    'Idempotency-Key': key,
+  };
+
   /// `PATCH /errands/:id/runner-notes` (≤ 2000 characters; `null` clears).
-  Future<Errand> updateRunnerNotes(String errandId, String? notes) async =>
-      Errand.fromJson(
-        await _api.patchMap(
-          '/errands/$errandId/runner-notes',
-          data: {'runnerNotes': notes},
-        ),
-      );
+  /// [idempotencyKey]: as [transition].
+  Future<Errand> updateRunnerNotes(
+    String errandId,
+    String? notes, {
+    String? idempotencyKey,
+  }) async => Errand.fromJson(
+    await _api.patchMap(
+      '/errands/$errandId/runner-notes',
+      data: {'runnerNotes': notes},
+      headers: idempotencyKey == null ? null : _idempotency(idempotencyKey),
+    ),
+  );
 
   /// `GET /errands/:id/evidence` (signed URLs, row 25).
   Future<List<Evidence>> evidence(String errandId) => _evidence.list(errandId);
@@ -520,6 +539,11 @@ class RunnerJobsRepository {
   ///
   /// RA-11: the API's default JSON body limit refuses normal photos until
   /// it is raised or a signed upload is added; expect a 413 meanwhile.
+  /// [idempotencyKey]: as [transition] (a replay stores no second row).
+  ///
+  /// API errors: 400 [ApiErrorCodes.evidenceTypeNotAllowed]; 409
+  /// [ApiErrorCodes.evidenceNotAllowed] (`status`, `type`); 409
+  /// [ApiErrorCodes.reimbursementWindowClosed] (`endedAt`, `windowEndsAt`).
   Future<Evidence> uploadEvidence(
     String errandId, {
     required EvidenceType type,
@@ -528,6 +552,7 @@ class RunnerJobsRepository {
     DateTime? capturedAt,
     double? lat,
     double? lon,
+    String? idempotencyKey,
   }) {
     if (type != EvidenceType.photo && type != EvidenceType.receipt) {
       throw ArgumentError.value(
@@ -547,6 +572,7 @@ class RunnerJobsRepository {
             'lat': ?lat,
             'lon': ?lon,
           },
+          headers: idempotencyKey == null ? null : _idempotency(idempotencyKey),
         )
         .then(Evidence.fromJson);
   }

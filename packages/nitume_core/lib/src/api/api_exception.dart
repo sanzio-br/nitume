@@ -290,7 +290,13 @@ abstract final class ApiErrorCodes {
   static const idempotencyKeyInvalid = 'idempotency_key_invalid';
 
   /// The key was already used for a different payment: make a new key.
+  /// On a runner replay (status, notes, evidence; RA-17) the key was used
+  /// for a different request.
   static const idempotencyKeyReused = 'idempotency_key_reused';
+
+  /// The first call with this `Idempotency-Key` is still running (409,
+  /// RA-17): retry shortly with the same key.
+  static const idempotencyInProgress = 'idempotency_in_progress';
 
   /// The errand has a merchant amount and no `merchantRoute` was sent.
   static const merchantRouteRequired = 'merchant_route_required';
@@ -552,6 +558,35 @@ abstract final class ApiErrorCodes {
   /// Accepting while already on a job (409, RA-20: one active job at a
   /// time).
   static const runnerBusy = 'runner_busy';
+
+  /// `GET /runners/me/jobs/:errandId` (403, A2): this runner does not hold
+  /// the job (never offered, declined, offer lapsed or withdrawn,
+  /// reassigned). Read it with `RunnerJobsRepository.readJob`, which gives
+  /// `RunnerJobAccessRevoked`.
+  static const jobNotHeld = 'job_not_held';
+
+  /// `PATCH /errands/:id/status` IN_PROGRESS → AWAITING_CUSTOMER without
+  /// the required evidence (409, RA-11, A4). Details: `missing`
+  /// (`RunnerErrorDetails.missingEvidence`). Show the matching caption
+  /// (`Upload photos to finish.` …).
+  static const evidenceRequired = 'evidence_required';
+
+  /// `POST /errands/:id/evidence` by a runner with a type other than photo
+  /// or receipt, or a non-image (400). Details: `allowed` `{ type,
+  /// contentType }` (`RunnerErrorDetails.allowedEvidenceTypes`).
+  static const evidenceTypeNotAllowed = 'evidence_type_not_allowed';
+
+  /// `POST /errands/:id/evidence` in a state that does not take this type
+  /// (409, A5: photos in ARRIVED / IN_PROGRESS, receipts ARRIVED …
+  /// AWAITING_CUSTOMER and 24 h after CANCELLED / FAILED). Details:
+  /// `status`, `type` (`RunnerErrorDetails.evidenceRefusedStatus`,
+  /// `evidenceRefusedType`). Reload the job.
+  static const evidenceNotAllowed = 'evidence_not_allowed';
+
+  /// A receipt upload or `POST /runners/me/reimbursement-claims` after the
+  /// 24 h window (409, row 129, A10). Details: `endedAt`, `windowEndsAt`
+  /// (`RunnerErrorDetails.jobEndedAt`, `receiptWindowEndsAt`).
+  static const reimbursementWindowClosed = 'reimbursement_window_closed';
 
   /// Accepting while offline (409, RA-8). Go online first.
   static const runnerOffline = 'runner_offline';

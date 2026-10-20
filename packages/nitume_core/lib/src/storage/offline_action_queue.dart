@@ -143,10 +143,14 @@ enum QueueDropReason {
 }
 
 /// Maps a replay failure to an outcome. Transport problems and temporary
-/// server answers retry later; only real refusals drop the action.
+/// server answers (including 409 [ApiErrorCodes.idempotencyInProgress])
+/// retry later; only real refusals drop the action.
 ReplayOutcome replayOutcomeFor(Object error) {
   if (error is NitumeApiException) {
     if (error.isNetworkError) return ReplayOutcome.retryLater;
+    if (error.code == ApiErrorCodes.idempotencyInProgress) {
+      return ReplayOutcome.retryLater;
+    }
     final status = error.statusCode;
     if (status == null ||
         status == 401 ||

@@ -3,24 +3,6 @@ import 'package:nitume_core/nitume_core.dart';
 
 import 'helpers/fake_api.dart';
 
-const _active =
-    'GET /errands?status=RUNNER_EN_ROUTE%2CARRIVED%2CIN_PROGRESS'
-    '%2CAWAITING_CUSTOMER%2CDISPUTED&limit=100';
-const _ended =
-    'GET /errands?status=COMPLETED%2CCONFIRMED%2CSETTLED%2CCANCELLED'
-    '%2CFAILED&limit=100';
-
-Map<String, dynamic> _errand(String id, String status, {String? updatedAt}) => {
-  'id': id,
-  'customerId': 'c1',
-  'category': 'buy_for_me',
-  'description': 'Buy milk',
-  'status': status,
-  'urgency': 'standard',
-  'budget': null,
-  'updatedAt': ?updatedAt,
-};
-
 Map<String, dynamic> _job(
   String id,
   String status, {
@@ -50,14 +32,17 @@ const _revoked = (
   403,
   {
     'statusCode': 403,
-    'message': 'You do not have access to this errand',
-    'error': 'Forbidden',
+    'code': 'job_not_held',
+    'message': 'This job is not assigned to you',
   },
 );
 
-void main() {
-  final now = DateTime.utc(2026, 10, 19, 10);
+const _revokedOld = (
+  403,
+  {'statusCode': 403, 'message': 'You do not have access to this errand'},
+);
 
+void main() {
   group('status sets (C-V3, row 211)', () {
     test('working set mirrors RUNNER_ACTIVE_JOB_STATES', () {
       expect(RunnerJobsRepository.workingStatuses, {
@@ -93,80 +78,54 @@ void main() {
     });
   });
 
-  group('heldJobs (C-V3)', () {
-    test('accepted jobs in runner projection, working job first; offers, '
-        'old ended jobs and revoked jobs left out', () async {
+  group('heldJobs (C-V3, A1)', () {
+    const first = 'GET /runners/me/jobs?limit=50';
+
+    test('one list call in runner projection, working job first; a stray '
+        'offer is left out', () async {
       final a = FakeApiAdapter({
-        _active: _page([
-          _errand('aw', 'AWAITING_CUSTOMER'),
-          _errand('wk', 'IN_PROGRESS'),
-          _errand('rv', 'DISPUTED'),
+        first: _page([
+          _job('aw', 'AWAITING_CUSTOMER'),
+          _job('wk', 'IN_PROGRESS'),
+          _job('of', 'RUNNER_ASSIGNED', assignment: 'assigned'),
+          _job('cx', 'CANCELLED'),
         ]),
-        _ended: _page([
-          _errand('cx', 'CANCELLED', updatedAt: '2026-10-19T02:00:00.000Z'),
-          _errand('old', 'FAILED', updatedAt: '2026-10-18T09:59:00.000Z'),
-          _errand('nu', 'SETTLED'),
-        ]),
-        'GET /runners/me/jobs/aw': (200, _job('aw', 'AWAITING_CUSTOMER')),
-        'GET /runners/me/jobs/wk': (200, _job('wk', 'IN_PROGRESS')),
-        'GET /runners/me/jobs/rv': _revoked,
-        'GET /runners/me/jobs/cx': (200, _job('cx', 'CANCELLED')),
       });
-      final jobs = await RunnerJobsRepository(fakeClient(a)).heldJobs(now: now);
+      final jobs = await RunnerJobsRepository(fakeClient(a)).heldJobs();
       expect(jobs.map((j) => j.id), ['wk', 'aw', 'cx']);
       expect(jobs.first.runnerFee, '250.00');
-      expect(a.calls, isNot(contains('GET /runners/me/jobs/old')));
-      expect(a.calls, isNot(contains('GET /runners/me/jobs/nu')));
+      expect(a.calls, [first]);
     });
 
-    test('a job whose assignment is still an offer is dropped', () async {
+    test('reads every page', () async {
       final a = FakeApiAdapter({
-        _active: _page([_errand('e1', 'RUNNER_EN_ROUTE')]),
-        _ended: _page([]),
-        'GET /runners/me/jobs/e1': (
-          200,
-          _job('e1', 'RUNNER_EN_ROUTE', assignment: 'assigned'),
-        ),
+        first: _page([_job('e1', 'AWAITING_CUSTOMER')], 'c2'),
+        '$first&cursor=c2': _page([_job('e2', 'DISPUTED')]),
       });
-      expect(
-        await RunnerJobsRepository(fakeClient(a)).heldJobs(now: now),
-        isEmpty,
-      );
-    });
-
-    test('a job that moved out of the held states meanwhile is dropped '
-        '(e.g. back to RUNNER_ASSIGNED for another runner)', () async {
-      final a = FakeApiAdapter({
-        _active: _page([_errand('e1', 'ARRIVED')]),
-        _ended: _page([]),
-        'GET /runners/me/jobs/e1': (200, _job('e1', 'EXPIRED')),
-      });
-      expect(
-        await RunnerJobsRepository(fakeClient(a)).heldJobs(now: now),
-        isEmpty,
-      );
-    });
-
-    test('reads every page of the active set', () async {
-      final a = FakeApiAdapter({
-        _active: _page([_errand('e1', 'AWAITING_CUSTOMER')], 'c2'),
-        '$_active&cursor=c2': _page([_errand('e2', 'DISPUTED')]),
-        _ended: _page([]),
-        'GET /runners/me/jobs/e1': (200, _job('e1', 'AWAITING_CUSTOMER')),
-        'GET /runners/me/jobs/e2': (200, _job('e2', 'DISPUTED')),
-      });
-      final jobs = await RunnerJobsRepository(fakeClient(a)).heldJobs(now: now);
+      final jobs = await RunnerJobsRepository(fakeClient(a)).heldJobs();
       expect(jobs.map((j) => j.id), ['e1', 'e2']);
     });
 
-    test('other errors are thrown', () async {
+    test('heldJobsPage passes limit and cursor and checks the limit', () async {
       final a = FakeApiAdapter({
-        _active: _page([_errand('e1', 'IN_PROGRESS')]),
-        _ended: _page([]),
-        'GET /runners/me/jobs/e1': (500, {'message': 'boom'}),
+        'GET /runners/me/jobs?limit=5&cursor=x': _page([
+          _job('e1', 'ARRIVED'),
+        ], 'y'),
+      });
+      final repo = RunnerJobsRepository(fakeClient(a));
+      final p = await repo.heldJobsPage(limit: 5, cursor: 'x');
+      expect(p.items.single.id, 'e1');
+      expect(p.nextCursor, 'y');
+      expect(() => repo.heldJobsPage(limit: 51), throwsRangeError);
+      expect(() => repo.heldJobsPage(limit: 0), throwsRangeError);
+    });
+
+    test('errors are thrown', () async {
+      final a = FakeApiAdapter({
+        first: (500, {'message': 'boom'}),
       });
       await expectLater(
-        RunnerJobsRepository(fakeClient(a)).heldJobs(now: now),
+        RunnerJobsRepository(fakeClient(a)).heldJobs(),
         throwsA(isA<NitumeApiException>()),
       );
     });
@@ -182,7 +141,13 @@ void main() {
       expect((r as RunnerJobAvailable).job.status, ErrandStatus.settled);
     });
 
-    test('the reassigned 403 is access revoked', () async {
+    test('an uncoded 403 (older server) is access revoked too', () async {
+      final a = FakeApiAdapter({'GET /runners/me/jobs/e1': _revokedOld});
+      final r = await RunnerJobsRepository(fakeClient(a)).readJob('e1');
+      expect(r, isA<RunnerJobAccessRevoked>());
+    });
+
+    test('the job_not_held 403 is access revoked', () async {
       final a = FakeApiAdapter({'GET /runners/me/jobs/e1': _revoked});
       final r = await RunnerJobsRepository(fakeClient(a)).readJob('e1');
       expect(r, isA<RunnerJobAccessRevoked>());
@@ -219,6 +184,17 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        RunnerJobsRepository.isAccessRevoked(
+          const NitumeApiException(
+            message: 'x',
+            statusCode: 403,
+            code: ApiErrorCodes.jobNotHeld,
+          ),
+        ),
+        isTrue,
+      );
+      expect(ApiErrorCodes.jobNotHeld, 'job_not_held');
       expect(
         RunnerJobsRepository.isAccessRevoked(
           const NitumeApiException(message: 'x', statusCode: 404),
