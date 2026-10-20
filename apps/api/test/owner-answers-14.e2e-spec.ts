@@ -276,6 +276,54 @@ describe('Owner answers round 14 (e2e)', () => {
       onlyArea('oa14-nbo3', NAIROBI);
       await http().patch(`/api/v1/errands/${task.id}/status`).set(bearer(customer.token)).send({ to: 'CANCELLED' }).expect(200);
     });
+
+    it('the customer errand view (detail and list) shows outsideServiceArea while a quote would be refused', async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const admin = await makeUser(UserRole.ADMIN);
+      const task = await createErrand(customer, at(MOMBASA));
+      await http().post(`/api/v1/errands/${task.id}/submit`).set(bearer(customer.token)).expect(201);
+      const detail = async () =>
+        (await http().get(`/api/v1/errands/${task.id}`).set(bearer(customer.token)).expect(200)).body;
+      const listed = async () =>
+        (
+          (await http().get('/api/v1/errands').set(bearer(customer.token)).expect(200)).body.items as {
+            id: string;
+            outsideServiceArea?: boolean;
+          }[]
+        ).find((e) => e.id === task.id);
+      const quote = (status: number) =>
+        http()
+          .post(`/api/v1/errands/${task.id}/quote`)
+          .set(bearer(admin.token))
+          .send({ total: 1000, baseFee: 600, distanceFee: 400 })
+          .expect(status);
+
+      // No area configured: the check is off.
+      expect((await detail()).outsideServiceArea).toBe(false);
+
+      onlyArea('oa14-nbo4', NAIROBI);
+      await quote(422);
+      expect(await detail()).toMatchObject({ status: 'REQUESTED', outsideServiceArea: true });
+      expect((await listed())?.outsideServiceArea).toBe(true);
+      // Admins do not get the field (the admin spec does not use it).
+      const adminView = (await http().get(`/api/v1/errands/${task.id}`).set(bearer(admin.token)).expect(200)).body;
+      expect(adminView).not.toHaveProperty('outsideServiceArea');
+
+      // Areas grow to cover the task: recomputed, so false again, and the quote goes through.
+      spy?.mockRestore();
+      onlyArea('oa14-mba', MOMBASA);
+      expect((await detail()).outsideServiceArea).toBe(false);
+      await quote(201);
+
+      // QUOTED with the areas shrunk again: flagged (a re-quote would be refused).
+      spy?.mockRestore();
+      onlyArea('oa14-nbo5', NAIROBI);
+      expect(await detail()).toMatchObject({ status: 'QUOTED', outsideServiceArea: true });
+
+      // Cancelled: no longer flagged.
+      await http().patch(`/api/v1/errands/${task.id}/status`).set(bearer(customer.token)).send({ to: 'CANCELLED' }).expect(200);
+      expect(await detail()).toMatchObject({ status: 'CANCELLED', outsideServiceArea: false });
+    });
   });
 
   describe('row 237: no payment after the deadline; the customer sets a new one', () => {
