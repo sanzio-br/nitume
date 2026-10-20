@@ -372,6 +372,65 @@ void main() {
       expect(_card('e1'), findsOneWidget);
     });
 
+    testWidgets('job:offered adds the card; job:offer_withdrawn removes it', (
+      t,
+    ) async {
+      final b = TestBackend();
+      await b.services.live.start();
+      await _pumpJobs(t, b);
+      final calls = b.jobs.offersCalls;
+
+      b.jobs.jobs['e7'] = offer(id: 'e7');
+      b.realtime.offered.add(
+        const JobOffered(errandId: 'e7', assignmentId: 'a-e7'),
+      );
+      await t.pumpAndSettle();
+      expect(_card('e7'), findsOneWidget);
+
+      b.realtime.withdrawn.add(
+        const JobOfferWithdrawn(errandId: 'e7', assignmentId: 'a-e7'),
+      );
+      await t.pumpAndSettle();
+      expect(_card('e7'), findsNothing);
+      expect(find.text(_unavailable), findsOneWidget);
+
+      // Connected: no polling.
+      await t.pump(JobsTab.pollInterval);
+      await t.pumpAndSettle();
+      expect(b.jobs.offersCalls, calls);
+    });
+
+    testWidgets('Reconnecting… after the socket is down 5 s', (t) async {
+      final b = TestBackend();
+      await b.services.live.start();
+      await _pumpJobs(t, b);
+      b.realtime.setState(RealtimeConnectionState.reconnecting);
+      await t.pump(const Duration(seconds: 4));
+      expect(find.text('Reconnecting…'), findsNothing);
+      await t.pump(const Duration(seconds: 2));
+      expect(find.text('Reconnecting…'), findsOneWidget);
+
+      b.realtime.setState(RealtimeConnectionState.connected);
+      await t.pumpAndSettle();
+      expect(find.text('Reconnecting…'), findsNothing);
+    });
+
+    testWidgets('no notice when the socket was never started', (t) async {
+      final b = TestBackend();
+      await _pumpJobs(t, b);
+      await t.pump(const Duration(seconds: 6));
+      expect(find.text('Reconnecting…'), findsNothing);
+    });
+
+    testWidgets('accept focuses the Active tab on that job', (t) async {
+      final b = TestBackend();
+      b.jobs.offerList = [offer()];
+      await _pumpJobs(t, b);
+      await t.tap(_inCard('e1', 'Accept'));
+      await t.pumpAndSettle();
+      expect(b.services.shell.focusedJob, 'e1');
+    });
+
     testWidgets('offers refresh every 20 s while the tab shows', (t) async {
       final b = TestBackend();
       await _pumpJobs(t, b);

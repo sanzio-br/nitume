@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nitume_core/nitume_core.dart';
 
@@ -9,6 +11,7 @@ import 'screens/auth/splash_screen.dart';
 import 'screens/shell/runner_shell.dart';
 import 'services/app_services.dart';
 import 'services/onboarding_routing.dart';
+import 'services/push_routing.dart';
 import 'services/session.dart';
 import 'util/display.dart';
 
@@ -34,7 +37,8 @@ class NitumeRunnerApp extends StatefulWidget {
   State<NitumeRunnerApp> createState() => _NitumeRunnerAppState();
 }
 
-class _NitumeRunnerAppState extends State<NitumeRunnerApp> {
+class _NitumeRunnerAppState extends State<NitumeRunnerApp>
+    with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late SessionStatus _status;
@@ -46,20 +50,41 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp> {
     super.initState();
     _status = _session.status;
     _session.addListener(_onSession);
+    WidgetsBinding.instance.addObserver(this);
     if (widget.restoreOnStart) _session.restore();
   }
 
   @override
   void dispose() {
     _session.removeListener(_onSession);
+    _pushSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Idle pings pause in the background; queued actions replay on return.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final fg = state == AppLifecycleState.resumed;
+    widget.services.pings.setForeground(fg);
+    if (fg && _status == SessionStatus.signedIn) {
+      unawaited(widget.services.queue.replay());
+    }
   }
 
   void _onSession() {
     final next = _session.status;
     if (next == _status) return;
     _navigatorKey.currentState?.popUntil((r) => r.isFirst);
-    if (next == SessionStatus.signedIn) widget.services.shell.reset();
+    if (next == SessionStatus.signedIn) {
+      widget.services.shell.reset();
+      unawaited(widget.services.startSession());
+      _listenPush();
+    } else if (_status == SessionStatus.signedIn) {
+      _pushSub?.cancel();
+      _pushSub = null;
+      unawaited(widget.services.endSession());
+    }
     setState(() => _status = next);
     if (next == SessionStatus.signedIn && _session.takeFreshSignIn()) {
       _routeOnboarding();
@@ -80,6 +105,27 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp> {
         ?..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  StreamSubscription<PushMessage>? _pushSub;
+
+  /// Push taps deep-link by runner kind once signed in (`_shared.md` §10).
+  void _listenPush() {
+    final push = widget.services.push;
+    _pushSub?.cancel();
+    _pushSub = push.openedMessages.listen(_openPush);
+    push
+        .initialMessage()
+        .then((m) {
+          if (m != null) _openPush(m);
+        })
+        .catchError((Object _) {});
+  }
+
+  void _openPush(PushMessage m) {
+    final nav = _navigatorKey.currentState;
+    if (!mounted || nav == null || _status != SessionStatus.signedIn) return;
+    routePush(m, nav, widget.services);
   }
 
   Future<void> _routeOnboarding() async {

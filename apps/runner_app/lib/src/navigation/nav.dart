@@ -12,6 +12,11 @@ abstract final class Routes {
   static const onboardPending = '/onboarding/pending';
   static const locationDisclosure = '/location-disclosure';
   static const jobDetail = '/jobs/detail';
+  static const notes = '/active/notes';
+  static const evidence = '/active/evidence';
+  static const priceRequest = '/active/price-request';
+  static const jobSummary = '/active/summary';
+  static const claim = '/active/claim';
 }
 
 /// `v-auth-otp` arguments.
@@ -43,6 +48,16 @@ class JobDetailArgs {
 
   final String errandId;
   final RunnerJobView? offer;
+}
+
+/// `v-evidence-capture` arguments: the job and the preset type.
+class EvidenceArgs {
+  const EvidenceArgs({required this.errandId, required this.type});
+
+  final String errandId;
+
+  /// `photo` or `receipt`.
+  final EvidenceType type;
 }
 
 /// How `v-job-detail` ended, for `v-jobs`.
@@ -110,6 +125,31 @@ abstract final class Nav {
   /// `Continue`, or `null` after `Not now` / back.
   static Future<LocationAccess?> toLocationDisclosure(BuildContext context) =>
       _push<LocationAccess>(context, Routes.locationDisclosure);
+
+  /// Notes editor for [errandId]; resolves `true` once saved (or queued).
+  static Future<bool?> toNotes(BuildContext context, String errandId) =>
+      _push<bool>(context, Routes.notes, errandId);
+
+  static Future<void> toEvidence(
+    BuildContext context,
+    String errandId,
+    EvidenceType type,
+  ) => _push(
+    context,
+    Routes.evidence,
+    EvidenceArgs(errandId: errandId, type: type),
+  );
+
+  /// `v-price-request`; resolves `true` once a request was sent.
+  static Future<bool?> toPriceRequest(BuildContext context, String errandId) =>
+      _push<bool>(context, Routes.priceRequest, errandId);
+
+  static Future<void> toJobSummary(BuildContext context, String errandId) =>
+      _push(context, Routes.jobSummary, errandId);
+
+  /// Claim item spend; resolves `true` once the claim was sent.
+  static Future<bool?> toClaim(BuildContext context, String errandId) =>
+      _push<bool>(context, Routes.claim, errandId);
 
   static Future<JobDetailOutcome?> toJobDetail(
     BuildContext context,

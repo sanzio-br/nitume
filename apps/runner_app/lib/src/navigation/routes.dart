@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../screens/active/claim_screen.dart';
+import '../screens/active/evidence_capture_screen.dart';
+import '../screens/active/job_summary_screen.dart';
+import '../screens/active/notes_editor_screen.dart';
+import '../screens/active/price_request_screen.dart';
 import '../screens/auth/otp_screen.dart';
 import '../screens/jobs/job_detail_screen.dart';
 import '../screens/location/location_disclosure_screen.dart';
@@ -27,6 +32,14 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
       final a = args! as JobDetailArgs;
       return JobDetailScreen(errandId: a.errandId, initial: a.offer);
     }(),
+    Routes.notes => NotesEditorScreen(errandId: args! as String),
+    Routes.evidence => () {
+      final a = args! as EvidenceArgs;
+      return EvidenceCaptureScreen(errandId: a.errandId, type: a.type);
+    }(),
+    Routes.priceRequest => PriceRequestScreen(errandId: args! as String),
+    Routes.jobSummary => JobSummaryScreen(errandId: args! as String),
+    Routes.claim => ClaimScreen(errandId: args! as String),
     _ => null,
   };
   if (screen == null) return null;
