@@ -1182,3 +1182,162 @@ Already built and reused as-is (no change): R-01, R-06, R-07, R-09 (= C-24 `Menu
   - **Recommended: yes.**
 
 Proposals that are not owner questions (layout/copy, auditor's call, say if you disagree): the `Other jobs` list and the job-selection order; the `Due …` line with no late state; the notes editor as a pushed screen; the price-request purchase-limit warning `You'll be reimbursed up to KSh 3,000 unless our team approves more.`, which sends rather than refuses (rows 135, 142); the leave dialog for failed captures; no notice for lost captures; all dialog and notice copy.
+
+## 22. Audit 2026-10-20: runner v-active family (`feat/runner-active` @ `2448d30`)
+
+Builder commits: `750cade`, `2b753bd`, `bddc800`, `e01af1e`, `f225ac4`, `3ed5c94`, `2448d30`. The branch also carries the core-ui commits it builds on (`29e150e` … `11a7c3a`: C-V1 … C-V7, RA-4/5/6/17 client sides). Specs: `docs/runner-v-active-spec` @ `c11d301`, the reviewed version. The mockup is `nitume_runner_app.html` lines 210–244 and 375–416. Rows 245, 246 and 248 are open; their absence is not a finding.
+
+Build health:
+- `flutter analyze`: no issues in `apps/runner_app` or `packages/nitume_core`.
+- `flutter test`: runner 104 pass; core 563 pass.
+- No `Color(0x…)`, `fontFamily`, `GoogleFonts` or raw `TextStyle(` in `apps/runner_app/lib`. Colours come from `NitumeColors`, text from `NitumeTextStyles`, and numbers use `NumSpan` / `NumText` / `meta`.
+- Tests exist for every screen: `active_tab_test`, `evidence_capture_test`, `price_request_test`, `job_summary_test` (claim included), `push_routing_test`, `jobs_test`, `active_jobs_test`.
+
+### Rulings on the builder's limits and choices
+1. **Job pings foreground-only until rows 245 / 246; geofence arrival only while the app is open; the `I've arrived` caption keeps the detection sentence**: accepted as interim.
+   - `JobPings` wraps the source in `_ForegroundOnly` (no `background: true`), which matches the row-245 proposal minus the foreground service.
+   - The caption is true while the app is open, because the geofence is built on `feat/api-runner-realtime`. Condition: this branch merges with or after `feat/api-runner-realtime`. Until then nothing detects arrival, so if it merges first, the caption must read `Tap when you get there.` (spec item 8).
+   - After rows 245 / 246: the foreground service and its start/restart rule (C-V5), and the one-time job-start notice.
+2. **Evidence never queued offline until a real file store exists; a failed offline upload stays `Not uploaded` + `Retry`**: accepted as interim.
+   - `NoKeepEvidenceFileStore` makes `keep` fail, so items use the picker file and are released with `CapturedImage.discard`. That follows B-1 (no copy kept outside the app's control), and the leave dialog deletes failed items.
+   - The offline notice on `v-evidence-capture` cannot show meanwhile. Expected.
+   - Residual, tracked: a failed item the runner neither retries nor removes keeps its picker file in the app cache if the app is killed. The real store (`feat/core-runner-evidence-store`) closes this.
+3. **`Distance unavailable` in Fira Code**: accepted as interim, tracked for core-ui. `NavigationChip.detail` renders `meta` (Fira Code) for any string. Words in Fira Code break `_shared.md` §3 / the design-system rule, so core needs a Sans path for non-numeric detail (core-ui fixing). Not a builder finding.
+4. **Receipt window treated as open when the history read fails**: accepted. It never blocks a runner, and it shows no window time. The API refuses late uploads and claims (`reimbursement_window_closed`, mapped on both screens).
+5. **Copy and behaviour choices**: all accepted.
+   - `Write 5 to 300 characters.` for the can't-complete `Other` text (the spec gave no message; recorded as proposed).
+   - Price reason 10–500 characters after trimming (as specced).
+   - Dispute screen with a read-only checklist and `View job summary` (matches the spec: notes are not writable in DISPUTED, and receipts are not listed for it).
+   - Claim-form copy (proposed, as `v-job-summary` Data).
+   - No ETA minutes on the nav chip (the spec hides minutes when unknown).
+6. **Two-button dialogs** (`Finish` / `Not yet`, `Send` / `Back`, `Mark as failed` / `Keep going`, `Leave` / `Stay`): confirm outline, cancel primary. Accepted: this is the core `showNitumeConfirmDialog` convention, used across the app.
+7. **SuccessMark contrast (core review question)**: change it. The green check `#04AF4D` on green-050 `#E3F8EA` is about 2.6:1, below the 3:1 WCAG 1.4.11 minimum for a meaningful graphic. Use **green-700 `#038A3D`** (about 4.0:1): a derived tone in the design system, and the same choice as the success-chip text (row 33). R-24 is amended in `_shared.md`; core-ui changes `success_mark.dart:39` and the golden. Not a builder finding.
+
+### Per screen
+
+#### runner/v-active (+ notes editor, can't complete, Other jobs, Due line, EN_ROUTE → FAILED): PASS
+- Structure and flow match the spec:
+  - selection rule: focused, then working, then waiting/disputed, then an ended job needing a receipt, then empty;
+  - one forward action per state, guarded by `runnerTransitions`;
+  - FAILED only from RUNNER_EN_ROUTE; `Get help with this task` from ARRIVED and IN_PROGRESS (row 132);
+  - finish blocked by photos / receipt / Check It For Me notes / a pending price request;
+  - confirm → AWAITING_CUSTOMER → `v-job-summary`;
+  - AWAITING_CUSTOMER: notes and receipt still writable;
+  - the DISPUTED resolution note;
+  - ended cards with the 24 h receipt window;
+  - access revoked, offline queue, and errors as one danger notice (S-1 / m-7).
+- Copy: the mockup strings are exact; the proposed strings are as specced. Typography:
+  - header meta is Sans with the reference and `Due` time in Fira Code;
+  - counters, times and amounts use Fira Code;
+  - `Other jobs` reference uses `meta`.
+- Reuse: everything is core: R-01, R-06, R-07, R-16, C-24 `MenuRow` as R-09, `TaskRow`, C-25, C-35, `NitumeRadioRow`, C-40, `NitumeFixedCta`.
+- Domain:
+  - job pings only for the working job; idle pings unchanged;
+  - no customer fee read;
+  - price section only IN_PROGRESS + Buy For Me / Get It For Me;
+  - the `send_to_runner` approved line is withheld pending row 248 (a correct reading).
+- Notes (not findings):
+  - spec amendment 2026-10-20, **SA-1**: `Other jobs` also lists a CANCELLED / FAILED job whose receipt window is open and that has no receipt. Today it is reachable only when no other job is shown (`active_tab.dart:639-645` filters to `activeStatuses`). Build it in the next round.
+  - `_shown()` uses the API's held-jobs order for "most recently updated" (accepted; spec amended).
+
+#### runner/v-evidence-capture: PASS
+- Camera only, no gallery.
+- The type toggle appears only when both types are allowed.
+- `allowedEvidence` mirrors the spec's states (receipts in AWAITING_CUSTOMER and for CANCELLED / FAILED within the window).
+- Stale state notice; camera-denied empty state with `Open Settings`; location-off notice.
+- 413 → danger notice that names no size, with `Retry`.
+- Leave dialog for failed captures only, which then deletes them (B-1 rule 4).
+- `Save to task` enabled when all items are settled.
+- The uploader is job-scoped, `uploads.forJob` (C-V2).
+- Copy exact; tile times in Fira Code.
+- Observation (no change required): `evidence_type_not_allowed` maps to the too-large copy (`evidence_capture_screen.dart:151-153`). It cannot happen for camera JPEGs. If it ever does, `Retry` will not help; a generic error would be truer. Optional.
+
+#### runner/v-price-request: PASS
+- IN_PROGRESS + category guard; a pending request blocks the form.
+- Original amount from `RunnerJobView.itemAmount` in Fira Code 22.
+- Difference line; purchase-limit warning with the minor-2 copy (send_to_runner only).
+- Validation copy as specced; confirm dialog amounts in Fira Code.
+- API codes mapped to one danger notice; discard dialog.
+- Whole shillings only (`int.tryParse`, `price_request_screen.dart:89`), forced by the core digits-only money field: accepted; spec amended.
+
+#### runner/v-job-summary (+ item-spend claim): FAIL (minors)
+- Main summary:
+  - one `Runner fee` line; `You'll earn` / `You earned` (blue total, not green);
+  - separate `Item reimbursement` group, `On hold` / `Not approved` with captions;
+  - payable line by state and by line status; no payout time (row 143);
+  - `SuccessMark` (R-24); a chip instead of the mark on CANCELLED / FAILED;
+  - claim only within the window, with `Contact support` after it;
+  - all correct.
+1. **minor**, `claim_screen.dart:189-193`.
+   - Design: times are Fira Code (`_shared.md` §3 / §7: timestamps are numeric data).
+   - Code: the receipt picker label `Receipt, Today, 10:28 AM` is a plain `NitumeRadioRow` string, so the time renders in Sans.
+   - Fix: give `NitumeRadioRow` a rich label (`InlineSpan` with `NumSpan` for the time); this needs a core change, so file a core-ui `needs:`. Or show the time in a Fira Code trailing line. Either way, keep the spoken label.
+2. **minor**, `claim_screen.dart:191`.
+   - Design: no internal ids on screen.
+   - Code: when `capturedAt` is null the label shows the evidence UUID (`Receipt, 3f2a…`).
+   - Fix: `Receipt {n}` (proposed: `Receipt 1`, `Receipt 2`, with `n` in Fira Code).
+3. **minor**, `claim_screen.dart:215-220`.
+   - Design: the claim note is optional, at most 500 characters (`v-job-summary.md` Data, API limit).
+   - Code: no length limit or counter, so a longer note gets an API 400 with generic copy.
+   - Fix: `maxLength` / `LengthLimitingTextInputFormatter(500)` plus the Fira Code counter `0/500`.
+- Spec follow-up, **SA-2** (amendment 2026-10-20, not a finding): the heading on CANCELLED / FAILED becomes `Job ended` (proposed). Today it is `Nice work, Brian.` (`job_summary_screen.dart:324`).
+
+#### runner/v-jobs (live offers): FAIL (minor)
+- `job:offered` adds the card (verified runner, open offer, not ended) and announces it.
+- `job:offer_withdrawn` removes it with the usual snackbar.
+- The 20 s poll runs only while the socket is down; one reload on reconnect.
+- Accept goes to v-active on that job (`shell.showJob`).
+- Pings follow online/busy (`pings.setOnline`).
+1. **minor**, `jobs_tab.dart` (no notice anywhere; the availability card is at `:554`).
+   - Design: `v-jobs.md:35` and `_shared.md` §10 ask for a C-40 `Reconnecting…` under the availability card after the socket has been down 5 s.
+   - Code: batch 1 accepted its absence because no socket existed. The socket now exists (`RunnerLive.state`), so the polling fallback runs silently.
+   - Fix: show the notice when `!live.isConnected` for at least 5 s while signed in, and hide it on reconnect; add a test.
+
+#### runner/push routing (shell): PASS
+- `runnerKind` notifications → v-active on that job; `errand.RUNNER_ASSIGNED` → `v-job-detail`; anything else stays (v-earnings / v-profile targets wait for those screens).
+- The initial message is handled after sign-in only.
+
+### Needs
+- flutter-runner: v-job-summary 1–3, v-jobs 1, SA-1 and SA-2, and the merge condition in ruling 1.
+- core-ui:
+  - R-24 green-700 check plus the golden (ruling 7);
+  - `NavigationChip` Sans detail for words (ruling 3, in progress);
+  - `NitumeRadioRow` rich label (v-job-summary 1);
+  - the evidence file store (ruling 2, in progress);
+  - C-V5 after rows 245 / 246.
+- api-contract: none new. This branch depends on `feat/api-runner-realtime` for `GET /runners/me/jobs`, `location:ping`, the geofence, and the runner room events.
+
+### 22.1 Re-audit 2026-10-20 (`feat/runner-active` @ `5c9778f`)
+
+Builder commits since `2448d30`:
+- `ec46143`, `6bae281`, `f542c57`, `7a5ff37`, `5498393`, `5c9778f`;
+- the merge `dd8d044` of `feat/core-runner-evidence-store`;
+- core `4a98bc7` (SuccessMark green-700), `a304f57` (`NitumeRadioRow.richLabel`), `55a3df3` (`NavigationChip.richDetail`), `81c4d37`, `e601f60`, `23046ef`, `c98ad90`.
+
+Build health: `flutter analyze` is clean (runner and core). Tests pass: runner 110, core 577.
+
+| Item | Result |
+|---|---|
+| v-job-summary 1 (receipt time in Sans) | **Closed.** `claim_screen.dart` `richLabel` puts the time (or the number) in Fira Code (`NumSpan`); the plain `label` stays for semantics |
+| v-job-summary 2 (UUID fallback) | **Closed.** `Receipt {n}` by position, `n` in Fira Code; the id is never shown |
+| v-job-summary 3 (note limit) | **Closed.** `LengthLimitingTextInputFormatter(500)` plus the Fira Code counter `0/500` |
+| SA-2 (`Job ended` heading) | **Built.** `job_summary_screen.dart` uses `endedHeading` on CANCELLED / FAILED |
+| v-jobs 1 (`Reconnecting…`) | **Closed.** A C-40 notice under the availability card after 5 s in `connecting` / `reconnecting`; hidden once connected or deliberately disconnected; test in `jobs_test.dart`. "Deliberately disconnected" (signed out, or no client) shows nothing: accepted |
+| SA-1 (Other jobs lists ended jobs awaiting a receipt) | **Built.** `_receiptPending`: CANCELLED / FAILED purchase job, no receipt, window open (unknown end = open, ruling 4). The details for ended purchase jobs are loaded so the rule can decide |
+| Optional (`evidence_type_not_allowed`) | **Done.** Now the generic error; the error comes from `EvidenceUploadItem.lastApiError` (the app-level error map is removed) |
+| Ruling 2 (evidence never queued offline) | **Superseded, good.** `appSupportEvidenceFileStore()` (path_provider application-support, row 149) is wired, so offline photos are queued again, with the offline notice. B-1: `discardExcept(queued paths)` at session start removes copies left by a killed app (closes the residual noted in §22); `discardAll` runs at log out after the queue is cleared; deletes are confined to the store's own folder |
+| Ruling 3 (`Distance unavailable` in Fira Code) | **Closed.** `NavigationChip.richDetail`: the distance is a `NumSpan`; the words are a Sans `TextSpan` |
+| Ruling 7 (SuccessMark contrast) | **Closed in core.** `success_mark.dart:40` `NitumeColors.green700` |
+
+Still interim (not findings): job pings foreground-only, no job-start notice and no foreground service until BOARD rows 245 / 246; the `send_to_runner` approved line waits for row 248. The ruling-1 merge condition stands: merge with or after `feat/api-runner-realtime`, or switch the arrival caption to `Tap when you get there.`
+
+Verdicts:
+
+| Screen | Verdict |
+|---|---|
+| v-active | **PASS** (SA-1 built) |
+| v-evidence-capture | **PASS** (offline queue restored with B-1 clean-up) |
+| v-price-request | **PASS** (unchanged) |
+| v-job-summary (+ claim) | **PASS** (1–3 closed, SA-2 built) |
+| v-jobs (live offers) | **PASS** (1 closed) |
+| push routing | **PASS** (unchanged) |

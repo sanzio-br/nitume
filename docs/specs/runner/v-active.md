@@ -43,10 +43,10 @@ The runner's working screen for the job they hold: navigate to the task, move th
   3. else the most recently updated AWAITING_CUSTOMER or DISPUTED job;
   4. else a CANCELLED / FAILED job whose 24-hour receipt window is still open and that has no receipt yet (receipt case only, `send_to_runner` with an item amount);
   5. else the empty state.
-- `Other jobs` section **(proposed, extends the mockup)**: shown when the runner holds more than one active-set job.
+- `Other jobs` section **(proposed, extends the mockup)**: shown when the runner holds more than one active-set job, **or** another job is CANCELLED / FAILED with an open 24 h receipt window and no receipt yet (amended 2026-10-20 after the build audit: otherwise such a job is unreachable while a working job is shown, and its window can pass).
   - C-08 `Other jobs`, then one C-07-style row per other job: core `TaskRow` (title 13/600 Sans, meta Fira Code 11 slate-600 `#NT-10482`, trailing R-01 small chip).
   - Tap → the screen switches to that job; the top-bar chip follows the shown job.
-  - Order: the working job first, then by last update, newest first.
+  - Order: the working job first, then by last update, newest first (the API's held-jobs order is accepted while the view carries no update time; ruling 2026-10-20).
   - Placed after the primary action (item 9 below) so the working job's controls stay on top.
 - Job pings (with `errandId`) run only for the working job, whichever job is on screen (row 27; `_shared.md` §10). The 30 s idle pings while online (row 123) stay as they are; AWAITING_CUSTOMER and DISPUTED jobs never get job pings.
 - No tab badge (none in the mockup).
