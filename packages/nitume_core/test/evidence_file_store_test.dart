@@ -79,4 +79,76 @@ void main() {
     ]);
     expect(paths, {'/s/1.jpg'});
   });
+
+  group('discard only deletes direct children of the store folder', () {
+    String root() => '${base.path}/nitume_evidence';
+
+    test(
+      'a valid kept path is deleted, also when written with . or ..',
+      () async {
+        final a = await keepOne('a.jpg');
+        final b = await keepOne('b.jpg');
+        await store.discard(a);
+        expect(File(a).existsSync(), isFalse);
+        final name = b.split('/').last;
+        await store.discard('${root()}/./../nitume_evidence/$name');
+        expect(File(b).existsSync(), isFalse);
+      },
+    );
+
+    test('.. that leaves the folder is ignored', () async {
+      await keepOne('a.jpg');
+      final victim = File('${base.path}/victim.txt')..writeAsStringSync('x');
+      await store.discard('${root()}/../victim.txt');
+      expect(victim.existsSync(), isTrue);
+      final outsideVictim = File('${outside.path}/v.txt')
+        ..writeAsStringSync('x');
+      final rel = '${root()}/../../${outside.path.split('/').last}/v.txt';
+      await store.discard(rel);
+      expect(outsideVictim.existsSync(), isTrue);
+    });
+
+    test('a sibling folder sharing the name prefix is ignored', () async {
+      await keepOne('a.jpg');
+      final sibling = Directory('${root()}2')..createSync();
+      final victim = File('${sibling.path}/x.jpg')..writeAsStringSync('x');
+      await store.discard(victim.path);
+      expect(victim.existsSync(), isTrue);
+    });
+
+    test('a sub-folder or a symlinked folder inside is ignored', () async {
+      await keepOne('a.jpg');
+      final sub = Directory('${root()}/sub')..createSync();
+      final nested = File('${sub.path}/x.jpg')..writeAsStringSync('x');
+      await store.discard(nested.path);
+      expect(nested.existsSync(), isTrue);
+
+      final target = File('${outside.path}/secret.jpg')..writeAsStringSync('x');
+      Link('${root()}/link').createSync(outside.path);
+      await store.discard('${root()}/link/secret.jpg');
+      expect(target.existsSync(), isTrue);
+    });
+
+    test('the folder itself, empty and relative paths are ignored', () async {
+      await keepOne('a.jpg');
+      await store.discard(root());
+      await store.discard('');
+      await store.discard('nitume_evidence/a.jpg');
+      expect(Directory(root()).existsSync(), isTrue);
+      expect(await store.keptPaths(), hasLength(1));
+    });
+
+    test('discardAll / discardExcept never reach outside', () async {
+      final kept = await keepOne('a.jpg');
+      final victim = File('${base.path}/victim.txt')..writeAsStringSync('x');
+      final sibling = Directory('${root()}2')..createSync();
+      final sib = File('${sibling.path}/x.jpg')..writeAsStringSync('x');
+      await store.discardExcept(['${root()}/../victim.txt']);
+      expect(File(kept).existsSync(), isFalse);
+      expect(victim.existsSync(), isTrue);
+      expect(sib.existsSync(), isTrue);
+      await store.discardAll();
+      expect(victim.existsSync(), isTrue);
+    });
+  });
 }
