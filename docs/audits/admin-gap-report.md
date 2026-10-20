@@ -869,3 +869,31 @@ Spec-only update. Details and API items: `runner-gap-report.md` §18.
 
 ## Owner answers round 15 (rows 240, 242–244, 2026-10-19)
 - No admin screen change. Row 243 forbids an admin deadline edit: `drawer-task-offer.md` now states that the `Deadline` row is read-only. Row 240 means more unpaid tasks show `No deadline yet` (backfilled values cleared). No new findings.
+
+
+## Re-audit 2026-10-19: admin finding 33 and the `No deadline yet` Deadline row (`fix/angular-admin-round-14` @ `1c4d432`)
+
+Commits `2fad654`, `1c4d432`. Specs: `drawer-task-requote.md` (Errors, rows 233, 236), `drawer-task-offer.md` (Layout 2, rows 239, 243), `_shared.md`, design system.
+
+Build health:
+- `ng test`: 27 files, 259 tests pass.
+- `tsc -p tsconfig.app.json`: clean.
+- No new colours, fonts or SCSS.
+
+### Finding 33: quote refused outside every service area: PASS
+- `quote-dialog.ts`: the code `location_outside_service_area` (422 from the API) sets an A-11 danger notice with the spec copy word for word: `This task's location is outside every service area, so it can't be quoted. The customer is told and can cancel it.`
+- The dialog stays open, the API message is never shown, and neither `issued` nor `conflict` is emitted (tested).
+- The mapping is by code, which covers the spec's "4xx".
+
+### `Deadline` row, drawer summary: PASS
+- `task-drawer.ts` `deadlineRow(status, deadlineAt)`:
+  - a set deadline shows the 12-hour EAT time in Fira Code (`<b>`), in any state;
+  - a null deadline in DRAFT, REQUESTED, QUOTED or ACCEPTED shows `No deadline yet` in Fira Sans (`<b class="txt">`; row 239 (a));
+  - a CANCELLED task without one shows no row.
+- The row is read-only: no input, button or link (row 243; tested).
+
+### Ruling on the builder's reading
+- A null deadline in a paid or later state keeps the built `—`: **accepted**. It should not happen after rows 239 (a) and 240 (the CHECK and the backfill). The dash marks a data gap without inventing copy. It is in Fira Sans (`txt`), which is right for a non-number.
+
+### Verdict
+**PASS**, no findings. Finding 33 is closed. The Runner-section `Deadline` row and its sub-states stay with finding 24 (open). `drawer-task-requote` goes back to `matches-design`. `drawer-task-offer` stays `partial` (findings 16, 17, 21, 24, 25, 29, 32 and m-14 are open).
