@@ -71,9 +71,10 @@ class AppServices {
       uploads: uploads,
       queue: () => queue,
     );
-    // Replay queued actions whenever the socket comes back.
+    // Replay queued actions whenever the socket comes back (reopening a
+    // queue whose store could not be read at sign-in).
     this.live.state.addListener(() {
-      if (this.live.isConnected) queue.replay();
+      if (this.live.isConnected) unawaited(resumeQueue());
     });
   }
 
@@ -187,28 +188,48 @@ class AppServices {
   /// install (row 246; `SharedPreferencesOneTimeFlag` on a device).
   final OneTimeFlag jobStartNoticeShown;
 
+  bool _sessionActive = false;
+
   /// Starts the signed-in runtime: socket, queue.
   Future<void> startSession() async {
+    _sessionActive = true;
     // Open the queue first (a log out closed it), so an offline action made
     // as soon as the shell shows is queued, not refused. A store read
-    // failure never stops the socket: actions then fail with a retry
-    // instead of queueing.
+    // failure never stops the socket: the queue then stays closed (it must
+    // not write over the unread store), so an offline action fails with a
+    // retry instead of queueing, until [resumeQueue] reads it again.
+    await _openQueue();
+    await live.start();
+    unawaited(queue.replay());
+  }
+
+  /// App resumed or socket back (signed in): reopen a queue whose store
+  /// read failed, then replay. Does nothing after log out (a cleared queue
+  /// stays closed until the next sign-in, B-1).
+  Future<void> resumeQueue() async {
+    if (!_sessionActive) return;
+    if (queue.isClosed) await _openQueue();
+    if (!_sessionActive) return;
+    await queue.replay();
+  }
+
+  /// Reads the queue; on a good read, deletes copies left by a killed app
+  /// that no queued action needs (B-1). Never throws.
+  Future<void> _openQueue() async {
     final loaded = await _quietly(queue.load);
-    // Copies left by a killed app that no queued action needs (B-1). Only
-    // after a good read: an unread queue may still need its photos.
-    if (loaded) {
+    // Only after a good read: an unread queue may still need its photos.
+    if (loaded && _sessionActive) {
       await _quietly(
         () => evidenceFiles.discardExcept(
           RunnerQueuedActions.evidencePaths(queue.pending),
         ),
       );
     }
-    await live.start();
-    unawaited(queue.replay());
   }
 
   /// Log out / expiry: stop pings, drop rooms, uploads and queued actions.
   Future<void> endSession() async {
+    _sessionActive = false;
     active.reset();
     await queue.clear();
     // Every kept photo goes at log out (B-1 rule 7).
