@@ -13,6 +13,41 @@ void main() {
       expect(formatClockEat(DateTime.utc(2026, 10, 14, 9)), '12:00 PM');
     });
 
+    test('formatDeadlineEat looks ahead on EAT days (m-1)', () {
+      // now: 20 Oct 2026, 10:28 AM EAT.
+      final now = DateTime.utc(2026, 10, 20, 7, 28);
+      // 20:59 UTC = 11:59 PM EAT the same day.
+      expect(
+        formatDeadlineEat(DateTime.utc(2026, 10, 20, 20, 59), now: now),
+        'Today, 11:59 PM',
+      );
+      expect(
+        formatDeadlineEat(DateTime.utc(2026, 10, 21, 20, 59), now: now),
+        'Tomorrow, 11:59 PM',
+      );
+      // 21:30 UTC on the 20th is already 21 Oct 00:30 EAT: tomorrow.
+      expect(
+        formatDeadlineEat(DateTime.utc(2026, 10, 20, 21, 30), now: now),
+        'Tomorrow, 12:30 AM',
+      );
+      expect(
+        formatDeadlineEat(DateTime.utc(2026, 10, 19, 13, 12), now: now),
+        'Yesterday, 4:12 PM',
+      );
+      expect(
+        formatDeadlineEat(DateTime.utc(2026, 10, 24, 20, 59), now: now),
+        '24 Oct, 11:59 PM',
+      );
+      expect(
+        formatDeadlineEat(DateTime.utc(2026, 10, 12, 7, 28), now: now),
+        '12 Oct, 10:28 AM',
+      );
+      expect(
+        formatDeadlineEat(DateTime.utc(2027, 1, 3, 9), now: now),
+        '3 Jan 2027, 12:00 PM',
+      );
+    });
+
     test('formatDayTimeEat uses EAT calendar days', () {
       final now = DateTime.utc(2026, 10, 14, 18); // 9 PM EAT, Wed
       expect(formatDayTimeEat(t, now: now), 'Today, 10:28 AM');

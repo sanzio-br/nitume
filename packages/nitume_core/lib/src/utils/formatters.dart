@@ -155,6 +155,23 @@ String formatDayTimeEat(DateTime time, {DateTime? now}) {
   return t.year == ref.year ? '$date, $clock' : '$date ${t.year}, $clock';
 }
 
+/// Future-aware EAT time for deadlines and due times (customer m-1):
+/// `Today, 11:59 PM`, `Tomorrow, 11:59 PM`, `Yesterday, 4:12 PM`,
+/// otherwise the date: `24 Oct, 11:59 PM` (`3 Jan 2027, …` in another
+/// year). Days are EAT calendar days. Use [formatDayTimeEat] for times in
+/// the past (activity, history).
+String formatDeadlineEat(DateTime time, {DateTime? now}) {
+  final t = toEatWallClock(time);
+  final ref = toEatWallClock(now ?? DateTime.now());
+  final ahead = -_calendarDaysBetween(t, ref);
+  final clock = _clock12(t);
+  if (ahead == 0) return 'Today, $clock';
+  if (ahead == 1) return 'Tomorrow, $clock';
+  if (ahead == -1) return 'Yesterday, $clock';
+  final date = '${t.day} ${_months[t.month - 1]}';
+  return t.year == ref.year ? '$date, $clock' : '$date ${t.year}, $clock';
+}
+
 /// Notification-style relative time on EAT days: `2m`, `1h` (same day),
 /// `Yesterday`, `Mon` (within the last week), otherwise `12 Feb`.
 String formatRelativeShortEat(DateTime time, {DateTime? now}) {
