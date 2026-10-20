@@ -41,6 +41,39 @@ class _FakeSource implements PositionSource {
   }
 }
 
+/// A source that opens a new stream per `positions()` call (so a stream
+/// the system ended can be reopened) and counts permission requests.
+class _ReopeningSource implements PositionSource {
+  final streams = <StreamController<DevicePosition>>[];
+  int requests = 0;
+  Object? openError;
+
+  @override
+  Future<LocationAccess> access() async => LocationAccess.whileInUse;
+
+  @override
+  Future<LocationAccess> requestAccess() async {
+    requests++;
+    return LocationAccess.whileInUse;
+  }
+
+  @override
+  Future<DevicePosition?> current() async => null;
+
+  @override
+  Stream<DevicePosition> positions({
+    required Duration interval,
+    double distanceFilterMeters = 0,
+    bool background = false,
+  }) {
+    final e = openError;
+    if (e != null) throw e;
+    final c = StreamController<DevicePosition>();
+    streams.add(c);
+    return c.stream;
+  }
+}
+
 DevicePosition _at(double lat, [double lng = 39.71]) =>
     DevicePosition(lat: lat, lng: lng, timestamp: DateTime.utc(2026, 10, 13));
 
@@ -222,6 +255,72 @@ void main() {
 
       p.setAppForeground(true);
       expect(source.lastStream!.background, isTrue);
+      p.dispose();
+    });
+
+    testWidgets(
+      'same job again restarts a stream the system ended (foreground)',
+      (tester) async {
+        final source = _ReopeningSource();
+        final pings = <LocationPing>[];
+        final p = LocationPinger(source: source, onPing: pings.add);
+        p.setMode(const PingActiveJob('e1'));
+        expect(source.streams, hasLength(1));
+        await source.streams.single.close();
+        await tester.pump();
+        expect(p.waitingForForeground, isTrue);
+
+        p.setMode(const PingActiveJob('e1'));
+        expect(source.streams, hasLength(2), reason: 'reopened at once');
+        expect(p.waitingForForeground, isFalse);
+        source.streams.last.add(_at(-4.03));
+        await tester.pump();
+        expect(pings.last.errandId, 'e1');
+
+        // Running: the same job again changes nothing.
+        p.setMode(const PingActiveJob('e1'));
+        expect(source.streams, hasLength(2));
+        expect(source.requests, 0, reason: 'never asks for permission');
+        p.dispose();
+      },
+    );
+
+    testWidgets('same job again from the background still waits', (
+      tester,
+    ) async {
+      final source = _ReopeningSource();
+      final p = LocationPinger(source: source, onPing: (_) {});
+      p.setMode(const PingActiveJob('e1'));
+      p.setAppForeground(false);
+      await source.streams.single.close();
+      await tester.pump();
+
+      p.setMode(const PingActiveJob('e1'));
+      expect(source.streams, hasLength(1), reason: 'never from background');
+      expect(p.waitingForForeground, isTrue);
+
+      p.setAppForeground(true);
+      expect(source.streams, hasLength(2));
+      p.dispose();
+    });
+
+    testWidgets('a source that fails to open never throws', (tester) async {
+      final source = _ReopeningSource()..openError = StateError('denied');
+      final statuses = <PingerStatus>[];
+      final p = LocationPinger(
+        source: source,
+        onPing: (_) {},
+        onStatus: statuses.add,
+      );
+      p.setMode(const PingActiveJob('e1'));
+      expect(p.waitingForForeground, isTrue);
+      expect(statuses, [PingerStatus.locationUnavailable]);
+      p.setMode(const PingActiveJob('e1'));
+      source.openError = null;
+      p.setMode(const PingActiveJob('e1'));
+      expect(source.streams, hasLength(1));
+      expect(source.requests, 0);
+      await tester.pump(const Duration(seconds: 8));
       p.dispose();
     });
 

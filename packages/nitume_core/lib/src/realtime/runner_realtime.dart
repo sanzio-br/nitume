@@ -1,5 +1,6 @@
 import '../device/location_pinger.dart';
 import '../models/enums.dart';
+import '../models/json_utils.dart';
 
 /// Why an open offer ended (`job:offer_withdrawn`). For the app's own logic
 /// only: **never shown as copy** (the card just goes, with the usual
@@ -100,7 +101,9 @@ enum PriceDecisionOutcome {
 /// `price_change:decided {errandId, requestId, status, outcome, fromPrice,
 /// toPrice, decidedAt}` (RA-5, A8), to the current runner's room and
 /// `errand:{id}`. Prices are decimal strings. Reload the job for the new
-/// item amount. No "difference paid" state is carried (row 248 open).
+/// item amount: an approved increase on `send_to_runner` may still wait
+/// for the customer's payment (`RunnerJobView.differenceAwaitingPayment`,
+/// row 248) until [PriceDifferencePaid] arrives.
 class PriceChangeDecided {
   const PriceChangeDecided({
     required this.errandId,
@@ -141,6 +144,38 @@ class PriceChangeDecided {
       decidedAt: _date(json['decidedAt']),
     );
   }
+}
+
+/// `price_change:difference_paid {errandId, requestId, amount, paidAt}`
+/// (row 248), to the current runner's room and `errand:{id}`: the customer
+/// paid the difference of an approved `send_to_runner` increase, so the
+/// runner may now buy at the new amount. Reload the job
+/// (`RunnerJobsRepository.job`): `requiredPurchase` is raised and
+/// `differenceAwaitingPayment` cleared once every waiting request is paid.
+class PriceDifferencePaid {
+  const PriceDifferencePaid({
+    required this.errandId,
+    required this.requestId,
+    required this.amount,
+    this.paidAt,
+  });
+
+  final String errandId;
+
+  /// The price-change request whose difference was paid.
+  final String requestId;
+
+  /// The difference paid, a 2-decimal KES string.
+  final String amount;
+  final DateTime? paidAt;
+
+  factory PriceDifferencePaid.fromJson(Map<String, dynamic> json) =>
+      PriceDifferencePaid(
+        errandId: json['errandId'] as String,
+        requestId: json['requestId'] as String,
+        amount: parseDecimalOrZero(json['amount']),
+        paidAt: _date(json['paidAt']),
+      );
 }
 
 /// `error` of a refused `location:ping` ack (RA-4).
@@ -234,6 +269,9 @@ abstract interface class RunnerRealtimeClient {
 
   /// `price_change:decided`.
   Stream<PriceChangeDecided> get priceChangeDecisions;
+
+  /// `price_change:difference_paid` (row 248): reload the job.
+  Stream<PriceDifferencePaid> get priceDifferencePayments;
 
   /// Emits `location:ping` ([LocationPing.toJson]) and resolves with the
   /// ack; [LocationPingAck.notSent] while not connected or when no ack

@@ -62,6 +62,10 @@ void main() {
     expect(RealtimeEvents.jobOffered, 'job:offered');
     expect(RealtimeEvents.jobOfferWithdrawn, 'job:offer_withdrawn');
     expect(RealtimeEvents.priceChangeDecided, 'price_change:decided');
+    expect(
+      RealtimeEvents.priceChangeDifferencePaid,
+      'price_change:difference_paid',
+    );
     expect(RealtimeEvents.locationPing, 'location:ping');
     expect(RealtimeEvents.runnerRoom('rp1'), 'runner:rp1:status');
   });
@@ -146,6 +150,31 @@ void main() {
     expect(d[1].outcome, PriceDecisionOutcome.cancelled);
     expect(d[2].status, isNull);
     expect(d[2].outcome, isNull);
+  });
+
+  test('price_change:difference_paid (row 248)', () async {
+    await connected();
+    final got = client.priceDifferencePayments.take(2).toList();
+    t
+      ..serverSends('price_change:difference_paid', {'errandId': 'e1'})
+      ..serverSends('price_change:difference_paid', {
+        'errandId': 'e1',
+        'requestId': 'p1',
+        'amount': '200.00',
+        'paidAt': '2026-10-20T10:00:00.000Z',
+      })
+      ..serverSends('price_change:difference_paid', {
+        'errandId': 'e2',
+        'requestId': 'p2',
+        'amount': 150,
+      });
+    final d = await got;
+    expect(d[0].errandId, 'e1');
+    expect(d[0].requestId, 'p1');
+    expect(d[0].amount, '200.00');
+    expect(d[0].paidAt, DateTime.utc(2026, 10, 20, 10));
+    expect(d[1].amount, '150.00');
+    expect(d[1].paidAt, isNull);
   });
 
   test('malformed runner payloads are dropped', () async {

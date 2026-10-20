@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/enums.dart';
 import 'api_exception.dart';
 
@@ -44,6 +46,45 @@ extension RunnerErrorDetails on NitumeApiException {
   /// `windowEndsAt` of [ApiErrorCodes.reimbursementWindowClosed]: when the
   /// 24 h receipt window closed (show in Fira Code, EAT).
   DateTime? get receiptWindowEndsAt => _date(details['windowEndsAt']);
+}
+
+/// A refused evidence upload because the file is too large (413
+/// [ApiErrorCodes.evidenceTooLarge], row 252). Permanent: the same file
+/// never fits, so it is not retried or queued and its local copy is deleted
+/// (B-1). Show `RunnerEvidenceCopy.tooLarge(maxBytes)`.
+@immutable
+class EvidenceTooLarge {
+  const EvidenceTooLarge({required this.maxBytes});
+
+  /// The server's limit in bytes (`maxBytes`), or [defaultMaxBytes] when
+  /// the 413 did not carry it.
+  final int maxBytes;
+
+  /// The API default (`EVIDENCE_MAX_UPLOAD_BYTES`, 10 × 1024 × 1024).
+  static const defaultMaxBytes = 10 * 1024 * 1024;
+
+  /// The typed error when [error] is a 413 on an evidence upload: coded
+  /// [ApiErrorCodes.evidenceTooLarge], or a 413 without a code (a proxy or
+  /// an older API); `null` for anything else.
+  static EvidenceTooLarge? of(Object? error) {
+    if (error is! NitumeApiException || error.statusCode != 413) return null;
+    final code = error.code;
+    if (code != null && code != ApiErrorCodes.evidenceTooLarge) return null;
+    final max = error.maxBytes;
+    return EvidenceTooLarge(
+      maxBytes: max != null && max > 0 ? max : defaultMaxBytes,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is EvidenceTooLarge && other.maxBytes == maxBytes;
+
+  @override
+  int get hashCode => maxBytes.hashCode;
+
+  @override
+  String toString() => 'EvidenceTooLarge(maxBytes: $maxBytes)';
 }
 
 List<EvidenceType>? _types(Object? v) {

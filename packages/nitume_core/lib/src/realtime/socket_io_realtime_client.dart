@@ -55,7 +55,8 @@ typedef RealtimeTransportFactory = RealtimeTransport Function(
 /// is no longer re-joined after a reconnect.
 ///
 /// Runner side ([RunnerRealtimeClient], RA-4, RA-5): forwards `job:offered`,
-/// `job:offer_withdrawn` and `price_change:decided` (the server puts a
+/// `job:offer_withdrawn`, `price_change:decided` and
+/// `price_change:difference_paid` (the server puts a
 /// runner's sockets in their own room; nothing to join), and sends
 /// `location:ping` with [sendLocationPing].
 ///
@@ -117,6 +118,7 @@ class SocketIoRealtimeClient implements RealtimeClient, RunnerRealtimeClient {
   final _jobOffers = StreamController<JobOffered>.broadcast();
   final _withdrawals = StreamController<JobOfferWithdrawn>.broadcast();
   final _priceDecisions = StreamController<PriceChangeDecided>.broadcast();
+  final _differencePaid = StreamController<PriceDifferencePaid>.broadcast();
 
   final _rooms = <String>{};
   RealtimeTransport? _transport;
@@ -169,6 +171,10 @@ class SocketIoRealtimeClient implements RealtimeClient, RunnerRealtimeClient {
 
   @override
   Stream<PriceChangeDecided> get priceChangeDecisions => _priceDecisions.stream;
+
+  @override
+  Stream<PriceDifferencePaid> get priceDifferencePayments =>
+      _differencePaid.stream;
 
   @override
   Future<LocationPingAck> sendLocationPing(LocationPing ping) {
@@ -234,6 +240,7 @@ class SocketIoRealtimeClient implements RealtimeClient, RunnerRealtimeClient {
       _jobOffers.close(),
       _withdrawals.close(),
       _priceDecisions.close(),
+      _differencePaid.close(),
     ]);
   }
 
@@ -333,6 +340,12 @@ class SocketIoRealtimeClient implements RealtimeClient, RunnerRealtimeClient {
       RealtimeEvents.priceChangeDecided,
       PriceChangeDecided.fromJson,
       _priceDecisions,
+    );
+    _listen(
+      t,
+      RealtimeEvents.priceChangeDifferencePaid,
+      PriceDifferencePaid.fromJson,
+      _differencePaid,
     );
     t.connect();
   }

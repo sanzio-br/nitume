@@ -38,6 +38,44 @@ enum OfferDeclineReason {
   }
 }
 
+/// Row 248 (owner, 2026-10-20): an approved price increase on a
+/// `send_to_runner` job whose difference the customer has not paid yet
+/// ([RunnerJobView.differenceAwaitingPayment]).
+///
+/// While it is set, [RunnerJobView.itemAmount] is already the new price but
+/// the runner buys only up to [RunnerJobView.requiredPurchase] (the old
+/// amount). Show `RunnerPriceChangeCopy.differenceAwaitingPayment`. It clears on
+/// `price_change:difference_paid` (`PriceDifferencePaid`): reload the job.
+class DifferenceAwaitingPayment {
+  const DifferenceAwaitingPayment({
+    required this.amount,
+    this.priceChangeRequestIds = const [],
+  });
+
+  /// The unpaid difference in total, a 2-decimal KES string (Fira Code).
+  final String amount;
+
+  /// The approved price-change requests still waiting for payment.
+  final List<String> priceChangeRequestIds;
+
+  /// `null` for an absent or unreadable value (treated as nothing waiting).
+  static DifferenceAwaitingPayment? tryFromJson(Object? json) {
+    if (json is! Map) return null;
+    final amount = parseDecimal(json['amount']);
+    if (amount == null) return null;
+    final ids = json['priceChangeRequestIds'];
+    return DifferenceAwaitingPayment(
+      amount: amount,
+      priceChangeRequestIds: ids is List
+          ? [
+              for (final e in ids)
+                if (e is String && e.isNotEmpty) e,
+            ]
+          : const [],
+    );
+  }
+}
+
 /// The runner's own assignment on a [RunnerJobView] (RA-1).
 class RunnerJobAssignment {
   const RunnerJobAssignment({
@@ -102,6 +140,7 @@ class RunnerJobView {
     this.itemAmount,
     this.merchantRoute,
     this.offerExpiresAt,
+    this.differenceAwaitingPayment,
   });
 
   /// Errand id.
@@ -136,8 +175,20 @@ class RunnerJobView {
   final MerchantRoute? merchantRoute;
 
   /// What the runner pays out of pocket and is reimbursed for
-  /// (`send_to_runner`); `"0.00"` otherwise.
+  /// (`send_to_runner`); `"0.00"` otherwise. It is also the most the runner
+  /// may spend on the item: while [differenceAwaitingPayment] is set it
+  /// stays at the old amount although [itemAmount] is the new price (row
+  /// 248).
   final String requiredPurchase;
+
+  /// Row 248: set while an approved increase waits for the customer to pay
+  /// the difference (`send_to_runner` only); `null` otherwise, and on APIs
+  /// that do not send it.
+  final DifferenceAwaitingPayment? differenceAwaitingPayment;
+
+  /// True while [differenceAwaitingPayment] is set: buy only up to
+  /// [requiredPurchase].
+  bool get isAwaitingDifference => differenceAwaitingPayment != null;
 
   /// The runner's purchase limit (row 138).
   final String maxPurchaseAdvance;
@@ -211,6 +262,9 @@ class RunnerJobView {
       maxPurchaseAdvance: parseDecimalOrZero(json['maxPurchaseAdvance']),
       overPurchaseLimit: json['overPurchaseLimit'] == true,
       offerExpiresAt: parseDate(json['offerExpiresAt']),
+      differenceAwaitingPayment: DifferenceAwaitingPayment.tryFromJson(
+        json['differenceAwaitingPayment'],
+      ),
       assignment: RunnerJobAssignment.fromJson(asJsonMap(json['assignment'])),
     );
   }
