@@ -139,12 +139,23 @@ void main() {
             code: 'evidence_too_large',
           ),
         ),
-        ReplayOutcome.tooLarge,
+        const ReplayTooLarge(maxBytes: EvidenceTooLarge.defaultMaxBytes),
+      );
+      expect(
+        replayOutcomeFor(
+          const NitumeApiException(
+            message: 'x',
+            statusCode: 413,
+            code: 'evidence_too_large',
+            details: {'maxBytes': 5242880},
+          ),
+        ),
+        const ReplayTooLarge(maxBytes: 5242880),
       );
       const bare = NitumeApiException(message: 'x', statusCode: 413);
       expect(
         replayOutcomeFor(bare, kind: QueuedActionKind.evidenceUpload),
-        ReplayOutcome.tooLarge,
+        const ReplayTooLarge(),
       );
       // A bare 413 is evidence-too-large only for evidence uploads.
       for (final kind in [
@@ -223,6 +234,7 @@ void main() {
               message: 'x',
               statusCode: 413,
               code: 'evidence_too_large',
+              details: {'maxBytes': 5242880},
             ),
           );
         },
@@ -240,10 +252,57 @@ void main() {
       );
       await queue.replay();
       expect(queue.isEmpty, isTrue);
-      expect(dropped, [QueueDropReason.tooLarge]);
+      expect(dropped, [const QueueDropTooLarge(maxBytes: 5242880)]);
+      expect((dropped.single as QueueDropTooLarge).maxBytes, 5242880);
       expect(File(path).existsSync(), isFalse);
       await queue.replay();
       expect(runs, 1, reason: 'never retried');
+    });
+
+    test(
+      'a thrown 413 without maxBytes drops with the 10 MB default',
+      () async {
+        final dropped = <QueueDropReason>[];
+        final queue = OfflineActionQueue(
+          store: InMemoryQueueStore(),
+          runner: (_) async =>
+              throw const NitumeApiException(message: 'x', statusCode: 413),
+          onDropped: (_, r) => dropped.add(r),
+        );
+        await queue.enqueue(
+          QueuedActionKind.evidenceUpload,
+          errandId: 'e1',
+          payload: RunnerQueuedActions.evidence(
+            path: '/gone.jpg',
+            type: EvidenceType.photo,
+            contentType: 'image/jpeg',
+          ),
+        );
+        await queue.replay();
+        expect(dropped, [const QueueDropTooLarge(maxBytes: 10 * 1024 * 1024)]);
+        expect(const QueueDropTooLarge().maxBytes, 10 * 1024 * 1024);
+      },
+    );
+
+    test('drop reasons: constants, exhaustive switch, equality', () {
+      String label(QueueDropReason r) => switch (r) {
+        QueueDropRefused() => 'refused',
+        QueueDropFileMissing() => 'fileMissing',
+        QueueDropSuperseded() => 'superseded',
+        QueueDropTooLarge(:final maxBytes) => 'tooLarge $maxBytes',
+      };
+      expect(label(QueueDropReason.refused), 'refused');
+      expect(label(QueueDropReason.fileMissing), 'fileMissing');
+      expect(label(QueueDropReason.superseded), 'superseded');
+      expect(label(const QueueDropTooLarge(maxBytes: 7)), 'tooLarge 7');
+      expect(
+        const QueueDropTooLarge(maxBytes: 7),
+        isNot(const QueueDropTooLarge(maxBytes: 8)),
+      );
+      expect(ReplayOutcome.done, isA<ReplayDone>());
+      expect(ReplayOutcome.retryLater, isA<ReplayRetryLater>());
+      expect(ReplayOutcome.rejected, isA<ReplayRejected>());
+      expect(ReplayOutcome.fileMissing, isA<ReplayFileMissing>());
     });
   });
 

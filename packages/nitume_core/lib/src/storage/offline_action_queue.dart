@@ -112,54 +112,159 @@ class InMemoryQueueStore implements QueueStore {
       this.entries = List.of(entries);
 }
 
-/// Result of replaying one action.
-enum ReplayOutcome {
+/// Result of replaying one action. The data-less outcomes are the
+/// constants on this class ([done], [retryLater], [rejected],
+/// [fileMissing]); a photo above the size limit is a [ReplayTooLarge]
+/// carrying the server's limit. Switch over the subclasses for an
+/// exhaustive match.
+@immutable
+sealed class ReplayOutcome {
+  const ReplayOutcome._();
+
   /// The server accepted it: remove from the queue.
-  done,
+  static const ReplayOutcome done = ReplayDone._();
 
   /// Not sent (offline, timeout, 5xx, 408, 429, 401 before re-auth): keep
   /// it and stop this replay, so order is preserved.
-  retryLater,
+  static const ReplayOutcome retryLater = ReplayRetryLater._();
 
   /// The server refused it for good (e.g. 403, 409 after re-check, 422):
   /// remove it and report it so the screen reloads the server state.
-  rejected,
+  static const ReplayOutcome rejected = ReplayRejected._();
 
   /// The queued photo is no longer on the phone: remove it and tell the
   /// runner to take it again.
-  fileMissing,
-
-  /// The photo is above the server's size limit (413
-  /// [ApiErrorCodes.evidenceTooLarge], row 252). Permanent: remove it (its
-  /// file is deleted by `onSettled`) and tell the runner to take it again.
-  tooLarge,
+  static const ReplayOutcome fileMissing = ReplayFileMissing._();
 }
 
-/// Why an action left the queue without being applied.
-enum QueueDropReason {
+/// [ReplayOutcome.done].
+final class ReplayDone extends ReplayOutcome {
+  const ReplayDone._() : super._();
+
+  @override
+  String toString() => 'ReplayOutcome.done';
+}
+
+/// [ReplayOutcome.retryLater].
+final class ReplayRetryLater extends ReplayOutcome {
+  const ReplayRetryLater._() : super._();
+
+  @override
+  String toString() => 'ReplayOutcome.retryLater';
+}
+
+/// [ReplayOutcome.rejected].
+final class ReplayRejected extends ReplayOutcome {
+  const ReplayRejected._() : super._();
+
+  @override
+  String toString() => 'ReplayOutcome.rejected';
+}
+
+/// [ReplayOutcome.fileMissing].
+final class ReplayFileMissing extends ReplayOutcome {
+  const ReplayFileMissing._() : super._();
+
+  @override
+  String toString() => 'ReplayOutcome.fileMissing';
+}
+
+/// The photo is above the server's size limit (413
+/// [ApiErrorCodes.evidenceTooLarge], row 252). Permanent: remove it (its
+/// file is deleted by `onSettled`) and tell the runner to take it again.
+final class ReplayTooLarge extends ReplayOutcome {
+  const ReplayTooLarge({this.maxBytes = EvidenceTooLarge.defaultMaxBytes})
+    : super._();
+
+  /// The server's limit in bytes ([EvidenceTooLarge.maxBytes]; the API
+  /// default when the 413 did not carry it).
+  final int maxBytes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReplayTooLarge && other.maxBytes == maxBytes;
+
+  @override
+  int get hashCode => maxBytes.hashCode;
+
+  @override
+  String toString() => 'ReplayTooLarge(maxBytes: $maxBytes)';
+}
+
+/// Why an action left the queue without being applied. The data-less
+/// reasons are the constants on this class ([refused], [fileMissing],
+/// [superseded]); a photo above the size limit is a [QueueDropTooLarge]
+/// carrying the server's limit. Switch over the subclasses for an
+/// exhaustive match.
+@immutable
+sealed class QueueDropReason {
+  const QueueDropReason._();
+
   /// The server refused it ([ReplayOutcome.rejected]).
-  refused,
+  static const QueueDropReason refused = QueueDropRefused._();
 
   /// Its local photo file is gone ([ReplayOutcome.fileMissing]).
-  fileMissing,
+  static const QueueDropReason fileMissing = QueueDropFileMissing._();
 
   /// An earlier status change for the same errand was refused, so this
   /// later one no longer applies.
-  superseded,
+  static const QueueDropReason superseded = QueueDropSuperseded._();
+}
 
-  /// Its photo is above the server's size limit ([ReplayOutcome.tooLarge],
-  /// row 252); show `RunnerEvidenceCopy.tooLarge`.
-  tooLarge,
+/// [QueueDropReason.refused].
+final class QueueDropRefused extends QueueDropReason {
+  const QueueDropRefused._() : super._();
+
+  @override
+  String toString() => 'QueueDropReason.refused';
+}
+
+/// [QueueDropReason.fileMissing].
+final class QueueDropFileMissing extends QueueDropReason {
+  const QueueDropFileMissing._() : super._();
+
+  @override
+  String toString() => 'QueueDropReason.fileMissing';
+}
+
+/// [QueueDropReason.superseded].
+final class QueueDropSuperseded extends QueueDropReason {
+  const QueueDropSuperseded._() : super._();
+
+  @override
+  String toString() => 'QueueDropReason.superseded';
+}
+
+/// Its photo is above the server's size limit ([ReplayTooLarge], row 252);
+/// show `RunnerEvidenceCopy.tooLarge(maxBytes)`.
+final class QueueDropTooLarge extends QueueDropReason {
+  const QueueDropTooLarge({this.maxBytes = EvidenceTooLarge.defaultMaxBytes})
+    : super._();
+
+  /// The server's limit in bytes (`maxBytes` of the 413; the API default,
+  /// 10 MB, when absent).
+  final int maxBytes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is QueueDropTooLarge && other.maxBytes == maxBytes;
+
+  @override
+  int get hashCode => maxBytes.hashCode;
+
+  @override
+  String toString() => 'QueueDropTooLarge(maxBytes: $maxBytes)';
 }
 
 /// Maps a replay failure to an outcome. Transport problems and temporary
 /// server answers (including 409 [ApiErrorCodes.idempotencyInProgress])
 /// retry later; only real refusals drop the action.
 ///
-/// A 413 [ApiErrorCodes.evidenceTooLarge] is [ReplayOutcome.tooLarge]. A
-/// 413 without a code (a proxy or an older API) is too large only when
-/// [kind] is [QueuedActionKind.evidenceUpload]; for any other (or unknown)
-/// kind it is a plain refusal ([ReplayOutcome.rejected]).
+/// A 413 [ApiErrorCodes.evidenceTooLarge] is a [ReplayTooLarge] with the
+/// server's `maxBytes` (10 MB when absent). A 413 without a code (a proxy
+/// or an older API) is too large only when [kind] is
+/// [QueuedActionKind.evidenceUpload]; for any other (or unknown) kind it is
+/// a plain refusal ([ReplayOutcome.rejected]).
 ReplayOutcome replayOutcomeFor(Object error, {QueuedActionKind? kind}) {
   if (error is NitumeApiException) {
     if (error.isNetworkError) return ReplayOutcome.retryLater;
@@ -171,7 +276,7 @@ ReplayOutcome replayOutcomeFor(Object error, {QueuedActionKind? kind}) {
       error,
       bare413: kind == QueuedActionKind.evidenceUpload,
     );
-    if (big != null) return ReplayOutcome.tooLarge;
+    if (big != null) return ReplayTooLarge(maxBytes: big.maxBytes);
     final status = error.statusCode;
     if (status == null ||
         status == 401 ||
@@ -204,7 +309,7 @@ typedef QueuedActionRunner = Future<ReplayOutcome> Function(
 ///
 /// * Temporary failures keep the action and stop the replay (order kept).
 /// * A refused, file-missing or too-large action is dropped and passed to
-///   [onDropped]
+///   [onDropped] ([QueueDropTooLarge] carries the server's limit)
 ///   so the screen reloads and tells the runner; a refused status change
 ///   also drops the later queued status changes of the same errand
 ///   ([QueueDropReason.superseded]).
@@ -365,9 +470,13 @@ class OfflineActionQueue extends ChangeNotifier {
           dropped.add((
             action,
             switch (outcome) {
-              ReplayOutcome.fileMissing => QueueDropReason.fileMissing,
-              ReplayOutcome.tooLarge => QueueDropReason.tooLarge,
-              _ => QueueDropReason.refused,
+              ReplayFileMissing() => QueueDropReason.fileMissing,
+              ReplayTooLarge(:final maxBytes) => QueueDropTooLarge(
+                maxBytes: maxBytes,
+              ),
+              ReplayDone() ||
+              ReplayRetryLater() ||
+              ReplayRejected() => QueueDropReason.refused,
             },
           ));
           if (outcome == ReplayOutcome.rejected &&

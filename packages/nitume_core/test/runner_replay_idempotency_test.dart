@@ -192,11 +192,14 @@ void main() {
           'statusCode': 413,
           'code': 'evidence_too_large',
           'message': 'The file is larger than the limit',
-          'maxBytes': 10485760,
+          'maxBytes': 5242880,
         },
       ),
     });
-    expect(await runner(a)(_evidence()), ReplayOutcome.tooLarge);
+    expect(
+      await runner(a)(_evidence()),
+      const ReplayTooLarge(maxBytes: 5242880),
+    );
   });
 
   test('a bare 413 (no code) is too large only on an evidence replay; '
@@ -210,7 +213,7 @@ void main() {
     final run = runner(a);
     expect(await run(_transition()), ReplayOutcome.rejected);
     expect(await run(_notes()), ReplayOutcome.rejected);
-    expect(await run(_evidence()), ReplayOutcome.tooLarge);
+    expect(await run(_evidence()), const ReplayTooLarge());
   });
 
   test('replayOutcomeFor: idempotency_in_progress is temporary', () {
