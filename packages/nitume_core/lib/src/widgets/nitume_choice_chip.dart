@@ -77,6 +77,11 @@ class NitumeChoiceChip extends StatelessWidget {
 /// [onSelected] `null` disables the row: slate-400 text, no tap; the
 /// [subtitle] should say why (it is part of the announced label). Stack rows
 /// with a gap of 8; they form one radio group.
+///
+/// [richLabel] (opt-in) draws the label with [NumSpan] parts in Fira Code,
+/// e.g. a time inside the label (`Until ` + `NumSpan('4:12 PM')`); the
+/// parts inherit the row's label size, weight and colour. [label] stays the
+/// spoken text (same wording) and is still required.
 class NitumeRadioRow extends StatelessWidget {
   const NitumeRadioRow({
     super.key,
@@ -84,9 +89,13 @@ class NitumeRadioRow extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.subtitle,
+    this.richLabel,
   });
 
   final String label;
+
+  /// Rich version of [label] (same wording), numbers as [NumSpan]s.
+  final InlineSpan? richLabel;
   final String? subtitle;
   final bool selected;
   final VoidCallback? onSelected;
@@ -135,10 +144,16 @@ class NitumeRadioRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                label,
-                style: NitumeTextStyles.chip.copyWith(color: labelColor),
-              ),
+              if (richLabel != null)
+                Text.rich(
+                  richLabel!,
+                  style: NitumeTextStyles.chip.copyWith(color: labelColor),
+                )
+              else
+                Text(
+                  label,
+                  style: NitumeTextStyles.chip.copyWith(color: labelColor),
+                ),
               if (subtitle != null) ...[
                 const SizedBox(height: 2),
                 Text(
