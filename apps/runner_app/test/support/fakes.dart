@@ -8,6 +8,7 @@ import 'package:runner_app/src/app.dart';
 import 'package:runner_app/src/navigation/routes.dart';
 import 'package:runner_app/src/services/app_services.dart';
 import 'package:runner_app/src/services/capture_files.dart';
+import 'package:runner_app/src/services/runner_live.dart';
 import 'package:runner_app/src/services/session.dart';
 
 /// A client that is never called: every fake overrides the methods screens
@@ -208,6 +209,7 @@ RunnerJobView offer({
   String description = 'Video the compound and both bedrooms.',
   List<ErrandItem> items = const [],
   List<ErrandLocation>? locations,
+  String? runnerNotes,
 }) {
   final site = ErrandLocation(
     pointType: ErrandPointType.taskSite,
@@ -236,6 +238,7 @@ RunnerJobView offer({
     locations: locations ?? [site],
     firstPoint: (locations ?? [site]).first,
     items: items,
+    runnerNotes: runnerNotes,
     assignment: RunnerJobAssignment(
       id: 'a-$id',
       status: assignment,
@@ -243,6 +246,55 @@ RunnerJobView offer({
     ),
   );
 }
+
+/// A job this runner accepted (`GET /runners/me/jobs`).
+RunnerJobView heldJob({
+  String id = 'e1',
+  ErrandStatus status = ErrandStatus.runnerEnRoute,
+  String? title = 'Check apartment — Nyali',
+  ErrandCategory category = ErrandCategory.checkItForMe,
+  String? itemAmount,
+  MerchantRoute? merchantRoute,
+  DateTime? deadlineAt,
+  String? runnerNotes,
+  List<ErrandLocation>? locations,
+}) => offer(
+  id: id,
+  status: status,
+  title: title,
+  category: category,
+  itemAmount: itemAmount,
+  merchantRoute: merchantRoute,
+  deadlineAt: deadlineAt,
+  runnerNotes: runnerNotes,
+  locations: locations,
+  assignment: AssignmentStatus.accepted,
+);
+
+Evidence evidenceItem(
+  String errandId, {
+  String id = 'ev1',
+  EvidenceType type = EvidenceType.photo,
+}) => Evidence(
+  id: id,
+  errandId: errandId,
+  type: type,
+  url: null,
+  capturedAt: testNow,
+);
+
+StatusHistoryEntry historyEntry(
+  String errandId,
+  ErrandStatus to, {
+  StatusHistoryActor actor = StatusHistoryActor.runner,
+  DateTime? at,
+}) => StatusHistoryEntry(
+  id: 'h-${to.wire}',
+  errandId: errandId,
+  toStatus: to,
+  actorType: actor,
+  createdAt: at ?? testNow,
+);
 
 Errand errand({
   String id = 'e9',
@@ -428,6 +480,281 @@ class FakeRunnerJobs extends RunnerJobsRepository {
 
   @override
   Future<List<Errand>> activeJobs() async => active;
+
+  // v-active family.
+  List<RunnerJobView> heldList = [];
+  Object? heldError;
+  int heldCalls = 0;
+  final transitions = <(String, ErrandStatus, String?)>[];
+
+  /// Errors for the next transitions, in order (`null` = success).
+  final transitionErrors = <Object?>[];
+  final notes = <(String, String?)>[];
+  Object? notesError;
+  final evidenceById = <String, List<Evidence>>{};
+  final evidenceUploads = <(String, EvidenceType)>[];
+  final evidenceErrors = <Object?>[];
+  final historyById = <String, List<StatusHistoryEntry>>{};
+  final pendingById = <String, PriceChangeRequest?>{};
+  final priceRequests = <(String, num, String?)>[];
+  Object? priceError;
+  final disputeById = <String, Dispute?>{};
+
+  @override
+  Future<List<RunnerJobView>> heldJobs() async {
+    heldCalls++;
+    final e = heldError;
+    if (e != null) throw e;
+    return [
+      ...heldList.where(
+        (j) => RunnerJobsRepository.workingStatuses.contains(j.status),
+      ),
+      ...heldList.where(
+        (j) => !RunnerJobsRepository.workingStatuses.contains(j.status),
+      ),
+    ];
+  }
+
+  void setStatus(String id, ErrandStatus status) {
+    heldList = [
+      for (final j in heldList)
+        if (j.id == id)
+          heldJob(
+            id: j.id,
+            status: status,
+            title: j.title,
+            category: j.category,
+            itemAmount: j.itemAmount,
+            merchantRoute: j.merchantRoute,
+            deadlineAt: j.deadlineAt,
+            runnerNotes: j.runnerNotes,
+            locations: j.locations,
+          )
+        else
+          j,
+    ];
+  }
+
+  @override
+  Future<ErrandTransitionResult> transition(
+    String errandId, {
+    required ErrandStatus from,
+    required ErrandStatus to,
+    String? note,
+    String? idempotencyKey,
+  }) async {
+    transitions.add((errandId, to, note));
+    if (transitionErrors.isNotEmpty) {
+      final e = transitionErrors.removeAt(0);
+      if (e != null) throw e;
+    }
+    setStatus(errandId, to);
+    return ErrandTransitionResult(
+      errand: errand(id: errandId, status: to),
+      history: historyEntry(errandId, to),
+    );
+  }
+
+  @override
+  Future<Errand> updateRunnerNotes(
+    String errandId,
+    String? notes, {
+    String? idempotencyKey,
+  }) async {
+    this.notes.add((errandId, notes));
+    final e = notesError;
+    if (e != null) throw e;
+    heldList = [
+      for (final j in heldList)
+        if (j.id == errandId)
+          heldJob(
+            id: j.id,
+            status: j.status,
+            title: j.title,
+            category: j.category,
+            itemAmount: j.itemAmount,
+            merchantRoute: j.merchantRoute,
+            deadlineAt: j.deadlineAt,
+            runnerNotes: notes,
+            locations: j.locations,
+          )
+        else
+          j,
+    ];
+    return errand(id: errandId);
+  }
+
+  @override
+  Future<List<Evidence>> evidence(String errandId) async =>
+      evidenceById[errandId] ?? const [];
+
+  @override
+  Future<Evidence> uploadEvidence(
+    String errandId, {
+    required EvidenceType type,
+    required Uint8List bytes,
+    required String contentType,
+    DateTime? capturedAt,
+    double? lat,
+    double? lon,
+    String? idempotencyKey,
+  }) async {
+    evidenceUploads.add((errandId, type));
+    if (evidenceErrors.isNotEmpty) {
+      final e = evidenceErrors.removeAt(0);
+      if (e != null) throw e;
+    }
+    final ev = evidenceItem(
+      errandId,
+      id: 'ev${evidenceUploads.length}',
+      type: type,
+    );
+    (evidenceById[errandId] ??= []).add(ev);
+    return ev;
+  }
+
+  @override
+  Future<List<StatusHistoryEntry>> history(String errandId) async =>
+      historyById[errandId] ?? const [];
+
+  @override
+  Future<PriceChangeRequest?> pendingPriceChange(String errandId) async =>
+      pendingById[errandId];
+
+  @override
+  Future<PriceChangeRequest> requestPriceChange(
+    String errandId, {
+    required num toPrice,
+    String? reason,
+  }) async {
+    priceRequests.add((errandId, toPrice, reason));
+    final e = priceError;
+    if (e != null) throw e;
+    final r = PriceChangeRequest(
+      id: 'pc1',
+      errandId: errandId,
+      requestedByUserId: 'u1',
+      fromPrice: '40000.00',
+      toPrice: toPrice.toStringAsFixed(2),
+      status: PriceChangeStatus.requested,
+      reason: reason,
+    );
+    pendingById[errandId] = r;
+    return r;
+  }
+
+  @override
+  Future<Dispute?> dispute(String errandId) async => disputeById[errandId];
+}
+
+class FakePayouts extends RunnerPayoutRepository {
+  FakePayouts()
+    : super(_api, keys: PaymentAttemptKeys(InMemoryIdempotencyKeyStore()));
+
+  final linesById = <String, List<PayoutFeedItem>>{};
+  final claims = <(String, num, String, String?)>[];
+  Object? claimError;
+
+  @override
+  Future<PayoutFeedPage> payoutLines({
+    Set<PayoutFeedKind>? kinds,
+    String? errandId,
+    String? cursor,
+    int? limit,
+  }) async => PayoutFeedPage(items: linesById[errandId] ?? const []);
+
+  @override
+  Future<PayoutFeedItem> claimReimbursement({
+    required String errandId,
+    required num amount,
+    required String receiptEvidenceId,
+    String? note,
+  }) async {
+    claims.add((errandId, amount, receiptEvidenceId, note));
+    final e = claimError;
+    if (e != null) throw e;
+    return PayoutFeedItem(
+      id: 'l1',
+      kind: PayoutFeedKind.itemReimbursement,
+      kindWire: 'item_reimbursement',
+      status: PayoutLineStatus.onHold,
+      amount: amount.toStringAsFixed(2),
+      errandId: errandId,
+    );
+  }
+}
+
+/// Socket fake: both client interfaces, events pushed by the test.
+class FakeRealtime implements RealtimeClient, RunnerRealtimeClient {
+  final _state = StreamController<RealtimeConnectionState>.broadcast();
+  RealtimeConnectionState _current = RealtimeConnectionState.disconnected;
+  final joined = <String>{};
+  final pings = <LocationPing>[];
+  LocationPingAck ack = const LocationPingAck(ok: true);
+  final status = StreamController<ErrandStatusChanged>.broadcast();
+  final revoked = StreamController<ErrandAccessRevoked>.broadcast();
+  final offered = StreamController<JobOffered>.broadcast();
+  final withdrawn = StreamController<JobOfferWithdrawn>.broadcast();
+  final decided = StreamController<PriceChangeDecided>.broadcast();
+  final evidence = StreamController<EvidenceUploaded>.broadcast();
+
+  void setState(RealtimeConnectionState s) {
+    _current = s;
+    _state.add(s);
+  }
+
+  @override
+  Future<void> connect({required String accessToken}) async =>
+      setState(RealtimeConnectionState.connected);
+
+  @override
+  Future<void> disconnect() async =>
+      setState(RealtimeConnectionState.disconnected);
+
+  @override
+  Stream<RealtimeConnectionState> get connectionState => _state.stream;
+
+  @override
+  RealtimeConnectionState get currentState => _current;
+
+  @override
+  Future<bool> joinErrand(String errandId) async => joined.add(errandId);
+
+  @override
+  Future<void> leaveErrand(String errandId) async => joined.remove(errandId);
+
+  @override
+  Stream<LocationUpdate> get locationUpdates => const Stream.empty();
+  @override
+  Stream<ErrandStatusChanged> get statusChanges => status.stream;
+  @override
+  Stream<EvidenceUploaded> get evidenceUploads => evidence.stream;
+  @override
+  Stream<PriceChangeRequested> get priceChangeRequests => const Stream.empty();
+  @override
+  Stream<QuoteReissued> get quoteReissues => const Stream.empty();
+  @override
+  Stream<MerchantDetailsUpdated> get merchantDetailsUpdates =>
+      const Stream.empty();
+  @override
+  Stream<MerchantDetailsChanged> get merchantDetailsChanges =>
+      const Stream.empty();
+  @override
+  Stream<QuoteRequested> get quoteRequests => const Stream.empty();
+  @override
+  Stream<ErrandAccessRevoked> get accessRevocations => revoked.stream;
+  @override
+  Stream<JobOffered> get jobOffers => offered.stream;
+  @override
+  Stream<JobOfferWithdrawn> get jobOfferWithdrawals => withdrawn.stream;
+  @override
+  Stream<PriceChangeDecided> get priceChangeDecisions => decided.stream;
+
+  @override
+  Future<LocationPingAck> sendLocationPing(LocationPing ping) async {
+    pings.add(ping);
+    return ack;
+  }
 }
 
 class FakeNotifications extends NotificationsRepository {
@@ -554,6 +881,12 @@ class TestBackend {
       location: location,
       permissions: permissions,
       files: files,
+      payouts: payouts,
+      live: RunnerLive(
+        client: realtime,
+        runner: realtime,
+        accessToken: () async => 'a',
+      ),
       appConfig: appConfig,
       clock: () => now,
     );
@@ -568,6 +901,8 @@ class TestBackend {
   final location = FakeLocation();
   final permissions = FakePermissions();
   final files = FakeFiles();
+  final payouts = FakePayouts();
+  final realtime = FakeRealtime();
   DateTime now = testNow;
   late final AppServices services;
 

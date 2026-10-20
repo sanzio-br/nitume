@@ -1,11 +1,15 @@
+import 'dart:io' show FileSystemException;
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:nitume_core/nitume_core.dart';
 import 'package:nitume_runner_device/nitume_runner_device.dart';
 
+import 'active_jobs.dart';
 import 'capture_files.dart';
+import 'job_pings.dart';
 import 'push.dart';
+import 'runner_live.dart';
 import 'session.dart';
 import 'shell_controller.dart';
 
@@ -24,12 +28,51 @@ class AppServices {
     required this.location,
     required this.permissions,
     required this.files,
+    required this.payouts,
+    RunnerLive? live,
+    QueueStore? queueStore,
+    EvidenceFileStore? evidenceFiles,
     this.appConfig = const AppConfig(),
     this.push = const NoopPushService(),
     DateTime Function()? clock,
     ShellController? shell,
   }) : shell = shell ?? ShellController(),
-       clock = clock ?? DateTime.now;
+       clock = clock ?? DateTime.now,
+       live = live ?? RunnerLive(),
+       evidenceFiles = evidenceFiles ?? const NoKeepEvidenceFileStore() {
+    pings = JobPings(
+      source: location,
+      live: this.live,
+      onJobPingsStopped: (_) => active.load(),
+    );
+    queue = OfflineActionQueue(
+      store: queueStore ?? InMemoryQueueStore(),
+      runner: RunnerQueuedActions.runnerFor(jobs),
+      onDropped: (a, r) => active.onQueueDropped(a, r),
+      onSettled: RunnerQueuedActions.cleanupFor(this.evidenceFiles),
+    );
+    uploads = JobEvidenceUploads(
+      (errandId) => EvidenceUploader(
+        capture: capture,
+        upload: jobs.uploadEvidence,
+        files: this.evidenceFiles,
+        positions: location,
+        queue: queue,
+        clock: this.clock,
+      ),
+    );
+    active = ActiveJobs(
+      jobs: jobs,
+      live: this.live,
+      pings: pings,
+      uploads: uploads,
+      queue: () => queue,
+    );
+    // Replay queued actions whenever the socket comes back.
+    this.live.state.addListener(() {
+      if (this.live.isConnected) queue.replay();
+    });
+  }
 
   /// Production wiring against [baseUrl] (`_shared.md` §10). The socket
   /// and the location pinger join here once their producers exist (RA-4,
@@ -54,6 +97,12 @@ class AppServices {
       ),
     );
     final capture = ImagePickerCaptureSource();
+    Future<String?> accessToken() async =>
+        (await tokenStore.read())?.accessToken;
+    final socket = SocketIoRealtimeClient(
+      url: SocketIoRealtimeClient.originFor(baseUrl),
+      tokenProvider: accessToken,
+    );
     // Captures orphaned when Android killed the app mid-pick (B-1).
     unawaited(capture.discardLostCaptures().catchError((Object _) => 0));
     return AppServices(
@@ -66,6 +115,16 @@ class AppServices {
       location: const GeolocatorPositionSource(),
       permissions: const PermissionHandlerDevicePermissions(),
       files: const IoCaptureFiles(),
+      payouts: RunnerPayoutRepository(
+        api,
+        keys: PaymentAttemptKeys(SecureIdempotencyKeyStore()),
+      ),
+      live: RunnerLive(
+        client: socket,
+        runner: socket,
+        accessToken: accessToken,
+      ),
+      queueStore: SharedPreferencesQueueStore(),
       appConfig: AppConfig.fromEnvironment(onOpenLink: openExternalLink),
       push: push,
     );
@@ -95,6 +154,42 @@ class AppServices {
 
   /// Reads captured images into memory.
   final CaptureFiles files;
+
+  /// Payout ledger lines and reimbursement claims (`v-job-summary`).
+  final RunnerPayoutRepository payouts;
+
+  /// The session's socket (`_shared.md` §10).
+  final RunnerLive live;
+
+  /// R-20 cadence from availability and the working job.
+  late final JobPings pings;
+
+  /// R-21: runner actions made offline, replayed in order.
+  late final OfflineActionQueue queue;
+
+  /// R-22 uploaders per held job (C-V2).
+  late final JobEvidenceUploads uploads;
+
+  /// Held jobs, transitions and notes (`v-active`).
+  late final ActiveJobs active;
+
+  /// Where evidence photos wait for upload. See [NoKeepEvidenceFileStore].
+  final EvidenceFileStore evidenceFiles;
+
+  /// Starts the signed-in runtime: socket, queue.
+  Future<void> startSession() async {
+    pings.setForeground(true);
+    await live.start();
+    await queue.load();
+    unawaited(queue.replay());
+  }
+
+  /// Log out / expiry: stop pings, drop rooms, uploads and queued actions.
+  Future<void> endSession() async {
+    active.reset();
+    await queue.clear();
+    await live.stop();
+  }
 
   /// Wall clock for offer countdowns; tests pin it.
   final DateTime Function() clock;
@@ -136,4 +231,20 @@ class AppScope extends InheritedWidget {
 /// Shorthand: `context.services`.
 extension AppServicesContext on BuildContext {
   AppServices get services => AppScope.read(this);
+}
+
+/// Interim [EvidenceFileStore] until `path_provider` lands in
+/// `nitume_runner_device` (row 149; BOARD: do not wire a file store before
+/// it). [keep] always fails, so `EvidenceUploader` uploads from the
+/// picker's file, releases it with `CapturedImage.discard` (B-1) and never
+/// queues a photo offline (a failed upload keeps `Retry`).
+class NoKeepEvidenceFileStore implements EvidenceFileStore {
+  const NoKeepEvidenceFileStore();
+
+  @override
+  Future<String> keep(String sourcePath) async =>
+      throw FileSystemException('No app-private evidence folder', sourcePath);
+
+  @override
+  Future<void> discard(String path) async {}
 }

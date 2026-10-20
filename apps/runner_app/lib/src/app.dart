@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nitume_core/nitume_core.dart';
 
@@ -59,7 +61,12 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp> {
     final next = _session.status;
     if (next == _status) return;
     _navigatorKey.currentState?.popUntil((r) => r.isFirst);
-    if (next == SessionStatus.signedIn) widget.services.shell.reset();
+    if (next == SessionStatus.signedIn) {
+      widget.services.shell.reset();
+      unawaited(widget.services.startSession());
+    } else if (_status == SessionStatus.signedIn) {
+      unawaited(widget.services.endSession());
+    }
     setState(() => _status = next);
     if (next == SessionStatus.signedIn && _session.takeFreshSignIn()) {
       _routeOnboarding();
