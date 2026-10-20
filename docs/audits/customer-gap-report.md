@@ -968,3 +968,25 @@ Commits `8cfa8ec`, `b8b4fbd`, `019b3b2`, `2bcb01f`, `31b703e`. Build health: `fl
 
 ### Verdict
 All five screens **PASS**. C-12-1, C-14-1, C-14-2, C-14-3 and C-15-1 are closed. Follow-ups: m-1, m-2 (core-ui), and row 249 (owner).
+
+## Re-audit 2026-10-20: customer round 18, row 249 (b) (`feat/customer-outside-area-b` @ `7e88f0b`, diff against `feat/customer-round-14`)
+
+Owner answer row 249 (b), 2026-10-20: the outside-area state shows only for REQUESTED, or QUOTED/ACCEPTED once the quote has expired. Commits `7bba11c` (fix), `7e88f0b` (tests). Build health: `flutter analyze` clean; `flutter test` 157 pass (9 new or rewritten cases in `test/round14_test.dart:323-458`). The diff adds no literal colours, `fontFamily`, `GoogleFonts` or raw `TextStyle(`. Copy, layout, chip and button order are as in the 2026-10-19 audit; only the condition changed.
+
+### x-awaiting-quote (C-14-2, row 249 (b)): PASS
+- `awaiting_quote_screen.dart:301-303`: `_outsideArea` = `outsideServiceArea && (status == REQUESTED || _expired(d))`. `_expired` (`:287-294`) is true only in QUOTED/ACCEPTED, so the state cannot appear in any other status, and it uses the same expiry test as the existing expired-quote state (spec "Quote expired").
+- Tests cover: REQUESTED + flag shown; QUOTED and ACCEPTED with an expired quote shown (both `quote.expiresAt` and `errand.quoteExpiresAt`); QUOTED and ACCEPTED with a valid quote and a stale flag show checkout (`Confirm & pay`); a quote with no expiry shows checkout; API `quote_expired` shows the state; flag false never shows it in five combinations (`round14_test.dart:354-458`).
+- The in-progress API change on `feat/api-outside-area-b` (uncommitted when audited) computes the flag with the same rule and the same expiry reading (`quoteExpired`: `expiresAt` set and past; none = not expired), so client and API agree. The client check stays useful against an older API.
+
+### Rulings on the builder's interpretation notes
+1. **API `quote_expired` counts as expired**: fits the owner answer. The API is authoritative on expiry; the spec already enters the expired state on that code (rows 46, 72). Accepted.
+2. **A quote with no expiry counts as valid**: fits. Every new quote has an expiry (row 83); for a legacy quote with none, the spec already relies on the API's `quote_expired`, and the API's `quote_still_valid` refuses a re-quote for it, so the customer can still pay it. Showing "cancel" there would break (b)'s reasoning. Accepted.
+3. **Outside-area takes precedence over "Preparing a new quote" when the flag is set**: fits. A new-quote request exists only after expiry, so the task is QUOTED/ACCEPTED with an expired quote, which is exactly the case (b) includes; ops cannot re-quote it outside every area, so the "we'll notify you" wording would be untrue. Accepted.
+
+No owner question arises from these notes.
+
+### Observation (not a finding)
+- No timer re-evaluates expiry while the screen stays open; a quote that expires on screen changes the state on the next refresh (socket or poll). This is the same as the expired-quote state before this round; no change asked here.
+
+### Verdict
+**PASS**, no findings. C-14-2 is closed under row 249 (b). SCREEN_MAP stays `matches-design`, now pointing at `feat/customer-outside-area-b`. Merge after `feat/customer-round-14`; `feat/api-outside-area-b` is not required for correctness.
