@@ -7,6 +7,22 @@ import 'support/fakes.dart';
 
 void main() {
   group('x-location-disclosure', () {
+    testWidgets('Body 2 is the approved wording (row 246)', (t) async {
+      final b = TestBackend();
+      await b.pumpScreen(t, const LocationDisclosureScreen());
+      expect(LocationDisclosureCopy.body2, RunnerLocationCopy.disclosureBody2);
+      expect(
+        find.text(
+          'During a job we keep sharing it when you switch apps or lock your '
+          'phone, until you finish the task or go offline. If you close the '
+          'app completely, or your phone stops it to save battery, sharing '
+          'stops until you open the app again.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('even when the app is closed'), findsNothing);
+    });
+
     testWidgets('Continue asks the OS and returns the permission', (t) async {
       final b = TestBackend();
       b.location.accessNow = LocationAccess.denied;
