@@ -112,58 +112,171 @@ class InMemoryQueueStore implements QueueStore {
       this.entries = List.of(entries);
 }
 
-/// Result of replaying one action.
-enum ReplayOutcome {
+/// Result of replaying one action. The data-less outcomes are the
+/// constants on this class ([done], [retryLater], [rejected],
+/// [fileMissing]); a photo above the size limit is a [ReplayTooLarge]
+/// carrying the server's limit. Switch over the subclasses for an
+/// exhaustive match.
+@immutable
+sealed class ReplayOutcome {
+  const ReplayOutcome._();
+
   /// The server accepted it: remove from the queue.
-  done,
+  static const ReplayOutcome done = ReplayDone._();
 
   /// Not sent (offline, timeout, 5xx, 408, 429, 401 before re-auth): keep
   /// it and stop this replay, so order is preserved.
-  retryLater,
+  static const ReplayOutcome retryLater = ReplayRetryLater._();
 
   /// The server refused it for good (e.g. 403, 409 after re-check, 422):
   /// remove it and report it so the screen reloads the server state.
-  rejected,
+  static const ReplayOutcome rejected = ReplayRejected._();
 
   /// The queued photo is no longer on the phone: remove it and tell the
   /// runner to take it again.
-  fileMissing,
-
-  /// The photo is above the server's size limit (413
-  /// [ApiErrorCodes.evidenceTooLarge], row 252). Permanent: remove it (its
-  /// file is deleted by `onSettled`) and tell the runner to take it again.
-  tooLarge,
+  static const ReplayOutcome fileMissing = ReplayFileMissing._();
 }
 
-/// Why an action left the queue without being applied.
-enum QueueDropReason {
+/// [ReplayOutcome.done].
+final class ReplayDone extends ReplayOutcome {
+  const ReplayDone._() : super._();
+
+  @override
+  String toString() => 'ReplayOutcome.done';
+}
+
+/// [ReplayOutcome.retryLater].
+final class ReplayRetryLater extends ReplayOutcome {
+  const ReplayRetryLater._() : super._();
+
+  @override
+  String toString() => 'ReplayOutcome.retryLater';
+}
+
+/// [ReplayOutcome.rejected].
+final class ReplayRejected extends ReplayOutcome {
+  const ReplayRejected._() : super._();
+
+  @override
+  String toString() => 'ReplayOutcome.rejected';
+}
+
+/// [ReplayOutcome.fileMissing].
+final class ReplayFileMissing extends ReplayOutcome {
+  const ReplayFileMissing._() : super._();
+
+  @override
+  String toString() => 'ReplayOutcome.fileMissing';
+}
+
+/// The photo is above the server's size limit (413
+/// [ApiErrorCodes.evidenceTooLarge], row 252). Permanent: remove it (its
+/// file is deleted by `onSettled`) and tell the runner to take it again.
+final class ReplayTooLarge extends ReplayOutcome {
+  const ReplayTooLarge({this.maxBytes = EvidenceTooLarge.defaultMaxBytes})
+    : super._();
+
+  /// The server's limit in bytes ([EvidenceTooLarge.maxBytes]; the API
+  /// default when the 413 did not carry it).
+  final int maxBytes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReplayTooLarge && other.maxBytes == maxBytes;
+
+  @override
+  int get hashCode => maxBytes.hashCode;
+
+  @override
+  String toString() => 'ReplayTooLarge(maxBytes: $maxBytes)';
+}
+
+/// Why an action left the queue without being applied. The data-less
+/// reasons are the constants on this class ([refused], [fileMissing],
+/// [superseded]); a photo above the size limit is a [QueueDropTooLarge]
+/// carrying the server's limit. Switch over the subclasses for an
+/// exhaustive match.
+@immutable
+sealed class QueueDropReason {
+  const QueueDropReason._();
+
   /// The server refused it ([ReplayOutcome.rejected]).
-  refused,
+  static const QueueDropReason refused = QueueDropRefused._();
 
   /// Its local photo file is gone ([ReplayOutcome.fileMissing]).
-  fileMissing,
+  static const QueueDropReason fileMissing = QueueDropFileMissing._();
 
   /// An earlier status change for the same errand was refused, so this
   /// later one no longer applies.
-  superseded,
+  static const QueueDropReason superseded = QueueDropSuperseded._();
+}
 
-  /// Its photo is above the server's size limit ([ReplayOutcome.tooLarge],
-  /// row 252); show `RunnerEvidenceCopy.tooLarge`.
-  tooLarge,
+/// [QueueDropReason.refused].
+final class QueueDropRefused extends QueueDropReason {
+  const QueueDropRefused._() : super._();
+
+  @override
+  String toString() => 'QueueDropReason.refused';
+}
+
+/// [QueueDropReason.fileMissing].
+final class QueueDropFileMissing extends QueueDropReason {
+  const QueueDropFileMissing._() : super._();
+
+  @override
+  String toString() => 'QueueDropReason.fileMissing';
+}
+
+/// [QueueDropReason.superseded].
+final class QueueDropSuperseded extends QueueDropReason {
+  const QueueDropSuperseded._() : super._();
+
+  @override
+  String toString() => 'QueueDropReason.superseded';
+}
+
+/// Its photo is above the server's size limit ([ReplayTooLarge], row 252);
+/// show `RunnerEvidenceCopy.tooLarge(maxBytes)`.
+final class QueueDropTooLarge extends QueueDropReason {
+  const QueueDropTooLarge({this.maxBytes = EvidenceTooLarge.defaultMaxBytes})
+    : super._();
+
+  /// The server's limit in bytes (`maxBytes` of the 413; the API default,
+  /// 10 MB, when absent).
+  final int maxBytes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is QueueDropTooLarge && other.maxBytes == maxBytes;
+
+  @override
+  int get hashCode => maxBytes.hashCode;
+
+  @override
+  String toString() => 'QueueDropTooLarge(maxBytes: $maxBytes)';
 }
 
 /// Maps a replay failure to an outcome. Transport problems and temporary
 /// server answers (including 409 [ApiErrorCodes.idempotencyInProgress])
-/// retry later; only real refusals drop the action. A 413 (evidence too
-/// large, [EvidenceTooLarge.of]) is [ReplayOutcome.tooLarge].
-ReplayOutcome replayOutcomeFor(Object error) {
+/// retry later; only real refusals drop the action.
+///
+/// A 413 [ApiErrorCodes.evidenceTooLarge] is a [ReplayTooLarge] with the
+/// server's `maxBytes` (10 MB when absent). A 413 without a code (a proxy
+/// or an older API) is too large only when [kind] is
+/// [QueuedActionKind.evidenceUpload]; for any other (or unknown) kind it is
+/// a plain refusal ([ReplayOutcome.rejected]).
+ReplayOutcome replayOutcomeFor(Object error, {QueuedActionKind? kind}) {
   if (error is NitumeApiException) {
     if (error.isNetworkError) return ReplayOutcome.retryLater;
     if (error.code == ApiErrorCodes.idempotencyInProgress) {
       return ReplayOutcome.retryLater;
     }
     // Row 252: the same file never fits; never retried.
-    if (EvidenceTooLarge.of(error) != null) return ReplayOutcome.tooLarge;
+    final big = EvidenceTooLarge.of(
+      error,
+      bare413: kind == QueuedActionKind.evidenceUpload,
+    );
+    if (big != null) return ReplayTooLarge(maxBytes: big.maxBytes);
     final status = error.statusCode;
     if (status == null ||
         status == 401 ||
@@ -196,7 +309,7 @@ typedef QueuedActionRunner = Future<ReplayOutcome> Function(
 ///
 /// * Temporary failures keep the action and stop the replay (order kept).
 /// * A refused, file-missing or too-large action is dropped and passed to
-///   [onDropped]
+///   [onDropped] ([QueueDropTooLarge] carries the server's limit)
 ///   so the screen reloads and tells the runner; a refused status change
 ///   also drops the later queued status changes of the same errand
 ///   ([QueueDropReason.superseded]).
@@ -227,9 +340,19 @@ class OfflineActionQueue extends ChangeNotifier {
   int _generation = 0;
   bool _closed = false;
 
-  /// True after [clear] until the next [load]: [enqueue] refuses new work
-  /// (log out must not leave anything persisted for the next session).
-  bool get isClosed => _closed;
+  /// Whether the store was read since the start or the last [clear]. Until
+  /// then [enqueue] reads it first, so it never writes over actions that
+  /// were persisted but not read yet.
+  bool _read = false;
+  Future<void>? _loading;
+
+  /// True after [clear], or after a [load] whose store read failed, until
+  /// the next good [load]: [enqueue] refuses new work. Log out must not
+  /// leave anything persisted for the next session, and an unread store
+  /// must never be written over (its earlier actions would be lost).
+  ///
+  /// False while a [load] is in flight: [enqueue] then waits for it.
+  bool get isClosed => _closed && _loading == null;
   Future<void> _writes = Future.value();
 
   /// Oldest first.
@@ -242,10 +365,34 @@ class OfflineActionQueue extends ChangeNotifier {
       _pending.where((a) => a.errandId == errandId).toList();
 
   /// Reads the persisted queue (call once on start, and at each sign-in
-  /// after a [clear]); reopens a closed queue.
-  Future<void> load() async {
+  /// after a [clear]) and opens the queue.
+  ///
+  /// The queue opens only after a good read. When [QueueStore.read] throws,
+  /// the error is rethrown and the queue stays (or becomes) closed
+  /// ([isClosed]): [enqueue] then throws [StateError], so the caller fails
+  /// the action with a retry instead of queueing it over the unread store.
+  /// Call [load] again later to open it. A [clear] during the read wins:
+  /// the queue stays closed and the read is ignored. Overlapping calls
+  /// share one read.
+  Future<void> load() =>
+      _loading ??= _load().whenComplete(() => _loading = null);
+
+  Future<void> _load() async {
+    final generation = _generation;
+    final List<String> raw;
+    try {
+      // Let queued writes land first, so the read sees them.
+      await _writes.catchError((Object _) {});
+      raw = await store.read();
+    } on Object {
+      _closed = true;
+      notifyListeners();
+      rethrow;
+    }
+    if (generation != _generation) return; // cleared meanwhile
+    _pending = [for (final r in raw) ?_decode(r)];
+    _read = true;
     _closed = false;
-    _pending = [for (final raw in await store.read()) ?_decode(raw)];
     notifyListeners();
   }
 
@@ -257,15 +404,28 @@ class OfflineActionQueue extends ChangeNotifier {
     }
   }
 
-  /// Appends an action and persists it before returning. Throws
-  /// [StateError] while [isClosed] (after [clear], before [load]).
+  /// Appends an action and persists it before returning. Waits for a
+  /// [load] in flight, and reads the store first when it was never read.
+  /// Throws [StateError] while the queue is closed (after [clear] or a
+  /// failed read, until the next good [load]).
   Future<QueuedAction> enqueue(
     QueuedActionKind kind, {
     required String errandId,
     required Map<String, Object?> payload,
   }) async {
+    final loading = _loading ?? (_read || _closed ? null : load());
+    if (loading != null) {
+      try {
+        await loading;
+      } on Object {
+        // Read failed: the queue is closed, refused below.
+      }
+    }
     if (_closed) {
-      throw StateError('OfflineActionQueue is closed (cleared at log out)');
+      throw StateError(
+        'OfflineActionQueue is closed (cleared at log out, or its store '
+        'could not be read)',
+      );
     }
     final action = QueuedAction(
       id: _newId(),
@@ -295,7 +455,7 @@ class OfflineActionQueue extends ChangeNotifier {
         try {
           outcome = await runner(action);
         } on Object catch (e) {
-          outcome = replayOutcomeFor(e);
+          outcome = replayOutcomeFor(e, kind: action.kind);
         }
         if (generation != _generation) break; // cleared meanwhile
         if (outcome == ReplayOutcome.retryLater) {
@@ -310,9 +470,13 @@ class OfflineActionQueue extends ChangeNotifier {
           dropped.add((
             action,
             switch (outcome) {
-              ReplayOutcome.fileMissing => QueueDropReason.fileMissing,
-              ReplayOutcome.tooLarge => QueueDropReason.tooLarge,
-              _ => QueueDropReason.refused,
+              ReplayFileMissing() => QueueDropReason.fileMissing,
+              ReplayTooLarge(:final maxBytes) => QueueDropTooLarge(
+                maxBytes: maxBytes,
+              ),
+              ReplayDone() ||
+              ReplayRetryLater() ||
+              ReplayRejected() => QueueDropReason.refused,
             },
           ));
           if (outcome == ReplayOutcome.rejected &&
@@ -345,9 +509,10 @@ class OfflineActionQueue extends ChangeNotifier {
   }
 
   /// Drops everything (log out). Settles each dropped action and closes the
-  /// queue until the next [load] ([isClosed]).
+  /// queue until the next good [load] ([isClosed]).
   Future<void> clear() async {
     _closed = true;
+    _read = false;
     _generation++;
     final dropped = _pending;
     _pending = [];

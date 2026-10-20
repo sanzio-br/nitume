@@ -54,6 +54,22 @@ class _Fix implements PositionSource {
   }) => const Stream.empty();
 }
 
+/// A queue store whose reads always fail; counts writes.
+class _UnreadableStore implements QueueStore {
+  List<String> entries = [];
+  int writes = 0;
+
+  @override
+  Future<List<String>> read() async =>
+      throw const FileSystemException('unreadable');
+
+  @override
+  Future<void> write(List<String> entries) async {
+    writes++;
+    this.entries = List.of(entries);
+  }
+}
+
 /// Waits (up to ~2 s) for background file clean-up, which runs unawaited
 /// after dispose.
 Future<void> _until(bool Function() done) async {
@@ -426,6 +442,30 @@ void main() {
       expect(item!.status, EvidenceUploadStatus.failed);
       expect(item.canRetry, isTrue);
       expect(queue.pending, isEmpty);
+    });
+
+    test('a queue whose store could not be read: not queued, the stored '
+        'queue is untouched, the copy goes with the uploader (B-1)', () async {
+      final store = _UnreadableStore()..entries = ['{"stored":true}'];
+      final queue = OfflineActionQueue(
+        store: store,
+        runner: (_) async => ReplayOutcome.done,
+        onSettled: RunnerQueuedActions.cleanupFor(files),
+      );
+      await expectLater(queue.load(), throwsA(isA<FileSystemException>()));
+      expect(queue.isClosed, isTrue);
+      final u = make(queue: queue);
+      failWith = const NitumeApiException(message: 'x', isNetworkError: true);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(item.canRetry, isTrue);
+      expect(queue.pending, isEmpty);
+      expect(store.writes, 0, reason: 'the unread queue is never overwritten');
+      expect(store.entries, ['{"stored":true}']);
+      expect(kept(), hasLength(1), reason: 'kept for a retry');
+      u.dispose();
+      await _until(() => kept().isEmpty);
+      expect(kept(), isEmpty);
     });
 
     test('a disposed uploader takes no new capture', () async {
