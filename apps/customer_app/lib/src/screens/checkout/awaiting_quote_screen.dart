@@ -295,14 +295,12 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
 
   /// Row 236 (C-14-2): the API flags the task as inside no service area
   /// (`outsideServiceArea`, sent only by `GET /errands/:id`, which every
-  /// load and refresh here uses). REQUESTED, QUOTED or ACCEPTED only.
-  static bool _outsideArea(_QuoteData d) {
-    final s = d.errand.status;
-    return d.errand.outsideServiceArea &&
-        (s == ErrandStatus.requested ||
-            s == ErrandStatus.quoted ||
-            s == ErrandStatus.accepted);
-  }
+  /// load and refresh here uses). Row 249 (b): shown only for REQUESTED, or
+  /// QUOTED / ACCEPTED once the quote has expired; a still-valid quote can be
+  /// paid, so a stale flag never tells the customer to cancel it.
+  bool _outsideArea(_QuoteData d) =>
+      d.errand.outsideServiceArea &&
+      (d.errand.status == ErrandStatus.requested || _expired(d));
 
   /// Row 237: a deadline the customer chose has passed before payment (a
   /// non-null `deadlineAt` before payment is always theirs, rows 239, 240),
