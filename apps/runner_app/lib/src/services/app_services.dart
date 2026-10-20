@@ -190,14 +190,19 @@ class AppServices {
   /// Starts the signed-in runtime: socket, queue.
   Future<void> startSession() async {
     // Open the queue first (a log out closed it), so an offline action made
-    // as soon as the shell shows is queued, not refused.
-    await queue.load();
-    // Copies left by a killed app that no queued action needs (B-1).
-    await _quietly(
-      () => evidenceFiles.discardExcept(
-        RunnerQueuedActions.evidencePaths(queue.pending),
-      ),
-    );
+    // as soon as the shell shows is queued, not refused. A store read
+    // failure never stops the socket: actions then fail with a retry
+    // instead of queueing.
+    final loaded = await _quietly(queue.load);
+    // Copies left by a killed app that no queued action needs (B-1). Only
+    // after a good read: an unread queue may still need its photos.
+    if (loaded) {
+      await _quietly(
+        () => evidenceFiles.discardExcept(
+          RunnerQueuedActions.evidencePaths(queue.pending),
+        ),
+      );
+    }
     await live.start();
     unawaited(queue.replay());
   }
@@ -211,11 +216,14 @@ class AppServices {
     await live.stop();
   }
 
-  static Future<void> _quietly(Future<void> Function() f) async {
+  /// Runs [f]; `false` when it threw (best effort; the next start cleans
+  /// up again).
+  static Future<bool> _quietly(Future<void> Function() f) async {
     try {
       await f();
+      return true;
     } on Object {
-      // Best effort; the next start cleans up again.
+      return false;
     }
   }
 
