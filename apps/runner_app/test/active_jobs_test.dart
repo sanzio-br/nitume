@@ -100,6 +100,32 @@ void main() {
       expect(r.error, ActiveJobsCopy.changed);
     });
 
+    test(
+      'session start keeps only queued photos; log out deletes all',
+      () async {
+        final b = TestBackend();
+        b.evidenceStore.kept.addAll(['kept/orphan.jpg', 'kept/queued.jpg']);
+        await b.services.queue.enqueue(
+          QueuedActionKind.evidenceUpload,
+          errandId: 'w1',
+          payload: RunnerQueuedActions.evidence(
+            path: 'kept/queued.jpg',
+            type: EvidenceType.photo,
+            contentType: 'image/jpeg',
+          ),
+        );
+        // Pretend the app was killed: the queue reloads from its store.
+        b.jobs.heldList = [heldJob(id: 'w1')];
+        b.jobs.evidenceErrors.add(networkError);
+        await b.services.startSession();
+        expect(b.evidenceStore.discarded, contains('kept/orphan.jpg'));
+        expect(b.evidenceStore.kept, contains('kept/queued.jpg'));
+
+        await b.services.endSession();
+        expect(b.evidenceStore.kept, isEmpty);
+      },
+    );
+
     test('access revoked drops the job and stops its pings', () async {
       final b = TestBackend();
       b.jobs.heldList = [heldJob(id: 'w1')];

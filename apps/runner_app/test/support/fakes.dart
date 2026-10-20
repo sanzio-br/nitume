@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show FileSystemException;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -685,6 +686,34 @@ class FakePayouts extends RunnerPayoutRepository {
   }
 }
 
+/// In-memory evidence store: [keep] "copies" to `kept/<name>`.
+class FakeEvidenceStore extends DirectoryEvidenceFileStore {
+  FakeEvidenceStore() : super(() async => throw UnimplementedError());
+
+  final kept = <String>[];
+  final discarded = <String>[];
+
+  /// Make the next keep fail (the uploader then uses the picker file).
+  bool failKeep = false;
+
+  @override
+  Future<String> keep(String sourcePath) async {
+    if (failKeep) throw FileSystemException('no space', sourcePath);
+    final path = 'kept/${sourcePath.split('/').last}';
+    kept.add(path);
+    return path;
+  }
+
+  @override
+  Future<void> discard(String path) async {
+    kept.remove(path);
+    discarded.add(path);
+  }
+
+  @override
+  Future<List<String>> keptPaths() async => List.of(kept);
+}
+
 /// Push fake: the test adds taps to [opened].
 class FakePushService implements PushService {
   final opened = StreamController<PushMessage>.broadcast();
@@ -912,6 +941,7 @@ class TestBackend {
       files: files,
       payouts: payouts,
       collectLocation: false,
+      evidenceFiles: evidenceStore,
       push: pushService,
       live: RunnerLive(
         client: realtime,
@@ -935,6 +965,7 @@ class TestBackend {
   final payouts = FakePayouts();
   final realtime = FakeRealtime();
   final pushService = FakePushService();
+  final evidenceStore = FakeEvidenceStore();
   DateTime now = testNow;
   late final AppServices services;
 

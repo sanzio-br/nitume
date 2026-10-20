@@ -35,6 +35,27 @@ void main() {
       expect(b.capture.discarded, ['/app/capture-1.jpg']);
     });
 
+    testWidgets('offline: the kept photo is queued (rule 5)', (t) async {
+      final b = await _withJob(heldJob(status: ErrandStatus.arrived));
+      b.jobs.evidenceErrors.add(networkError);
+      await b.pumpScreen(
+        t,
+        const EvidenceCaptureScreen(errandId: 'e1', type: EvidenceType.photo),
+      );
+      await t.tap(find.byKey(const ValueKey('evidence-drop-zone')));
+      // A queued tile keeps its spinner: pump, never settle.
+      for (var i = 0; i < 5; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text(EvidenceCopy.offline), findsOneWidget);
+      final queued = b.services.queue.pendingFor('e1').single;
+      expect(queued.kind, QueuedActionKind.evidenceUpload);
+      expect(queued.payload['path'], 'kept/capture-1.jpg');
+      // The picker's own file is gone; the app-private copy waits.
+      expect(b.capture.discarded, ['/app/capture-1.jpg']);
+      expect(b.evidenceStore.kept, ['kept/capture-1.jpg']);
+    });
+
     testWidgets('receipt preset: title, hint and the type toggle', (t) async {
       final b = await _withJob(
         heldJob(

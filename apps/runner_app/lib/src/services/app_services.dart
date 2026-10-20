@@ -1,5 +1,3 @@
-import 'dart:io' show FileSystemException;
-import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
@@ -32,7 +30,7 @@ class AppServices {
     required this.payouts,
     RunnerLive? live,
     QueueStore? queueStore,
-    EvidenceFileStore? evidenceFiles,
+    required this.evidenceFiles,
     bool collectLocation = true,
     this.appConfig = const AppConfig(),
     this.push = const NoopPushService(),
@@ -40,8 +38,7 @@ class AppServices {
     ShellController? shell,
   }) : shell = shell ?? ShellController(),
        clock = clock ?? DateTime.now,
-       live = live ?? RunnerLive(),
-       evidenceFiles = evidenceFiles ?? const NoKeepEvidenceFileStore() {
+       live = live ?? RunnerLive() {
     pings = JobPings(
       source: location,
       live: this.live,
@@ -52,13 +49,13 @@ class AppServices {
       store: queueStore ?? InMemoryQueueStore(),
       runner: RunnerQueuedActions.runnerFor(jobs),
       onDropped: (a, r) => active.onQueueDropped(a, r),
-      onSettled: RunnerQueuedActions.cleanupFor(this.evidenceFiles),
+      onSettled: RunnerQueuedActions.cleanupFor(evidenceFiles),
     );
     uploads = JobEvidenceUploads(
       (errandId) => EvidenceUploader(
         capture: capture,
-        upload: _recordingUpload,
-        files: this.evidenceFiles,
+        upload: jobs.uploadEvidence,
+        files: evidenceFiles,
         positions: location,
         queue: queue,
         readFile: files.read,
@@ -129,6 +126,7 @@ class AppServices {
         accessToken: accessToken,
       ),
       queueStore: SharedPreferencesQueueStore(),
+      evidenceFiles: appSupportEvidenceFileStore(),
       appConfig: AppConfig.fromEnvironment(onOpenLink: openExternalLink),
       push: push,
     );
@@ -159,37 +157,6 @@ class AppServices {
   /// Reads captured images into memory.
   final CaptureFiles files;
 
-  /// The last refused evidence upload per errand, so `v-evidence-capture`
-  /// can name the failure (the uploader keeps only the item state).
-  final Map<String, Object> lastEvidenceError = {};
-
-  Future<Evidence> _recordingUpload(
-    String errandId, {
-    required EvidenceType type,
-    required Uint8List bytes,
-    required String contentType,
-    DateTime? capturedAt,
-    double? lat,
-    double? lon,
-  }) async {
-    try {
-      final ev = await jobs.uploadEvidence(
-        errandId,
-        type: type,
-        bytes: bytes,
-        contentType: contentType,
-        capturedAt: capturedAt,
-        lat: lat,
-        lon: lon,
-      );
-      lastEvidenceError.remove(errandId);
-      return ev;
-    } on Object catch (e) {
-      lastEvidenceError[errandId] = e;
-      rethrow;
-    }
-  }
-
   /// Payout ledger lines and reimbursement claims (`v-job-summary`).
   final RunnerPayoutRepository payouts;
 
@@ -208,13 +175,20 @@ class AppServices {
   /// Held jobs, transitions and notes (`v-active`).
   late final ActiveJobs active;
 
-  /// Where evidence photos wait for upload. See [NoKeepEvidenceFileStore].
-  final EvidenceFileStore evidenceFiles;
+  /// App-private folder where evidence photos wait for upload (row 149;
+  /// `appSupportEvidenceFileStore()` on a device).
+  final DirectoryEvidenceFileStore evidenceFiles;
 
   /// Starts the signed-in runtime: socket, queue.
   Future<void> startSession() async {
     await live.start();
     await queue.load();
+    // Copies left by a killed app that no queued action needs (B-1).
+    await _quietly(
+      () => evidenceFiles.discardExcept(
+        RunnerQueuedActions.evidencePaths(queue.pending),
+      ),
+    );
     unawaited(queue.replay());
   }
 
@@ -222,7 +196,17 @@ class AppServices {
   Future<void> endSession() async {
     active.reset();
     await queue.clear();
+    // Every kept photo goes at log out (B-1 rule 7).
+    await _quietly(evidenceFiles.discardAll);
     await live.stop();
+  }
+
+  static Future<void> _quietly(Future<void> Function() f) async {
+    try {
+      await f();
+    } on Object {
+      // Best effort; the next start cleans up again.
+    }
   }
 
   /// Wall clock for offer countdowns; tests pin it.
@@ -265,20 +249,4 @@ class AppScope extends InheritedWidget {
 /// Shorthand: `context.services`.
 extension AppServicesContext on BuildContext {
   AppServices get services => AppScope.read(this);
-}
-
-/// Interim [EvidenceFileStore] until `path_provider` lands in
-/// `nitume_runner_device` (row 149; BOARD: do not wire a file store before
-/// it). [keep] always fails, so `EvidenceUploader` uploads from the
-/// picker's file, releases it with `CapturedImage.discard` (B-1) and never
-/// queues a photo offline (a failed upload keeps `Retry`).
-class NoKeepEvidenceFileStore implements EvidenceFileStore {
-  const NoKeepEvidenceFileStore();
-
-  @override
-  Future<String> keep(String sourcePath) async =>
-      throw FileSystemException('No app-private evidence folder', sourcePath);
-
-  @override
-  Future<void> discard(String path) async {}
 }

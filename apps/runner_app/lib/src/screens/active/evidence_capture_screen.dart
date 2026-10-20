@@ -135,11 +135,15 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
 
   void _onUploads() {
     if (!mounted) return;
-    final failed = _uploader.items.any(
-      (i) => i.status == EvidenceUploadStatus.failed,
-    );
-    final e = _s.lastEvidenceError[widget.errandId];
-    setState(() => _error = failed && e != null ? _messageFor(e) : _error);
+    NitumeApiException? e;
+    for (final i in _uploader.items.reversed) {
+      if (i.status == EvidenceUploadStatus.failed && i.lastApiError != null) {
+        e = i.lastApiError;
+        break;
+      }
+    }
+    final error = e;
+    setState(() => _error = error != null ? _messageFor(error) : _error);
   }
 
   String _messageFor(Object e) {
@@ -168,7 +172,6 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
       if (now != CameraAccess.granted) return;
     }
     setState(() => _error = null);
-    _s.lastEvidenceError.remove(widget.errandId);
     await _uploader.captureAndUpload(widget.errandId, type: _type);
   }
 
