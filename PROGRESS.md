@@ -433,3 +433,5 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 - Round 18 so far: customer row 249 (b) reviewed READY on feat/customer-outside-area-b (157 tests).
   In progress: api-contract (249, 250, 247, 248, 252–254), core-ui (245 C-V5, 246, 255, m-1, m-2);
   flutter-runner follows core.
+- API round 18 reviewed READY: feat/api-outside-area-b (249 b, 250) and feat/api-runner-answers (247 job-ping
+  storage + 90-day purge, 248 differenceAwaitingPayment, 252 10 MB, 253 defaults pinned, 254 receipts in DISPUTED).
