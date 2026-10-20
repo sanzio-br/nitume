@@ -8,7 +8,9 @@ import '../../services/live_updates.dart';
 import '../../services/shell_controller.dart';
 import '../../util/display.dart';
 import '../../widgets/common.dart';
+import '../../widgets/deadline_widgets.dart';
 import '../../widgets/task_widgets.dart';
+import 'deadline_sheet.dart';
 
 class _QuoteData {
   const _QuoteData({
@@ -34,12 +36,17 @@ class AwaitingQuoteScreen extends StatefulWidget {
     super.key,
     required this.errandId,
     this.quoteExpired = false,
+    this.deadlinePassed = false,
   });
 
   final String errandId;
 
   /// Opened because the API answered `quote_expired` (row 46).
   final bool quoteExpired;
+
+  /// Opened because payment was refused with
+  /// `deadline_passed_before_payment` (row 237).
+  final bool deadlinePassed;
 
   @override
   State<AwaitingQuoteScreen> createState() => _AwaitingQuoteScreenState();
@@ -56,6 +63,11 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
   bool _cancelling = false;
   bool _routed = false;
   late bool _expiredByApi = widget.quoteExpired;
+
+  /// Payment refused because the chosen deadline passed (row 237); cleared
+  /// once the deadline changes.
+  late bool _deadlinePassedByApi = widget.deadlinePassed;
+  bool _changingDeadline = false;
   ErrandWatch? _watch;
 
   @override
@@ -164,8 +176,14 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
         old?.errand.merchantDetailsAvailable !=
             errand.merchantDetailsAvailable ||
         old?.errand.quoteRequestedAt != errand.quoteRequestedAt ||
-        old?.errand.quoteExpiresAt != errand.quoteExpiresAt;
+        old?.errand.quoteExpiresAt != errand.quoteExpiresAt ||
+        old?.errand.deadlineAt != errand.deadlineAt ||
+        old?.errand.outsideServiceArea != errand.outsideServiceArea;
     if (was == errand.status && !changed && !force) return;
+    // A new deadline (possibly set on another device) ends the refusal.
+    if (old != null && old.errand.deadlineAt != errand.deadlineAt) {
+      _deadlinePassedByApi = false;
+    }
     final wasRequested = old != null && _newQuoteRequested(old);
     final data = await _checkoutData(errand);
     if (!mounted) return;
@@ -275,6 +293,61 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
     return _expiredByApi || (at != null && at.isBefore(DateTime.now()));
   }
 
+  /// Row 236 (C-14-2): the API flags the task as inside no service area
+  /// (`outsideServiceArea`, sent only by `GET /errands/:id`, which every
+  /// load and refresh here uses). REQUESTED, QUOTED or ACCEPTED only.
+  static bool _outsideArea(_QuoteData d) {
+    final s = d.errand.status;
+    return d.errand.outsideServiceArea &&
+        (s == ErrandStatus.requested ||
+            s == ErrandStatus.quoted ||
+            s == ErrandStatus.accepted);
+  }
+
+  /// Row 237: a deadline the customer chose has passed before payment (a
+  /// non-null `deadlineAt` before payment is always theirs, rows 239, 240),
+  /// or the API refused payment for it.
+  bool _deadlinePassed(_QuoteData d) =>
+      d.errand.status.isBeforePayment &&
+      (_deadlinePassedByApi ||
+          d.errand.deadlinePassedBeforePayment(DateTime.now()));
+
+  /// `Choose a new deadline` / `Change` (rows 237, 242–244): the quote is
+  /// kept; the checkout shows the new deadline in place.
+  Future<void> _chooseDeadline() async {
+    final data = _data;
+    if (data == null || _changingDeadline) return;
+    final result = await showDeadlineSheet(context, errand: data.errand);
+    if (!mounted) return;
+    switch (result) {
+      case DeadlineSaved(:final errand):
+        setState(() => _changingDeadline = true);
+        // The full errand view (route flags, quote expiry) comes from GET.
+        final fresh = await _services.errands
+            .get(errand.id)
+            .then<Errand?>((e) => e, onError: (Object _) => null);
+        if (!mounted) return;
+        final next = fresh ?? errand;
+        if (_routeAway(next)) return;
+        final current = _data ?? data;
+        setState(() {
+          _changingDeadline = false;
+          _deadlinePassedByApi = false;
+          _data = _QuoteData(
+            errand: next,
+            quote: current.quote,
+            methods: current.methods,
+            phone: current.phone,
+          );
+        });
+      case DeadlineReload():
+        // Paid meanwhile (`deadline_not_editable`): route per Entry.
+        await _load();
+      case null:
+        return;
+    }
+  }
+
   Future<void> _accept() async {
     final data = _data!;
     final errand = data.errand;
@@ -291,13 +364,16 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
       }
       if (!mounted) return;
       setState(() => _accepting = false);
-      await Nav.toCheckoutPayment(
+      final exit = await Nav.toCheckoutPayment(
         context,
         errand.id,
         route: isPositiveAmount(errand.budget) ? _route : null,
         method: _method,
       );
-      if (mounted) _load();
+      if (!mounted) return;
+      // Row 237: payment refused, back here in the new-deadline state.
+      if (exit == PaymentExit.deadlinePassed) _deadlinePassedByApi = true;
+      _load();
     } on NitumeApiException catch (e) {
       if (!mounted) return;
       setState(() => _accepting = false);
@@ -358,6 +434,14 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
       );
     } else if (data == null) {
       body = const SkeletonList();
+    } else if (_outsideArea(data)) {
+      // Row 236: refused at quote; the customer may cancel (nothing paid).
+      body = _Waiting(
+        errand: data.errand,
+        outsideArea: true,
+        cancelling: _cancelling,
+        onCancel: _cancel,
+      );
     } else if (data.errand.status == ErrandStatus.requested) {
       body = _Waiting(
         errand: data.errand,
@@ -373,9 +457,16 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
       );
     } else {
       final expired = _expired(data);
+      // An expired quote is answered first (a new quote is needed anyway);
+      // then the passed deadline (row 237).
+      final deadlinePassed = !expired && _deadlinePassed(data);
       body = _Checkout(
         data: data,
         expired: expired,
+        deadlinePassed: deadlinePassed,
+        onChangeDeadline: deadlinePassed || _cancelling || _accepting
+            ? null
+            : _chooseDeadline,
         route: _route,
         method: _method,
         onRoute: (r) => setState(() => _route = r),
@@ -392,13 +483,22 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
                 onPressed: _cancelling ? null : _requestNewQuote,
               ),
             )
+          : deadlinePassed
+          ? FixedCta(
+              child: NitumeButton.primary(
+                label: 'Choose a new deadline',
+                expand: true,
+                loading: _changingDeadline,
+                onPressed: _cancelling ? null : _chooseDeadline,
+              ),
+            )
           : FixedCta(
               child: NitumeButton.primary(
                 label: _ctaLabel(data),
                 richLabel: _ctaRichLabel(data),
                 expand: true,
                 loading: _accepting,
-                onPressed: _cancelling ? null : _accept,
+                onPressed: _cancelling || _changingDeadline ? null : _accept,
               ),
             );
     }
@@ -410,6 +510,7 @@ class _AwaitingQuoteScreenState extends State<AwaitingQuoteScreen> {
           key: ValueKey((
             data?.errand.status,
             data != null && _newQuoteRequested(data),
+            data != null && _outsideArea(data),
           )),
           child: body,
         ),
@@ -425,9 +526,13 @@ class _Waiting extends StatelessWidget {
     required this.cancelling,
     required this.onCancel,
     this.requestedAt,
+    this.outsideArea = false,
   });
 
   final Errand errand;
+
+  /// Row 236: `We can't take this task`, `Cancel task` as the primary.
+  final bool outsideArea;
 
   /// Set for the "New quote requested" variant (row 68).
   final DateTime? requestedAt;
@@ -436,23 +541,62 @@ class _Waiting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final again = requestedAt != null;
+    final again = requestedAt != null && !outsideArea;
+    final String heading;
+    final String body;
+    if (outsideArea) {
+      // Owner copy, row 241 (same words as the notification).
+      heading = "We can't take this task";
+      body =
+          'Its location is outside the areas we serve. You can cancel it; '
+          "you haven't paid anything.";
+    } else if (again) {
+      heading = 'Preparing a new quote';
+      body = "You asked for a new quote. We'll notify you when it's ready.";
+    } else {
+      heading = 'Preparing your quote';
+      body =
+          "We're pricing your task. This usually takes a few minutes, and "
+          "we'll notify you when it's ready.";
+    }
+    final cancel = outsideArea
+        ? NitumeButton.primary(
+            label: 'Cancel task',
+            loading: cancelling,
+            onPressed: onCancel,
+          )
+        : NitumeButton.text(
+            label: 'Cancel task',
+            destructive: true,
+            loading: cancelling,
+            onPressed: onCancel,
+          );
+    final home = NitumeButton.outline(
+      label: 'Back to Home',
+      onPressed: () => Nav.resetTo(context, ShellTab.home),
+    );
     return ListView(
       children: [
         const SizedBox(height: 32),
-        Center(
-          child: PulsingDots(
-            semanticLabel: again
-                ? 'Waiting for your new quote'
-                : 'Waiting for your quote',
+        // Nothing is being prepared for a refused task: no waiting dots.
+        if (!outsideArea) ...[
+          Center(
+            child: PulsingDots(
+              semanticLabel: again
+                  ? 'Waiting for your new quote'
+                  : 'Waiting for your quote',
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          again ? 'Preparing a new quote' : 'Preparing your quote',
-          textAlign: TextAlign.center,
-          style: NitumeTextStyles.dialogTitle.copyWith(
-            fontWeight: FontWeight.w700,
+          const SizedBox(height: 20),
+        ],
+        Semantics(
+          liveRegion: outsideArea,
+          child: Text(
+            heading,
+            textAlign: TextAlign.center,
+            style: NitumeTextStyles.dialogTitle.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -460,11 +604,7 @@ class _Waiting extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 260),
             child: Text(
-              again
-                  ? "You asked for a new quote. We'll notify you when it's "
-                        'ready.'
-                  : "We're pricing your task. This usually takes a few "
-                        "minutes, and we'll notify you when it's ready.",
+              body,
               textAlign: TextAlign.center,
               style: NitumeTextStyles.muted,
             ),
@@ -479,25 +619,22 @@ class _Waiting extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 22),
-        // No chip while a new quote is requested (no invented label).
-        TaskSummaryCard(errand: errand, showChip: !again),
+        // No chip while a new quote is requested, nor on a refused QUOTED /
+        // ACCEPTED task (`Quote ready` / `Awaiting payment` would no longer
+        // be true; the UI never invents a label).
+        TaskSummaryCard(
+          errand: errand,
+          showChip:
+              !again &&
+              (!outsideArea || errand.status == ErrandStatus.requested),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              NitumeButton.outline(
-                label: 'Back to Home',
-                onPressed: () => Nav.resetTo(context, ShellTab.home),
-              ),
-              const SizedBox(height: 10),
-              NitumeButton.text(
-                label: 'Cancel task',
-                destructive: true,
-                loading: cancelling,
-                onPressed: onCancel,
-              ),
-            ],
+            children: outsideArea
+                ? [cancel, const SizedBox(height: 10), home]
+                : [home, const SizedBox(height: 10), cancel],
           ),
         ),
       ],
@@ -509,6 +646,8 @@ class _Checkout extends StatelessWidget {
   const _Checkout({
     required this.data,
     required this.expired,
+    required this.deadlinePassed,
+    required this.onChangeDeadline,
     required this.route,
     required this.method,
     required this.onRoute,
@@ -518,6 +657,12 @@ class _Checkout extends StatelessWidget {
 
   final _QuoteData data;
   final bool expired;
+
+  /// Row 237: the notice replaces the pay CTA's purpose.
+  final bool deadlinePassed;
+
+  /// `Change` on the `Deadline` line; `null` hides it.
+  final VoidCallback? onChangeDeadline;
   final MerchantRoute? route;
   final PaymentMethod? method;
   final ValueChanged<MerchantRoute> onRoute;
@@ -533,7 +678,11 @@ class _Checkout extends StatelessWidget {
     return ListView(
       children: [
         // Expired: no chip (it would read "Quote ready", no longer true).
-        TaskSummaryCard(errand: errand, showChip: !expired),
+        TaskSummaryCard(
+          errand: errand,
+          showChip: !expired,
+          footer: DeadlineLine(errand: errand, onChange: onChangeDeadline),
+        ),
         _FormCard(
           label: 'Final quote',
           child: Column(
@@ -580,6 +729,15 @@ class _Checkout extends StatelessWidget {
             child: NitumeNotice(
               message:
                   'This quote has expired. Ask for a new quote to continue.',
+            ),
+          ),
+        if (deadlinePassed)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
+            // Row 237: the CTA below opens the new-deadline sheet.
+            child: NitumeNotice(
+              message:
+                  'Your deadline has passed. Choose a new one to continue.',
             ),
           ),
         if (!expired)

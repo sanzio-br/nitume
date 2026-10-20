@@ -100,7 +100,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           children: [
             for (final n in items)
               NotificationRow(
-                icon: _icon(n.event),
+                // Rows 236, 241: not an enum value (core), checked first.
+                icon: n.isOutsideServiceArea
+                    ? Icons.wrong_location_outlined
+                    : _icon(n.event),
                 title: n.title,
                 body: n.body,
                 time: n.createdAt == null

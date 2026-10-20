@@ -33,6 +33,30 @@ class OtpArgs {
   final Duration? cooldown;
 }
 
+/// `x-awaiting-quote` arguments when opened in a refused state.
+class AwaitingQuoteArgs {
+  const AwaitingQuoteArgs({
+    required this.errandId,
+    this.quoteExpired = false,
+    this.deadlinePassed = false,
+  });
+
+  final String errandId;
+
+  /// The API answered `quote_expired` (row 46).
+  final bool quoteExpired;
+
+  /// The API answered `deadline_passed_before_payment` (row 237).
+  final bool deadlinePassed;
+}
+
+/// Why `v-payment` popped back to the checkout that pushed it.
+enum PaymentExit {
+  /// `deadline_passed_before_payment` (row 237): show the new-deadline
+  /// state, no snackbar.
+  deadlinePassed,
+}
+
 /// `v-payment` arguments.
 class PaymentArgs {
   const PaymentArgs({
@@ -147,6 +171,11 @@ abstract final class Nav {
   }) async {
     final id = errandId;
     if (id == null) return;
+    // Rows 236, 241: not an enum value, so checked before the switch.
+    if (eventType == NotificationEventType.outsideServiceAreaWire) {
+      await toAwaitingQuote(context, id);
+      return;
+    }
     final event = eventType == null
         ? null
         : NotificationEventType.tryFromWire(eventType);
@@ -199,37 +228,51 @@ abstract final class Nav {
   static Future<void> toAwaitingQuote(BuildContext context, String errandId) =>
       _push(context, Routes.awaitingQuote, errandId);
 
-  /// [quoteExpired]: the API answered `quote_expired` (row 46).
+  /// [quoteExpired]: the API answered `quote_expired` (row 46);
+  /// [deadlinePassed]: `deadline_passed_before_payment` (row 237).
   static Future<void> replaceWithAwaitingQuote(
     BuildContext context,
     String errandId, {
     bool quoteExpired = false,
+    bool deadlinePassed = false,
   }) => _replace(
     context,
     Routes.awaitingQuote,
-    quoteExpired ? (errandId, true) : errandId,
+    quoteExpired || deadlinePassed
+        ? AwaitingQuoteArgs(
+            errandId: errandId,
+            quoteExpired: quoteExpired,
+            deadlinePassed: deadlinePassed,
+          )
+        : errandId,
   );
 
   /// Shows the current payment state (Home / Task detail "Pay now").
   static Future<void> toPayment(BuildContext context, String errandId) =>
       _push(context, Routes.payment, PaymentArgs(errandId: errandId));
 
-  /// Checkout CTA: pay with [route] and [method] (OA-5, OA-21).
-  static Future<void> toCheckoutPayment(
+  /// Checkout CTA: pay with [route] and [method] (OA-5, OA-21). Resolves
+  /// with a [PaymentExit] when the payment screen sends the customer back
+  /// to this checkout.
+  static Future<PaymentExit?> toCheckoutPayment(
     BuildContext context,
     String errandId, {
     MerchantRoute? route,
     PaymentMethod? method,
-  }) => _push(
-    context,
-    Routes.payment,
-    PaymentArgs(
-      errandId: errandId,
-      route: route,
-      method: method,
-      fromCheckout: true,
-    ),
-  );
+  }) async {
+    // Routes are built as `MaterialPageRoute<dynamic>`: push untyped.
+    final result = await _push<Object?>(
+      context,
+      Routes.payment,
+      PaymentArgs(
+        errandId: errandId,
+        route: route,
+        method: method,
+        fromCheckout: true,
+      ),
+    );
+    return result is PaymentExit ? result : null;
+  }
 
   static Future<void> replaceWithPayment(
     BuildContext context,

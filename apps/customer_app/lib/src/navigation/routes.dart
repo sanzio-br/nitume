@@ -27,9 +27,10 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     }(),
     Routes.newTask => CategoryScreen(initialCategory: args as ErrandCategory?),
     Routes.awaitingQuote => switch (args) {
-      (final String id, final bool expired) => AwaitingQuoteScreen(
-        errandId: id,
-        quoteExpired: expired,
+      final AwaitingQuoteArgs a => AwaitingQuoteScreen(
+        errandId: a.errandId,
+        quoteExpired: a.quoteExpired,
+        deadlinePassed: a.deadlinePassed,
       ),
       _ => AwaitingQuoteScreen(errandId: args! as String),
     },

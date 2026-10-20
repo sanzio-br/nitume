@@ -161,6 +161,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
         Nav.replaceWithAwaitingQuote(context, _id, quoteExpired: true);
         return;
       }
+      if (e.deadlineProblem == DeadlineProblem.passedBeforePayment) {
+        // Row 237: no STK was sent. Back to the checkout in its
+        // new-deadline state, no snackbar.
+        if (widget.args.fromCheckout) {
+          Navigator.of(context).pop(PaymentExit.deadlinePassed);
+        } else {
+          Nav.replaceWithAwaitingQuote(context, _id, deadlinePassed: true);
+        }
+        return;
+      }
       if (e.code == ApiErrorCodes.merchantRouteRequired) {
         Nav.replaceWithAwaitingQuote(context, _id);
         return;
