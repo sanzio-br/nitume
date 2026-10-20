@@ -158,6 +158,11 @@ class EvidenceUploadItem extends ChangeNotifier {
 /// * Disposed while an upload is in flight: the upload still runs to the
 ///   end and its file is cleaned up as above (a refusal then deletes the
 ///   copy, since nobody can retry it); no listener is called any more.
+/// * Log out: a temporary failure after [dispose], or while the [queue] is
+///   closed (`OfflineActionQueue.clear`, until its next `load`), is never
+///   queued. The item fails; after [dispose] its copy is deleted at once,
+///   otherwise when the uploader is released (`JobEvidenceUploads
+///   .releaseAll`) or by `DirectoryEvidenceFileStore.discardAll`.
 ///
 /// Lifetime (C-V2): hold one uploader per held job at app scope through
 /// [JobEvidenceUploads], so leaving `v-evidence-capture` does not drop
@@ -344,23 +349,33 @@ class EvidenceUploader extends ChangeNotifier {
       await _finish(item, EvidenceUploadStatus.uploaded, evidence: ev);
     } on Object catch (e) {
       final q = queue;
+      // Queue only while this uploader is open and the queue takes work:
+      // after release / log out the copy must not outlive the session (B-1).
       // The queue deletes through the file store, which cannot delete the
       // picker's file: such an item stays here as failed (retry possible).
       if (q != null &&
+          !_disposed &&
+          !q.isClosed &&
           item.keptInAppStorage &&
           replayOutcomeFor(e) == ReplayOutcome.retryLater) {
-        await q.enqueue(
-          QueuedActionKind.evidenceUpload,
-          errandId: item.errandId,
-          payload: RunnerQueuedActions.evidence(
-            path: item.path,
-            type: item.type,
-            contentType: item.contentType,
-            capturedAt: item.capturedAt,
-            lat: item.lat,
-            lon: item.lon,
-          ),
-        );
+        try {
+          await q.enqueue(
+            QueuedActionKind.evidenceUpload,
+            errandId: item.errandId,
+            payload: RunnerQueuedActions.evidence(
+              path: item.path,
+              type: item.type,
+              contentType: item.contentType,
+              capturedAt: item.capturedAt,
+              lat: item.lat,
+              lon: item.lon,
+            ),
+          );
+        } on StateError {
+          // Closed meanwhile (log out): not queued.
+          await _finish(item, EvidenceUploadStatus.failed, error: e);
+          return;
+        }
         // The queue owns the file now.
         item._fileReleased = true;
         await _finish(item, EvidenceUploadStatus.queued);

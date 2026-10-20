@@ -359,10 +359,11 @@ void main() {
       expect(kept(), isEmpty);
     });
 
-    test('disposed while uploading, then offline: the queue keeps the '
-        'copy', () async {
+    test('released (log out) while uploading, then offline: never queued, '
+        'the copy is deleted', () async {
+      final store = InMemoryQueueStore();
       final queue = OfflineActionQueue(
-        store: InMemoryQueueStore(),
+        store: store,
         runner: (_) async => ReplayOutcome.done,
         onSettled: RunnerQueuedActions.cleanupFor(files),
       );
@@ -373,9 +374,58 @@ void main() {
       await untilUploading();
       u.dispose();
       gate!.complete();
-      expect((await pending)!.status, EvidenceUploadStatus.queued);
-      expect(queue.pending, hasLength(1));
-      expect(kept(), hasLength(1));
+      expect((await pending)!.status, EvidenceUploadStatus.failed);
+      expect(queue.pending, isEmpty);
+      expect(await store.read(), isEmpty, reason: 'nothing persisted');
+      await _until(() => kept().isEmpty);
+      expect(kept(), isEmpty);
+    });
+
+    test('log out order: queue cleared while uploading, then offline: not '
+        'queued (closed queue), copy deleted on release', () async {
+      final store = InMemoryQueueStore();
+      final queue = OfflineActionQueue(
+        store: store,
+        runner: (_) async => ReplayOutcome.done,
+        onSettled: RunnerQueuedActions.cleanupFor(files),
+      );
+      final uploads = JobEvidenceUploads((_) => make(queue: queue));
+      gate = Completer<void>();
+      failWith = const NitumeApiException(message: 'x', statusCode: 503);
+      final pending = uploads
+          .forJob('e1')
+          .captureAndUpload('e1', type: EvidenceType.photo);
+      await untilUploading();
+      await queue.clear(); // endSession
+      gate!.complete();
+      final item = await pending;
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(queue.pending, isEmpty);
+      expect(await store.read(), isEmpty, reason: 'nothing persisted');
+      uploads.releaseAll();
+      await files.discardAll();
+      await _until(() => kept().isEmpty);
+      expect(kept(), isEmpty);
+
+      // Next sign-in: the queue reopens on load and holds nothing.
+      await queue.load();
+      expect(queue.isClosed, isFalse);
+      expect(queue.pending, isEmpty);
+    });
+
+    test('the enqueue refused by a queue closed mid-flight is a failure, '
+        'not an error', () async {
+      final queue = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async => ReplayOutcome.done,
+      );
+      final u = make(queue: queue);
+      await queue.clear();
+      failWith = const NitumeApiException(message: 'x', statusCode: 503);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(item.canRetry, isTrue);
+      expect(queue.pending, isEmpty);
     });
 
     test('a disposed uploader takes no new capture', () async {
