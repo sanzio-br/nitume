@@ -3,7 +3,7 @@
 - Mockup: **not drawn.** Required by OA-3 (authoritative REQUESTED → QUOTED → ACCEPTED flow after the wizard preview) and OA-5 (merchant payment route chosen at checkout). Built from design-system patterns and existing mockup components (`.stk-wrap`, `.form-card`, `.receipt-row`, `.chip` column, `.pm-card`, `.cta-fixed`). Copy is **(proposed)** unless marked "mockup".
 - Shared conventions: `_shared.md` (OA-n §0, fees and routes §8)
 - Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-owner-answers`
-- Status: matches-design (re-audit 2026-10-19, `feat/customer-round-14` @ `31b703e`, customer gap report; implementation on that branch)
+- Status: matches-design (re-audit 2026-10-20 of row 249 (b), `feat/customer-outside-area-b` @ `7e88f0b` on top of `feat/customer-round-14`; customer gap report; implementation on that branch)
 
 ## Purpose
 One screen per errand with two main states, plus the expired-quote state of checkout and the "new quote requested" waiting state:
@@ -32,7 +32,10 @@ REQUESTED (waiting), QUOTED (checkout, expired quote, or new quote requested), A
    3. Body 13 slate-600, max width 260, margin-bottom 22.
 3. Task summary card (C-07, margin `0 20 14`): status chip (C-05) `Awaiting quote`; title 15.5/600 (margin `10 0 4`); meta Fira Code 12 slate-600 `#NT-10482 · Today, 10:03 AM`.
 4. Button stack (padding 0 20, gap 10): outline `Back to Home` (C-03); text button `Cancel task` in red (destructive, OA-13).
-5. **Outside every service area (row 236, decided 2026-10-19: notify the customer and let them cancel)**: in REQUESTED, QUOTED or ACCEPTED (ACCEPTED: an expired ACCEPTED quote being re-quoted), when the API flags the task as refused at quote (`outsideServiceArea: true` on the errand view, proposed field), the waiting block is replaced by heading `We can't take this task` and body `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.` (the owner's notification copy, row 241, decided 2026-10-19; the screen uses the same words), and `Cancel task` becomes the C-01 primary action (the existing customer cancel, REQUESTED/QUOTED/ACCEPTED → CANCELLED). The notification copy is decided (row 241). No new state. The same text comes as a notification (`v-notifications.md`).
+5. **Outside every service area (row 236, decided 2026-10-19: notify the customer and let them cancel; narrowed by row 249 (b), decided 2026-10-20)**: shown only when the API flags the task as refused at quote (`outsideServiceArea: true` on the errand view) **and** the task is REQUESTED, or QUOTED/ACCEPTED **once its quote has expired** (row 249 (b)). A QUOTED or ACCEPTED task whose quote is still valid shows the normal checkout even if the flag is true: the customer can still pay, so the screen never tells them to cancel it. The waiting block is replaced by heading `We can't take this task` and body `Its location is outside the areas we serve. You can cancel it; you haven't paid anything.` (the owner's notification copy, row 241, decided 2026-10-19; the screen uses the same words), and `Cancel task` becomes the C-01 primary action (the existing customer cancel, REQUESTED/QUOTED/ACCEPTED → CANCELLED). No new state. The same text comes as a notification (`v-notifications.md`).
+   - "Expired" here is the same test as the **Quote expired** state below: the quote's `expiresAt` has passed, or the API answered `quote_expired` on accept or payment initiation. A quote with no `expiresAt` (legacy, row 83) counts as still valid, as in the API's `quote_still_valid` rule.
+   - In QUOTED/ACCEPTED with an expired quote this state takes the place of both the expired checkout (`Request a new quote`) and the **New quote requested** waiting state: a re-quote is refused outside every area, so neither would lead anywhere.
+   - The API applies the same rule to the flag (row 249 (b), `feat/api-outside-area-b`); the client also checks it, so a stale flag from an older API never hides a payable quote.
 
 ## Layout — checkout state (QUOTED)
 1. Pushed header (C-10) title `Your quote`.
@@ -122,6 +125,7 @@ States:
 - Fresh quote after expiry (was SQ-9): `Request a new quote`, then an admin re-quotes (row 68); only after expiry (row 88); ACCEPTED stays ACCEPTED and the new quote must be accepted/paid (row 72).
 - Every quote has an expiry, 24 h default (row 83).
 - Item amount only for Buy For Me / Get It For Me (row 80).
+- Outside-area state (row 236) shown only for REQUESTED, or QUOTED/ACCEPTED once the quote has expired (row 249 (b), owner 2026-10-20).
 
 ## Accessibility and mobile
 - Waiting dots: live region "Waiting for your quote".
@@ -132,6 +136,8 @@ States:
 - Q2: Should the checkout allow changing the route after payment (e.g. merchant details arrive later)? Default: no; route is fixed once the fees are paid.
 
 ## Current vs design
+Re-audit 2026-10-20, row 249 (b), `feat/customer-outside-area-b` @ `7e88f0b` (commits `7bba11c`, `7e88f0b`; customer gap report, "Re-audit 2026-10-20: customer round 18"): PASS. `_outsideArea` now requires REQUESTED or `_expired` (date, or API `quote_expired`); a valid or expiry-less quote with a stale flag shows checkout. No findings.
+
 Re-audit 2026-10-09, customer round 4, `feat/customer-owner-answers` @ `c420265` (docs/audits/customer-gap-report.md, "Re-audit 2026-10-09: customer round 4"): PASS. Expired state with `Request a new quote` on QUOTED and ACCEPTED, snackbar and error copy, `quote_still_valid` reload, **New quote requested** waiting state restored from `quoteRequestedAt`, switch back to checkout on re-quote with `Your new quote is ready.` Minor: stale comment at `awaiting_quote_screen.dart:579` ("No quote-request endpoint yet"). Builder handling accepted: `quote_request_not_allowed` reloads and routes per Entry.
 
 Spec update 2026-10-09 (owner rows 68, 72, 80, 83, 88), against `main` @ `c7675dc` (`awaiting_quote_screen.dart`): the build shows the expired state with the fallback notice `This quote has expired. We'll send you a new one.` (`:486`) and **no CTA**, because no quote-request endpoint existed. Now required:
