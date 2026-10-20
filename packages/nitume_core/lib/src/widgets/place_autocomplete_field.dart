@@ -34,6 +34,8 @@ class PlaceAutocompleteField extends StatefulWidget {
     this.onSelectionCleared,
     this.searchErrorText = defaultSearchErrorText,
     this.onTextChanged,
+    this.focusNode,
+    this.autofocus = false,
   });
 
   /// `v-new-details` / `x-address-form` copy for a failed search.
@@ -66,13 +68,23 @@ class PlaceAutocompleteField extends StatefulWidget {
   /// screen tell "typed without a pick" apart without reading the field.
   final ValueChanged<String>? onTextChanged;
 
+  /// Lets the screen move focus into the field, e.g. `Change location` on
+  /// `v-new-review` returning to `v-new-details` with the refused location
+  /// field focused (customer m-2): call `focusNode.requestFocus()`. The
+  /// field owns a node when this is null; the caller disposes its own.
+  final FocusNode? focusNode;
+
+  /// Focus the field when it is first built.
+  final bool autofocus;
+
   @override
   State<PlaceAutocompleteField> createState() => _PlaceAutocompleteFieldState();
 }
 
 class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
   final _controller = TextEditingController();
-  final _focus = FocusNode();
+  FocusNode? _ownFocus;
+  FocusNode get _focus => widget.focusNode ?? (_ownFocus ??= FocusNode());
   Timer? _timer;
   String _session = newPlacesSessionToken();
   List<PlaceSuggestion> _results = const [];
@@ -94,7 +106,11 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
     if (initial != null && initial.isNotEmpty) _selectedText = initial;
     _reportedText = _controller.text;
     _controller.addListener(_reportText);
-    _focus.addListener(() => setState(() {}));
+    _focus.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
   }
 
   void _reportText() {
@@ -107,6 +123,14 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
   @override
   void didUpdateWidget(PlaceAutocompleteField oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.focusNode != oldWidget.focusNode) {
+      (oldWidget.focusNode ?? _ownFocus)?.removeListener(_onFocusChanged);
+      if (widget.focusNode != null) {
+        _ownFocus?.dispose();
+        _ownFocus = null;
+      }
+      _focus.addListener(_onFocusChanged);
+    }
     final value = widget.initialValue;
     if (value != oldWidget.initialValue &&
         value != null &&
@@ -126,7 +150,8 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
   void dispose() {
     _timer?.cancel();
     _controller.dispose();
-    _focus.dispose();
+    widget.focusNode?.removeListener(_onFocusChanged);
+    _ownFocus?.dispose();
     super.dispose();
   }
 
@@ -155,8 +180,10 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
       _searchFailed = false;
     });
     try {
-      final results =
-          await widget.service.autocomplete(query, sessionToken: _session);
+      final results = await widget.service.autocomplete(
+        query,
+        sessionToken: _session,
+      );
       if (!mounted || id != _requestId) return;
       setState(() => _results = results);
     } catch (_) {
@@ -173,8 +200,7 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
   Future<void> _pick(PlaceSuggestion s) async {
     final PlaceDetails details;
     try {
-      details =
-          await widget.service.details(s.placeId, sessionToken: _session);
+      details = await widget.service.details(s.placeId, sessionToken: _session);
     } catch (_) {
       // Keep the suggestions open; the user can pick again.
       return;
@@ -200,7 +226,8 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
 
   @override
   Widget build(BuildContext context) {
-    final showSaved = _focus.hasFocus &&
+    final showSaved =
+        _focus.hasFocus &&
         _controller.text.isEmpty &&
         widget.savedAddresses.isNotEmpty &&
         widget.onSavedAddressSelected != null;
@@ -213,6 +240,7 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
           hint: widget.hint,
           controller: _controller,
           focusNode: _focus,
+          autofocus: widget.autofocus,
           errorText: widget.errorText,
           textInputAction: TextInputAction.search,
           prefixIcon: const Icon(Icons.place_outlined, size: 18),
