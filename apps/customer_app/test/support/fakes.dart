@@ -71,6 +71,7 @@ Errand errand({
   bool quoteAcceptanceRequired = false,
   DateTime? quoteRequestedAt,
   DateTime? deadlineAt,
+  DateTime? quoteExpiresAt,
   bool outsideServiceArea = false,
 }) => Errand(
   id: id,
@@ -89,6 +90,7 @@ Errand errand({
   quoteAcceptanceRequired: quoteAcceptanceRequired,
   quoteRequestedAt: quoteRequestedAt,
   deadlineAt: deadlineAt,
+  quoteExpiresAt: quoteExpiresAt,
   outsideServiceArea: outsideServiceArea,
   createdAt: _epoch,
   updatedAt: updatedAt ?? _epoch,

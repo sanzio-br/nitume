@@ -9,6 +9,20 @@ import 'package:nitume_core/nitume_core.dart';
 
 import 'support/fakes.dart';
 
+Quote _quote(DateTime? expiresAt) => Quote(
+  id: 'q1',
+  errandId: 'e1',
+  baseFee: '1500.00',
+  distanceFee: '700.00',
+  timeFee: '0.00',
+  urgencyFee: '0.00',
+  complexityFee: '0.00',
+  premiumFee: '0.00',
+  total: '2200.00',
+  currency: 'KES',
+  expiresAt: expiresAt,
+);
+
 const _caption =
     "No fixed time. Your task's deadline is 24 hours after your payment is "
     'confirmed.';
@@ -309,28 +323,60 @@ void main() {
         "Its location is outside the areas we serve. You can cancel it; you "
         "haven't paid anything.";
 
-    for (final status in [
-      ErrandStatus.requested,
-      ErrandStatus.quoted,
-      ErrandStatus.accepted,
-    ]) {
-      testWidgets('${status.wire}: owner copy and Cancel task primary', (
+    final past = DateTime.now().subtract(const Duration(minutes: 5));
+    final future = DateTime.now().add(const Duration(hours: 24));
+
+    Future<TestBackend> open(
+      WidgetTester t,
+      ErrandStatus status, {
+      bool flag = true,
+      DateTime? quoteExpiresAt,
+      DateTime? errandQuoteExpiresAt,
+    }) async {
+      final b = TestBackend();
+      b.errands.put(
+        errand(
+          status: status,
+          quotedPrice: '2200.00',
+          withRunner: false,
+          quoteExpiresAt: errandQuoteExpiresAt,
+          outsideServiceArea: flag,
+        ),
+      );
+      if (status != ErrandStatus.requested) {
+        b.errands.quoteValue = _quote(quoteExpiresAt);
+      }
+      await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
+      return b;
+    }
+
+    // Row 249 (b): REQUESTED, or QUOTED / ACCEPTED with the quote expired.
+    final shownCases = <(String, ErrandStatus, DateTime?, DateTime?)>[
+      ('requested', ErrandStatus.requested, null, null),
+      ('quoted, quote expired', ErrandStatus.quoted, past, null),
+      ('accepted, quote expired', ErrandStatus.accepted, past, null),
+      (
+        'accepted, errand quoteExpiresAt passed',
+        ErrandStatus.accepted,
+        null,
+        past,
+      ),
+    ];
+    for (final (name, status, quoteAt, errandAt) in shownCases) {
+      testWidgets('$name + flag: owner copy and Cancel task primary', (
         t,
       ) async {
-        final b = TestBackend();
-        b.errands.put(
-          errand(
-            status: status,
-            quotedPrice: '2200.00',
-            withRunner: false,
-            outsideServiceArea: true,
-          ),
+        final b = await open(
+          t,
+          status,
+          quoteExpiresAt: quoteAt,
+          errandQuoteExpiresAt: errandAt,
         );
-        await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
         expect(find.text(heading), findsOneWidget);
         expect(find.text(body), findsOneWidget);
         expect(find.text('Preparing your quote'), findsNothing);
         expect(find.textContaining('Confirm & pay'), findsNothing);
+        expect(find.text('Request a new quote'), findsNothing);
         expect(find.byType(PulsingDots), findsNothing);
         // Chip only where it is still true (REQUESTED → Awaiting quote).
         expect(
@@ -354,13 +400,62 @@ void main() {
       });
     }
 
-    testWidgets('flag false: the normal waiting state', (t) async {
+    for (final status in [ErrandStatus.quoted, ErrandStatus.accepted]) {
+      testWidgets('${status.wire}, valid quote + stale flag: checkout', (
+        t,
+      ) async {
+        await open(t, status, quoteExpiresAt: future);
+        expect(find.text(heading), findsNothing);
+        expect(find.textContaining('Confirm & pay'), findsWidgets);
+        expect(find.text('Request a new quote'), findsNothing);
+      });
+    }
+
+    testWidgets('API said quote_expired + flag: shown', (t) async {
       final b = TestBackend();
-      b.errands.put(errand(status: ErrandStatus.requested, withRunner: false));
-      await b.pumpScreen(t, const AwaitingQuoteScreen(errandId: 'e1'));
-      expect(find.text(heading), findsNothing);
-      expect(find.text('Preparing your quote'), findsOneWidget);
+      b.errands.put(
+        errand(
+          status: ErrandStatus.quoted,
+          quotedPrice: '2200.00',
+          withRunner: false,
+          outsideServiceArea: true,
+        ),
+      );
+      b.errands.quoteValue = _quote(future);
+      await b.pumpScreen(
+        t,
+        const AwaitingQuoteScreen(errandId: 'e1', quoteExpired: true),
+      );
+      expect(find.text(heading), findsOneWidget);
     });
+
+    testWidgets('quoted, no expiry + flag: checkout', (t) async {
+      await open(t, ErrandStatus.quoted);
+      expect(find.text(heading), findsNothing);
+      expect(find.textContaining('Confirm & pay'), findsWidgets);
+    });
+
+    final noFlagCases = <(String, ErrandStatus, DateTime?)>[
+      ('requested', ErrandStatus.requested, null),
+      ('quoted, valid quote', ErrandStatus.quoted, future),
+      ('quoted, quote expired', ErrandStatus.quoted, past),
+      ('accepted, valid quote', ErrandStatus.accepted, future),
+      ('accepted, quote expired', ErrandStatus.accepted, past),
+    ];
+    for (final (name, status, quoteAt) in noFlagCases) {
+      testWidgets('$name, flag false: not shown', (t) async {
+        await open(t, status, flag: false, quoteExpiresAt: quoteAt);
+        expect(find.text(heading), findsNothing);
+        expect(find.text(body), findsNothing);
+        if (status == ErrandStatus.requested) {
+          expect(find.text('Preparing your quote'), findsOneWidget);
+        } else if (quoteAt == past) {
+          expect(find.text('Request a new quote'), findsOneWidget);
+        } else {
+          expect(find.textContaining('Confirm & pay'), findsWidgets);
+        }
+      });
+    }
   });
 
   group('v-notifications service_area.outside', () {
