@@ -4,7 +4,8 @@ import '../theme/nitume_colors.dart';
 
 /// R-24 (C-V7). The complete-state mark (`v-job-summary`
 /// `.profile-avatar-lg` on green-050): a [size] circle in green-050 with a
-/// 28px green check. Green here is the allowed checked/complete state.
+/// 28px green-700 check (complete state; green-700 on green-050 is ~4.0:1,
+/// plain green ~2.6:1 — R-24 amended by the v-active audit).
 ///
 /// Read as [semanticLabel] (`Done`); pass `null` when a nearby heading
 /// already says it, and the mark is skipped by screen readers. The screen
@@ -36,7 +37,7 @@ class SuccessMark extends StatelessWidget {
       child: const Icon(
         Icons.check_rounded,
         size: checkSize,
-        color: NitumeColors.green,
+        color: NitumeColors.green700,
       ),
     );
     final label = semanticLabel;
