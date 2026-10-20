@@ -14,8 +14,9 @@ class _ThrowingFlag implements OneTimeFlag {
 
 Widget _opener(OneTimeFlag flag, List<bool> results) => Builder(
   builder: (context) => TextButton(
-    onPressed: () async =>
-        results.add(await JobStartLocationNotice.showOnce(context, shown: flag)),
+    onPressed: () async => results.add(
+      await JobStartLocationNotice.showOnce(context, shown: flag),
+    ),
     child: const Text('accept'),
   ),
 );

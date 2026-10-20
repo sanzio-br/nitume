@@ -185,9 +185,7 @@ void main() {
       p.dispose();
     });
 
-    testWidgets('another working job keeps the running stream', (
-      tester,
-    ) async {
+    testWidgets('another working job keeps the running stream', (tester) async {
       final source = _FakeSource()..currentFix = _at(-4.03);
       final pings = <LocationPing>[];
       final p = LocationPinger(source: source, onPing: pings.add);
