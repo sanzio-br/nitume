@@ -148,10 +148,7 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
       return ActiveJobsCopy.revoked;
     }
     if (e is NitumeApiException) {
-      if (e.isPayloadTooLarge ||
-          e.code == ApiErrorCodes.evidenceTypeNotAllowed) {
-        return EvidenceCopy.tooLarge;
-      }
+      if (e.isPayloadTooLarge) return EvidenceCopy.tooLarge;
       if (e.code == ApiErrorCodes.evidenceNotAllowed) {
         unawaited(_s.active.load());
         return EvidenceCopy.notAllowed;

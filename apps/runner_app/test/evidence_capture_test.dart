@@ -102,6 +102,12 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.byKey(const ValueKey('evidence-drop-zone')));
       await t.pumpAndSettle();
+      // evidence_type_not_allowed: the generic error, not the size copy.
+      expect(
+        find.text('Something went wrong. Please try again.'),
+        findsOneWidget,
+      );
+      expect(find.text(EvidenceCopy.tooLarge), findsNothing);
       await t.tap(find.bySemanticsLabel('Back'));
       await t.pumpAndSettle();
       expect(find.text('Leave without 1 photo?'), findsOneWidget);
