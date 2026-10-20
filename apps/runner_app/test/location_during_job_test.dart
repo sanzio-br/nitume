@@ -25,6 +25,7 @@ Future<void> _pumpShell(WidgetTester t, TestBackend b) =>
 /// Records what the pinger asks of the device.
 class _RecordingSource implements PositionSource {
   final streams = <bool>[];
+  final controllers = <StreamController<DevicePosition>>[];
   int cancelled = 0;
   int requests = 0;
 
@@ -50,6 +51,7 @@ class _RecordingSource implements PositionSource {
     streams.add(background);
     late final StreamController<DevicePosition> c;
     c = StreamController<DevicePosition>(onCancel: () => cancelled++);
+    controllers.add(c);
     return c.stream;
   }
 }
@@ -249,6 +251,50 @@ void main() {
       expect(source.cancelled, 1);
       expect(pings.pinger.collecting, isFalse);
       expect(source.requests, 0);
+    });
+  });
+
+  group('job ping restart after the system ended the stream', () {
+    testWidgets('a reload of the same job restarts it in the foreground', (
+      t,
+    ) async {
+      final binding = t.binding;
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final source = _RecordingSource();
+      final realtime = FakeRealtime();
+      final pings = JobPings(
+        source: source,
+        live: RunnerLive(
+          client: realtime,
+          runner: realtime,
+          accessToken: () async => 'a',
+        ),
+      );
+      addTearDown(pings.dispose);
+      pings.setWorkingJob('e1');
+      expect(source.streams, [true]);
+
+      // The phone stopped the location service.
+      await source.controllers.last.close();
+      await t.pump();
+      expect(pings.pinger.waitingForForeground, isTrue);
+
+      // Held jobs reload (ActiveJobs._sync) with the same working job.
+      pings.setWorkingJob('e1');
+      expect(source.streams, [true, true]);
+      expect(pings.pinger.waitingForForeground, isFalse);
+
+      // From the background a reload never starts it (row 245)…
+      await source.controllers.last.close();
+      await t.pump();
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      pings.setWorkingJob('e1');
+      expect(source.streams.length, 2);
+      // …the next resume does.
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(source.streams.length, 3);
+      expect(source.requests, 0);
+      pings.dispose();
     });
   });
 

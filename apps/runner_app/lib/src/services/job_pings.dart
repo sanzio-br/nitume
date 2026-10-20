@@ -66,10 +66,13 @@ class JobPings {
     _apply();
   }
 
-  /// The working job (or `null` when there is none). Called at accept, when
-  /// the held jobs load (app open with a working job), when `v-active`
+  /// The working job (or `null` when there is none). Called at accept, on
+  /// every held-jobs reload (app open with a working job), when `v-active`
   /// shows a working job, and with `null` (or another job) when the job
-  /// finishes, reaches AWAITING_CUSTOMER or is reassigned.
+  /// finishes, reaches AWAITING_CUSTOMER or is reassigned. The same job
+  /// again restarts a job stream the system ended, while the app is in the
+  /// foreground (`LocationPinger.setMode`); resume is handled by
+  /// [LocationPingerLifecycle].
   void setWorkingJob(String? errandId) {
     _workingJob = errandId;
     _apply();
