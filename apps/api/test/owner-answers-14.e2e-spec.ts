@@ -315,10 +315,15 @@ describe('Owner answers round 14 (e2e)', () => {
       expect((await detail()).outsideServiceArea).toBe(false);
       await quote(201);
 
-      // QUOTED with the areas shrunk again: flagged (a re-quote would be refused).
+      // QUOTED with the areas shrunk again: not flagged while the quote is
+      // still valid (row 249 b: the customer can still pay) ...
       spy?.mockRestore();
       onlyArea('oa14-nbo5', NAIROBI);
+      expect(await detail()).toMatchObject({ status: 'QUOTED', outsideServiceArea: false });
+      // ... flagged once it has expired (a re-quote would be refused).
+      await db().query(`UPDATE "quotes" SET "expiresAt" = now() - interval '1 minute' WHERE "errandId" = $1`, [task.id]);
       expect(await detail()).toMatchObject({ status: 'QUOTED', outsideServiceArea: true });
+      expect((await listed())?.outsideServiceArea).toBe(true);
 
       // Cancelled: no longer flagged.
       await http().patch(`/api/v1/errands/${task.id}/status`).set(bearer(customer.token)).send({ to: 'CANCELLED' }).expect(200);

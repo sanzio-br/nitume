@@ -13,7 +13,11 @@ import { Quote } from './quote.entity';
 const PICKUP = { lat: -1.2, lng: 36.8 };
 const DROPOFF = { lat: -4.04, lng: 39.7 };
 
-const build = (status: ErrandStatus, inArea: (p: { lat: number; lng: number }) => boolean) => {
+const build = (
+  status: ErrandStatus,
+  inArea: (p: { lat: number; lng: number }) => boolean,
+  latestQuote: { id: string; expiresAt: Date | null } | null = { id: 'q-1', expiresAt: new Date(Date.now() - 60_000) },
+) => {
   const errand = { id: 'e-1', customerId: 'c-1', status, deadlineAt: new Date(Date.now() + 3_600_000) } as Errand;
   const stored = [
     { pointType: ErrandPointType.DROPOFF, coordinates: { coordinates: [DROPOFF.lng, DROPOFF.lat] } },
@@ -36,7 +40,14 @@ const build = (status: ErrandStatus, inArea: (p: { lat: number; lng: number }) =
     [ErrandLocation, { find: vi.fn(() => Promise.resolve(stored)), create: vi.fn((r: object) => r), save: vi.fn((r: unknown) => Promise.resolve(r)) }],
     [ErrandStatusHistory, { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) }],
     [CustomerProfile, { findOne: vi.fn(() => Promise.resolve({ id: 'c-1' })) }],
-    [Quote, { create: vi.fn((r: object) => r), save: vi.fn((r: object) => Promise.resolve(r)) }],
+    [
+      Quote,
+      {
+        create: vi.fn((r: object) => r),
+        save: vi.fn((r: object) => Promise.resolve(r)),
+        findOne: vi.fn(() => Promise.resolve(latestQuote)),
+      },
+    ],
   ]);
   const manager = { getRepository: (entity: unknown) => repos.get(entity) };
   const inServiceArea = vi.fn(inArea);
@@ -119,6 +130,27 @@ describe('row 233: tasks inside no service area', () => {
     });
   });
 
+  it('row 249 (b): a re-quote of a still-valid quote is refused as quote_still_valid, never as out-of-area, and sends no notification', async () => {
+    for (const status of [ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]) {
+      const valid = build(status, () => false, { id: 'q-1', expiresAt: new Date(Date.now() + 3_600_000) });
+      expect(await codeOf(valid.service.quote('e-1', { total: 500 } as never, ADMIN))).toMatchObject({
+        code: 'quote_still_valid',
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(valid.inServiceArea).not.toHaveBeenCalled();
+      expect(valid.emit).not.toHaveBeenCalledWith(OUTSIDE_SERVICE_AREA_EVENT, expect.anything());
+    }
+  });
+
+  it('row 249 (b): an expired-quote re-quote outside every area is refused and tells the customer', async () => {
+    const expired = build(ErrandStatus.ACCEPTED, () => false);
+    expect(await codeOf(expired.service.quote('e-1', { total: 500 } as never, ADMIN))).toMatchObject({
+      code: 'location_outside_service_area',
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(expired.emit).toHaveBeenCalledWith(OUTSIDE_SERVICE_AREA_EVENT, { errandId: 'e-1', reference: 'NT-42' });
+  });
+
   it('a quote refused as out-of-area tells the customer (row 236); a create or submit refusal does not', async () => {
     const requested = build(ErrandStatus.REQUESTED, () => false);
     await codeOf(requested.service.quote('e-1', { total: 500 } as never, ADMIN));
@@ -133,7 +165,13 @@ describe('row 233: tasks inside no service area', () => {
 
 /** Row 236 (C-14-2): `outsideServiceArea` on the customer errand view. */
 describe('row 236: outsideServiceArea on the errand view', () => {
-  const viewFor = (status: ErrandStatus, inArea: (p: { lat: number; lng: number }) => boolean) => {
+  const EXPIRED = [{ id: 'q-1', errandId: 'e-1', expiresAt: new Date(Date.now() - 60_000), acceptedAt: null, createdAt: new Date() }];
+  const VALID = [{ id: 'q-1', errandId: 'e-1', expiresAt: new Date(Date.now() + 3_600_000), acceptedAt: null, createdAt: new Date() }];
+  const viewFor = (
+    status: ErrandStatus,
+    inArea: (p: { lat: number; lng: number }) => boolean,
+    quotes: unknown[] = EXPIRED,
+  ) => {
     const errand = { id: 'e-1', customerId: 'c-1', status, quotedPrice: null } as unknown as Errand;
     const stored = [
       { errandId: 'e-1', pointType: ErrandPointType.DROPOFF, coordinates: { coordinates: [DROPOFF.lng, DROPOFF.lat] } },
@@ -152,7 +190,7 @@ describe('row 236: outsideServiceArea on the errand view', () => {
       {} as never,
       { emit: vi.fn() } as never,
       { inServiceArea, publicSummaries: vi.fn(() => Promise.resolve(new Map())) } as never,
-      none as never,
+      { find: vi.fn(() => Promise.resolve(quotes)) } as never,
     );
     Object.assign(service, { canView: () => Promise.resolve(true) });
     return { service, inServiceArea };
@@ -161,7 +199,7 @@ describe('row 236: outsideServiceArea on the errand view', () => {
   const ADMIN_VIEWER = { role: 'admin', userId: 'a-1' } as never;
 
   it.each([ErrandStatus.REQUESTED, ErrandStatus.QUOTED, ErrandStatus.ACCEPTED])(
-    'is true for a %s task whose first point is outside every area (the quote check)',
+    'is true for a %s task (QUOTED/ACCEPTED: quote expired) whose first point is outside every area',
     async (status) => {
       const { service, inServiceArea } = viewFor(status, () => false);
       const view = await service.getDetail('e-1', CUSTOMER);
@@ -170,6 +208,27 @@ describe('row 236: outsideServiceArea on the errand view', () => {
       expect(inServiceArea).toHaveBeenCalledWith(expect.objectContaining(PICKUP));
     },
   );
+
+  it('is true for REQUESTED whatever the quotes (row 249 b)', async () => {
+    const { service } = viewFor(ErrandStatus.REQUESTED, () => false, []);
+    expect((await service.getDetail('e-1', CUSTOMER)).outsideServiceArea).toBe(true);
+  });
+
+  it.each([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED])(
+    'row 249 (b): is false for %s while the quote is still valid (the customer can still pay), without the area check',
+    async (status) => {
+      const { service, inServiceArea } = viewFor(status, () => false, VALID);
+      expect((await service.getDetail('e-1', CUSTOMER)).outsideServiceArea).toBe(false);
+      expect(inServiceArea).not.toHaveBeenCalled();
+    },
+  );
+
+  it('row 249 (b): the list view applies the same rule per task', async () => {
+    const { service } = viewFor(ErrandStatus.QUOTED, () => false, VALID);
+    const [view] = await (service as unknown as { withAssignments: (e: unknown[], v: unknown) => Promise<{ outsideServiceArea?: boolean }[]> })
+      .withAssignments([{ id: 'e-1', customerId: 'c-1', status: ErrandStatus.QUOTED, quotedPrice: null }], CUSTOMER);
+    expect(view.outsideServiceArea).toBe(false);
+  });
 
   it('is false when the first point is inside an area (a drop-off outside does not count)', async () => {
     const { service } = viewFor(ErrandStatus.REQUESTED, (p) => p.lat === PICKUP.lat);

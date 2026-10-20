@@ -161,13 +161,15 @@ export type ErrandView = Errand & {
    */
   quoteAcceptanceRequired: boolean;
   /**
-   * Customer views only (row 236, C-14-2): true when the task is REQUESTED,
-   * QUOTED or ACCEPTED and its first point (task site, else pickup, else
-   * drop-off) is inside no configured service area, i.e. a quote or
-   * re-quote is refused now with 422 `location_outside_service_area`. The
-   * customer is told and may cancel. Recomputed on every read against the
-   * current RUNNER_SERVICE_AREAS (no stored flag): it turns false again if
-   * the areas grow to cover the task. Always false with no area configured.
+   * Customer views only (row 236, C-14-2; narrowed by row 249 (b), owner
+   * 2026-10-20): true when the task's first point (task site, else pickup,
+   * else drop-off) is inside no configured service area AND the task is
+   * REQUESTED, or QUOTED/ACCEPTED with its newest quote expired, i.e. a
+   * quote or re-quote is refused now with 422 `location_outside_service_area`.
+   * A QUOTED/ACCEPTED task whose quote is still valid can still be paid, so
+   * it is false there. The customer is told and may cancel. Recomputed on
+   * every read against the current RUNNER_SERVICE_AREAS and clock (no stored
+   * flag). Always false with no area configured.
    */
   outsideServiceArea?: boolean;
   /**
@@ -550,6 +552,15 @@ const DEADLINE_EDITABLE: ReadonlySet<ErrandStatus> = new Set([
 /** States in which an admin may replace an expired quote (rows 46, 72). */
 const REQUOTABLE = new Set<ErrandStatus>([ErrandStatus.QUOTED, ErrandStatus.ACCEPTED]);
 
+/**
+ * Row 249 (b): a quote has expired once its `expiresAt` is past. A quote
+ * without an expiry (none since row 83) or no quote at all never counts as
+ * expired, the same reading as the re-quote's `quote_still_valid` refusal.
+ */
+export function quoteExpired(quote: Pick<Quote, 'expiresAt'> | null | undefined, now: Date = new Date()): boolean {
+  return Boolean(quote?.expiresAt && quote.expiresAt.getTime() <= now.getTime());
+}
+
 /** Row 236: the statuses in which `quote` runs the row-233 area check (REQUESTED plus re-quote). */
 const QUOTE_AREA_CHECKED = new Set<ErrandStatus>([ErrandStatus.REQUESTED, ...REQUOTABLE]);
 
@@ -660,8 +671,18 @@ export class ErrandsService {
    * Row 236: `outsideServiceArea` of the customer view; the same test as the
    * quote refusal (`assertInServiceArea` on the stored points).
    */
-  private outsideServiceAreaOf(status: ErrandStatus, points: readonly ErrandLocationView[]): boolean {
+  private outsideServiceAreaOf(
+    status: ErrandStatus,
+    points: readonly ErrandLocationView[],
+    quote: Pick<Quote, 'expiresAt'> | null,
+    now: Date = new Date(),
+  ): boolean {
     if (!QUOTE_AREA_CHECKED.has(status)) {
+      return false;
+    }
+    // Row 249 (b): on QUOTED/ACCEPTED only once the quote has expired (a
+    // still-valid quote can be paid; the same test as `quote_still_valid`).
+    if (REQUOTABLE.has(status) && !quoteExpired(quote, now)) {
       return false;
     }
     const first = firstPointOf(points);
@@ -1265,7 +1286,11 @@ export class ErrandsService {
         ...this.derivedFields(errand, newestQuote.get(errand.id) ?? null),
       });
       if (customer) {
-        view.outsideServiceArea = this.outsideServiceAreaOf(errand.status, locations);
+        view.outsideServiceArea = this.outsideServiceAreaOf(
+          errand.status,
+          locations,
+          newestQuote.get(errand.id) ?? null,
+        );
       }
       return viewer?.role === UserRole.RUNNER ? withoutCustomerPricing(view) : view;
     });
@@ -2202,8 +2227,8 @@ export class ErrandsService {
         where: { id: errandId },
         lock: { mode: 'pessimistic_write' },
       });
-      // Row 233: no quote or re-quote for a task inside no service area.
-      if (current && QUOTE_AREA_CHECKED.has(current.status)) {
+      // Row 233: no first quote for a task inside no service area.
+      if (current && current.status === ErrandStatus.REQUESTED) {
         await this.assertStoredInServiceArea(manager, errandId);
       }
       if (current && REQUOTABLE.has(current.status)) {
@@ -2211,7 +2236,7 @@ export class ErrandsService {
           throw new ForbiddenException(`Actor '${actor.type}' cannot re-quote an errand`);
         }
         const latest = await this.currentQuote(errandId, manager);
-        if (!latest?.expiresAt || latest.expiresAt.getTime() > Date.now()) {
+        if (!quoteExpired(latest)) {
           throw new ApiError(
             HttpStatus.CONFLICT,
             'quote_still_valid',
@@ -2219,6 +2244,10 @@ export class ErrandsService {
             { quoteId: latest?.id ?? null, expiresAt: latest?.expiresAt?.toISOString() ?? null },
           );
         }
+        // Row 233 + row 249 (b): the area check (and so the row-236
+        // customer notification) runs only once the quote has expired, so
+        // a customer is never told to cancel a task they can still pay for.
+        await this.assertStoredInServiceArea(manager, errandId);
         for (const guard of this.requoteGuards) {
           await guard(manager, errandId);
         }
