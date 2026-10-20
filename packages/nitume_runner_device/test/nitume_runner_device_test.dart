@@ -249,6 +249,18 @@ void main() {
     expect(m(PermissionStatus.restricted), CameraAccess.deniedForever);
   });
 
+  test('SharedPreferencesOneTimeFlag stays set for the install', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    final flag = SharedPreferencesOneTimeFlag();
+    expect(await flag.isSet(), isFalse);
+    await flag.set();
+    expect(await SharedPreferencesOneTimeFlag().isSet(), isTrue);
+    // Log out clears the offline queue, not this flag.
+    await SharedPreferencesQueueStore().write(const []);
+    expect(await SharedPreferencesOneTimeFlag().isSet(), isTrue);
+  });
+
   test('SharedPreferencesQueueStore round-trips through the queue', () async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
