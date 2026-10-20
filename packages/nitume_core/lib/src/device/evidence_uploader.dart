@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../api/api_exception.dart';
+
 import '../models/enums.dart';
 import '../models/errand_activity.dart';
 import '../storage/evidence_file_store.dart';
@@ -77,6 +79,7 @@ class EvidenceUploadItem extends ChangeNotifier {
   Evidence? _evidence;
   bool _fileMissing = false;
   bool _fileReleased = false;
+  Object? _error;
 
   /// Set when keeping failed: [path] is the picker's file, outside the
   /// [EvidenceFileStore], so it is released with [CapturedImage.discard].
@@ -95,6 +98,20 @@ class EvidenceUploadItem extends ChangeNotifier {
   /// (proposed copy: `This photo is no longer on your phone. Take it again.`).
   bool get fileMissing => _fileMissing;
 
+  /// Why the last attempt failed, while [status] is `failed`; `null`
+  /// otherwise. A [NitumeApiException] for an API refusal (read it with
+  /// [lastApiError]), a `FileSystemException` when the file is missing.
+  Object? get lastError => _error;
+
+  /// [lastError] when it is an API refusal: switch on its `code`
+  /// (`evidence_not_allowed`, `reimbursement_window_closed`,
+  /// `evidence_type_not_allowed`, a 413 …) and read typed details through
+  /// `RunnerErrorDetails` (`evidenceRefusedStatus`, `receiptWindowEndsAt` …).
+  NitumeApiException? get lastApiError => switch (_error) {
+    final NitumeApiException e => e,
+    _ => null,
+  };
+
   /// Retry makes sense: failed, and the file is still there.
   bool get canRetry => _status == EvidenceUploadStatus.failed && !_fileMissing;
 
@@ -107,8 +124,14 @@ class EvidenceUploadItem extends ChangeNotifier {
     EvidenceUploadStatus.failed => CaptureState.failed,
   };
 
-  void _set(EvidenceUploadStatus s, {Evidence? evidence, bool? missing}) {
+  void _set(
+    EvidenceUploadStatus s, {
+    Evidence? evidence,
+    bool? missing,
+    Object? error,
+  }) {
     _status = s;
+    _error = s == EvidenceUploadStatus.failed ? error : null;
     _evidence = evidence ?? _evidence;
     _fileMissing = missing ?? _fileMissing;
     notifyListeners();
@@ -284,13 +307,15 @@ class EvidenceUploader extends ChangeNotifier {
     EvidenceUploadStatus s, {
     Evidence? evidence,
     bool? missing,
+    Object? error,
   }) async {
     if (!_disposed) {
-      item._set(s, evidence: evidence, missing: missing);
+      item._set(s, evidence: evidence, missing: missing, error: error);
       notifyListeners();
       return;
     }
     item._status = s;
+    item._error = s == EvidenceUploadStatus.failed ? error : null;
     item._evidence = evidence ?? item._evidence;
     item._fileMissing = missing ?? item._fileMissing;
     if (s == EvidenceUploadStatus.failed) await _release(item);
@@ -301,8 +326,8 @@ class EvidenceUploader extends ChangeNotifier {
     Uint8List bytes;
     try {
       bytes = await _read(item.path);
-    } on FileSystemException {
-      await _finish(item, EvidenceUploadStatus.failed, missing: true);
+    } on FileSystemException catch (e) {
+      await _finish(item, EvidenceUploadStatus.failed, missing: true, error: e);
       return;
     }
     try {
@@ -340,7 +365,7 @@ class EvidenceUploader extends ChangeNotifier {
         item._fileReleased = true;
         await _finish(item, EvidenceUploadStatus.queued);
       } else {
-        await _finish(item, EvidenceUploadStatus.failed);
+        await _finish(item, EvidenceUploadStatus.failed, error: e);
       }
     }
   }

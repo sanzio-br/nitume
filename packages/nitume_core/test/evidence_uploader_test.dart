@@ -440,4 +440,55 @@ void main() {
       expect(uploads.jobIds, isEmpty);
     });
   });
+
+  group('lastError', () {
+    test('a refusal is kept with its code and typed details, cleared on '
+        'retry success', () async {
+      final u = make();
+      failWith = const NitumeApiException(
+        message: 'closed',
+        statusCode: 409,
+        code: ApiErrorCodes.reimbursementWindowClosed,
+        details: {'windowEndsAt': '2026-10-19T09:00:00.000Z'},
+      );
+      final item = await u.captureAndUpload('e1', type: EvidenceType.receipt);
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(item.lastApiError!.code, ApiErrorCodes.reimbursementWindowClosed);
+      expect(
+        item.lastApiError!.receiptWindowEndsAt,
+        DateTime.utc(2026, 10, 19, 9),
+      );
+      expect(item.lastError, same(failWith));
+      failWith = null;
+      await u.retry(item);
+      expect(item.status, EvidenceUploadStatus.uploaded);
+      expect(item.lastError, isNull);
+      expect(item.lastApiError, isNull);
+    });
+
+    test('a missing file is a FileSystemException, not an API error', () async {
+      final u = make();
+      failWith = const NitumeApiException(message: 'bad', statusCode: 422);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      for (final f in kept()) {
+        f.deleteSync();
+      }
+      await u.retry(item!);
+      expect(item.fileMissing, isTrue);
+      expect(item.lastError, isA<FileSystemException>());
+      expect(item.lastApiError, isNull);
+    });
+
+    test('queued items carry no error', () async {
+      final queue = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async => ReplayOutcome.done,
+      );
+      final u = make(queue: queue);
+      failWith = const NitumeApiException(message: 'x', statusCode: 503);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.status, EvidenceUploadStatus.queued);
+      expect(item.lastError, isNull);
+    });
+  });
 }
