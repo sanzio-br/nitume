@@ -66,6 +66,11 @@ class ActiveJobs extends ChangeNotifier {
         _priceDecided[e.errandId] = e;
         unawaited(load());
       }),
+      // Row 248: the customer paid the difference; the reload raises
+      // requiredPurchase and clears differenceAwaitingPayment.
+      live.priceDifferencePayments.listen((e) {
+        if (_isHeld(e.errandId)) unawaited(load());
+      }),
     ]);
   }
 

@@ -7,6 +7,7 @@ import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
 import '../../services/job_start_notice.dart';
 import '../../services/location_gate.dart';
+import '../../util/display.dart';
 import '../../widgets/common.dart';
 import 'jobs_tab.dart';
 import 'offer_presentation.dart';
@@ -229,7 +230,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   Widget _card(RunnerJobView job) {
     final km = offerDistanceKm(job, _fix);
     final deadline = job.deadlineAt;
-    final item = job.itemAmount;
+    // Row 248: what the runner may spend (requiredPurchase on
+    // send_to_runner), never a raised price still waiting for payment.
+    final item = job.itemAmount == null ? null : amountToSpend(job);
     final paid = howItsPaid(job);
     final pickup = _point(job, ErrandPointType.pickup);
     final dropoff = _point(job, ErrandPointType.dropoff);

@@ -145,6 +145,9 @@ class _ActiveTabState extends State<ActiveTab> {
       _subs.addAll([
         s.live.evidenceUploads.listen((e) => _refreshDetails(e.errandId)),
         s.live.priceChangeDecisions.listen((e) => _refreshDetails(e.errandId)),
+        s.live.priceDifferencePayments.listen(
+          (e) => _refreshDetails(e.errandId),
+        ),
       ]);
       setState(() {});
       s.active.load();
@@ -185,7 +188,9 @@ class _ActiveTabState extends State<ActiveTab> {
     }
     final job = _shown();
     if (job == null) return;
-    final key = '${job.id}:${_a.statusOf(job).wire}:${job.itemAmount}';
+    final key =
+        '${job.id}:${_a.statusOf(job).wire}:${job.itemAmount}:'
+        '${job.requiredPurchase}:${job.isAwaitingDifference}';
     if (key == _detailsKey) return;
     _detailsKey = key;
     // v-active opened on a working job: job pings for it (row 245; a no-op
@@ -575,10 +580,14 @@ class _ActiveTabState extends State<ActiveTab> {
           padding: pad,
           child: NitumeNotice(message: ActiveCopy.priceRejected),
         ),
-      // send_to_runner: the approved state waits for row 248 (difference
-      // paid), so no "approved" line is shown there yet.
+      // send_to_runner (row 248): "approved" only once the difference is
+      // paid and the buy limit is the new amount; until then the
+      // difference notice shows (_body).
       if (decision?.outcome == PriceDecisionOutcome.approved &&
-          job.merchantRoute != MerchantRoute.sendToRunner)
+          !job.isAwaitingDifference &&
+          (job.merchantRoute != MerchantRoute.sendToRunner ||
+              num.tryParse(job.requiredPurchase) ==
+                  num.tryParse(decision!.toPrice)))
         Padding(
           padding: pad,
           child: _amountNotice(
@@ -844,6 +853,18 @@ class _ActiveTabState extends State<ActiveTab> {
           ),
         ]);
       }
+    }
+    if (job.isAwaitingDifference) {
+      // Row 248: buy only up to the old amount until the customer pays.
+      out.add(
+        const Padding(
+          padding: pad,
+          child: NitumeNotice(
+            key: ValueKey('difference-awaiting-payment'),
+            message: RunnerPriceChangeCopy.differenceAwaitingPayment,
+          ),
+        ),
+      );
     }
     out.addAll(_checklist(job, status, d));
     if (canRequestPrice(job, status)) out.addAll(_price(job, d));

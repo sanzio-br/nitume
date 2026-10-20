@@ -115,12 +115,16 @@ Future<void> setUpSurface(WidgetTester tester) async {
 /// Fixed test time: 2026-10-19 10:00 EAT.
 final testNow = DateTime.utc(2026, 10, 19, 7);
 
-NitumeApiException apiError(String? code, {int status = 409}) =>
-    NitumeApiException(
-      message: code ?? 'error',
-      statusCode: status,
-      code: code,
-    );
+NitumeApiException apiError(
+  String? code, {
+  int status = 409,
+  Map<String, dynamic> details = const {},
+}) => NitumeApiException(
+  message: code ?? 'error',
+  statusCode: status,
+  code: code,
+  details: details,
+);
 
 const networkError = NitumeApiException(
   message: 'offline',
@@ -211,6 +215,8 @@ RunnerJobView offer({
   List<ErrandItem> items = const [],
   List<ErrandLocation>? locations,
   String? runnerNotes,
+  String? requiredPurchase,
+  DifferenceAwaitingPayment? differenceAwaitingPayment,
 }) {
   final site = ErrandLocation(
     pointType: ErrandPointType.taskSite,
@@ -227,9 +233,12 @@ RunnerJobView offer({
     description: description,
     urgency: ErrandUrgency.standard,
     runnerFee: runnerFee,
-    requiredPurchase: merchantRoute == MerchantRoute.sendToRunner
-        ? (itemAmount ?? '0.00')
-        : '0.00',
+    requiredPurchase:
+        requiredPurchase ??
+        (merchantRoute == MerchantRoute.sendToRunner
+            ? (itemAmount ?? '0.00')
+            : '0.00'),
+    differenceAwaitingPayment: differenceAwaitingPayment,
     maxPurchaseAdvance: '3000.00',
     overPurchaseLimit: overPurchaseLimit,
     itemAmount: itemAmount,
@@ -259,6 +268,8 @@ RunnerJobView heldJob({
   DateTime? deadlineAt,
   String? runnerNotes,
   List<ErrandLocation>? locations,
+  String? requiredPurchase,
+  DifferenceAwaitingPayment? differenceAwaitingPayment,
 }) => offer(
   id: id,
   status: status,
@@ -269,6 +280,8 @@ RunnerJobView heldJob({
   deadlineAt: deadlineAt,
   runnerNotes: runnerNotes,
   locations: locations,
+  requiredPurchase: requiredPurchase,
+  differenceAwaitingPayment: differenceAwaitingPayment,
   assignment: AssignmentStatus.accepted,
 );
 
@@ -541,6 +554,8 @@ class FakeRunnerJobs extends RunnerJobsRepository {
             deadlineAt: j.deadlineAt,
             runnerNotes: j.runnerNotes,
             locations: j.locations,
+            requiredPurchase: j.requiredPurchase,
+            differenceAwaitingPayment: j.differenceAwaitingPayment,
           )
         else
           j,
@@ -764,6 +779,7 @@ class FakeRealtime implements RealtimeClient, RunnerRealtimeClient {
   final offered = StreamController<JobOffered>.broadcast();
   final withdrawn = StreamController<JobOfferWithdrawn>.broadcast();
   final decided = StreamController<PriceChangeDecided>.broadcast();
+  final differencePaid = StreamController<PriceDifferencePaid>.broadcast();
   final evidence = StreamController<EvidenceUploaded>.broadcast();
 
   void setState(RealtimeConnectionState s) {
@@ -817,6 +833,9 @@ class FakeRealtime implements RealtimeClient, RunnerRealtimeClient {
   Stream<JobOfferWithdrawn> get jobOfferWithdrawals => withdrawn.stream;
   @override
   Stream<PriceChangeDecided> get priceChangeDecisions => decided.stream;
+  @override
+  Stream<PriceDifferencePaid> get priceDifferencePayments =>
+      differencePaid.stream;
 
   @override
   Future<LocationPingAck> sendLocationPing(LocationPing ping) async {

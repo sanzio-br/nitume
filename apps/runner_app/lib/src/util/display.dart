@@ -1,3 +1,4 @@
+import 'package:flutter/painting.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 /// Display rules from `_shared.md` §7. Nothing here is stored or sent.
@@ -30,3 +31,28 @@ const wrongAccountMessage =
 
 /// Suspended or banned account (`_shared.md` §7).
 const suspendedMessage = "This account can't sign in. Contact support.";
+
+/// The most the runner may spend on the item (row 248): `requiredPurchase`
+/// on `send_to_runner` (it stays at the old amount while
+/// `differenceAwaitingPayment` is set, although `itemAmount` is already the
+/// new price); the item amount otherwise (Nitume pays the merchant).
+String? amountToSpend(RunnerJobView job) =>
+    job.merchantRoute == MerchantRoute.sendToRunner
+    ? job.requiredPurchase
+    : job.itemAmount;
+
+/// `RunnerEvidenceCopy.tooLarge(maxBytes)` with the size in Fira Code
+/// (row 252).
+InlineSpan evidenceTooLargeSpan(int maxBytes) {
+  final full = RunnerEvidenceCopy.tooLarge(maxBytes);
+  final limit = RunnerEvidenceCopy.tooLargeLimit(maxBytes);
+  final at = full.indexOf(limit);
+  if (at < 0) return TextSpan(text: full);
+  return TextSpan(
+    children: [
+      TextSpan(text: full.substring(0, at)),
+      NumSpan(limit),
+      TextSpan(text: full.substring(at + limit.length)),
+    ],
+  );
+}
