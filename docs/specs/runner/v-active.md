@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_runner_app.html` lines 210–244 (`#v-active`, root view)
 - Shared conventions: `_shared.md` (§6 runner transitions and active set, §8 reimbursement, §10 location/offline)
 - Implementation: `apps/runner_app/lib/src/screens/active/active_tab.dart` on `main` is a placeholder (`RootTabPlaceholder(title: 'Active')`); nothing of this spec is built
-- Status: missing
+- Status: matches-design (built on `feat/runner-answers`; round 18 audit 2026-10-20 PASS, `docs/audits/runner-gap-report.md` §23). SCREEN_MAP is authoritative.
 - Refreshed 2026-10-19 (design-auditor, `docs/runner-v-active-spec`) for owner rows 185, 197, 205, 206, 211, 235, 239 and the batch-1 review notes (B-1, S-1, iOS "Always" wording); corrected 2026-10-19 after reviewer FAIL 1 (B-1: no background permission needed). Everything not drawn in the mockup is marked **(proposed)**.
 
 ## Purpose
@@ -83,7 +83,7 @@ The runner's working screen for the job they hold: navigate to the task, move th
    3. `Receipt`: only on `send_to_runner` with an item amount (Buy For Me, or Get It For Me with a purchase; rows 95, 105).
       - Done when at least 1 `receipt` evidence exists.
       - Sub `Required for your reimbursement` / `1 receipt uploaded`.
-      - Trailing `Upload`, from ARRIVED to AWAITING_CUSTOMER.
+      - Trailing `Upload`, from ARRIVED to AWAITING_CUSTOMER, and in DISPUTED (owner row 254: receipts only; `Photos` has no `Upload` there).
    4. `Notes for the customer`:
       - done when `runnerNotes` is set;
       - sub `Write a short summary` / the first 40 characters;
@@ -95,7 +95,8 @@ The runner's working screen for the job they hold: navigate to the task, move th
    - C-08 label `Price too low for the item found?`;
    - R-09 row (core `MenuRow` with `leadingIcon` and `subtitle`): leading outline alert icon slate-600 (mockup emoji `⚠️` replaced, `_shared.md` §2), title `Request price authorization`, sub `Ask the customer to approve a higher amount`, chevron.
    - Request pending: the row is replaced by C-40 `Waiting for the customer to approve KSh 45,000.` (amount Fira Code). The forward action is disabled with the caption `Wait for the customer's answer to finish.` (proposed: the runner should not finish until the customer decides).
-   - Approved: C-40 `Price change approved. New item amount KSh 45,000.` For `send_to_runner` see RQ-36 (approved but the difference not paid yet).
+   - Approved: C-40 `Price change approved. New item amount KSh 45,000.`
+   - `send_to_runner`, approved but the difference not paid yet (owner row 248, 2026-10-20, copy exact): C-40 (default tone) `Approved. Waiting for the customer to pay the difference.` while `RunnerJobView.differenceAwaitingPayment` is set; the approved line above shows only once it clears and `requiredPurchase` equals the new amount (`price_change:difference_paid` → reload). Placement (accepted round 18): with the state notices, above the `Checklist` label, in any active-set state while the flag is set, so it stays visible after the job leaves IN_PROGRESS. The runner buys only up to `requiredPurchase` (the old amount) meanwhile.
    - Rejected by an admin (row 55): C-40 `Price change not approved. Continue at the original amount or contact support.` (proposed).
    - Rejected by the customer: the errand goes CANCELLED (row 37) and the ended-state card shows.
 8. Primary state action (margin 6 20 6): C-01 full-width pill, with a 12 slate-600 caption centred under it. Mockup: a green card with white text; the design-system button wins.
@@ -114,17 +115,19 @@ The runner's working screen for the job they hold: navigate to the task, move th
 10. `Other jobs` (above, proposed).
 11. Tab bar (Active selected).
 
-### Location during a job (while-in-use only, proposed; RQ-33 = BOARD row 245, RQ-34 = row 246, open)
+### Location during a job (while-in-use only; decided, owner rows 245 / 246, 2026-10-20)
 - Permission: **while-in-use only, on both platforms.** `x-location-disclosure` asks for it before the runner goes online or accepts (built). This screen asks for nothing further: there is no "Allow all the time" or "Always" step and no second OS prompt.
 - How sharing continues when the runner switches apps or locks the phone:
   - **Android**: the location foreground service (type `location`, persistent notification `Nitume Runner` / `Sharing your location for your active job.`, final, `_shared.md` §10). It starts while the app is visible: at accept, or when `v-active` opens on a working job. On Android 10+ a location foreground service started from the foreground keeps while-in-use access after the app leaves the screen, so `ACCESS_BACKGROUND_LOCATION` is not needed. Remove it from the manifest: it would trigger Google Play's background-location declaration and review for more access than the app uses. **To verify on an Android 14 device during C-V5.** The service must be started while the app is in the foreground, never from the background.
   - **iOS**: the `location` background mode (built in `Info.plist`) keeps updates started in the foreground running in the background and on a locked screen, with the blue location indicator. Remove `NSLocationAlwaysAndWhenInUseUsageDescription`; the app never asks for Always.
 - The real limit: sharing **stops** after a force-quit (swiped away), or if Android ends the service or the app's process (e.g. battery optimisation). It stays stopped until the runner opens the app again. On opening, when the runner holds a working job, the pinger restarts at once in `PingActiveJob` mode (no prompt, nothing extra shown). The app never says sharing continues "when the app is closed".
-- Job-start notice (proposed, replaces the earlier background-permission dialog; no OS step): after the first successful accept, once per install, C-35 info dialog with one button:
+- Job-start notice (copy approved word for word, owner row 246; replaces the earlier background-permission dialog; no OS step): after the first successful accept, once per install, C-35 info dialog with one button:
   - title `Sharing your location during jobs`;
   - body `While you're on a job, Nitume Runner shares your location with the customer, also when you switch apps or lock your phone. It stops when you finish the task or go offline. If you close the app completely, or your phone stops it to save battery, sharing stops until you open the app again.`;
   - button `OK`.
   - It never blocks or delays the accept (the job is already RUNNER_EN_ROUTE).
+  - Shown over the shell after an accept from `v-jobs` or `v-job-detail`; the once-per-install flag is set when it opens (a kill while it is open does not bring it back) and survives log out; an unreadable flag shows it (built, accepted round 18).
+- Android notification channel name (proposed 2026-10-20, round 18): `Location during jobs`. Android shows it in the app's notification settings; today it is the `geolocator` default `Background Location`, which reads as background access the app does not ask for. Core-ui passes it as `notificationChannelName` (`_shared.md` §10).
 - Location trouble during the working job (`PingerStatus.noFix`: services off, permission revoked or reduced to approximate): C-40 `Location is off. The customer can't see where you are.` + C-04 `Open Settings` (proposed). Never block the job, a transition or evidence on location.
 
 ### Confirm dialogs (C-35, proposed)
@@ -157,7 +160,7 @@ The runner's working screen for the job they hold: navigate to the task, move th
   - C-40 `Waiting for the customer to confirm. You'll be notified.`;
   - checklist read-only except `Notes` and `Receipt`;
   - C-04 `View job summary` → `v-job-summary`.
-- **DISPUTED**: C-40 `The customer reported a problem. Our team is reviewing it.` Once resolved, the resolution note (row 79) under C-08 `Outcome` (13 Sans), as the customer sees it.
+- **DISPUTED**: C-40 `The customer reported a problem. Our team is reviewing it.` Checklist read-only except the `Receipt` `Upload` (row 254). Once resolved, the resolution note (row 79) under C-08 `Outcome` (13 Sans), as the customer sees it.
 - **COMPLETED / CONFIRMED / SETTLED**:
   - C-07 card with the R-01 chip, `Job complete`, C-04 `View job summary`, C-03 `Back to jobs`;
   - the job leaves the screen when the runner taps `Back to jobs` or opens another job (proposed).
@@ -195,7 +198,7 @@ The runner's working screen for the job they hold: navigate to the task, move th
 | Notes editor | C-10 `NitumePushedHeader`, C-17 `NitumeField.multiline`, `NitumeFixedCta` | exists |
 | Other jobs rows | `TaskRow` (title, Fira Code meta, trailing chip) | exists |
 | Empty / loading / error | C-33 `NitumeEmptyState`, `SkeletonCard`, `NitumeErrorState` | exists |
-| Pings | R-20 `LocationPinger` (`PingActiveJob`, `PingerStatus`) | exists; **change** C-V5 (foreground-service start rule, Android 14 check, drop background permission) |
+| Pings | R-20 `LocationPinger` (`PingActiveJob`, `PingerStatus`) | exists; C-V5 built round 18 (foreground-only start, `LocationPingerLifecycle`, restart on open); Android 14 / iOS device checks still open |
 | Offline queue | R-21 `OfflineActionQueue` + `RunnerQueuedActions` | exists |
 | Held-jobs data | R-19 `RunnerJobsRepository` | **change** C-V3 (held jobs in runner projection, without open offers) |
 | Price-change decided event | core `RealtimeEvents` | **change** C-V6 (after API item A8) |
@@ -223,7 +226,8 @@ For api-contract: what the screen needs. Item numbers match `docs/audits/runner-
 - **Evidence list**: `GET /errands/:id/evidence` (exists, signed URLs). Upload: `v-evidence-capture`.
 - **Notes**: `PATCH /errands/:id/runner-notes` `{ runnerNotes }` (exists; ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER).
 - **Price change**: `GET /errands/:id/price-change?status=requested` (exists, runner allowed).
-  - Needed: `price_change:decided` to the runner (A8, RA-5): `{ errandId, requestId, status: approved | rejected, toPrice, decidedAt }`, and for RQ-36 whether the difference is paid.
+  - `price_change:decided` to the runner (A8, RA-5): `{ errandId, requestId, status: approved | rejected, toPrice, decidedAt }` (built).
+  - Row 248 (built on `feat/api-runner-answers`): `RunnerJobView.differenceAwaitingPayment { amount, priceChangeRequestIds }` and the socket event `price_change:difference_paid { errandId, requestId, amount, paidAt }`. Amount to spend = `requiredPurchase` on `send_to_runner` (it stays at the old amount until paid), `itemAmount` otherwise.
   - Today the runner learns of a customer reject only through `errand:status_changed` → CANCELLED, and of an approval not at all (poll on screen open, 15 s while pending).
 - **Dispute**: `GET /errands/:id/dispute` (exists; runner gets `resolvedBy: null`, row 101) for the resolution note.
 - **Socket**: `errand:join` for **each** held job (one room per job, exists); `errand:status_changed`, `evidence:uploaded`, `errand:access_revoked` (exist).
@@ -242,6 +246,7 @@ For api-contract: what the screen needs. Item numbers match `docs/audits/runner-
 - Bottom content above the tab bar's safe area.
 
 ## Decisions (owner)
+- Rows 245, 246, 248, 254 (2026-10-20): see "Location during a job", the price-change section and the Receipt step.
 - Row 113: accept is the RUNNER_ASSIGNED → RUNNER_EN_ROUTE transition; no `Start trip` step on this screen.
 - Row 120 (RQ-8): generic checklist. Row 121 (RQ-9): photos only.
 - Row 123 (RQ-11): 4–8 s pings on a job, none offline.
@@ -254,7 +259,13 @@ For api-contract: what the screen needs. Item numbers match `docs/audits/runner-
 - Row 211 (2026-10-19): busy = RUNNER_EN_ROUTE, ARRIVED, IN_PROGRESS; AWAITING_CUSTOMER and DISPUTED free the runner, so this screen can hold several active-set jobs (`Other jobs`, proposed).
 
 ## Questions (owner; full text in `docs/audits/runner-gap-report.md` §21)
-- RQ-33 (BOARD row 245, open): while-in-use only on both platforms (Android location foreground service, iOS background mode); remove `ACCESS_BACKGROUND_LOCATION` and the iOS Always key; never block a job on location.
-- RQ-34 (BOARD row 246, open): the accurate disclosure wording and OS string ("even when the app is closed" overstates behaviour after a force-quit).
-- RQ-35 (BOARD row 247, open): retention of stored runner location (`runner_locations`).
-- RQ-36 (BOARD row 248, open): a price increase on `send_to_runner` approved before the difference is paid.
+- RQ-33 → row 245 answered 2026-10-20: while-in-use only; foreground service / iOS background mode; keys removed; a refusal never blocks a job.
+- RQ-34 → row 246 answered 2026-10-20: wording approved as written, including the job-start notice.
+- RQ-35 → row 247 answered 2026-10-20: job pings only, 90 days after the task ends, held while a dispute is open (no runner copy).
+- RQ-36 → row 248 answered 2026-10-20: `Approved. Waiting for the customer to pay the difference.`; no buying above the old amount until paid.
+- Open (round 18, non-blocking): should the row-248 notice also name the amount the runner may spend now (e.g. `You can spend up to KSh 40,000 for now.`)? The approved sentence does not say what "the old amount" is, and v-active shows no amount outside the price section.
+- Open (round 18): confirm the reading of row 245 "a refusal never blocks a job": once a job is held, nothing waits on location; going online and accepting still need while-in-use permission (`x-location-disclosure` entry, rows 123/124).
+
+## Current vs design (round 18, 2026-10-20, `feat/runner-answers` @ `28c1fe1`)
+- Matches: job-start notice (core `JobStartLocationNotice`, `RunnerLocationCopy`), pings start at accept / on open with a working job and only in the foreground, row-248 notice and approved-line rule (`active_tab.dart` `_body`, `_price`), receipt `Upload` in DISPUTED (`RunnerEvidenceRules`), too-large queue drop notice with the size in Fira Code.
+- Not yet: Android channel name `Location during jobs` (core-ui); Android 14 / iOS background device checks.

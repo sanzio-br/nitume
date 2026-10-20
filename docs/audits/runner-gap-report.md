@@ -1341,3 +1341,57 @@ Verdicts:
 | v-job-summary (+ claim) | **PASS** (1–3 closed, SA-2 built) |
 | v-jobs (live offers) | **PASS** (1 closed) |
 | push routing | **PASS** (unchanged) |
+
+## 23. Audit 2026-10-20: round 18 owner follow-ups (`feat/runner-answers` @ `28c1fe1`, core `feat/core-runner-answers` @ `9b74ecc`)
+
+Scope: owner rows 245, 246, 248, 252, 254, 255 (answered 2026-10-20). Diff audited: `feat/runner-active..feat/runner-answers` (runner commits `64f5808`, `7f50d6e`, `1387dd4`, `c3ae6b9`, `7110349`, `3d21267`, `af32455`, `4a834d5`, `f422b81`, `88b34f3`, `1ea56c9`, `28c1fe1`; merges `dd5b7f5`, `256cf3c`) and `feat/core-runner-evidence-store..feat/core-runner-answers` (`9a25cf5` … `9b74ecc`). Specs updated in this round: `v-active`, `x-location-disclosure`, `v-evidence-capture`, `v-price-request`, `v-job-detail`, `v-job-summary`, `_shared.md` §10.
+
+Build health (run by the auditor in the builder worktree):
+- `flutter analyze`: no issues in `apps/runner_app`, `packages/nitume_core`, `packages/nitume_runner_device`.
+- `flutter test`: runner 133 pass, core 630 pass, runner_device 24 pass.
+- No `Color(0x…)`, `fontFamily`, `GoogleFonts`, raw `TextStyle(` or `Colors.` in `apps/runner_app/lib` or the new core widgets; colours from `NitumeColors`, text from `NitumeTextStyles`, numbers via `NumSpan` / `NumText`.
+- Tests cover every item: `location_disclosure_test` (Body 2), `location_during_job_test` (notice once per install, refused accept, v-job-detail accept, pings foreground-only, same-job restart, queue-load resilience), `round18_answers_test` (row 248 notice and approved line, `difference_paid` reload, buy limit, too-large queue drop, DISPUTED receipts), `evidence_capture_test` (413 with size in Fira Code, bare 413 default, DISPUTED), core golden `job_start_location_notice.png`.
+
+### Row by row
+| Row | Check | Result |
+|---|---|---|
+| 246 | Disclosure Body 2 word for word | **Pass.** `RunnerLocationCopy.disclosureBody2` (core `location_sharing_notice.dart`) = the approved text exactly; `LocationDisclosureCopy.body2` points at it |
+| 246 | One-time job-start notice word for word | **Pass.** Title, body and `OK` identical to the approved text (`RunnerLocationCopy.jobStartNotice*`). C-35 `NitumeDialog`, one primary button (green, white text: a primary action), title autofocus. Shown after a successful accept from `v-jobs` (`jobs_tab.dart:395`) or `v-job-detail` (`job_detail_screen.dart:163`), never awaited; flag per install (`SharedPreferencesOneTimeFlag`), set on open |
+| 245 | While-in-use only | **Pass.** `ACCESS_BACKGROUND_LOCATION` removed (`AndroidManifest.xml`); `NSLocationAlwaysAndWhenInUseUsageDescription` removed (`Info.plist`); `NSLocationWhenInUseUsageDescription`, `UIBackgroundModes` `location`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION` kept. `GeolocatorPositionSource.requestAccess` asks once (when-in-use) |
+| 245 | Foreground-service notification text | **Pass.** `Nitume Runner` / `Sharing your location for your active job.`, `setOngoing: true`, only with `background: true` (job pings) |
+| 245 | Sharing never blocks a job | **Pass.** `JobPings` never asks for permission; job pings start at accept (`ActiveJobs.accepted`) or when `v-active` shows a working job, only in the foreground (`LocationPinger`, `LocationPingerLifecycle`); no transition, evidence or notes waits on location; `v-active` shows only the `Location is off…` notice. Accept/online still need while-in-use permission (pre-existing, `x-location-disclosure` entry); reading confirmed as a question below |
+| 248 | Notice text word for word | **Pass.** `RunnerPriceChangeCopy.differenceAwaitingPayment` = `Approved. Waiting for the customer to pay the difference.` |
+| 248 | Placement on `v-active` | **Accepted.** C-40 default tone with the state notices, above `Checklist`, whenever `differenceAwaitingPayment` is set (`active_tab.dart` `_body`); the `Price change approved…` line shows on `send_to_runner` only once the flag clears and `requiredPurchase` equals the new price (`_price`). Spec amended |
+| 248 | Buy limit uses `requiredPurchase` | **Pass.** `amountToSpend` (`util/display.dart`): `requiredPurchase` on `send_to_runner`, else `itemAmount`; used by `v-job-detail` item line, offer meta, claim cap, `v-job-summary` reimbursement fallback. `difference_paid` reloads the held jobs and the job details |
+| 248 | `v-price-request` `Original authorization` still `itemAmount` | **Accepted.** It is the authorised price, and the API's next request starts from it (`fromPrice = errand.budget`), so the difference line, the confirm dialog and the customer's prompt agree. "Amount to spend" is a different meaning. Spec ruling added |
+| 252 | Too-large copy and action | **Approved** (auditor's call; error copy is in remit, as the earlier proposed copy was): `This photo is larger than 10 MB. Take it again.`, `10 MB` in Fira Code (`evidenceTooLargeSpan`), C-03 small outline `Take photo` on the notice (hidden when capture is not allowed), no `Retry`, the tile removed and its file deleted. Spec copy replaced. The v-active queue-drop notice uses the 10 MB default because `QueueDropReason.tooLarge` carries no `maxBytes` (core need, below) |
+| 254 | DISPUTED card: receipt `Upload` only | **Pass.** `RunnerEvidenceRules` (core) is the single rule; in DISPUTED the `Receipt` step has `Upload`, `Photos` has none, notes are not writable; `v-evidence-capture` allows only the receipt type there |
+| 255 | Android backup rules | **Pass.** `android:fullBackupContent="@xml/backup_rules"` and `android:dataExtractionRules="@xml/data_extraction_rules"`, both excluding `file` / `nitume_evidence` (cloud backup and device transfer). `getApplicationSupportDirectory` is `Context.getFilesDir()` on Android, so the domain and path match the store folder |
+| 255 | iOS exclusion | **Pass (code).** `BackupExclusion.exclude` → native `NSURLIsExcludedFromBackupKey` (`isExcludedFromBackup = true`, read back) when the store creates the folder and once per run; a failure never blocks a capture. Not built for iOS yet (no Xcode); recorded as unverified, not a finding |
+
+### Proposal: Android notification channel name
+`ForegroundNotificationConfig.notificationChannelName` defaults to `Background Location` (geolocator_android 5.2.1). Android shows it in the app's notification settings, where it suggests background access the app does not request. The spec now owns it: **`Location during jobs`** (proposed; `_shared.md` §10, `v-active`, `x-location-disclosure`). core-ui: pass it in `GeolocatorPositionSource` (one argument, plus a test). Not a builder finding (the spec did not name it before).
+
+### Per screen
+| Screen | Verdict | Notes |
+|---|---|---|
+| runner/v-active | **PASS** | Rows 245, 246, 248, 254; queue-drop too-large notice with Fira Code size |
+| runner/x-location-disclosure | **PASS** | Body 2 exact; OS keys as specced. Status `partial` → `matches-design` |
+| runner/v-evidence-capture | **PASS** | Rows 252, 254 |
+| runner/v-price-request | **PASS** | Unchanged code; `itemAmount` ruling accepted |
+| runner/v-job-detail, v-jobs (offer meta), v-job-summary (+ claim) | **PASS** (spot-check) | Amount to spend from `requiredPurchase`; job-start notice after accept |
+
+No FAIL findings.
+
+### Not verified (device; carry to reviewer and owner)
+- Android 14: the foreground service keeps while-in-use access in the background and on a locked screen without `ACCESS_BACKGROUND_LOCATION` (row 245 asks for this check during the build). Also check that the ongoing notification is visible when the runner has not granted `POST_NOTIFICATIONS` (Android 13+), and that the small icon (default `ic_launcher`) renders (a monochrome drawable may be needed).
+- iOS: background updates with the `location` mode and no Always key; the plugin's iOS build and the exclusion flag on a device.
+- Full APK build (builder: SDK 37 missing).
+
+### Needs
+- core-ui (non-blocking): `notificationChannelName: 'Location during jobs'`; `QueueDropReason.tooLarge` with the server's `maxBytes` so the v-active notice names the real limit when config differs from 10 MB.
+- flutter-customer: m-1 / m-2 adoption (deferred, from core-ui).
+
+### Questions for the owner (new, non-blocking)
+- Row 245 reading: "a refusal never blocks a job" is taken to mean that once a job is held nothing waits on location; going online and accepting still need while-in-use permission (`x-location-disclosure`, rows 123 / 124). Confirm.
+- Row 248: should the notice also say what the runner may spend now (e.g. `You can spend up to KSh 40,000 for now.`)? The approved sentence does not state the old amount, and `v-active` shows no amount outside the price section. Today: approved sentence only.

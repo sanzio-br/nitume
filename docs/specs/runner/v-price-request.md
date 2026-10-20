@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_runner_app.html` lines 388–401 (`#v-price-request`, overlay)
 - Shared conventions: `_shared.md` (§0 rows 37, 49, 55, 101; §8 money)
 - Implementation: none. On `main`: core `RunnerJobsRepository.requestPriceChange` / `pendingPriceChange` / `priceChanges`, and `RunnerJobView.itemAmount` (RA-2 built); no screen exists.
-- Status: missing
+- Status: matches-design (round 18 audit 2026-10-20 PASS; SCREEN_MAP is authoritative)
 - Refreshed 2026-10-19 (design-auditor, `docs/runner-v-active-spec`): the item amount now comes from the runner projection; purchase-limit note (rows 108, 135, 152); several held jobs (row 211); RQ-36. Everything not drawn in the mockup is marked **(proposed)**.
 
 ## Purpose
@@ -47,7 +47,7 @@ Title `Send this price change?`; body `KSh 40,000 → KSh 45,000. The customer m
 - Pending: `Waiting for the customer to approve KSh 45,000.`; `Mark task complete` disabled (proposed).
 - Approved:
   - `merchant_direct`: `Price change approved. New item amount KSh 45,000.`
-  - `send_to_runner`: depends on **RQ-36**. Recommended: `Approved. Waiting for the customer to pay the difference.` until the difference payment is confirmed, then the approved line.
+  - `send_to_runner` (owner row 248, 2026-10-20, copy exact): `Approved. Waiting for the customer to pay the difference.` until the difference payment is confirmed (`price_change:difference_paid`), then the approved line. The runner buys only up to `requiredPurchase` (the old amount) meanwhile.
 - Rejected by an admin (row 55): `Price change not approved. Continue at the original amount or contact support.` (proposed).
 - Rejected by the customer: the task is CANCELLED (row 37). `v-active` shows the ended state (no runner fee). Row 106 (receipt + claim) applies only if the runner had already bought, which this flow tells them not to do.
 
@@ -97,5 +97,11 @@ For api-contract: what the screen needs. Item numbers match `docs/audits/runner-
 - Rows 135, 152: an over-limit purchase goes to ops review at CONFIRMED, capped by the limit stored on the line.
 
 ## Questions (owner; full text in `docs/audits/runner-gap-report.md` §21)
-- RQ-36 (BOARD row 248, open; payments): on `send_to_runner`, an approved increase is only a recorded difference until the customer pays it (`price-change.service.ts` `approve`: the budget moves at once, and the difference payment is created for the customer to pay). Should the runner be told to buy at the new price only after the difference is paid? Recommended: yes, `Approved. Waiting for the customer to pay the difference.` until paid. Otherwise the runner may buy above what Nitume holds, and the reimbursement cap (min of the item amount paid to Nitume and the limit, rows 135, 142) would leave them out of pocket.
+- RQ-36 → BOARD row 248, answered 2026-10-20 (the recommended option). Original question: on `send_to_runner`, an approved increase is only a recorded difference until the customer pays it (`price-change.service.ts` `approve`: the budget moves at once, and the difference payment is created for the customer to pay). Should the runner be told to buy at the new price only after the difference is paid? Recommended: yes, `Approved. Waiting for the customer to pay the difference.` until paid. Otherwise the runner may buy above what Nitume holds, and the reimbursement cap (min of the item amount paid to Nitume and the limit, rows 135, 142) would leave them out of pocket.
 - Not a question, a proposal: a request above the runner's purchase limit is sent with the warning above, not refused. Refusing it would be a new payment rule; say so if you want it.
+
+## Ruling (round 18, 2026-10-20): `Original authorization` stays `itemAmount`
+- `Original authorization` shows `RunnerJobView.itemAmount`, also while `differenceAwaitingPayment` is set (then it is already the approved new price). Accepted:
+  - it is the amount the customer last authorised, and the API's next request starts from it (`price-change.service.ts`: `fromPrice = errand.budget`), so the difference line, the confirm dialog (`KSh {from} → KSh {to}`) and what the customer sees agree;
+  - `requiredPurchase` is what the runner may **spend** now (row 248), a different meaning; it is used for spend limits (`v-job-detail` item line, offer meta, claim cap, `v-job-summary` reimbursement fallback), not for the authorised price.
+- No `requiredPurchase` here. The row-248 notice is on `v-active`; this screen does not repeat it (optional later: show it above the card while the flag is set).

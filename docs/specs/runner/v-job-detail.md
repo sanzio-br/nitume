@@ -75,3 +75,6 @@ Proposed: `Distance` value `Distance unavailable` (Sans) when the device has no 
 ## Questions
 - RQ-32 decided (row 229): a decline reason is required in the app; `Other reason` has no text box (`v-jobs.md`).
 - Rows 157, 167, 185 and 205 (decided) change only when the offer ends (the earlier of `offerExpiresAt` and `deadlineAt`); no new copy. RQ-22 (row 141) decided 2026-10-16: at the deadline the offer expires; no acceptance after expiry. When the countdown reaches zero the screen switches to the `This offer is no longer available.` state and hides `Accept` without waiting for the server.
+
+## Round 18 note (2026-10-20, owner row 248)
+- The `Item amount` line (and the offer-card meta on `v-jobs`) shows the amount the runner may **spend**: `requiredPurchase` on `send_to_runner`, `itemAmount` otherwise (`amountToSpend`, `apps/runner_app/lib/src/util/display.dart`). On an open offer both are the same; the rule matters only once an increase waits for payment. Audited PASS (gap report §23).

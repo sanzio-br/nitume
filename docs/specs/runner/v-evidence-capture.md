@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_runner_app.html` lines 375–386 (`#v-evidence-capture`, overlay)
 - Shared conventions: `_shared.md` (§10 offline, R-13, R-15, R-21, R-22)
 - Implementation: none. On `main`: core R-22 `EvidenceUploader`, R-21 `OfflineActionQueue`, `EvidenceFileStore`, R-13 `CaptureDropZone`, R-15 `CaptureThumbnail` and `nitume_runner_device` `ImagePickerCaptureSource` are built; no screen exists.
-- Status: missing
+- Status: matches-design (round 18 audit 2026-10-20 PASS; SCREEN_MAP is authoritative)
 - Refreshed 2026-10-19 (design-auditor, `docs/runner-v-active-spec`): B-1 capture discard rules, job-scoped uploads, rows 129, 197, 211. Everything not drawn in the mockup is marked **(proposed)**.
 
 ## Purpose
@@ -20,7 +20,7 @@ Take photos (and receipt photos) for the job. Each photo uploads immediately, wi
 
 ## Task states
 - Photos: ARRIVED and IN_PROGRESS.
-- Receipts: ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER (proposed), and for 24 hours after CANCELLED / FAILED (row 129). Receipt type only, entered from the ended-job card on `v-active`.
+- Receipts: ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER (proposed), DISPUTED (owner row 254, 2026-10-20: receipts only, photos refused), and for 24 hours after CANCELLED / FAILED (row 129). Receipt type only, entered from the ended-job card or (DISPUTED) the Receipt step on `v-active`. One rule in core: `RunnerEvidenceRules`.
 - Never for a task the runner did not accept (row 197). Other states: the entry is hidden; a stale open shows C-40 `You can't add photos to this job any more.` (proposed) and no drop zone.
 
 ## Layout (top to bottom)
@@ -83,7 +83,12 @@ Proposed:
 - offline: `Saved on your phone. We'll upload it when you're back online.`;
 - location off: C-40 `Location is off. Photos will upload without a location.` Upload is still allowed (the uploader never blocks on location; no owner rule makes location mandatory);
 - camera permission denied: C-33 `Camera access is off` / `Allow camera access in Settings to take photos.` + C-03 `Open Settings`;
-- upload too large (413, RA-11 until fixed): C-40 (danger) `This photo couldn't be uploaded. Try again later.`, never naming a size;
+- upload too large (413 `evidence_too_large`, owner row 252: 10 MB per image, server config), approved 2026-10-20 round 18 (auditor's call, proposed):
+  - C-40 (danger) `This photo is larger than 10 MB. Take it again.`; the size (`10 MB`, from the error's `maxBytes`, else the 10 MB default) in Fira Code;
+  - the action on the notice: C-03 small outline `Take photo` (opens the camera, as the drop zone); hidden when capture is not allowed;
+  - no `Retry` and no tile: the same file never fits; its kept copy is deleted (B-1);
+  - a too-large photo dropped from the offline queue shows the same copy on `v-active` (the drop carries no limit yet, so the default is shown);
+  - replaces `This photo couldn't be uploaded. Try again later.` (written while the API had no limit);
 - the leave dialog and the B-1 notices above.
 
 ## Numeric fields (Fira Code)
@@ -92,7 +97,7 @@ Proposed:
 ## Data
 For api-contract: what the screen needs. Item numbers match `docs/audits/runner-gap-report.md` §21.
 - `POST /errands/:errandId/evidence` `{ type: 'photo' | 'receipt', data (base64), contentType, capturedAt, lat?, lon? }` (exists).
-  - **A5 size** (RA-11): the API's global JSON limit is still the Nest default (≈100 kB; `main.ts` sets none), so a normal 1600 px photo (≈200–500 kB, more as base64) is refused with 413. Needed: a body limit this route accepts for photos up to a stated maximum, or the §3.2 signed upload (`POST /evidence/:errandId/upload-url` + `/confirm`). The app needs to know the maximum to check before upload.
+  - **A5 size** (RA-11; resolved by row 252, 10 MB on the evidence route, 413 `evidence_too_large` with `maxBytes`). Earlier text: the API's global JSON limit is still the Nest default (≈100 kB; `main.ts` sets none), so a normal 1600 px photo (≈200–500 kB, more as base64) is refused with 413. Needed: a body limit this route accepts for photos up to a stated maximum, or the §3.2 signed upload (`POST /evidence/:errandId/upload-url` + `/confirm`). The app needs to know the maximum to check before upload.
   - **A5 state guard** (RA-11): photos only in ARRIVED / IN_PROGRESS; receipts in ARRIVED … AWAITING_CUSTOMER and for 24 h after CANCELLED / FAILED (row 129, A10 / RA-12); refused otherwise with a code. Today any current-runner upload is accepted in any state.
   - **A6 idempotency** (RA-17): a replayed upload with the same key must not create a second evidence row.
 - `GET /errands/:errandId/evidence` (exists) for already uploaded items.
