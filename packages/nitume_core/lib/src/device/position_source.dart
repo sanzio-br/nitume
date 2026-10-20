@@ -54,7 +54,8 @@ abstract interface class PositionSource {
   Future<LocationAccess> access();
 
   /// Prompts for when-in-use permission when it can still be granted
-  /// (show `x-location-disclosure` first).
+  /// (show `x-location-disclosure` first). This is the only location
+  /// prompt: never "Allow all the time" / Always (owner row 245).
   Future<LocationAccess> requestAccess();
 
   /// One fresh fix, or `null` without permission / a fix.
@@ -62,8 +63,11 @@ abstract interface class PositionSource {
 
   /// Continuous fixes filtered by [distanceFilterMeters] at roughly
   /// [interval]. [background] keeps updates running while the app is in the
-  /// background (Android foreground service with a notification, iOS
-  /// background location); only for the live job window (§7.2).
+  /// background (Android location foreground service with its persistent
+  /// notification, iOS `location` background mode); only for the live job
+  /// window (§7.2). With while-in-use permission (row 245) a background
+  /// stream must be **started while the app is in the foreground**;
+  /// `LocationPinger` enforces that.
   Stream<DevicePosition> positions({
     required Duration interval,
     double distanceFilterMeters = 0,
