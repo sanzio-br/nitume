@@ -15,7 +15,13 @@ import 'package:path_provider/path_provider.dart';
 /// queued copies when they leave the queue; at log out call
 /// `queue.clear()` then [DirectoryEvidenceFileStore.discardAll]; at start,
 /// after `queue.load()`, call
-/// `discardExcept(RunnerQueuedActions.evidencePaths(queue.pending))`.
+/// `discardExcept(RunnerQueuedActions.evidencePaths(queue.pending))`. That
+/// never deletes a copy this store kept in the current run, so capture need
+/// not wait for it; create one store per app run and share it.
+///
+/// After log out the cleared queue refuses new work until its next
+/// `load()`, and a released uploader never queues, so no photo is persisted
+/// for the next session.
 ///
 /// [directory] overrides the base directory (tests).
 DirectoryEvidenceFileStore appSupportEvidenceFileStore({

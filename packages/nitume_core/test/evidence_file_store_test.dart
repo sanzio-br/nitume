@@ -3,6 +3,21 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
 
+class _Camera implements ImageCaptureSource {
+  _Camera(this.dir);
+
+  final Directory dir;
+  int n = 0;
+
+  @override
+  Future<CapturedImage?> takePhoto({
+    CaptureFrom from = CaptureFrom.camera,
+  }) async {
+    final f = File('${dir.path}/cam_${n++}.jpg')..writeAsBytesSync([1, 2, 3]);
+    return CapturedImage(path: f.path);
+  }
+}
+
 void main() {
   late Directory base;
   late Directory outside;
@@ -42,11 +57,72 @@ void main() {
     expect(outside.listSync(), hasLength(2), reason: 'sources untouched');
   });
 
-  test('discardExcept keeps what the queue holds', () async {
-    final queued = await keepOne('a.jpg');
-    await keepOne('b.jpg');
+  /// A copy kept by an earlier app run (another instance, same folder).
+  Future<String> keepEarlierRun(String name) async {
+    final src = File('${outside.path}/$name')..writeAsStringSync('x');
+    return DirectoryEvidenceFileStore(() async => base).keep(src.path);
+  }
+
+  test('discardExcept keeps what the queue holds, deletes earlier-run '
+      'orphans', () async {
+    final queued = await keepEarlierRun('a.jpg');
+    final orphan = await keepEarlierRun('b.jpg');
     await store.discardExcept([queued]);
     expect(await store.keptPaths(), [queued]);
+    expect(File(orphan).existsSync(), isFalse);
+  });
+
+  test('discardExcept never deletes a copy kept in this run (capture during '
+      'start-up clean-up); discardAll does', () async {
+    final orphan = await keepEarlierRun('old.jpg');
+    final live = await keepOne('live.jpg');
+    await store.discardExcept(const []);
+    expect(File(orphan).existsSync(), isFalse);
+    expect(File(live).existsSync(), isTrue);
+    await store.discardAll();
+    expect(await store.keptPaths(), isEmpty);
+  });
+
+  test('a copy discarded in this run is no longer protected (the set does '
+      'not grow)', () async {
+    final live = await keepOne('live.jpg');
+    await store.discard(live);
+    expect(File(live).existsSync(), isFalse);
+  });
+
+  test('race: a capture kept while discardExcept runs survives and '
+      'uploads', () async {
+    for (var i = 0; i < 20; i++) {
+      await keepEarlierRun('old_$i.jpg');
+    }
+    final uploaded = <int>[];
+    final uploader = EvidenceUploader(
+      capture: _Camera(outside),
+      files: store,
+      upload:
+          (
+            errandId, {
+            required type,
+            required bytes,
+            required contentType,
+            capturedAt,
+            lat,
+            lon,
+          }) async {
+            uploaded.add(bytes.length);
+            return Evidence(id: 'ev', errandId: errandId, type: type);
+          },
+    );
+    final cleanup = store.discardExcept(const []);
+    final item = await uploader.captureAndUpload(
+      'e1',
+      type: EvidenceType.photo,
+    );
+    await cleanup;
+    expect(item!.status, EvidenceUploadStatus.uploaded);
+    expect(uploaded, [3]);
+    expect(await store.keptPaths(), isEmpty);
+    uploader.dispose();
   });
 
   test('evidencePaths reads the queued evidence uploads', () {
@@ -139,7 +215,7 @@ void main() {
     });
 
     test('discardAll / discardExcept never reach outside', () async {
-      final kept = await keepOne('a.jpg');
+      final kept = await keepEarlierRun('a.jpg');
       final victim = File('${base.path}/victim.txt')..writeAsStringSync('x');
       final sibling = Directory('${root()}2')..createSync();
       final sib = File('${sibling.path}/x.jpg')..writeAsStringSync('x');
