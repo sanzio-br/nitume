@@ -31,6 +31,7 @@ class AppServices {
     RunnerLive? live,
     QueueStore? queueStore,
     required this.evidenceFiles,
+    OneTimeFlag? jobStartNoticeShown,
     bool collectLocation = true,
     this.appConfig = const AppConfig(),
     this.push = const NoopPushService(),
@@ -38,6 +39,7 @@ class AppServices {
     ShellController? shell,
   }) : shell = shell ?? ShellController(),
        clock = clock ?? DateTime.now,
+       jobStartNoticeShown = jobStartNoticeShown ?? MemoryOneTimeFlag(),
        live = live ?? RunnerLive() {
     pings = JobPings(
       source: location,
@@ -126,7 +128,9 @@ class AppServices {
         accessToken: accessToken,
       ),
       queueStore: SharedPreferencesQueueStore(),
+      // Backup exclusion built in (row 255): iOS native, Android manifest.
       evidenceFiles: appSupportEvidenceFileStore(),
+      jobStartNoticeShown: SharedPreferencesOneTimeFlag(),
       appConfig: AppConfig.fromEnvironment(onOpenLink: openExternalLink),
       push: push,
     );
@@ -178,6 +182,10 @@ class AppServices {
   /// App-private folder where evidence photos wait for upload (row 149;
   /// `appSupportEvidenceFileStore()` on a device).
   final DirectoryEvidenceFileStore evidenceFiles;
+
+  /// Whether the one-time job-start location notice was shown on this
+  /// install (row 246; `SharedPreferencesOneTimeFlag` on a device).
+  final OneTimeFlag jobStartNoticeShown;
 
   /// Starts the signed-in runtime: socket, queue.
   Future<void> startSession() async {

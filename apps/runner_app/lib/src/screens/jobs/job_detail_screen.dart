@@ -5,6 +5,7 @@ import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
+import '../../services/job_start_notice.dart';
 import '../../services/location_gate.dart';
 import '../../widgets/common.dart';
 import 'jobs_tab.dart';
@@ -155,8 +156,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       await _s.jobs.accept(job.id);
       if (!mounted) return;
       _s.shell.showJob(job.id);
-      unawaited(_s.active.load());
+      _s.active.accepted(job.id);
+      final root = Navigator.of(context, rootNavigator: true);
       Nav.popToRoot(context);
+      showJobStartNotice(root, _s);
     } on Object catch (e) {
       if (!mounted) return;
       final f = acceptFailure(e, busyMessage: OfferCopy.busyDetail);
