@@ -113,3 +113,32 @@ describe('ErrandsService.countFor (A-11)', () => {
     });
   });
 });
+
+describe('row 250: tasks cancelled straight from DRAFT', () => {
+  const draftCancelFilter = (qb: ReturnType<typeof fakeQb>) =>
+    (qb.andWhere.mock.calls as unknown as [string, Record<string, unknown>?][]).find(([sql]) =>
+      sql.includes('"errand_status_history"'),
+    );
+
+  it.each([
+    ['listFor', (s: ErrandsService) => s.listFor(customer, {})],
+    ['countFor', (s: ErrandsService) => s.countFor(customer)],
+  ])('%s hides a CANCELLED task whose history has DRAFT -> CANCELLED for a customer', async (_name, call) => {
+    const { service, qb } = build();
+    await call(service);
+    const filter = draftCancelFilter(qb);
+    expect(filter).toBeDefined();
+    expect(filter?.[0]).toMatch(/NOT \(e\.status = :cancelled AND EXISTS/);
+    expect(filter?.[0]).toMatch(/h\."fromStatus" = :draft AND h\."toStatus" = :cancelled/);
+    expect(filter?.[1]).toEqual({ cancelled: ErrandStatus.CANCELLED, draft: ErrandStatus.DRAFT });
+  });
+
+  it.each([
+    ['admin', { role: 'admin', userId: 'admin-1' }],
+    ['runner', { role: 'runner', userId: 'runner-user-1' }],
+  ])('does not filter the %s list', async (_name, viewer) => {
+    const { service, qb } = build();
+    await service.listFor(viewer, {});
+    expect(draftCancelFilter(qb)).toBeUndefined();
+  });
+});
