@@ -14,6 +14,12 @@ import 'nitume_button.dart';
 /// unknown). Trailing C-01 small `Navigate`, which the screen wires to the
 /// external Google Maps launch (`_shared.md` §10).
 ///
+/// [richDetail] (opt-in) draws the detail line in Fira Sans 11 slate-600
+/// with only its [NumSpan] parts in Fira Code, for text that is not all
+/// numbers (`Distance unavailable`, or `1.2 km` · `Pickup`); [detail] stays
+/// the spoken text and is required with it. Without it, [detail] is drawn
+/// in Fira Code as before.
+///
 /// Place it with `JobRouteMap(overlay:)`, which insets it 12 from the map's
 /// bottom, left and right edges.
 class NavigationChip extends StatelessWidget {
@@ -21,11 +27,18 @@ class NavigationChip extends StatelessWidget {
     super.key,
     required this.destination,
     this.detail,
+    this.richDetail,
     required this.onNavigate,
-  });
+  }) : assert(
+         richDetail == null || detail != null,
+         'richDetail needs detail as its accessible text',
+       );
 
   final String destination;
   final String? detail;
+
+  /// Rich version of [detail] (same wording), numbers as [NumSpan]s.
+  final InlineSpan? richDetail;
   final VoidCallback? onNavigate;
 
   @override
@@ -57,7 +70,12 @@ class NavigationChip extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  if (detail != null)
+                  if (richDetail != null)
+                    Text.rich(
+                      richDetail!,
+                      style: NitumeTextStyles.mutedSmall.copyWith(fontSize: 11),
+                    )
+                  else if (detail != null)
                     Text(detail!, style: NitumeTextStyles.meta),
                 ],
               ),
