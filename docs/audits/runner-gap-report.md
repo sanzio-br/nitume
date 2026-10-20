@@ -1306,3 +1306,38 @@ Build health:
   - the evidence file store (ruling 2, in progress);
   - C-V5 after rows 245 / 246.
 - api-contract: none new. This branch depends on `feat/api-runner-realtime` for `GET /runners/me/jobs`, `location:ping`, the geofence, and the runner room events.
+
+### 22.1 Re-audit 2026-10-20 (`feat/runner-active` @ `5c9778f`)
+
+Builder commits since `2448d30`:
+- `ec46143`, `6bae281`, `f542c57`, `7a5ff37`, `5498393`, `5c9778f`;
+- the merge `dd8d044` of `feat/core-runner-evidence-store`;
+- core `4a98bc7` (SuccessMark green-700), `a304f57` (`NitumeRadioRow.richLabel`), `55a3df3` (`NavigationChip.richDetail`), `81c4d37`, `e601f60`, `23046ef`, `c98ad90`.
+
+Build health: `flutter analyze` is clean (runner and core). Tests pass: runner 110, core 577.
+
+| Item | Result |
+|---|---|
+| v-job-summary 1 (receipt time in Sans) | **Closed.** `claim_screen.dart` `richLabel` puts the time (or the number) in Fira Code (`NumSpan`); the plain `label` stays for semantics |
+| v-job-summary 2 (UUID fallback) | **Closed.** `Receipt {n}` by position, `n` in Fira Code; the id is never shown |
+| v-job-summary 3 (note limit) | **Closed.** `LengthLimitingTextInputFormatter(500)` plus the Fira Code counter `0/500` |
+| SA-2 (`Job ended` heading) | **Built.** `job_summary_screen.dart` uses `endedHeading` on CANCELLED / FAILED |
+| v-jobs 1 (`Reconnecting…`) | **Closed.** A C-40 notice under the availability card after 5 s in `connecting` / `reconnecting`; hidden once connected or deliberately disconnected; test in `jobs_test.dart`. "Deliberately disconnected" (signed out, or no client) shows nothing: accepted |
+| SA-1 (Other jobs lists ended jobs awaiting a receipt) | **Built.** `_receiptPending`: CANCELLED / FAILED purchase job, no receipt, window open (unknown end = open, ruling 4). The details for ended purchase jobs are loaded so the rule can decide |
+| Optional (`evidence_type_not_allowed`) | **Done.** Now the generic error; the error comes from `EvidenceUploadItem.lastApiError` (the app-level error map is removed) |
+| Ruling 2 (evidence never queued offline) | **Superseded, good.** `appSupportEvidenceFileStore()` (path_provider application-support, row 149) is wired, so offline photos are queued again, with the offline notice. B-1: `discardExcept(queued paths)` at session start removes copies left by a killed app (closes the residual noted in §22); `discardAll` runs at log out after the queue is cleared; deletes are confined to the store's own folder |
+| Ruling 3 (`Distance unavailable` in Fira Code) | **Closed.** `NavigationChip.richDetail`: the distance is a `NumSpan`; the words are a Sans `TextSpan` |
+| Ruling 7 (SuccessMark contrast) | **Closed in core.** `success_mark.dart:40` `NitumeColors.green700` |
+
+Still interim (not findings): job pings foreground-only, no job-start notice and no foreground service until BOARD rows 245 / 246; the `send_to_runner` approved line waits for row 248. The ruling-1 merge condition stands: merge with or after `feat/api-runner-realtime`, or switch the arrival caption to `Tap when you get there.`
+
+Verdicts:
+
+| Screen | Verdict |
+|---|---|
+| v-active | **PASS** (SA-1 built) |
+| v-evidence-capture | **PASS** (offline queue restored with B-1 clean-up) |
+| v-price-request | **PASS** (unchanged) |
+| v-job-summary (+ claim) | **PASS** (1–3 closed, SA-2 built) |
+| v-jobs (live offers) | **PASS** (1 closed) |
+| push routing | **PASS** (unchanged) |
