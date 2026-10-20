@@ -71,6 +71,10 @@ void main() {
       expect(find.text('On the way'), findsOneWidget);
       expect(find.text('Links Rd, Nyali'), findsOneWidget);
       expect(find.text('1.2 km'), findsOneWidget);
+      expect(
+        t.widget<NavigationChip>(find.byType(NavigationChip)).richDetail,
+        isA<NumSpan>(),
+      );
       await t.tap(find.text('Navigate'));
       await t.pumpAndSettle();
       expect(opened.single.toString(), contains('-4.03,39.72'));

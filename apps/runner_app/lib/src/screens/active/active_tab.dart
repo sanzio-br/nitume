@@ -388,7 +388,10 @@ class _ActiveTabState extends State<ActiveTab> {
   Widget _map(RunnerJobView job, ErrandStatus status) {
     final dest = destinationFor(job, status);
     final fix = _fix;
+    // Fira Code for the distance only; words stay Fira Sans (R-06
+    // richDetail).
     final String detail;
+    final InlineSpan richDetail;
     if (dest != null && fix != null) {
       final target = DevicePosition(
         lat: dest.lat,
@@ -396,8 +399,10 @@ class _ActiveTabState extends State<ActiveTab> {
         timestamp: fix.timestamp,
       );
       detail = formatDistanceKm(fix.distanceTo(target) / 1000);
+      richDetail = NumSpan(detail);
     } else {
       detail = OfferCopy.distanceUnavailable;
+      richDetail = const TextSpan(text: OfferCopy.distanceUnavailable);
     }
     final drop = pointOf(job, ErrandPointType.dropoff);
     final first = firstPointOf(job);
@@ -414,6 +419,7 @@ class _ActiveTabState extends State<ActiveTab> {
             : NavigationChip(
                 destination: dest.addressText,
                 detail: detail,
+                richDetail: richDetail,
                 onNavigate: () => _open(navigationUri(dest)),
               ),
       ),

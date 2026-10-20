@@ -108,7 +108,16 @@ void main() {
         ),
       ];
       await b.pumpScreen(t, const ClaimScreen(errandId: 'e1'));
-      expect(find.text('Receipt 1'), findsOneWidget);
+      expect(find.text('Receipt 1', findRichText: true), findsOneWidget);
+      final label = t
+          .widget<NitumeRadioRow>(find.byType(NitumeRadioRow))
+          .richLabel!;
+      final numbers = <String>[];
+      label.visitChildren((span) {
+        if (span is NumSpan) numbers.add(span.text!);
+        return true;
+      });
+      expect(numbers, ['1']);
       expect(find.textContaining('7f1c-uuid'), findsNothing);
       expect(find.text('0/500'), findsOneWidget);
       await t.enterText(find.byType(TextField).last, 'x' * 600);

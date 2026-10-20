@@ -191,14 +191,23 @@ class _ClaimScreenState extends State<ClaimScreen> {
           const SectionLabel(ClaimCopy.receipt, padding: EdgeInsets.zero),
           const SizedBox(height: 8),
           for (final (n, r) in _receipts.indexed) ...[
-            // TODO(core-ui): the time in Fira Code once NitumeRadioRow takes
-            // a rich label (feat/core-runner-evidence-store).
             NitumeRadioRow(
               label: r.capturedAt == null
                   ? ClaimCopy.receiptNumber(n + 1)
                   : ClaimCopy.receiptAt(
                       formatDayTimeEat(r.capturedAt!, now: _s.clock()),
                     ),
+              // The time (or number) in Fira Code (C-16 richLabel).
+              richLabel: TextSpan(
+                children: r.capturedAt == null
+                    ? [const TextSpan(text: 'Receipt '), NumSpan('${n + 1}')]
+                    : [
+                        const TextSpan(text: 'Receipt, '),
+                        NumSpan(
+                          formatDayTimeEat(r.capturedAt!, now: _s.clock()),
+                        ),
+                      ],
+              ),
               selected: _receiptId == r.id,
               onSelected: () => setState(() => _receiptId = r.id),
             ),
