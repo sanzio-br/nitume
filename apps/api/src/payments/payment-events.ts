@@ -25,3 +25,17 @@ export interface ErrandExpiredEvent {
   errandId: string;
   refundReviewOpened: boolean;
 }
+
+/**
+ * Row 248: emitted after a send_to_runner price-change difference is paid
+ * (its STK charge completed), so the runner may buy at the new amount.
+ */
+export const PRICE_DIFFERENCE_PAID_EVENT = 'price_change.difference_paid';
+
+export interface PriceDifferencePaidEvent {
+  errandId: string;
+  requestId: string;
+  /** The difference paid, KES 2-decimal string. */
+  amount: string;
+  paidAt: string;
+}

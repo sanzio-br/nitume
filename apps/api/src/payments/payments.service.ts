@@ -7,8 +7,10 @@ import {
   NotFoundException,
   OnApplicationBootstrap,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import type { Queue } from 'bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -45,6 +47,7 @@ import { CustomerAccountsService } from '../customers/customer-accounts.service'
 import { UsersService } from '../users/users.service';
 import { RedisService } from '../infra/redis/redis.service';
 import { RefundsService, triggerFor } from './refunds.service';
+import { PRICE_DIFFERENCE_PAID_EVENT, PriceDifferencePaidEvent } from './payment-events';
 import {
   MerchantDetails,
   MerchantPaymentView,
@@ -59,6 +62,15 @@ export interface InitiateOptions {
   idempotencyKey?: string;
   merchantRoute?: MerchantRoute;
   paymentMethodId?: string;
+}
+
+/** Row 248: an approved send_to_runner increase whose difference the customer has not paid yet. */
+export interface UnpaidDifference {
+  priceChangeRequestId: string;
+  /** KES 2-decimal string. */
+  amount: string;
+  /** Newest payment row of the difference: pending (charge sent or not yet answered) or failed (customer may retry). */
+  status: PaymentStatus;
 }
 
 /** A price-change difference payment as returned to the customer. */
@@ -147,6 +159,7 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
     private readonly redis: RedisService,
     @InjectQueue(MAINTENANCE_QUEUE)
     private readonly maintenance?: Queue,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   /**
@@ -508,6 +521,35 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
       );
     }
     return payment;
+  }
+
+  /**
+   * Row 248 (owner, 2026-10-20): the approved price increases of a
+   * send_to_runner task (difference charged by STK to Nitume) that the
+   * customer has not paid yet: no completed (or refunded) payment for that
+   * request. Until paid, the item amount Nitume holds (and so the runner's
+   * buy ceiling, `itemPaidToNitume`) stays at the old amount.
+   */
+  async unpaidDifferences(errandId: string, manager?: EntityManager): Promise<UnpaidDifference[]> {
+    const repo = manager ? manager.getRepository(Payment) : this.payments;
+    const rows = await repo.find({
+      where: { errandId, priceChangeRequestId: Not(IsNull()), paymentFlow: PaymentFlow.CUSTOMER_TO_RUNNER },
+      order: { createdAt: 'DESC' },
+    });
+    const byRequest = new Map<string, Payment[]>();
+    for (const row of rows) {
+      const id = row.priceChangeRequestId as string;
+      byRequest.set(id, [...(byRequest.get(id) ?? []), row]);
+    }
+    const out: UnpaidDifference[] = [];
+    for (const [priceChangeRequestId, payments] of byRequest) {
+      if (payments.some((p) => p.status === PaymentStatus.COMPLETED || p.status === PaymentStatus.REFUNDED)) {
+        continue;
+      }
+      const newest = payments[0];
+      out.push({ priceChangeRequestId, amount: Number(newest.merchantAmount).toFixed(2), status: newest.status });
+    }
+    return out;
   }
 
   /**
@@ -914,6 +956,16 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
     // A price-change difference never moves the errand (it is already paid).
     if (success && !cancelled && !payment.priceChangeRequestId) {
       await this.confirmErrandAfterPayment(errandId);
+    }
+    // Row 248: tell the runner a send_to_runner difference is now held.
+    if (success && !cancelled && payment.priceChangeRequestId && payment.paymentFlow === PaymentFlow.CUSTOMER_TO_RUNNER) {
+      const event: PriceDifferencePaidEvent = {
+        errandId,
+        requestId: payment.priceChangeRequestId,
+        amount: Number(payment.merchantAmount).toFixed(2),
+        paidAt: new Date().toISOString(),
+      };
+      setImmediate(() => this.events?.emit(PRICE_DIFFERENCE_PAID_EVENT, event));
     }
   }
 
