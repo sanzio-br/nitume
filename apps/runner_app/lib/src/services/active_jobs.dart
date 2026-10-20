@@ -202,15 +202,12 @@ class ActiveJobs extends ChangeNotifier {
     } on Object catch (e) {
       if (replayOutcomeFor(e) == ReplayOutcome.retryLater &&
           e is! ArgumentError) {
-        await _queue().enqueue(
+        final queued = await _tryEnqueue(
           QueuedActionKind.statusTransition,
-          errandId: job.id,
-          payload: RunnerQueuedActions.transition(
-            from: from,
-            to: to,
-            note: note,
-          ),
+          job.id,
+          RunnerQueuedActions.transition(from: from, to: to, note: note),
         );
+        if (!queued) return _failure(job.id, e);
         _optimisticStatus[job.id] = to;
         _sync();
         notifyListeners();
@@ -228,16 +225,34 @@ class ActiveJobs extends ChangeNotifier {
       return const JobActionResult.done();
     } on Object catch (e) {
       if (replayOutcomeFor(e) == ReplayOutcome.retryLater) {
-        await _queue().enqueue(
+        final queued = await _tryEnqueue(
           QueuedActionKind.runnerNotes,
-          errandId: job.id,
-          payload: RunnerQueuedActions.runnerNotes(notes),
+          job.id,
+          RunnerQueuedActions.runnerNotes(notes),
         );
+        if (!queued) return _failure(job.id, e);
         _optimisticNotes[job.id] = notes;
         notifyListeners();
         return const JobActionResult.queued();
       }
       return _failure(job.id, e);
+    }
+  }
+
+  /// Queues an action; `false` when the queue refuses it (closed after a
+  /// log out, or the store failed). The caller then reports the original
+  /// failure (`Check your connection and try again.`) and the runner can
+  /// retry; nothing escapes as an unhandled error.
+  Future<bool> _tryEnqueue(
+    QueuedActionKind kind,
+    String errandId,
+    Map<String, Object?> payload,
+  ) async {
+    try {
+      await _queue().enqueue(kind, errandId: errandId, payload: payload);
+      return true;
+    } on Object {
+      return false;
     }
   }
 

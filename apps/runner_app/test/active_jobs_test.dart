@@ -88,6 +88,53 @@ void main() {
       },
     );
 
+    test(
+      'sign out, sign in, offline change at once: queued, no error',
+      () async {
+        final b = TestBackend();
+        b.jobs.heldList = [heldJob(id: 'w1')];
+        await b.services.startSession();
+        await b.services.endSession();
+        expect(b.services.queue.isClosed, isTrue);
+
+        // New sign-in: the shell may act before startSession finishes.
+        final starting = b.services.startSession();
+        expect(b.services.queue.isClosed, isFalse);
+        await b.services.active.load();
+        b.jobs.transitionErrors.add(networkError);
+        final r = await b.services.active.transition(
+          b.services.active.held.single,
+          ErrandStatus.arrived,
+        );
+        await starting;
+        expect(r.queued, isTrue);
+        expect(b.services.active.hasQueued('w1'), isTrue);
+      },
+    );
+
+    test(
+      'a closed queue never escapes: failed with the connection copy',
+      () async {
+        final b = TestBackend();
+        b.jobs.heldList = [heldJob(id: 'w1')];
+        await b.services.active.load();
+        await b.services.queue.clear(); // closed, as after a log out
+        b.jobs.transitionErrors.add(networkError);
+        final r = await b.services.active.transition(
+          b.services.active.held.single,
+          ErrandStatus.arrived,
+        );
+        expect(r.ok, isFalse);
+        expect(r.error, 'Check your connection and try again.');
+        b.jobs.notesError = networkError;
+        final n = await b.services.active.saveNotes(
+          b.services.active.held.single,
+          'x',
+        );
+        expect(n.error, 'Check your connection and try again.');
+      },
+    );
+
     test('illegal_transition reloads with one message', () async {
       final b = TestBackend();
       b.jobs.heldList = [heldJob(id: 'w1')];

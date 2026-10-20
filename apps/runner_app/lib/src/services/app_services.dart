@@ -181,7 +181,8 @@ class AppServices {
 
   /// Starts the signed-in runtime: socket, queue.
   Future<void> startSession() async {
-    await live.start();
+    // Open the queue first (a log out closed it), so an offline action made
+    // as soon as the shell shows is queued, not refused.
     await queue.load();
     // Copies left by a killed app that no queued action needs (B-1).
     await _quietly(
@@ -189,6 +190,7 @@ class AppServices {
         RunnerQueuedActions.evidencePaths(queue.pending),
       ),
     );
+    await live.start();
     unawaited(queue.replay());
   }
 
