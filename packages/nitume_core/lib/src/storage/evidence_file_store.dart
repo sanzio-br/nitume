@@ -29,12 +29,24 @@ abstract interface class EvidenceFileStore {
 /// [discardExcept] never deletes a copy this instance kept in the current
 /// run, so a photo captured while the start-up clean-up runs is safe; use
 /// one instance per app run, shared by the uploaders and the queue.
+///
+/// [onFolderReady] runs on the folder the first time this instance uses it
+/// in a run, right after creating it when it is missing, and again whenever
+/// it had to be re-created. The device store uses it to exclude the folder
+/// from device backups (owner row 255). It never blocks a capture: an
+/// error is swallowed and the hook is retried on the next use.
 class DirectoryEvidenceFileStore implements EvidenceFileStore {
-  DirectoryEvidenceFileStore(this.directory, {this.folder = 'nitume_evidence'});
+  DirectoryEvidenceFileStore(
+    this.directory, {
+    this.folder = 'nitume_evidence',
+    this.onFolderReady,
+  });
 
   final Future<Directory> Function() directory;
   final String folder;
+  final Future<void> Function(Directory folder)? onFolderReady;
   int _seq = 0;
+  bool _folderReady = false;
 
   /// Copies kept by this instance in this run (normalised paths).
   final _keptThisRun = <String>{};
@@ -42,7 +54,19 @@ class DirectoryEvidenceFileStore implements EvidenceFileStore {
   Future<Directory> _root() async {
     final base = await directory();
     final dir = Directory('${base.path}${Platform.pathSeparator}$folder');
-    if (!await dir.exists()) await dir.create(recursive: true);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+      _folderReady = false;
+    }
+    final hook = onFolderReady;
+    if (hook != null && !_folderReady) {
+      try {
+        await hook(dir);
+        _folderReady = true;
+      } on Object {
+        // Retried on the next use; a capture is never blocked by it.
+      }
+    }
     return dir;
   }
 

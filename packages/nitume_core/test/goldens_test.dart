@@ -378,6 +378,20 @@ void main() {
     );
   });
 
+  testWidgets('job-start location notice', (tester) async {
+    await pumpThemed(
+      tester,
+      goldenFrame(
+        const SizedBox(width: 375, child: JobStartLocationNotice()),
+      ),
+      surfaceSize: const Size(420, 520),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('golden')),
+      matchesGoldenFile('goldens/job_start_location_notice.png'),
+    );
+  });
+
   testWidgets('notice tones (C3)', (tester) async {
     await pumpThemed(
       tester,

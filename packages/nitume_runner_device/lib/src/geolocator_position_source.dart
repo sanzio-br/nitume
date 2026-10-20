@@ -3,6 +3,24 @@ import 'package:geolocator/geolocator.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 /// [PositionSource] on `geolocator` (owner row 124).
+///
+/// While-in-use permission only (owner row 245): [requestAccess] shows the
+/// single when-in-use prompt and never asks for "Allow all the time" /
+/// Always. That holds only while the runner app declares no
+/// `ACCESS_BACKGROUND_LOCATION` (Android) and no
+/// `NSLocationAlwaysAndWhenInUseUsageDescription` /
+/// `NSLocationAlwaysUsageDescription` (iOS): geolocator adds the background
+/// request whenever those are present.
+///
+/// [positions] with `background: true` (the live job window, driven by
+/// `LocationPinger`, which only starts it in the foreground):
+/// * Android: geolocator's location foreground service (type `location`,
+///   declared by the plugin) with the persistent, ongoing notification
+///   [notificationTitle] / [notificationText] (`_shared.md` §10, final).
+///   It stops, and the notification goes, when the stream is cancelled (job
+///   finished, runner offline).
+/// * iOS: background location updates with the blue indicator; needs
+///   `UIBackgroundModes` `location` in the app's Info.plist.
 class GeolocatorPositionSource implements PositionSource {
   const GeolocatorPositionSource({
     this.notificationTitle = 'Nitume Runner',
@@ -13,6 +31,34 @@ class GeolocatorPositionSource implements PositionSource {
   /// with `background: true`.
   final String notificationTitle;
   final String notificationText;
+
+  /// The geolocator settings [positions] uses on [platform].
+  @visibleForTesting
+  LocationSettings settingsFor(
+    TargetPlatform platform, {
+    required Duration interval,
+    required int distanceFilter,
+    required bool background,
+  }) => switch (platform) {
+    TargetPlatform.android => AndroidSettings(
+      distanceFilter: distanceFilter,
+      intervalDuration: interval,
+      foregroundNotificationConfig: background
+          ? ForegroundNotificationConfig(
+              notificationTitle: notificationTitle,
+              notificationText: notificationText,
+              setOngoing: true,
+            )
+          : null,
+    ),
+    TargetPlatform.iOS || TargetPlatform.macOS => AppleSettings(
+      distanceFilter: distanceFilter,
+      allowBackgroundLocationUpdates: background,
+      showBackgroundLocationIndicator: background,
+      pauseLocationUpdatesAutomatically: !background,
+    ),
+    _ => LocationSettings(distanceFilter: distanceFilter),
+  };
 
   @visibleForTesting
   static LocationAccess mapPermission(LocationPermission p) => switch (p) {
@@ -65,26 +111,12 @@ class GeolocatorPositionSource implements PositionSource {
     double distanceFilterMeters = 0,
     bool background = false,
   }) {
-    final distance = distanceFilterMeters.round();
-    final LocationSettings settings = switch (defaultTargetPlatform) {
-      TargetPlatform.android => AndroidSettings(
-        distanceFilter: distance,
-        intervalDuration: interval,
-        foregroundNotificationConfig: background
-            ? ForegroundNotificationConfig(
-                notificationTitle: notificationTitle,
-                notificationText: notificationText,
-              )
-            : null,
-      ),
-      TargetPlatform.iOS || TargetPlatform.macOS => AppleSettings(
-        distanceFilter: distance,
-        allowBackgroundLocationUpdates: background,
-        showBackgroundLocationIndicator: background,
-        pauseLocationUpdatesAutomatically: !background,
-      ),
-      _ => LocationSettings(distanceFilter: distance),
-    };
+    final settings = settingsFor(
+      defaultTargetPlatform,
+      interval: interval,
+      distanceFilter: distanceFilterMeters.round(),
+      background: background,
+    );
     return Geolocator.getPositionStream(locationSettings: settings)
         .map(fromPosition);
   }

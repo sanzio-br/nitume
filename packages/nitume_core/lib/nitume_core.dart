@@ -77,6 +77,7 @@ export 'src/widgets/job_offer_card.dart';
 export 'src/widgets/job_route_map.dart';
 export 'src/widgets/ledger_line_row.dart';
 export 'src/widgets/live_tracking_map.dart';
+export 'src/widgets/location_sharing_notice.dart';
 export 'src/widgets/navigation_chip.dart';
 export 'src/widgets/nitume_button.dart';
 export 'src/widgets/nitume_card.dart';

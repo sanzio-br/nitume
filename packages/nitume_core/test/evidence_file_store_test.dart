@@ -39,6 +39,53 @@ void main() {
     return store.keep(src.path);
   }
 
+  group('onFolderReady (row 255 backup exclusion)', () {
+    test('runs once per run on the folder, again after re-creation', () async {
+      final seen = <String>[];
+      final s = DirectoryEvidenceFileStore(
+        () async => base,
+        onFolderReady: (d) async => seen.add(d.path),
+      );
+      final src = File('${outside.path}/a.jpg')..writeAsBytesSync([1]);
+      await s.keep(src.path);
+      await s.keep(src.path);
+      await s.keptPaths();
+      expect(seen, ['${base.path}${Platform.pathSeparator}nitume_evidence']);
+
+      Directory(seen.single).deleteSync(recursive: true);
+      await s.keep(src.path);
+      expect(seen, hasLength(2));
+    });
+
+    test('also runs for a folder left by an earlier run', () async {
+      Directory('${base.path}/nitume_evidence').createSync();
+      var calls = 0;
+      final s = DirectoryEvidenceFileStore(
+        () async => base,
+        onFolderReady: (_) async => calls++,
+      );
+      await s.keptPaths();
+      expect(calls, 1);
+    });
+
+    test('a failing hook never blocks a capture and is retried', () async {
+      var calls = 0;
+      final s = DirectoryEvidenceFileStore(
+        () async => base,
+        onFolderReady: (_) async {
+          calls++;
+          if (calls == 1) throw const FileSystemException('exclude failed');
+        },
+      );
+      final src = File('${outside.path}/a.jpg')..writeAsBytesSync([1]);
+      final kept = await s.keep(src.path);
+      expect(File(kept).existsSync(), isTrue);
+      await s.keep(src.path);
+      await s.keep(src.path);
+      expect(calls, 2);
+    });
+  });
+
   test('keptPaths lists only the store folder', () async {
     expect(await store.keptPaths(), isEmpty);
     final a = await keepOne('a.jpg');
