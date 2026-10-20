@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
@@ -23,6 +24,10 @@ abstract final class ClaimCopy {
   static String upTo(String cap) => 'Up to $cap.';
   static String overCap(String cap) => 'You can claim up to $cap.';
   static String receiptAt(String time) => 'Receipt, $time';
+
+  /// A receipt without a capture time, by position (never its id).
+  static String receiptNumber(int n) => 'Receipt $n';
+  static const noteMax = 500;
 }
 
 /// Reimbursement claim after CANCELLED / FAILED (row 106): amount up to
@@ -50,6 +55,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
   @override
   void initState() {
     super.initState();
+    _note.addListener(() => setState(() {}));
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadReceipts());
   }
 
@@ -184,13 +190,15 @@ class _ClaimScreenState extends State<ClaimScreen> {
           const SizedBox(height: 16),
           const SectionLabel(ClaimCopy.receipt, padding: EdgeInsets.zero),
           const SizedBox(height: 8),
-          for (final r in _receipts) ...[
+          for (final (n, r) in _receipts.indexed) ...[
+            // TODO(core-ui): the time in Fira Code once NitumeRadioRow takes
+            // a rich label (feat/core-runner-evidence-store).
             NitumeRadioRow(
-              label: ClaimCopy.receiptAt(
-                r.capturedAt == null
-                    ? r.id
-                    : formatDayTimeEat(r.capturedAt!, now: _s.clock()),
-              ),
+              label: r.capturedAt == null
+                  ? ClaimCopy.receiptNumber(n + 1)
+                  : ClaimCopy.receiptAt(
+                      formatDayTimeEat(r.capturedAt!, now: _s.clock()),
+                    ),
               selected: _receiptId == r.id,
               onSelected: () => setState(() => _receiptId = r.id),
             ),
@@ -212,11 +220,25 @@ class _ClaimScreenState extends State<ClaimScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          NitumeField.multiline(
+          NitumeField(
             label: ClaimCopy.note,
             controller: _note,
             minLines: 2,
             maxLines: 4,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            inputFormatters: [
+              LengthLimitingTextInputFormatter(ClaimCopy.noteMax),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              formatCounter(_note.text.length, ClaimCopy.noteMax),
+              key: const ValueKey('claim-note-counter'),
+              style: NitumeTextStyles.meta,
+            ),
           ),
         ],
       ),

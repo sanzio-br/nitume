@@ -70,6 +70,8 @@ void main() {
       await b.pumpScreen(t, const JobSummaryScreen(errandId: 'e1'));
       expect(find.byType(SuccessMark), findsNothing);
       expect(find.text('Cancelled'), findsOneWidget);
+      expect(find.text('Job ended'), findsOneWidget);
+      expect(find.textContaining('Nice work'), findsNothing);
       await t.tap(find.text('Claim item spend'));
       await t.pumpAndSettle();
       expect(find.byType(ClaimScreen), findsOneWidget);
@@ -86,6 +88,32 @@ void main() {
       await t.pumpAndSettle();
       expect(b.payouts.claims.single, ('e1', 2500, 'r1', null));
       expect(find.text(SummaryCopy.claimSent), findsOneWidget);
+    });
+
+    testWidgets('claim form: untimed receipt by number, note 0/500', (t) async {
+      final b = await _withJob(
+        heldJob(
+          status: ErrandStatus.failed,
+          category: ErrandCategory.buyForMe,
+          itemAmount: '5000.00',
+          merchantRoute: MerchantRoute.sendToRunner,
+        ),
+      );
+      b.jobs.evidenceById['e1'] = [
+        evidenceItem(
+          'e1',
+          id: '7f1c-uuid',
+          type: EvidenceType.receipt,
+          timed: false,
+        ),
+      ];
+      await b.pumpScreen(t, const ClaimScreen(errandId: 'e1'));
+      expect(find.text('Receipt 1'), findsOneWidget);
+      expect(find.textContaining('7f1c-uuid'), findsNothing);
+      expect(find.text('0/500'), findsOneWidget);
+      await t.enterText(find.byType(TextField).last, 'x' * 600);
+      await t.pumpAndSettle();
+      expect(find.text('500/500'), findsOneWidget);
     });
   });
 }

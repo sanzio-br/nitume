@@ -275,12 +275,13 @@ Evidence evidenceItem(
   String errandId, {
   String id = 'ev1',
   EvidenceType type = EvidenceType.photo,
+  bool timed = true,
 }) => Evidence(
   id: id,
   errandId: errandId,
   type: type,
   url: null,
-  capturedAt: testNow,
+  capturedAt: timed ? testNow : null,
 );
 
 StatusHistoryEntry historyEntry(

@@ -41,6 +41,9 @@ abstract final class SummaryCopy {
   static const claimSent = 'Claim sent. Our team will check your receipt.';
   static const loadError = "Couldn't load this job.";
 
+  /// Heading on CANCELLED / FAILED (SA-2, proposed).
+  static const endedHeading = 'Job ended';
+
   static String heading(String? displayName) {
     final first = displayName?.trim().split(RegExp(r'\s+')).first ?? '';
     return first.isEmpty ? 'Nice work.' : 'Nice work, $first.';
@@ -321,7 +324,9 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
           Semantics(
             header: true,
             child: Text(
-              SummaryCopy.heading(_s.session.user?.displayName),
+              ended
+                  ? SummaryCopy.endedHeading
+                  : SummaryCopy.heading(_s.session.user?.displayName),
               textAlign: TextAlign.center,
               style: NitumeTextStyles.dialogTitle,
             ),
