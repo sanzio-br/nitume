@@ -12,7 +12,7 @@ abstract interface class TokenStore {
 /// Keychain / Keystore-backed implementation used by the apps.
 class SecureTokenStore implements TokenStore {
   SecureTokenStore({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   static const _accessKey = 'nitume.accessToken';
   static const _refreshKey = 'nitume.refreshToken';

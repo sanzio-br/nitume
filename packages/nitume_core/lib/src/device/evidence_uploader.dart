@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../api/api_exception.dart';
+
 import '../models/enums.dart';
 import '../models/errand_activity.dart';
 import '../storage/evidence_file_store.dart';
@@ -77,6 +79,7 @@ class EvidenceUploadItem extends ChangeNotifier {
   Evidence? _evidence;
   bool _fileMissing = false;
   bool _fileReleased = false;
+  Object? _error;
 
   /// Set when keeping failed: [path] is the picker's file, outside the
   /// [EvidenceFileStore], so it is released with [CapturedImage.discard].
@@ -95,6 +98,20 @@ class EvidenceUploadItem extends ChangeNotifier {
   /// (proposed copy: `This photo is no longer on your phone. Take it again.`).
   bool get fileMissing => _fileMissing;
 
+  /// Why the last attempt failed, while [status] is `failed`; `null`
+  /// otherwise. A [NitumeApiException] for an API refusal (read it with
+  /// [lastApiError]), a `FileSystemException` when the file is missing.
+  Object? get lastError => _error;
+
+  /// [lastError] when it is an API refusal: switch on its `code`
+  /// (`evidence_not_allowed`, `reimbursement_window_closed`,
+  /// `evidence_type_not_allowed`, a 413 …) and read typed details through
+  /// `RunnerErrorDetails` (`evidenceRefusedStatus`, `receiptWindowEndsAt` …).
+  NitumeApiException? get lastApiError => switch (_error) {
+    final NitumeApiException e => e,
+    _ => null,
+  };
+
   /// Retry makes sense: failed, and the file is still there.
   bool get canRetry => _status == EvidenceUploadStatus.failed && !_fileMissing;
 
@@ -107,8 +124,14 @@ class EvidenceUploadItem extends ChangeNotifier {
     EvidenceUploadStatus.failed => CaptureState.failed,
   };
 
-  void _set(EvidenceUploadStatus s, {Evidence? evidence, bool? missing}) {
+  void _set(
+    EvidenceUploadStatus s, {
+    Evidence? evidence,
+    bool? missing,
+    Object? error,
+  }) {
     _status = s;
+    _error = s == EvidenceUploadStatus.failed ? error : null;
     _evidence = evidence ?? _evidence;
     _fileMissing = missing ?? _fileMissing;
     notifyListeners();
@@ -135,6 +158,11 @@ class EvidenceUploadItem extends ChangeNotifier {
 /// * Disposed while an upload is in flight: the upload still runs to the
 ///   end and its file is cleaned up as above (a refusal then deletes the
 ///   copy, since nobody can retry it); no listener is called any more.
+/// * Log out: a temporary failure after [dispose], or while the [queue] is
+///   closed (`OfflineActionQueue.clear`, until its next `load`), is never
+///   queued. The item fails; after [dispose] its copy is deleted at once,
+///   otherwise when the uploader is released (`JobEvidenceUploads
+///   .releaseAll`) or by `DirectoryEvidenceFileStore.discardAll`.
 ///
 /// Lifetime (C-V2): hold one uploader per held job at app scope through
 /// [JobEvidenceUploads], so leaving `v-evidence-capture` does not drop
@@ -284,13 +312,15 @@ class EvidenceUploader extends ChangeNotifier {
     EvidenceUploadStatus s, {
     Evidence? evidence,
     bool? missing,
+    Object? error,
   }) async {
     if (!_disposed) {
-      item._set(s, evidence: evidence, missing: missing);
+      item._set(s, evidence: evidence, missing: missing, error: error);
       notifyListeners();
       return;
     }
     item._status = s;
+    item._error = s == EvidenceUploadStatus.failed ? error : null;
     item._evidence = evidence ?? item._evidence;
     item._fileMissing = missing ?? item._fileMissing;
     if (s == EvidenceUploadStatus.failed) await _release(item);
@@ -301,8 +331,8 @@ class EvidenceUploader extends ChangeNotifier {
     Uint8List bytes;
     try {
       bytes = await _read(item.path);
-    } on FileSystemException {
-      await _finish(item, EvidenceUploadStatus.failed, missing: true);
+    } on FileSystemException catch (e) {
+      await _finish(item, EvidenceUploadStatus.failed, missing: true, error: e);
       return;
     }
     try {
@@ -319,28 +349,38 @@ class EvidenceUploader extends ChangeNotifier {
       await _finish(item, EvidenceUploadStatus.uploaded, evidence: ev);
     } on Object catch (e) {
       final q = queue;
+      // Queue only while this uploader is open and the queue takes work:
+      // after release / log out the copy must not outlive the session (B-1).
       // The queue deletes through the file store, which cannot delete the
       // picker's file: such an item stays here as failed (retry possible).
       if (q != null &&
+          !_disposed &&
+          !q.isClosed &&
           item.keptInAppStorage &&
           replayOutcomeFor(e) == ReplayOutcome.retryLater) {
-        await q.enqueue(
-          QueuedActionKind.evidenceUpload,
-          errandId: item.errandId,
-          payload: RunnerQueuedActions.evidence(
-            path: item.path,
-            type: item.type,
-            contentType: item.contentType,
-            capturedAt: item.capturedAt,
-            lat: item.lat,
-            lon: item.lon,
-          ),
-        );
+        try {
+          await q.enqueue(
+            QueuedActionKind.evidenceUpload,
+            errandId: item.errandId,
+            payload: RunnerQueuedActions.evidence(
+              path: item.path,
+              type: item.type,
+              contentType: item.contentType,
+              capturedAt: item.capturedAt,
+              lat: item.lat,
+              lon: item.lon,
+            ),
+          );
+        } on StateError {
+          // Closed meanwhile (log out): not queued.
+          await _finish(item, EvidenceUploadStatus.failed, error: e);
+          return;
+        }
         // The queue owns the file now.
         item._fileReleased = true;
         await _finish(item, EvidenceUploadStatus.queued);
       } else {
-        await _finish(item, EvidenceUploadStatus.failed);
+        await _finish(item, EvidenceUploadStatus.failed, error: e);
       }
     }
   }

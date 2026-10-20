@@ -54,6 +54,14 @@ class _Fix implements PositionSource {
   }) => const Stream.empty();
 }
 
+/// Waits (up to ~2 s) for background file clean-up, which runs unawaited
+/// after dispose.
+Future<void> _until(bool Function() done) async {
+  for (var i = 0; i < 400 && !done(); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+}
+
 void main() {
   final now = DateTime.utc(2026, 10, 13, 7, 31);
   late Directory cache;
@@ -183,7 +191,7 @@ void main() {
           .captureAndUpload('e1', type: EvidenceType.photo);
       expect(pickerFilesLeft(), isTrue);
       uploads.releaseAll();
-      await Future<void>.delayed(Duration.zero);
+      await _until(() => !pickerFilesLeft());
       expect(pickerFilesLeft(), isFalse);
     });
 
@@ -200,7 +208,7 @@ void main() {
       expect(item.canRetry, isTrue);
       expect(queue.pending, isEmpty);
       u.dispose();
-      await Future<void>.delayed(Duration.zero);
+      await _until(() => !pickerFilesLeft());
       expect(pickerFilesLeft(), isFalse);
     });
 
@@ -306,8 +314,6 @@ void main() {
   });
 
   group('C-V2: uploads outlive the screen', () {
-    Future<void> settle() => Future<void>.delayed(Duration.zero);
-
     /// Real file I/O runs before the upload call: wait for it.
     Future<void> untilUploading() async {
       for (var i = 0; i < 500 && calls.isEmpty; i++) {
@@ -349,14 +355,15 @@ void main() {
       gate!.complete();
       final item = await pending;
       expect(item!.status, EvidenceUploadStatus.failed);
-      await settle();
+      await _until(() => kept().isEmpty);
       expect(kept(), isEmpty);
     });
 
-    test('disposed while uploading, then offline: the queue keeps the '
-        'copy', () async {
+    test('released (log out) while uploading, then offline: never queued, '
+        'the copy is deleted', () async {
+      final store = InMemoryQueueStore();
       final queue = OfflineActionQueue(
-        store: InMemoryQueueStore(),
+        store: store,
         runner: (_) async => ReplayOutcome.done,
         onSettled: RunnerQueuedActions.cleanupFor(files),
       );
@@ -367,9 +374,58 @@ void main() {
       await untilUploading();
       u.dispose();
       gate!.complete();
-      expect((await pending)!.status, EvidenceUploadStatus.queued);
-      expect(queue.pending, hasLength(1));
-      expect(kept(), hasLength(1));
+      expect((await pending)!.status, EvidenceUploadStatus.failed);
+      expect(queue.pending, isEmpty);
+      expect(await store.read(), isEmpty, reason: 'nothing persisted');
+      await _until(() => kept().isEmpty);
+      expect(kept(), isEmpty);
+    });
+
+    test('log out order: queue cleared while uploading, then offline: not '
+        'queued (closed queue), copy deleted on release', () async {
+      final store = InMemoryQueueStore();
+      final queue = OfflineActionQueue(
+        store: store,
+        runner: (_) async => ReplayOutcome.done,
+        onSettled: RunnerQueuedActions.cleanupFor(files),
+      );
+      final uploads = JobEvidenceUploads((_) => make(queue: queue));
+      gate = Completer<void>();
+      failWith = const NitumeApiException(message: 'x', statusCode: 503);
+      final pending = uploads
+          .forJob('e1')
+          .captureAndUpload('e1', type: EvidenceType.photo);
+      await untilUploading();
+      await queue.clear(); // endSession
+      gate!.complete();
+      final item = await pending;
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(queue.pending, isEmpty);
+      expect(await store.read(), isEmpty, reason: 'nothing persisted');
+      uploads.releaseAll();
+      await files.discardAll();
+      await _until(() => kept().isEmpty);
+      expect(kept(), isEmpty);
+
+      // Next sign-in: the queue reopens on load and holds nothing.
+      await queue.load();
+      expect(queue.isClosed, isFalse);
+      expect(queue.pending, isEmpty);
+    });
+
+    test('the enqueue refused by a queue closed mid-flight is a failure, '
+        'not an error', () async {
+      final queue = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async => ReplayOutcome.done,
+      );
+      final u = make(queue: queue);
+      await queue.clear();
+      failWith = const NitumeApiException(message: 'x', statusCode: 503);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(item.canRetry, isTrue);
+      expect(queue.pending, isEmpty);
     });
 
     test('a disposed uploader takes no new capture', () async {
@@ -432,6 +488,57 @@ void main() {
         ..releaseAll();
       expect(made.every((u) => u.isDisposed), isTrue);
       expect(uploads.jobIds, isEmpty);
+    });
+  });
+
+  group('lastError', () {
+    test('a refusal is kept with its code and typed details, cleared on '
+        'retry success', () async {
+      final u = make();
+      failWith = const NitumeApiException(
+        message: 'closed',
+        statusCode: 409,
+        code: ApiErrorCodes.reimbursementWindowClosed,
+        details: {'windowEndsAt': '2026-10-19T09:00:00.000Z'},
+      );
+      final item = await u.captureAndUpload('e1', type: EvidenceType.receipt);
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(item.lastApiError!.code, ApiErrorCodes.reimbursementWindowClosed);
+      expect(
+        item.lastApiError!.receiptWindowEndsAt,
+        DateTime.utc(2026, 10, 19, 9),
+      );
+      expect(item.lastError, same(failWith));
+      failWith = null;
+      await u.retry(item);
+      expect(item.status, EvidenceUploadStatus.uploaded);
+      expect(item.lastError, isNull);
+      expect(item.lastApiError, isNull);
+    });
+
+    test('a missing file is a FileSystemException, not an API error', () async {
+      final u = make();
+      failWith = const NitumeApiException(message: 'bad', statusCode: 422);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      for (final f in kept()) {
+        f.deleteSync();
+      }
+      await u.retry(item!);
+      expect(item.fileMissing, isTrue);
+      expect(item.lastError, isA<FileSystemException>());
+      expect(item.lastApiError, isNull);
+    });
+
+    test('queued items carry no error', () async {
+      final queue = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async => ReplayOutcome.done,
+      );
+      final u = make(queue: queue);
+      failWith = const NitumeApiException(message: 'x', statusCode: 503);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.status, EvidenceUploadStatus.queued);
+      expect(item.lastError, isNull);
     });
   });
 }
