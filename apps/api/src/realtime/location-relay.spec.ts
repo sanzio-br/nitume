@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OFFER_MADE_EVENT, OFFER_WITHDRAWN_EVENT } from '../errands/errands.service';
 import { PRICE_CHANGE_DECIDED_EVENT } from '../matching/price-change.service';
+import { PRICE_DIFFERENCE_PAID_EVENT } from '../payments/payment-events';
 import { LocationRelay } from './location-relay';
 import { DomainEvent } from './realtime.events';
 
@@ -47,5 +48,6 @@ describe('RA-5 domain event names', () => {
     expect(DomainEvent.OFFER_MADE).toBe(OFFER_MADE_EVENT);
     expect(DomainEvent.OFFER_WITHDRAWN).toBe(OFFER_WITHDRAWN_EVENT);
     expect(DomainEvent.PRICE_CHANGE_DECIDED).toBe(PRICE_CHANGE_DECIDED_EVENT);
+    expect(DomainEvent.PRICE_CHANGE_DIFFERENCE_PAID).toBe(PRICE_DIFFERENCE_PAID_EVENT);
   });
 });

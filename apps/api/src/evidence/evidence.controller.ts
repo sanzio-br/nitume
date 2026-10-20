@@ -26,7 +26,10 @@ export class EvidenceController {
 
   /**
    * Optional `Idempotency-Key` (RA-17): a replayed upload returns the first
-   * evidence row and stores nothing new.
+   * evidence row and stores nothing new. Row 252: up to
+   * `evidence.maxUploadBytes` (10 MB) per file, else 413
+   * `evidence_too_large` (`maxBytes`); the route's JSON body limit is set
+   * in main.ts (`applyEvidenceBodyLimit`).
    */
   @Post()
   @Idempotent('evidence-upload')

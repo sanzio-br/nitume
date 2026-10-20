@@ -99,6 +99,22 @@ export class DisputesService implements OnModuleInit {
     return new Set([...byRunner].filter(([, ids]) => ids.some((id) => disputed.has(id))).map(([runner]) => runner));
   }
 
+  /**
+   * Row 247: the tasks among `errandIds` with an open or under-review
+   * dispute. Their job location samples are kept while it is open.
+   */
+  async errandsWithOpenDisputes(errandIds: string[]): Promise<Set<string>> {
+    const unique = [...new Set(errandIds)].filter(Boolean);
+    if (unique.length === 0) {
+      return new Set();
+    }
+    const open = await this.disputes.find({
+      where: { errandId: In(unique), status: In([DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW]) },
+      select: { errandId: true },
+    });
+    return new Set(open.map((d) => d.errandId));
+  }
+
   /** Closes the dispute row in the resolve-dispute transaction (N-6). */
   onModuleInit(): void {
     this.errands.onDisputeResolved((manager, resolution) => this.closeWithin(manager, resolution));

@@ -22,10 +22,11 @@ import { TestSocket, connectSocket } from './support/socket-client';
  * Runner realtime (RA-4, RA-5): the server-joined runner room with
  * `job:offered` / `job:offer_withdrawn` / `price_change:decided`, and the
  * `location:ping` intake (auth, job and state checks, throttle, Redis
- * fan-out to `location:update`, geofenced ARRIVED by the system). Pings
- * stay in Redis only (row 247 open): no runner_locations row and no
- * runner_profiles position is written. Every row created here is removed in
- * afterAll by tracked id; no append-only table is written.
+ * fan-out to `location:update`, geofenced ARRIVED by the system). Row 247:
+ * only job pings are stored (sampled runner_locations rows linked to the
+ * task); idle positions stay in Redis and no position is ever written on
+ * runner_profiles. Every row created here is removed in afterAll by tracked
+ * id; no append-only table is written.
  */
 describe('Runner realtime (e2e)', () => {
   let app: INestApplication<App>;
@@ -340,7 +341,7 @@ describe('Runner realtime (e2e)', () => {
       await sleep(200);
       expect(customerSocket.received.filter((r) => r.event === 'location:update').length).toBe(before);
 
-      // Redis only (row 247): the 60 s live key, no GEO set (reviewer B1), nothing in PostgreSQL.
+      // Idle position (row 247): the 60 s live key only, no GEO set (reviewer B1), nothing in PostgreSQL.
       const redis = app.get(RedisService);
       const live = JSON.parse((await redis.get(runnerLiveKey(runner.profileId as string))) as string) as Record<string, unknown>;
       expect(live).toMatchObject({ lat: -4.2, lng: 39.5, errandId: null });
@@ -354,13 +355,20 @@ describe('Runner realtime (e2e)', () => {
       } finally {
         await raw.quit();
       }
+      // Job pings (row 247): the first (and every 10th) is stored, linked to the task; never the idle one.
+      let trail: { errandId: string | null }[] = [];
+      for (let i = 0; i < 40 && trail.length === 0; i += 1) {
+        await sleep(100);
+        trail = await db().query('SELECT "errandId" FROM "runner_locations" WHERE "runnerProfileId" = $1', [runner.profileId]);
+      }
       await sleep(300);
-      const trail: unknown[] = await db().query('SELECT id FROM "runner_locations" WHERE "runnerProfileId" = $1', [runner.profileId]);
-      expect(trail).toEqual([]);
+      trail = await db().query('SELECT "errandId" FROM "runner_locations" WHERE "runnerProfileId" = $1', [runner.profileId]);
+      expect(trail).toEqual([{ errandId: errand.id }]);
       const [profile] = (await db().query('SELECT "currentLocation", "lastPingAt" FROM "runner_profiles" WHERE id = $1', [
         runner.profileId,
       ])) as { currentLocation: unknown; lastPingAt: unknown }[];
-      expect(profile).toEqual({ currentLocation: null, lastPingAt: null });
+      expect(profile.currentLocation).toBeNull();
+      expect(profile.lastPingAt).not.toBeNull();
 
       // The tracking snapshot reads the live position.
       const tracking = await http().get(`/api/v1/errands/${errand.id}/tracking`).set(bearer(customer.token)).expect(200);

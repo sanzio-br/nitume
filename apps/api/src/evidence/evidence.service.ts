@@ -19,6 +19,7 @@ import { Evidence } from './evidence.entity';
 import { EVIDENCE_STORAGE } from './evidence-storage/evidence-storage.provider';
 import { EvidenceStorage } from './evidence-storage/evidence-storage.interface';
 import { CreateEvidenceDto, EvidenceViewerContext } from './dto/evidence.dto';
+import { evidenceMaxUploadBytes, evidenceTooLarge } from './evidence-upload';
 
 /**
  * Evidence as returned to clients (row 25): `url` is a short-lived signed
@@ -26,10 +27,14 @@ import { CreateEvidenceDto, EvidenceViewerContext } from './dto/evidence.dto';
  * `urlExpiresAt` tells the app when to refetch. The storage key and any
  * permanent URL are never exposed.
  */
-/** RA-11, `v-evidence-capture`: the states in which the task's runner may upload each type. */
+/**
+ * RA-11, `v-evidence-capture`: the states in which the task's runner may
+ * upload each type. Row 254 (owner, 2026-10-20): receipts also while
+ * DISPUTED (they help resolve it); photos stay refused there.
+ */
 export const RUNNER_UPLOAD_STATES: Readonly<Record<'photo' | 'receipt', ReadonlySet<ErrandStatus>>> = {
   photo: new Set([ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS]),
-  receipt: new Set([ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS, ErrandStatus.AWAITING_CUSTOMER]),
+  receipt: new Set([ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS, ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.DISPUTED]),
 };
 
 /** Row 129: receipts also after the task ended this way, inside the window. */
@@ -99,6 +104,11 @@ export class EvidenceService implements OnModuleInit {
     const data = Buffer.from(dto.data, 'base64');
     if (data.length === 0) {
       throw new BadRequestException('Evidence data must not be empty');
+    }
+    // Row 252: 10 MB per file (configurable); the route's body limit matches.
+    const maxBytes = evidenceMaxUploadBytes(this.config);
+    if (data.length > maxBytes) {
+      throw evidenceTooLarge(maxBytes);
     }
     const isImage = dto.contentType.startsWith('image/');
     const isVideo = dto.contentType.startsWith('video/');
@@ -173,9 +183,9 @@ export class EvidenceService implements OnModuleInit {
   }
 
   /**
-   * RA-11 (rows 121, 129): a runner uploads photos (ARRIVED, IN_PROGRESS)
-   * and receipts (ARRIVED … AWAITING_CUSTOMER, and up to 24 h after
-   * CANCELLED/FAILED), images only, no video. Errors: 400
+   * RA-11 (rows 121, 129, 254): a runner uploads photos (ARRIVED,
+   * IN_PROGRESS) and receipts (ARRIVED … AWAITING_CUSTOMER, DISPUTED, and up
+   * to 24 h after CANCELLED/FAILED), images only, no video. Errors: 400
    * evidence_type_not_allowed (`allowed`); 409 evidence_not_allowed
    * (`status`, `type`); 409 reimbursement_window_closed (`endedAt`,
    * `windowEndsAt`).

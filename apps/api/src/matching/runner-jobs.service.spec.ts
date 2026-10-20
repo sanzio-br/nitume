@@ -32,7 +32,9 @@ const locations = [
   { id: 'l-1', pointType: 'pickup', lat: 0, lng: 0, addressText: 'A', placeId: null },
 ];
 
-const build = (opts: { verified?: boolean; holder?: string } = {}) => {
+const build = (
+  opts: { verified?: boolean; holder?: string; route?: string; unpaid?: { priceChangeRequestId: string; amount: string; status: string }[] } = {},
+) => {
   const errands = {
     openOffersFor: vi.fn(() => Promise.resolve({ items: [{ errand, assignment: offer }], nextCursor: null })),
     locationsAndItemsFor: vi.fn(() =>
@@ -52,7 +54,10 @@ const build = (opts: { verified?: boolean; holder?: string } = {}) => {
     ),
   };
   const ledger = { runnerFeePaid: vi.fn(() => Promise.resolve(300)) };
-  const payments = { primaryRouteFor: vi.fn(() => Promise.resolve('send_to_runner')) };
+  const payments = {
+    primaryRouteFor: vi.fn(() => Promise.resolve(opts.route ?? 'send_to_runner')),
+    unpaidDifferences: vi.fn(() => Promise.resolve(opts.unpaid ?? [])),
+  };
   const limits = {
     checkIn: vi.fn(() =>
       Promise.resolve({ requiredPurchase: '5000.00', maxPurchaseAdvance: '3000.00', overLimit: true }),
@@ -76,6 +81,7 @@ describe('RunnerJobsService (RA-1, RA-2)', () => {
       requiredPurchase: '5000.00',
       maxPurchaseAdvance: '3000.00',
       overPurchaseLimit: true,
+      differenceAwaitingPayment: null,
       offerExpiresAt: offer.offerExpiresAt,
       firstPoint: { id: 'l-1' },
       assignment: { id: 'a-1', status: 'assigned', decidedAt: null },
@@ -122,5 +128,23 @@ describe('RunnerJobsService.heldJobs (A1)', () => {
     expect(page.nextCursor).toBe('c-2');
     expect(page.items[0]).toMatchObject({ id: 'e-1', runnerFee: '300.00', offerExpiresAt: null, assignment: { status: 'accepted' } });
     expect(page.items[0]).not.toHaveProperty('feeTotal');
+  });
+});
+
+describe('RunnerJobsService row 248: approved increase not yet paid', () => {
+  const unpaid = [
+    { priceChangeRequestId: 'pc-2', amount: '200.00', status: 'pending' },
+    { priceChangeRequestId: 'pc-1', amount: '150.50', status: 'failed' },
+  ];
+
+  it('send_to_runner: exposes the unpaid difference; the buy ceiling (requiredPurchase) stays what Nitume holds', async () => {
+    const job = await build({ unpaid }).service.job('u-1', 'e-1');
+    expect(job.differenceAwaitingPayment).toEqual({ amount: '350.50', priceChangeRequestIds: ['pc-2', 'pc-1'] });
+    expect(job.requiredPurchase).toBe('5000.00');
+  });
+
+  it('null once paid, and never on merchant_direct', async () => {
+    expect((await build().service.job('u-1', 'e-1')).differenceAwaitingPayment).toBeNull();
+    expect((await build({ unpaid, route: 'merchant_direct' }).service.job('u-1', 'e-1')).differenceAwaitingPayment).toBeNull();
   });
 });

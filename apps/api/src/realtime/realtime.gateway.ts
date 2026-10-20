@@ -22,7 +22,7 @@ import {
   QuoteRequestedEvent,
 } from '../errands/errands.service';
 import { LocationIngestService } from '../location/location-ingest.service';
-import { MerchantDetailsChangedEvent } from '../payments/payment-events';
+import { MerchantDetailsChangedEvent, PriceDifferencePaidEvent } from '../payments/payment-events';
 import { RunnersService } from '../runners/runners.service';
 import { UsersService } from '../users/users.service';
 import {
@@ -309,6 +309,24 @@ export class RealtimeGateway implements OnGatewayConnection {
       this.logger.warn(`price_change:decided without the runner room: ${err instanceof Error ? err.message : String(err)}`);
     }
     this.server?.to(rooms).emit(SocketServerEvent.PRICE_CHANGE_DECIDED, event);
+  }
+
+  /**
+   * Row 248: `price_change:difference_paid` to the errand room and the
+   * current runner's room (one delivery per socket). Never throws.
+   */
+  @OnEvent(DomainEvent.PRICE_CHANGE_DIFFERENCE_PAID, { async: true })
+  async onPriceDifferencePaid(event: PriceDifferencePaidEvent): Promise<void> {
+    const rooms = [errandRoom(event.errandId)];
+    try {
+      const holder = await this.errands.activeAssignmentFor(event.errandId);
+      if (holder) {
+        rooms.push(runnerRoom(holder.runnerProfileId));
+      }
+    } catch (err) {
+      this.logger.warn(`price_change:difference_paid without the runner room: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    this.server?.to(rooms).emit(SocketServerEvent.PRICE_CHANGE_DIFFERENCE_PAID, event);
   }
 
   /** Merchant details changed after a merchant-direct payment started (row 80). */

@@ -56,8 +56,23 @@ export interface RunnerJobView {
   itemAmount: string | null;
   /** How the item is paid; null without an item amount. */
   merchantRoute: MerchantRoute | null;
-  /** What the runner pays out of pocket and is reimbursed (send_to_runner), "0.00" otherwise. */
+  /**
+   * What the runner pays out of pocket and is reimbursed (send_to_runner),
+   * "0.00" otherwise: the item amount the customer has paid to Nitume. It is
+   * also the most the runner may spend on the item (row 248): an approved
+   * increase raises it only once its difference is paid.
+   */
   requiredPurchase: string;
+  /**
+   * Row 248 (owner, 2026-10-20): send_to_runner only. Set while an approved
+   * price increase is waiting for the customer to pay the difference
+   * (`amount`, the unpaid total; `priceChangeRequestIds`), else null. Until
+   * it clears, `itemAmount` is already the new price but the runner buys
+   * only up to `requiredPurchase` (the old amount). App copy: "Approved.
+   * Waiting for the customer to pay the difference." Clears on
+   * `price_change:difference_paid`.
+   */
+  differenceAwaitingPayment: { amount: string; priceChangeRequestIds: string[] } | null;
   /** The runner's purchase limit (row 138), KES. */
   maxPurchaseAdvance: string;
   /** requiredPurchase > maxPurchaseAdvance: accept is refused, an over-limit decline is allowed (rows 108, 113). */
@@ -207,10 +222,11 @@ export class RunnerJobsService {
     items: ErrandItemView[],
     runnerProfileId: string,
   ): Promise<RunnerJobView> {
-    const [runnerFee, route, check] = await Promise.all([
+    const [runnerFee, route, check, unpaid] = await Promise.all([
       this.ledger.runnerFeePaid(errand.id),
       this.payments.primaryRouteFor(errand.id),
       this.purchaseLimits.checkIn(undefined, errand.id, runnerProfileId),
+      this.payments.unpaidDifferences(errand.id),
     ]);
     const budget = Number(errand.budget ?? 0);
     const hasItem = BUDGET_CATEGORIES.has(errand.category) && budget > 0;
@@ -235,6 +251,13 @@ export class RunnerJobsService {
       requiredPurchase: check.requiredPurchase,
       maxPurchaseAdvance: check.maxPurchaseAdvance,
       overPurchaseLimit: check.overLimit,
+      differenceAwaitingPayment:
+        hasItem && route === MerchantRoute.SEND_TO_RUNNER && unpaid.length > 0
+          ? {
+              amount: unpaid.reduce((sum, d) => sum + Number(d.amount), 0).toFixed(2),
+              priceChangeRequestIds: unpaid.map((d) => d.priceChangeRequestId),
+            }
+          : null,
       offerExpiresAt: open ? (assignment.offerExpiresAt ?? null) : null,
       assignment: {
         id: assignment.id,

@@ -132,7 +132,7 @@ describe('LocationIngestService.ingest (RA-4)', () => {
     );
   });
 
-  it('writes nothing to PostgreSQL while persistence is off (row 247)', async () => {
+  it('writes nothing to PostgreSQL when persistence is switched off (LOCATION_PERSIST_ENABLED=false)', async () => {
     const { service, redis, queue } = build();
     await expect(service.ingest(runnerUser, ping({ errandId: ERRAND }), NOW)).resolves.toEqual({ ok: true, status: ErrandStatus.RUNNER_EN_ROUTE });
     expect(redis.set).toHaveBeenCalled();
@@ -159,8 +159,29 @@ describe('LocationIngestService.ingest (RA-4)', () => {
     expect(redis.publish).not.toHaveBeenCalled();
     expect(errands.findByIds).not.toHaveBeenCalled();
     expect(redis.set).toHaveBeenCalledWith(runnerLiveKey('rp-1'), expect.any(String), 60);
-    // Row 247 proposal: an idle ping never joins the trail.
-    expect(queue.add).toHaveBeenCalledWith('location-persist', expect.objectContaining({ errandId: null, trail: false }), expect.anything());
+    // Row 247 (owner, 2026-10-20): an idle position is Redis presence only, never queued for PostgreSQL.
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('row 247: persistence is on by default (no config value) for job pings', async () => {
+    const { service, queue } = build({ count: 1 });
+    Object.assign(service, { config: { get: vi.fn((_k: string, d: unknown) => d) } });
+    await service.ingest(runnerUser, ping({ errandId: ERRAND }), NOW);
+    expect(queue.add).toHaveBeenCalledWith('location-persist', expect.objectContaining({ errandId: ERRAND, trail: true }), expect.anything());
+  });
+
+  it('row 253: the guards default to 2 s, 60 s and 100 m and follow the config', async () => {
+    const values: Record<string, number> = {
+      'location.pingMinIntervalMs': 5000,
+      'location.pingMaxAgeSeconds': 10,
+    };
+    const { service, redis } = build();
+    Object.assign(service, { config: { get: vi.fn((k: string, d: unknown) => values[k] ?? d) } });
+    await expect(
+      service.ingest(runnerUser, ping({ ts: new Date(NOW.getTime() - 11_000).toISOString() }), NOW),
+    ).resolves.toEqual({ ok: false, error: 'stale_ping' });
+    await service.ingest(runnerUser, ping({ ts: new Date(NOW.getTime() - 9_000).toISOString() }), NOW);
+    expect(redis.setIfAbsentMs).toHaveBeenCalledWith('location:throttle:u-r1', '1', 5000);
   });
 
   it('refuses non-runners and malformed or stale pings before any Redis write', async () => {

@@ -3,6 +3,7 @@ import { PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
 import {
   DISPUTE_WINDOW_JOB,
   ID_DOCUMENT_PURGE_JOB,
+  LOCATION_PURGE_JOB,
   MaintenanceProcessor,
   OFFER_EXPIRY_JOB,
   STK_RECONCILE_JOB,
@@ -87,5 +88,14 @@ describe('MaintenanceProcessor (rows 26, 50, 52)', () => {
     const { processor, runners } = build();
     await expect(processor.process({ name: ID_DOCUMENT_PURGE_JOB } as never)).resolves.toEqual({ purged: ['v-1'] });
     expect(runners.purgeExpired).toHaveBeenCalled();
+  });
+});
+
+describe('MaintenanceProcessor location purge (row 247)', () => {
+  it('runs the job location purge', async () => {
+    const locations = { purgeExpired: vi.fn(() => Promise.resolve({ errandIds: ['e-1'], deleted: 4 })) };
+    const processor = new MaintenanceProcessor({} as never, {} as never, {} as never, locations as never);
+    await expect(processor.process({ name: LOCATION_PURGE_JOB } as never)).resolves.toEqual({ errandIds: ['e-1'], deleted: 4 });
+    expect(locations.purgeExpired).toHaveBeenCalled();
   });
 });

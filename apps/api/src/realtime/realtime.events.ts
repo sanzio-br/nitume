@@ -64,6 +64,12 @@ export const SocketServerEvent = {
   JOB_OFFER_WITHDRAWN: 'job:offer_withdrawn',
   /** RA-5: to the current runner's room and `errand:{id}` (`PriceChangeDecidedPayload`). */
   PRICE_CHANGE_DECIDED: 'price_change:decided',
+  /**
+   * Row 248: to the current runner's room and `errand:{id}`, a send_to_runner
+   * difference was paid (`PriceDifferencePaidEvent`): the runner may now buy
+   * at the new amount (refetch `GET /runners/me/jobs/:errandId`).
+   */
+  PRICE_CHANGE_DIFFERENCE_PAID: 'price_change:difference_paid',
 } as const;
 
 /** In-process domain events (EventEmitter2) the realtime module listens to. */
@@ -85,6 +91,8 @@ export const DomainEvent = {
   OFFER_WITHDRAWN: 'assignment.offer_withdrawn',
   /** RA-5 (price-change module, after commit). */
   PRICE_CHANGE_DECIDED: 'price_change.decided',
+  /** Row 248 (payments module, after the difference payment completed). */
+  PRICE_CHANGE_DIFFERENCE_PAID: 'price_change.difference_paid',
 } as const;
 
 /** `job:offered`: fetch the job with `GET /runners/me/jobs/:errandId`. */

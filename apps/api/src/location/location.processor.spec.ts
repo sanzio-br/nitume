@@ -13,16 +13,16 @@ const build = (holder: unknown = { runnerProfileId: 'rp-1', status: AssignmentSt
 };
 
 describe('LocationProcessor (§4.2, §4.3)', () => {
-  it('persists a ping through the runners service', async () => {
+  it('persists a job ping through the runners service', async () => {
     const { processor, runners } = build();
     const out = await processor.process({
       name: 'location-persist',
-      data: { runnerProfileId: 'rp-1', errandId: null, lat: 1, lng: 2, capturedAt: '2026-10-19T10:00:00.000Z', trail: true },
+      data: { runnerProfileId: 'rp-1', errandId: 'e-1', lat: 1, lng: 2, capturedAt: '2026-10-19T10:00:00.000Z', trail: true },
     } as never);
     expect(out).toEqual({ moved: true });
     expect(runners.recordPing).toHaveBeenCalledWith({
       runnerProfileId: 'rp-1',
-      errandId: null,
+      errandId: 'e-1',
       lat: 1,
       lng: 2,
       capturedAt: new Date('2026-10-19T10:00:00.000Z'),

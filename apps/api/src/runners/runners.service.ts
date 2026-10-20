@@ -276,47 +276,53 @@ export class RunnersService {
   }
 
   /**
-   * Last-known runner position for live tracking. Returns null when the
-   * runner has never pinged.
+   * Row 247: the runner's newest stored location sample on one task (the
+   * tracking fallback once the Redis live position has expired), or null.
+   * Positions are only ever stored for a job, never on the profile.
    */
-  async lastKnownLocation(
-    id: string,
+  async lastJobLocation(
+    runnerProfileId: string,
+    errandId: string,
   ): Promise<{ lat: number; lng: number; capturedAt: Date | null } | null> {
-    const profile = await this.profiles.findOne({ where: { id } });
-    if (!profile?.currentLocation) {
+    const row = await this.profiles.manager.getRepository(RunnerLocation).findOne({
+      where: { runnerProfileId, errandId },
+      order: { capturedAt: 'DESC' },
+    });
+    if (!row) {
       return null;
     }
-    const [lng, lat] = profile.currentLocation.coordinates;
-    return { lat, lng, capturedAt: profile.lastPingAt };
+    const [lng, lat] = row.coordinates.coordinates;
+    return { lat, lng, capturedAt: row.capturedAt };
   }
 
   /**
-   * RA-4, §2.2, §4.2: stores one location ping (location queue worker only).
-   * The last-known position on `runner_profiles` moves forward only (an
-   * older ping processed late never overwrites a newer one); with `trail`
-   * the ping is also kept in `runner_locations` (the sampled trail).
-   * Returns whether the last-known position changed.
+   * RA-4, §2.2, §4.2, row 247: stores one job ping (location queue worker
+   * only). `lastPingAt` on `runner_profiles` moves forward only (an older
+   * ping processed late never overwrites a newer one); no position is kept
+   * on the profile (row 247: positions are stored only as job samples,
+   * which the retention purge deletes). With `trail` the ping is kept in
+   * `runner_locations`, linked to the task. Returns whether `lastPingAt`
+   * moved.
    */
   async recordPing(ping: {
     runnerProfileId: string;
-    errandId: string | null;
+    errandId: string;
     lat: number;
     lng: number;
     capturedAt: Date;
     trail: boolean;
   }): Promise<boolean> {
-    const point: GeoPoint = { type: 'Point', coordinates: [ping.lng, ping.lat] };
     const result = await this.profiles
       .createQueryBuilder()
       .update(RunnerProfile)
-      .set({ currentLocation: point, lastPingAt: ping.capturedAt })
+      .set({ lastPingAt: ping.capturedAt })
       .where('id = :id', { id: ping.runnerProfileId })
       .andWhere('("lastPingAt" IS NULL OR "lastPingAt" < :at)', { at: ping.capturedAt })
       .execute();
-    // Row 247 proposal: only job pings ever join the trail.
+    // Row 247: only job pings are ever stored, always with their task.
     if (ping.trail && ping.errandId) {
-      const trail = this.profiles.manager.getRepository(RunnerLocation);
-      await trail.insert({
+      const point: GeoPoint = { type: 'Point', coordinates: [ping.lng, ping.lat] };
+      await this.profiles.manager.getRepository(RunnerLocation).insert({
         runnerProfileId: ping.runnerProfileId,
         errandId: ping.errandId,
         coordinates: point,
@@ -324,6 +330,35 @@ export class RunnersService {
       });
     }
     return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Row 247 retention: one page of the tasks that have stored location
+   * samples, by task id after `afterErrandId` (keyset). The purge asks the
+   * errands and disputes modules which of them may go.
+   */
+  async errandsWithLocationSamples(afterErrandId: string | null, batch = 500): Promise<string[]> {
+    const qb = this.profiles.manager
+      .getRepository(RunnerLocation)
+      .createQueryBuilder('l')
+      .select('DISTINCT l."errandId"', 'errandId')
+      .where('l."errandId" IS NOT NULL')
+      .orderBy('l."errandId"', 'ASC')
+      .limit(batch);
+    if (afterErrandId) {
+      qb.andWhere('l."errandId" > :after', { after: afterErrandId });
+    }
+    const rows = await qb.getRawMany<{ errandId: string }>();
+    return rows.map((r) => r.errandId);
+  }
+
+  /** Row 247 retention: deletes every location sample of the given tasks; returns how many. */
+  async deleteLocationSamples(errandIds: string[]): Promise<number> {
+    if (errandIds.length === 0) {
+      return 0;
+    }
+    const result = await this.profiles.manager.getRepository(RunnerLocation).delete({ errandId: In(errandIds) });
+    return result.affected ?? 0;
   }
 
   /**
