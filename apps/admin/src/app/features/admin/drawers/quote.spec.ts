@@ -5,6 +5,7 @@ import {
   AMOUNT_ERROR,
   buildQuoteBody,
   EXPIRY_ERROR,
+  OUTSIDE_SERVICE_AREA_COPY,
   QuoteForm,
   quoteExpired,
   TOTAL_ERROR,
@@ -178,6 +179,47 @@ describe('QuoteDialogComponent errors (row 83)', () => {
     expect(el.textContent).toContain('The expiry time has passed. Choose a later time.');
     expect(el.textContent).not.toContain('Check the amounts');
     expect(el.querySelector('.field-error')?.textContent).toContain(EXPIRY_ERROR);
+  });
+
+  it('maps 422 location_outside_service_area to the spec copy and keeps the dialog open (row 233)', async () => {
+    const fixture = TestBed.createComponent(QuoteDialogComponent);
+    fixture.componentRef.setInput('errandId', errandFixture().id);
+    fixture.componentRef.setInput('open', true);
+    document.body.appendChild(fixture.nativeElement);
+    const issued = vi.fn();
+    const conflict = vi.fn();
+    fixture.componentInstance.issued.subscribe(issued);
+    fixture.componentInstance.conflict.subscribe(conflict);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const total = el.querySelector('input[inputmode="decimal"]') as HTMLInputElement;
+    total.value = '1450';
+    total.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    Array.from(el.querySelectorAll('button'))
+      .find((b) => b.textContent?.trim() === 'Issue quote')!
+      .click();
+    http.expectOne(`${API}/errands/${errandFixture().id}/quote`).flush(
+      {
+        statusCode: 422,
+        code: 'location_outside_service_area',
+        message: 'This location is outside the areas we serve. API copy.',
+        pointType: 'task_site',
+      },
+      { status: 422, statusText: 'Unprocessable Entity' },
+    );
+    await flushAsync();
+    fixture.detectChanges();
+    expect(el.textContent).toContain(OUTSIDE_SERVICE_AREA_COPY);
+    expect(el.textContent).not.toContain('API copy');
+    expect(el.textContent).not.toContain("Couldn't issue the quote");
+    expect(issued).not.toHaveBeenCalled();
+    expect(conflict).not.toHaveBeenCalled();
+    expect(
+      Array.from(el.querySelectorAll('button')).some(
+        (b) => b.textContent?.trim() === 'Issue quote',
+      ),
+    ).toBe(true);
   });
 });
 

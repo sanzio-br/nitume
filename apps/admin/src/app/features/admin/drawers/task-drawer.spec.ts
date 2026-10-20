@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpTestingController } from '@angular/common/http/testing';
 import { API, errandFixture, flushAsync, setupHttp } from '../../../testing/admin-test-utils';
-import { historyActor, TaskDrawerComponent, taskActions } from './task-drawer';
+import type { ErrandStatusString } from '../../../core/api-types';
+import { deadlineRow, historyActor, TaskDrawerComponent, taskActions } from './task-drawer';
 
 describe('task drawer admin actions (G-16, §3.3)', () => {
   it('offers Assign runner only at PAYMENT_CONFIRMED', () => {
@@ -135,5 +136,76 @@ describe('TaskDrawerComponent assign dialog (rows 215, 228)', () => {
     ).click();
     expect(http.match((r) => r.url === `${API}/errands/${ID}/candidates`)).toHaveLength(1);
     http.match(() => true);
+  });
+});
+
+describe('Deadline row (drawer-task-offer Layout 2, rows 239, 243)', () => {
+  it('shows the chosen time in any state', () => {
+    for (const st of ['REQUESTED', 'PAYMENT_CONFIRMED', 'CANCELLED']) {
+      expect(deadlineRow(st, '2026-10-20T09:00:00Z')).toEqual({ at: '2026-10-20T09:00:00Z' });
+    }
+  });
+
+  it('reads No deadline yet before payment when deadlineAt is null', () => {
+    for (const st of ['DRAFT', 'REQUESTED', 'QUOTED', 'ACCEPTED']) {
+      expect(deadlineRow(st, null)).toEqual({ at: null, text: 'No deadline yet' });
+      expect(deadlineRow(st, undefined)).toEqual({ at: null, text: 'No deadline yet' });
+    }
+  });
+
+  it('hides the row for a CANCELLED task without a deadline', () => {
+    expect(deadlineRow('CANCELLED', null)).toBeNull();
+  });
+
+  it('keeps the built dash for any other state without one', () => {
+    expect(deadlineRow('PAYMENT_CONFIRMED', null)).toEqual({ at: null, text: '—' });
+  });
+
+  describe('rendered', () => {
+    let http: HttpTestingController;
+    beforeEach(() => {
+      http = setupHttp();
+    });
+    const ID = errandFixture().id;
+
+    async function render(status: ErrandStatusString, deadlineAt: string | null) {
+      const fixture = TestBed.createComponent(TaskDrawerComponent);
+      fixture.componentRef.setInput('errandId', ID);
+      fixture.detectChanges();
+      http.expectOne(`${API}/errands/${ID}`).flush(errandFixture({ status, deadlineAt }));
+      http.expectOne(`${API}/errands/${ID}/history`).flush([]);
+      await flushAsync();
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      const row = Array.from(el.querySelectorAll('.drawer-row')).find(
+        (r) => r.querySelector('span')?.textContent?.trim() === 'Deadline',
+      );
+      http.match(() => true);
+      return { el, row };
+    }
+
+    it('shows No deadline yet in Fira Sans (b.txt) on a REQUESTED task', async () => {
+      const { row } = await render('REQUESTED', null);
+      const value = row?.querySelector('b');
+      expect(value?.textContent?.trim()).toBe('No deadline yet');
+      expect(value?.classList.contains('txt')).toBe(true);
+    });
+
+    it('shows the time in Fira Code (b without .txt) when set', async () => {
+      const { row } = await render('PAYMENT_CONFIRMED', '2026-10-20T09:00:00Z');
+      const value = row?.querySelector('b');
+      expect(value?.classList.contains('txt')).toBe(false);
+      expect(value?.textContent).toContain('12:00 PM');
+    });
+
+    it('shows no Deadline row on a CANCELLED task without one', async () => {
+      const { row } = await render('CANCELLED', null);
+      expect(row).toBeUndefined();
+    });
+
+    it('offers no way to edit the deadline (row 243)', async () => {
+      const { row } = await render('REQUESTED', null);
+      expect(row?.querySelector('input, button, a')).toBeNull();
+    });
   });
 });
