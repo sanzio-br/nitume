@@ -882,6 +882,7 @@ class TestBackend {
       permissions: permissions,
       files: files,
       payouts: payouts,
+      collectLocation: false,
       live: RunnerLive(
         client: realtime,
         runner: realtime,
@@ -890,8 +891,6 @@ class TestBackend {
       appConfig: appConfig,
       clock: () => now,
     );
-    // No idle ping timer in widget tests (tests flip it on when needed).
-    services.pings.setForeground(false);
   }
 
   final auth = FakeAuth();

@@ -1,4 +1,5 @@
 import 'dart:io' show FileSystemException;
+import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
@@ -32,6 +33,7 @@ class AppServices {
     RunnerLive? live,
     QueueStore? queueStore,
     EvidenceFileStore? evidenceFiles,
+    bool collectLocation = true,
     this.appConfig = const AppConfig(),
     this.push = const NoopPushService(),
     DateTime Function()? clock,
@@ -44,6 +46,7 @@ class AppServices {
       source: location,
       live: this.live,
       onJobPingsStopped: (_) => active.load(),
+      collect: collectLocation,
     );
     queue = OfflineActionQueue(
       store: queueStore ?? InMemoryQueueStore(),
@@ -54,10 +57,11 @@ class AppServices {
     uploads = JobEvidenceUploads(
       (errandId) => EvidenceUploader(
         capture: capture,
-        upload: jobs.uploadEvidence,
+        upload: _recordingUpload,
         files: this.evidenceFiles,
         positions: location,
         queue: queue,
+        readFile: files.read,
         clock: this.clock,
       ),
     );
@@ -154,6 +158,37 @@ class AppServices {
 
   /// Reads captured images into memory.
   final CaptureFiles files;
+
+  /// The last refused evidence upload per errand, so `v-evidence-capture`
+  /// can name the failure (the uploader keeps only the item state).
+  final Map<String, Object> lastEvidenceError = {};
+
+  Future<Evidence> _recordingUpload(
+    String errandId, {
+    required EvidenceType type,
+    required Uint8List bytes,
+    required String contentType,
+    DateTime? capturedAt,
+    double? lat,
+    double? lon,
+  }) async {
+    try {
+      final ev = await jobs.uploadEvidence(
+        errandId,
+        type: type,
+        bytes: bytes,
+        contentType: contentType,
+        capturedAt: capturedAt,
+        lat: lat,
+        lon: lon,
+      );
+      lastEvidenceError.remove(errandId);
+      return ev;
+    } on Object catch (e) {
+      lastEvidenceError[errandId] = e;
+      rethrow;
+    }
+  }
 
   /// Payout ledger lines and reimbursement claims (`v-job-summary`).
   final RunnerPayoutRepository payouts;

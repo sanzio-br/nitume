@@ -18,6 +18,7 @@ class JobPings {
     required PositionSource source,
     required this.live,
     this.onJobPingsStopped,
+    this.collect = true,
   }) {
     pinger = LocationPinger(
       source: _ForegroundOnly(source),
@@ -27,6 +28,11 @@ class JobPings {
   }
 
   final RunnerLive live;
+
+  /// False in widget tests: the wanted [mode] is tracked but no position
+  /// is collected (no timers).
+  final bool collect;
+  PingMode _mode = const PingOffline();
 
   /// The server refused job pings for [errandId] (`not_live`, `forbidden`):
   /// the job moved on; reload the held jobs.
@@ -41,7 +47,9 @@ class JobPings {
 
   /// The errand job pings are sent for; `null` when none.
   String? get workingJob => _workingJob;
-  PingMode get mode => pinger.mode;
+
+  /// The cadence wanted now (applied to [pinger] when [collect]).
+  PingMode get mode => _mode;
 
   /// The runner's availability (online or busy = true).
   void setOnline(bool online) {
@@ -67,13 +75,12 @@ class JobPings {
 
   void _apply() {
     final job = _workingJob;
-    pinger.setMode(
-      job != null
-          ? PingActiveJob(job)
-          : _online
-          ? const PingIdle()
-          : const PingOffline(),
-    );
+    _mode = job != null
+        ? PingActiveJob(job)
+        : _online
+        ? const PingIdle()
+        : const PingOffline();
+    if (collect) pinger.setMode(_mode);
   }
 
   /// Sends one ping and handles its ack (the pinger's `onPing`).

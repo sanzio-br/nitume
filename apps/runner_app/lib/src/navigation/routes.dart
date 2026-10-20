@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/active/evidence_capture_screen.dart';
 import '../screens/auth/otp_screen.dart';
 import '../screens/jobs/job_detail_screen.dart';
 import '../screens/location/location_disclosure_screen.dart';
@@ -26,6 +27,10 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     Routes.jobDetail => () {
       final a = args! as JobDetailArgs;
       return JobDetailScreen(errandId: a.errandId, initial: a.offer);
+    }(),
+    Routes.evidence => () {
+      final a = args! as EvidenceArgs;
+      return EvidenceCaptureScreen(errandId: a.errandId, type: a.type);
     }(),
     _ => null,
   };
