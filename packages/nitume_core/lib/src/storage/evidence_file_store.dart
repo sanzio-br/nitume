@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 /// Keeps captured evidence photos in app storage until they are sent.
 ///
 /// image_picker returns files in a cache/temp directory that the OS may
@@ -66,22 +68,45 @@ class DirectoryEvidenceFileStore implements EvidenceFileStore {
   /// Deletes every kept file whose path is not in [keep] (start-up: keep the
   /// paths the offline queue still holds).
   Future<void> discardExcept(Iterable<String> keep) async {
-    final wanted = {for (final p in keep) File(p).absolute.path};
+    final wanted = {for (final k in keep) _normal(k)};
     for (final path in await keptPaths()) {
-      if (wanted.contains(File(path).absolute.path)) continue;
+      if (wanted.contains(_normal(path))) continue;
       await discard(path);
     }
   }
 
+  /// Deletes [path] only when it is a file directly inside the store
+  /// folder; any other path (outside it, `..` segments that leave it, a
+  /// sibling folder sharing its name as a prefix, a sub-folder or a symlinked
+  /// folder) is ignored. [discardAll] and [discardExcept] go through here.
   @override
   Future<void> discard(String path) async {
     final dir = await _root();
-    // Only ever delete inside our own folder.
-    if (!File(path).absolute.path.startsWith(dir.absolute.path)) return;
+    if (!await _isDirectChild(path, dir)) return;
     try {
       await File(path).delete();
     } on FileSystemException {
       // Already gone.
+    }
+  }
+
+  static String _normal(String path) => p.normalize(File(path).absolute.path);
+
+  /// True when [path], normalised (`..` resolved), names an entry whose
+  /// parent folder is [root] once symlinks are resolved on both sides.
+  static Future<bool> _isDirectChild(String path, Directory root) async {
+    if (path.trim().isEmpty) return false;
+    final normal = _normal(path);
+    final name = p.basename(normal);
+    if (name.isEmpty || name == '.' || name == '..') return false;
+    final parent = Directory(p.dirname(normal));
+    if (!await parent.exists()) return false;
+    try {
+      final rootReal = p.canonicalize(await root.resolveSymbolicLinks());
+      final parentReal = p.canonicalize(await parent.resolveSymbolicLinks());
+      return parentReal == rootReal;
+    } on FileSystemException {
+      return false;
     }
   }
 }
