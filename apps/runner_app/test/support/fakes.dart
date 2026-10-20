@@ -418,6 +418,9 @@ class FakeRunnerJobs extends RunnerJobsRepository {
   List<Errand> active = [];
   final accepted = <String>[];
   Object? acceptError;
+
+  /// Accept puts the job in [heldList] as RUNNER_EN_ROUTE (as the API does).
+  bool holdOnAccept = false;
   final declined = <(String, OfferDeclineReason?)>[];
   Object? declineError;
   final jobs = <String, RunnerJobView>{};
@@ -449,6 +452,7 @@ class FakeRunnerJobs extends RunnerJobsRepository {
     if (e != null) throw e;
     final o = offerList.firstWhere((o) => o.id == errandId);
     offerList.removeWhere((x) => x.id == errandId);
+    if (holdOnAccept) heldList = [...heldList, heldJob(id: errandId)];
     return OfferAcceptResult(
       job: o,
       history: StatusHistoryEntry(
@@ -507,7 +511,8 @@ class FakeRunnerJobs extends RunnerJobsRepository {
     heldCalls++;
     final e = heldError;
     if (e != null) throw e;
-    return [
+    // The server's answer is read now; [heldGate] only delays it.
+    final read = [
       ...heldList.where(
         (j) => RunnerJobsRepository.workingStatuses.contains(j.status),
       ),
@@ -515,7 +520,12 @@ class FakeRunnerJobs extends RunnerJobsRepository {
         (j) => !RunnerJobsRepository.workingStatuses.contains(j.status),
       ),
     ];
+    if (heldGates.isNotEmpty) await heldGates.removeAt(0).future;
+    return read;
   }
+
+  /// Each held-jobs call waits for the next gate, if any (a slow read).
+  final heldGates = <Completer<void>>[];
 
   void setStatus(String id, ErrandStatus status) {
     heldList = [
@@ -928,7 +938,11 @@ class FakePermissions implements DevicePermissions {
 
 /// All fakes plus the [AppServices] built from them.
 class TestBackend {
-  TestBackend({AppConfig appConfig = const AppConfig()}) {
+  TestBackend({
+    AppConfig appConfig = const AppConfig(),
+    OneTimeFlag? noticeShown,
+    QueueStore? queueStore,
+  }) {
     services = AppServices(
       session: SessionController(auth: auth, push: push),
       auth: auth,
@@ -942,6 +956,8 @@ class TestBackend {
       payouts: payouts,
       collectLocation: false,
       evidenceFiles: evidenceStore,
+      jobStartNoticeShown: noticeShown,
+      queueStore: queueStore,
       push: pushService,
       live: RunnerLive(
         client: realtime,
