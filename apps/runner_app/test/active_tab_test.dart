@@ -240,6 +240,40 @@ void main() {
       expect(b.services.pings.workingJob, 'w1');
     });
 
+    testWidgets(
+      'Other jobs lists an ended job while its receipt window is open',
+      (t) async {
+        final b = TestBackend();
+        b.jobs.heldList = [
+          heldJob(id: 'w1', title: 'Working job'),
+          heldJob(
+            id: 'c1',
+            title: 'Cancelled purchase',
+            status: ErrandStatus.cancelled,
+            category: ErrandCategory.buyForMe,
+            itemAmount: '5000.00',
+            merchantRoute: MerchantRoute.sendToRunner,
+          ),
+        ];
+        b.jobs.historyById['c1'] = [
+          historyEntry('c1', ErrandStatus.cancelled, at: testNow),
+        ];
+        await _pumpActive(t, b);
+        expect(find.text('Working job'), findsOneWidget);
+        await _scrollTo(t, find.byKey(const ValueKey('other-job-c1')));
+        expect(find.byKey(const ValueKey('other-job-c1')), findsOneWidget);
+
+        // Window closed: no longer listed.
+        b.now = testNow.add(const Duration(hours: 25));
+        b.services.active.load();
+        await t.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('other-job-c1'), skipOffstage: false),
+          findsNothing,
+        );
+      },
+    );
+
     testWidgets('pending price change blocks finishing', (t) async {
       final b = TestBackend();
       b.jobs.heldList = [
@@ -323,6 +357,8 @@ void main() {
       expect(find.textContaining('You can upload it until'), findsOneWidget);
       expect(find.text('Upload receipt'), findsOneWidget);
 
+      // Past the window the job is only shown when the runner opened it.
+      b.services.shell.showJob('e1');
       b.now = testNow.add(const Duration(hours: 25));
       await t.drag(
         find.byType(RefreshIndicator).hitTestable(),

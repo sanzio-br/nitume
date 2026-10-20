@@ -123,6 +123,7 @@ class _ActiveTabState extends State<ActiveTab> {
   final _subs = <StreamSubscription<Object?>>[];
   final _details = <String, JobDetails>{};
   String? _detailsKey;
+  final _requested = <String>{};
   String? _error;
   bool _busy = false;
   DevicePosition? _fix;
@@ -172,6 +173,16 @@ class _ActiveTabState extends State<ActiveTab> {
     setState(() {
       if (notice != null) _error = notice;
     });
+    // Ended purchase jobs need their receipts and end time for the
+    // selection rule and Other jobs (SA-1).
+    for (final j in _a.held) {
+      if (_ended.contains(_a.statusOf(j)) &&
+          needsReceipt(j) &&
+          !_details.containsKey(j.id) &&
+          _requested.add(j.id)) {
+        unawaited(_refreshDetails(j.id));
+      }
+    }
     final job = _shown();
     if (job == null) return;
     final key = '${job.id}:${_a.statusOf(job).wire}:${job.itemAmount}';
@@ -242,13 +253,24 @@ class _ActiveTabState extends State<ActiveTab> {
       }
     }
     for (final j in a.held) {
-      if (_ended.contains(a.statusOf(j)) &&
-          needsReceipt(j) &&
-          (_details[j.id]?.count(EvidenceType.receipt) ?? 0) == 0) {
-        return j;
-      }
+      if (_receiptPending(j)) return j;
     }
     return null;
+  }
+
+  /// CANCELLED / FAILED purchase job, no receipt yet, 24 h window open
+  /// (row 129; an unknown end time counts as open, the API decides).
+  bool _receiptPending(RunnerJobView j) {
+    final s = _services;
+    if (s == null ||
+        !_ended.contains(s.active.statusOf(j)) ||
+        !needsReceipt(j)) {
+      return false;
+    }
+    final d = _details[j.id];
+    if (d == null || d.count(EvidenceType.receipt) > 0) return false;
+    final endsAt = d.endedAt?.add(RunnerJobsRepository.endedJobWindow);
+    return endsAt == null || s.clock().isBefore(endsAt);
   }
 
   // ---------------------------------------------------------------- actions
@@ -640,7 +662,8 @@ class _ActiveTabState extends State<ActiveTab> {
     final others = [
       for (final j in _a.held)
         if (j.id != shown.id &&
-            RunnerJobsRepository.activeStatuses.contains(_a.statusOf(j)))
+            (RunnerJobsRepository.activeStatuses.contains(_a.statusOf(j)) ||
+                _receiptPending(j)))
           j,
     ];
     if (others.isEmpty) return const [];
