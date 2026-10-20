@@ -154,16 +154,24 @@ enum QueueDropReason {
 
 /// Maps a replay failure to an outcome. Transport problems and temporary
 /// server answers (including 409 [ApiErrorCodes.idempotencyInProgress])
-/// retry later; only real refusals drop the action. A 413 (evidence too
-/// large, [EvidenceTooLarge.of]) is [ReplayOutcome.tooLarge].
-ReplayOutcome replayOutcomeFor(Object error) {
+/// retry later; only real refusals drop the action.
+///
+/// A 413 [ApiErrorCodes.evidenceTooLarge] is [ReplayOutcome.tooLarge]. A
+/// 413 without a code (a proxy or an older API) is too large only when
+/// [kind] is [QueuedActionKind.evidenceUpload]; for any other (or unknown)
+/// kind it is a plain refusal ([ReplayOutcome.rejected]).
+ReplayOutcome replayOutcomeFor(Object error, {QueuedActionKind? kind}) {
   if (error is NitumeApiException) {
     if (error.isNetworkError) return ReplayOutcome.retryLater;
     if (error.code == ApiErrorCodes.idempotencyInProgress) {
       return ReplayOutcome.retryLater;
     }
     // Row 252: the same file never fits; never retried.
-    if (EvidenceTooLarge.of(error) != null) return ReplayOutcome.tooLarge;
+    final big = EvidenceTooLarge.of(
+      error,
+      bare413: kind == QueuedActionKind.evidenceUpload,
+    );
+    if (big != null) return ReplayOutcome.tooLarge;
     final status = error.statusCode;
     if (status == null ||
         status == 401 ||
@@ -342,7 +350,7 @@ class OfflineActionQueue extends ChangeNotifier {
         try {
           outcome = await runner(action);
         } on Object catch (e) {
-          outcome = replayOutcomeFor(e);
+          outcome = replayOutcomeFor(e, kind: action.kind);
         }
         if (generation != _generation) break; // cleared meanwhile
         if (outcome == ReplayOutcome.retryLater) {

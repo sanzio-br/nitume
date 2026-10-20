@@ -199,6 +199,20 @@ void main() {
     expect(await runner(a)(_evidence()), ReplayOutcome.tooLarge);
   });
 
+  test('a bare 413 (no code) is too large only on an evidence replay; '
+      'status and notes replays are plain refusals', () async {
+    const bare = (413, {'statusCode': 413, 'message': 'Payload Too Large'});
+    final a = _Adapter({
+      'PATCH /errands/e1/status': bare,
+      'PATCH /errands/e1/runner-notes': bare,
+      'POST /errands/e1/evidence': bare,
+    });
+    final run = runner(a);
+    expect(await run(_transition()), ReplayOutcome.rejected);
+    expect(await run(_notes()), ReplayOutcome.rejected);
+    expect(await run(_evidence()), ReplayOutcome.tooLarge);
+  });
+
   test('replayOutcomeFor: idempotency_in_progress is temporary', () {
     expect(
       replayOutcomeFor(

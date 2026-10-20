@@ -141,12 +141,69 @@ void main() {
         ),
         ReplayOutcome.tooLarge,
       );
+      const bare = NitumeApiException(message: 'x', statusCode: 413);
       expect(
-        replayOutcomeFor(
-          const NitumeApiException(message: 'x', statusCode: 413),
-        ),
+        replayOutcomeFor(bare, kind: QueuedActionKind.evidenceUpload),
         ReplayOutcome.tooLarge,
       );
+      // A bare 413 is evidence-too-large only for evidence uploads.
+      for (final kind in [
+        null,
+        QueuedActionKind.statusTransition,
+        QueuedActionKind.runnerNotes,
+      ]) {
+        expect(
+          replayOutcomeFor(bare, kind: kind),
+          ReplayOutcome.rejected,
+          reason: '$kind',
+        );
+      }
+    });
+
+    test('EvidenceTooLarge.of(bare413: false) needs the code', () {
+      const bare = NitumeApiException(message: 'x', statusCode: 413);
+      expect(EvidenceTooLarge.of(bare, bare413: false), isNull);
+      expect(EvidenceTooLarge.of(bare), isNotNull);
+      expect(
+        EvidenceTooLarge.of(
+          const NitumeApiException(
+            message: 'x',
+            statusCode: 413,
+            code: 'evidence_too_large',
+          ),
+          bare413: false,
+        ),
+        isNotNull,
+      );
+    });
+
+    test('the queue: a bare 413 on a status or notes replay is refused, '
+        'not too large', () async {
+      final dropped = <(QueuedActionKind, QueueDropReason)>[];
+      final queue = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async =>
+            throw const NitumeApiException(message: 'x', statusCode: 413),
+        onDropped: (a, r) => dropped.add((a.kind, r)),
+      );
+      await queue.enqueue(
+        QueuedActionKind.statusTransition,
+        errandId: 'e1',
+        payload: RunnerQueuedActions.transition(
+          from: ErrandStatus.runnerEnRoute,
+          to: ErrandStatus.arrived,
+        ),
+      );
+      await queue.enqueue(
+        QueuedActionKind.runnerNotes,
+        errandId: 'e1',
+        payload: RunnerQueuedActions.runnerNotes('n'),
+      );
+      await queue.replay();
+      expect(dropped, [
+        (QueuedActionKind.statusTransition, QueueDropReason.refused),
+        (QueuedActionKind.runnerNotes, QueueDropReason.refused),
+      ]);
     });
 
     test('the queue drops it as tooLarge and deletes its file (B-1)', () async {

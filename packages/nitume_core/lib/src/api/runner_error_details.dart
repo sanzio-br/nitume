@@ -66,10 +66,16 @@ class EvidenceTooLarge {
   /// The typed error when [error] is a 413 on an evidence upload: coded
   /// [ApiErrorCodes.evidenceTooLarge], or a 413 without a code (a proxy or
   /// an older API); `null` for anything else.
-  static EvidenceTooLarge? of(Object? error) {
+  ///
+  /// Pass `bare413: false` when [error] may come from another request (a
+  /// status change, runner notes): a 413 without a code then is not an
+  /// evidence refusal and gives `null`.
+  static EvidenceTooLarge? of(Object? error, {bool bare413 = true}) {
     if (error is! NitumeApiException || error.statusCode != 413) return null;
     final code = error.code;
-    if (code != null && code != ApiErrorCodes.evidenceTooLarge) return null;
+    if (code == null ? !bare413 : code != ApiErrorCodes.evidenceTooLarge) {
+      return null;
+    }
     final max = error.maxBytes;
     return EvidenceTooLarge(
       maxBytes: max != null && max > 0 ? max : defaultMaxBytes,
