@@ -6,17 +6,25 @@
     <!-- ID, selfie and evidence photos (row 124). -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <!-- Location while online and during a job (rows 123, 124), asked after
-         x-location-disclosure. Background only during the live job window
-         through a location foreground service. -->
+         x-location-disclosure. While-in-use only (owner row 245): no
+         ACCESS_BACKGROUND_LOCATION, no "Allow all the time" step. During a
+         job geolocator's location foreground service (it declares
+         GeolocatorLocationService, type location), started while the app is
+         visible, keeps sharing when the runner switches apps or locks the
+         phone. Do not add ACCESS_BACKGROUND_LOCATION here or through a
+         plugin: the merged manifest is checked for it. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <application
         android:label="Nitume Runner"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- Backup rules (owner row 255): the offline evidence folder
+             (files/nitume_evidence) is never backed up or transferred. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

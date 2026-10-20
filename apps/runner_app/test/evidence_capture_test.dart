@@ -74,7 +74,56 @@ void main() {
       expect(find.byType(NitumeChoiceChip), findsNWidgets(2));
     });
 
-    testWidgets('413: danger notice that names no size, Retry', (t) async {
+    testWidgets('413 too large: size in Fira Code, no Retry, new capture', (
+      t,
+    ) async {
+      final b = await _withJob(heldJob(status: ErrandStatus.arrived));
+      b.jobs.evidenceErrors.add(
+        apiError(
+          ApiErrorCodes.evidenceTooLarge,
+          status: 413,
+          details: {'maxBytes': 5 * 1024 * 1024},
+        ),
+      );
+      await b.pumpScreen(
+        t,
+        const EvidenceCaptureScreen(errandId: 'e1', type: EvidenceType.photo),
+      );
+      await t.tap(find.byKey(const ValueKey('evidence-drop-zone')));
+      await t.pumpAndSettle();
+      final notice = t.widget<NitumeNotice>(
+        find.byKey(const ValueKey('evidence-too-large')),
+      );
+      expect(notice.tone, NitumeNoticeTone.danger);
+      expect(notice.message, 'This photo is larger than 5 MB. Take it again.');
+      final spans = <InlineSpan>[];
+      notice.richMessage!.visitChildren((s) {
+        spans.add(s);
+        return true;
+      });
+      final size = spans.whereType<TextSpan>().firstWhere(
+        (s) => s.text == '5 MB',
+      );
+      expect(size.style?.fontFamily, NitumeTypography.numericFamily);
+      // The refused photo is gone (its copy deleted): no tile, no Retry, and
+      // no leave dialog.
+      expect(find.text('Not uploaded'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+      expect(b.services.uploads.existing('e1')!.items, isEmpty);
+
+      // A new capture from the notice; it uploads.
+      await t.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('evidence-too-large')),
+          matching: find.text(EvidenceCopy.shutter),
+        ),
+      );
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('evidence-too-large')), findsNothing);
+      expect(b.jobs.evidenceUploads.length, 2);
+    });
+
+    testWidgets('a bare 413 (proxy) uses the default limit', (t) async {
       final b = await _withJob(heldJob(status: ErrandStatus.arrived));
       b.jobs.evidenceErrors.add(apiError(null, status: 413));
       await b.pumpScreen(
@@ -83,19 +132,45 @@ void main() {
       );
       await t.tap(find.byKey(const ValueKey('evidence-drop-zone')));
       await t.pumpAndSettle();
-      final notice = t.widget<NitumeNotice>(
-        find.widgetWithText(NitumeNotice, EvidenceCopy.tooLarge),
-      );
-      expect(notice.tone, NitumeNoticeTone.danger);
-      expect(find.text('Not uploaded'), findsOneWidget);
       expect(
         t
-            .widget<NitumeButton>(
-              find.widgetWithText(NitumeButton, 'Save to task'),
+            .widget<NitumeNotice>(
+              find.byKey(const ValueKey('evidence-too-large')),
             )
-            .onPressed,
-        isNull,
+            .message,
+        RunnerEvidenceCopy.tooLarge(EvidenceTooLarge.defaultMaxBytes),
       );
+    });
+
+    testWidgets('DISPUTED: receipts allowed, photos refused (row 254)', (
+      t,
+    ) async {
+      final job = heldJob(
+        status: ErrandStatus.disputed,
+        category: ErrandCategory.buyForMe,
+        itemAmount: '5000.00',
+        merchantRoute: MerchantRoute.sendToRunner,
+      );
+      expect(allowedEvidence(job, ErrandStatus.disputed), {
+        EvidenceType.receipt,
+      });
+      // Without a purchase to reimburse, no receipts either.
+      expect(
+        allowedEvidence(
+          heldJob(status: ErrandStatus.disputed),
+          ErrandStatus.disputed,
+        ),
+        isEmpty,
+      );
+      final b = await _withJob(job);
+      await b.pumpScreen(
+        t,
+        const EvidenceCaptureScreen(errandId: 'e1', type: EvidenceType.receipt),
+      );
+      expect(find.byKey(const ValueKey('evidence-drop-zone')), findsOneWidget);
+      expect(find.text(EvidenceCopy.notAllowed), findsNothing);
+      // Only one type, so no Photo / Receipt chips.
+      expect(find.byType(NitumeChoiceChip), findsNothing);
     });
 
     testWidgets('leaving with a failed photo asks, then deletes it', (t) async {
@@ -128,7 +203,7 @@ void main() {
         find.text('Something went wrong. Please try again.'),
         findsOneWidget,
       );
-      expect(find.text(EvidenceCopy.tooLarge), findsNothing);
+      expect(find.byKey(const ValueKey('evidence-too-large')), findsNothing);
       await t.tap(find.bySemanticsLabel('Back'));
       await t.pumpAndSettle();
       expect(find.text('Leave without 1 photo?'), findsOneWidget);

@@ -1,38 +1,47 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 import 'runner_live.dart';
 
-/// Drives R-20 [LocationPinger] from the runner's state (rows 27, 123):
-/// offline → nothing; online without a working job → idle 30 s pings
+/// Drives R-20 [LocationPinger] from the runner's state (rows 27, 123,
+/// 245): offline → nothing; online without a working job → idle 30 s pings
 /// (foreground only); a working job (RUNNER_EN_ROUTE, ARRIVED,
-/// IN_PROGRESS) → job pings with that `errandId` only. AWAITING_CUSTOMER
-/// and DISPUTED jobs never get job pings.
+/// IN_PROGRESS) → job pings with that `errandId` only. AWAITING_CUSTOMER,
+/// DISPUTED, ended and reassigned jobs never get job pings.
 ///
-/// HOLD (BOARD rows 245, 246 open): the Android location foreground
-/// service and its start/restart rule are not wired. Job pings therefore
-/// run while the app is in the foreground only ([_ForegroundOnly]); the
-/// background part waits for the owner's answer.
+/// One [LocationPinger] per app run, created with the real foreground
+/// state (`WidgetsBinding.lifecycleState == resumed`) and wired to the app
+/// lifecycle through [LocationPingerLifecycle] (row 245). Job pings use the
+/// location foreground service (Android) / background updates (iOS), which
+/// the pinger only starts while the app is visible; started, they keep
+/// going when the runner switches apps or locks the phone.
+///
+/// Nothing here asks for a location permission, and no job, transition or
+/// evidence ever waits on [status] (`v-active` only shows a notice).
 class JobPings {
   JobPings({
     required PositionSource source,
     required this.live,
     this.onJobPingsStopped,
     this.collect = true,
+    bool? appInForeground,
   }) {
     pinger = LocationPinger(
-      source: _ForegroundOnly(source),
+      source: source,
       onPing: send,
       onStatus: (s) => status.value = s,
+      appInForeground: appInForeground ?? _bindingInForeground(),
     );
+    if (collect) _lifecycle = LocationPingerLifecycle(pinger)..attach();
   }
 
   final RunnerLive live;
 
   /// False in widget tests: the wanted [mode] is tracked but no position
-  /// is collected (no timers).
+  /// is collected (no timers, no lifecycle observer).
   final bool collect;
   PingMode _mode = const PingOffline();
+  LocationPingerLifecycle? _lifecycle;
 
   /// The server refused job pings for [errandId] (`not_live`, `forbidden`):
   /// the job moved on; reload the held jobs.
@@ -57,20 +66,30 @@ class JobPings {
     _apply();
   }
 
-  /// The working job (or `null` when there is none).
+  /// The working job (or `null` when there is none). Called at accept, on
+  /// every held-jobs reload (app open with a working job), when `v-active`
+  /// shows a working job, and with `null` (or another job) when the job
+  /// finishes, reaches AWAITING_CUSTOMER or is reassigned. The same job
+  /// again restarts a job stream the system ended, while the app is in the
+  /// foreground (`LocationPinger.setMode`); resume is handled by
+  /// [LocationPingerLifecycle].
   void setWorkingJob(String? errandId) {
     _workingJob = errandId;
     _apply();
   }
-
-  /// App lifecycle: idle pings pause in the background.
-  void setForeground(bool foreground) => pinger.setAppForeground(foreground);
 
   /// Log out: stop everything.
   void reset() {
     _online = false;
     _workingJob = null;
     _apply();
+  }
+
+  /// Stops observing the lifecycle and collecting.
+  void dispose() {
+    _lifecycle?.detach();
+    _lifecycle = null;
+    pinger.dispose();
   }
 
   void _apply() {
@@ -81,6 +100,17 @@ class JobPings {
         ? const PingIdle()
         : const PingOffline();
     if (collect) pinger.setMode(_mode);
+  }
+
+  static bool _bindingInForeground() {
+    try {
+      return WidgetsBinding.instance.lifecycleState ==
+          AppLifecycleState.resumed;
+    } on Object {
+      // No binding yet: assume background, so a job stream waits for the
+      // first resume instead of starting from the background (row 245).
+      return false;
+    }
   }
 
   /// Sends one ping and handles its ack (the pinger's `onPing`).
@@ -94,31 +124,4 @@ class JobPings {
       onJobPingsStopped?.call(id);
     }
   }
-}
-
-/// Never asks for background updates (no foreground service) until rows
-/// 245 / 246 are answered.
-class _ForegroundOnly implements PositionSource {
-  _ForegroundOnly(this._inner);
-
-  final PositionSource _inner;
-
-  @override
-  Future<LocationAccess> access() => _inner.access();
-
-  @override
-  Future<LocationAccess> requestAccess() => _inner.requestAccess();
-
-  @override
-  Future<DevicePosition?> current() => _inner.current();
-
-  @override
-  Stream<DevicePosition> positions({
-    required Duration interval,
-    double distanceFilterMeters = 0,
-    bool background = false,
-  }) => _inner.positions(
-    interval: interval,
-    distanceFilterMeters: distanceFilterMeters,
-  );
 }

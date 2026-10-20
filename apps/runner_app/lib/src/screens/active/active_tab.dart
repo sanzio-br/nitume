@@ -125,6 +125,7 @@ class _ActiveTabState extends State<ActiveTab> {
   String? _detailsKey;
   final _requested = <String>{};
   String? _error;
+  InlineSpan? _errorRich;
   bool _busy = false;
   DevicePosition? _fix;
 
@@ -145,6 +146,9 @@ class _ActiveTabState extends State<ActiveTab> {
       _subs.addAll([
         s.live.evidenceUploads.listen((e) => _refreshDetails(e.errandId)),
         s.live.priceChangeDecisions.listen((e) => _refreshDetails(e.errandId)),
+        s.live.priceDifferencePayments.listen(
+          (e) => _refreshDetails(e.errandId),
+        ),
       ]);
       setState(() {});
       s.active.load();
@@ -169,9 +173,13 @@ class _ActiveTabState extends State<ActiveTab> {
 
   void _changed() {
     if (!mounted) return;
+    final rich = _a.noticeRich;
     final notice = _a.takeNotice();
     setState(() {
-      if (notice != null) _error = notice;
+      if (notice != null) {
+        _error = notice;
+        _errorRich = rich;
+      }
     });
     // Ended purchase jobs need their receipts and end time for the
     // selection rule and Other jobs (SA-1).
@@ -185,9 +193,16 @@ class _ActiveTabState extends State<ActiveTab> {
     }
     final job = _shown();
     if (job == null) return;
-    final key = '${job.id}:${_a.statusOf(job).wire}:${job.itemAmount}';
+    final key =
+        '${job.id}:${_a.statusOf(job).wire}:${job.itemAmount}:'
+        '${job.requiredPurchase}:${job.isAwaitingDifference}';
     if (key == _detailsKey) return;
     _detailsKey = key;
+    // v-active opened on a working job: job pings for it (row 245; a no-op
+    // when they already run). Never asks for location, never waits on it.
+    if (RunnerJobsRepository.workingStatuses.contains(_a.statusOf(job))) {
+      _s.pings.setWorkingJob(job.id);
+    }
     unawaited(_refreshDetails(job.id));
     unawaited(_readFix(job));
   }
@@ -283,12 +298,14 @@ class _ActiveTabState extends State<ActiveTab> {
     setState(() {
       _busy = true;
       _error = null;
+      _errorRich = null;
     });
     final r = await _a.transition(job, to, note: note);
     if (!mounted) return;
     setState(() {
       _busy = false;
       _error = r.error;
+      _errorRich = null;
     });
     if (r.ok && to == ErrandStatus.awaitingCustomer) {
       await Nav.toJobSummary(context, job.id);
@@ -444,10 +461,13 @@ class _ActiveTabState extends State<ActiveTab> {
     final photos = d.count(EvidenceType.photo);
     final receipts = d.count(EvidenceType.receipt);
     final notes = _a.notesOf(job)?.trim() ?? '';
-    final photoAction =
-        status == ErrandStatus.arrived || status == ErrandStatus.inProgress;
-    final receiptAction =
-        photoAction || status == ErrandStatus.awaitingCustomer;
+    // RunnerEvidenceRules mirrors the API (rows 121, 254): receipts also
+    // while DISPUTED, photos never there.
+    final photoAction = RunnerEvidenceRules.allows(status, EvidenceType.photo);
+    final receiptAction = RunnerEvidenceRules.allows(
+      status,
+      EvidenceType.receipt,
+    );
     final notesAction = RunnerJobsRepository.runnerNotesStatuses.contains(
       status,
     );
@@ -570,10 +590,14 @@ class _ActiveTabState extends State<ActiveTab> {
           padding: pad,
           child: NitumeNotice(message: ActiveCopy.priceRejected),
         ),
-      // send_to_runner: the approved state waits for row 248 (difference
-      // paid), so no "approved" line is shown there yet.
+      // send_to_runner (row 248): "approved" only once the difference is
+      // paid and the buy limit is the new amount; until then the
+      // difference notice shows (_body).
       if (decision?.outcome == PriceDecisionOutcome.approved &&
-          job.merchantRoute != MerchantRoute.sendToRunner)
+          !job.isAwaitingDifference &&
+          (job.merchantRoute != MerchantRoute.sendToRunner ||
+              num.tryParse(job.requiredPurchase) ==
+                  num.tryParse(decision!.toPrice)))
         Padding(
           padding: pad,
           child: _amountNotice(
@@ -840,6 +864,18 @@ class _ActiveTabState extends State<ActiveTab> {
         ]);
       }
     }
+    if (job.isAwaitingDifference) {
+      // Row 248: buy only up to the old amount until the customer pays.
+      out.add(
+        const Padding(
+          padding: pad,
+          child: NitumeNotice(
+            key: ValueKey('difference-awaiting-payment'),
+            message: RunnerPriceChangeCopy.differenceAwaitingPayment,
+          ),
+        ),
+      );
+    }
     out.addAll(_checklist(job, status, d));
     if (canRequestPrice(job, status)) out.addAll(_price(job, d));
     if (working) {
@@ -920,6 +956,7 @@ class _ActiveTabState extends State<ActiveTab> {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: NitumeNotice(
                   message: error,
+                  richMessage: _errorRich,
                   tone: NitumeNoticeTone.danger,
                 ),
               ),

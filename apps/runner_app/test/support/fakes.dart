@@ -115,12 +115,16 @@ Future<void> setUpSurface(WidgetTester tester) async {
 /// Fixed test time: 2026-10-19 10:00 EAT.
 final testNow = DateTime.utc(2026, 10, 19, 7);
 
-NitumeApiException apiError(String? code, {int status = 409}) =>
-    NitumeApiException(
-      message: code ?? 'error',
-      statusCode: status,
-      code: code,
-    );
+NitumeApiException apiError(
+  String? code, {
+  int status = 409,
+  Map<String, dynamic> details = const {},
+}) => NitumeApiException(
+  message: code ?? 'error',
+  statusCode: status,
+  code: code,
+  details: details,
+);
 
 const networkError = NitumeApiException(
   message: 'offline',
@@ -211,6 +215,8 @@ RunnerJobView offer({
   List<ErrandItem> items = const [],
   List<ErrandLocation>? locations,
   String? runnerNotes,
+  String? requiredPurchase,
+  DifferenceAwaitingPayment? differenceAwaitingPayment,
 }) {
   final site = ErrandLocation(
     pointType: ErrandPointType.taskSite,
@@ -227,9 +233,12 @@ RunnerJobView offer({
     description: description,
     urgency: ErrandUrgency.standard,
     runnerFee: runnerFee,
-    requiredPurchase: merchantRoute == MerchantRoute.sendToRunner
-        ? (itemAmount ?? '0.00')
-        : '0.00',
+    requiredPurchase:
+        requiredPurchase ??
+        (merchantRoute == MerchantRoute.sendToRunner
+            ? (itemAmount ?? '0.00')
+            : '0.00'),
+    differenceAwaitingPayment: differenceAwaitingPayment,
     maxPurchaseAdvance: '3000.00',
     overPurchaseLimit: overPurchaseLimit,
     itemAmount: itemAmount,
@@ -259,6 +268,8 @@ RunnerJobView heldJob({
   DateTime? deadlineAt,
   String? runnerNotes,
   List<ErrandLocation>? locations,
+  String? requiredPurchase,
+  DifferenceAwaitingPayment? differenceAwaitingPayment,
 }) => offer(
   id: id,
   status: status,
@@ -269,6 +280,8 @@ RunnerJobView heldJob({
   deadlineAt: deadlineAt,
   runnerNotes: runnerNotes,
   locations: locations,
+  requiredPurchase: requiredPurchase,
+  differenceAwaitingPayment: differenceAwaitingPayment,
   assignment: AssignmentStatus.accepted,
 );
 
@@ -418,6 +431,9 @@ class FakeRunnerJobs extends RunnerJobsRepository {
   List<Errand> active = [];
   final accepted = <String>[];
   Object? acceptError;
+
+  /// Accept puts the job in [heldList] as RUNNER_EN_ROUTE (as the API does).
+  bool holdOnAccept = false;
   final declined = <(String, OfferDeclineReason?)>[];
   Object? declineError;
   final jobs = <String, RunnerJobView>{};
@@ -449,6 +465,7 @@ class FakeRunnerJobs extends RunnerJobsRepository {
     if (e != null) throw e;
     final o = offerList.firstWhere((o) => o.id == errandId);
     offerList.removeWhere((x) => x.id == errandId);
+    if (holdOnAccept) heldList = [...heldList, heldJob(id: errandId)];
     return OfferAcceptResult(
       job: o,
       history: StatusHistoryEntry(
@@ -507,7 +524,8 @@ class FakeRunnerJobs extends RunnerJobsRepository {
     heldCalls++;
     final e = heldError;
     if (e != null) throw e;
-    return [
+    // The server's answer is read now; [heldGate] only delays it.
+    final read = [
       ...heldList.where(
         (j) => RunnerJobsRepository.workingStatuses.contains(j.status),
       ),
@@ -515,7 +533,12 @@ class FakeRunnerJobs extends RunnerJobsRepository {
         (j) => !RunnerJobsRepository.workingStatuses.contains(j.status),
       ),
     ];
+    if (heldGates.isNotEmpty) await heldGates.removeAt(0).future;
+    return read;
   }
+
+  /// Each held-jobs call waits for the next gate, if any (a slow read).
+  final heldGates = <Completer<void>>[];
 
   void setStatus(String id, ErrandStatus status) {
     heldList = [
@@ -531,6 +554,8 @@ class FakeRunnerJobs extends RunnerJobsRepository {
             deadlineAt: j.deadlineAt,
             runnerNotes: j.runnerNotes,
             locations: j.locations,
+            requiredPurchase: j.requiredPurchase,
+            differenceAwaitingPayment: j.differenceAwaitingPayment,
           )
         else
           j,
@@ -754,6 +779,7 @@ class FakeRealtime implements RealtimeClient, RunnerRealtimeClient {
   final offered = StreamController<JobOffered>.broadcast();
   final withdrawn = StreamController<JobOfferWithdrawn>.broadcast();
   final decided = StreamController<PriceChangeDecided>.broadcast();
+  final differencePaid = StreamController<PriceDifferencePaid>.broadcast();
   final evidence = StreamController<EvidenceUploaded>.broadcast();
 
   void setState(RealtimeConnectionState s) {
@@ -807,6 +833,9 @@ class FakeRealtime implements RealtimeClient, RunnerRealtimeClient {
   Stream<JobOfferWithdrawn> get jobOfferWithdrawals => withdrawn.stream;
   @override
   Stream<PriceChangeDecided> get priceChangeDecisions => decided.stream;
+  @override
+  Stream<PriceDifferencePaid> get priceDifferencePayments =>
+      differencePaid.stream;
 
   @override
   Future<LocationPingAck> sendLocationPing(LocationPing ping) async {
@@ -928,7 +957,11 @@ class FakePermissions implements DevicePermissions {
 
 /// All fakes plus the [AppServices] built from them.
 class TestBackend {
-  TestBackend({AppConfig appConfig = const AppConfig()}) {
+  TestBackend({
+    AppConfig appConfig = const AppConfig(),
+    OneTimeFlag? noticeShown,
+    QueueStore? queueStore,
+  }) {
     services = AppServices(
       session: SessionController(auth: auth, push: push),
       auth: auth,
@@ -942,6 +975,8 @@ class TestBackend {
       payouts: payouts,
       collectLocation: false,
       evidenceFiles: evidenceStore,
+      jobStartNoticeShown: noticeShown,
+      queueStore: queueStore,
       push: pushService,
       live: RunnerLive(
         client: realtime,

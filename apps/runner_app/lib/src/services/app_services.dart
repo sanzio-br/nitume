@@ -31,6 +31,7 @@ class AppServices {
     RunnerLive? live,
     QueueStore? queueStore,
     required this.evidenceFiles,
+    OneTimeFlag? jobStartNoticeShown,
     bool collectLocation = true,
     this.appConfig = const AppConfig(),
     this.push = const NoopPushService(),
@@ -38,6 +39,7 @@ class AppServices {
     ShellController? shell,
   }) : shell = shell ?? ShellController(),
        clock = clock ?? DateTime.now,
+       jobStartNoticeShown = jobStartNoticeShown ?? MemoryOneTimeFlag(),
        live = live ?? RunnerLive() {
     pings = JobPings(
       source: location,
@@ -126,7 +128,9 @@ class AppServices {
         accessToken: accessToken,
       ),
       queueStore: SharedPreferencesQueueStore(),
+      // Backup exclusion built in (row 255): iOS native, Android manifest.
       evidenceFiles: appSupportEvidenceFileStore(),
+      jobStartNoticeShown: SharedPreferencesOneTimeFlag(),
       appConfig: AppConfig.fromEnvironment(onOpenLink: openExternalLink),
       push: push,
     );
@@ -179,17 +183,26 @@ class AppServices {
   /// `appSupportEvidenceFileStore()` on a device).
   final DirectoryEvidenceFileStore evidenceFiles;
 
+  /// Whether the one-time job-start location notice was shown on this
+  /// install (row 246; `SharedPreferencesOneTimeFlag` on a device).
+  final OneTimeFlag jobStartNoticeShown;
+
   /// Starts the signed-in runtime: socket, queue.
   Future<void> startSession() async {
     // Open the queue first (a log out closed it), so an offline action made
-    // as soon as the shell shows is queued, not refused.
-    await queue.load();
-    // Copies left by a killed app that no queued action needs (B-1).
-    await _quietly(
-      () => evidenceFiles.discardExcept(
-        RunnerQueuedActions.evidencePaths(queue.pending),
-      ),
-    );
+    // as soon as the shell shows is queued, not refused. A store read
+    // failure never stops the socket: actions then fail with a retry
+    // instead of queueing.
+    final loaded = await _quietly(queue.load);
+    // Copies left by a killed app that no queued action needs (B-1). Only
+    // after a good read: an unread queue may still need its photos.
+    if (loaded) {
+      await _quietly(
+        () => evidenceFiles.discardExcept(
+          RunnerQueuedActions.evidencePaths(queue.pending),
+        ),
+      );
+    }
     await live.start();
     unawaited(queue.replay());
   }
@@ -203,11 +216,14 @@ class AppServices {
     await live.stop();
   }
 
-  static Future<void> _quietly(Future<void> Function() f) async {
+  /// Runs [f]; `false` when it threw (best effort; the next start cleans
+  /// up again).
+  static Future<bool> _quietly(Future<void> Function() f) async {
     try {
       await f();
+      return true;
     } on Object {
-      // Best effort; the next start cleans up again.
+      return false;
     }
   }
 

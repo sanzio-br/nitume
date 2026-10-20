@@ -83,10 +83,14 @@ class _ClaimScreenState extends State<ClaimScreen> {
     }
   }
 
-  /// min(item amount, purchase limit); `null` when unknown.
+  /// min(amount to spend, purchase limit); `null` when unknown. The amount
+  /// to spend is `requiredPurchase` (row 248: the old amount while a
+  /// difference waits for payment).
   num? get _cap {
     final job = _s.active.byId(widget.errandId);
-    final item = num.tryParse(job?.itemAmount ?? '');
+    final item = num.tryParse(
+      (job?.itemAmount == null ? null : amountToSpend(job!)) ?? '',
+    );
     final limit = num.tryParse(job?.maxPurchaseAdvance ?? '');
     if (item == null) return limit;
     if (limit == null) return item;

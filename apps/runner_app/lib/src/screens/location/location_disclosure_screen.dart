@@ -4,16 +4,14 @@ import 'package:nitume_core/nitume_core.dart';
 import '../../services/app_services.dart';
 import '../auth/auth_frame.dart';
 
-/// `x-location-disclosure` copy (all proposed,
-/// `docs/specs/runner/x-location-disclosure.md`).
+/// `x-location-disclosure` copy (`docs/specs/runner/x-location-disclosure.md`;
+/// Body 2 approved by the owner, row 246).
 abstract final class LocationDisclosureCopy {
   static const heading = 'Share your location while you work';
   static const body1 =
       "Nitume uses your location to show you nearby jobs, to tell the "
       "customer when you're on the way and when you've arrived.";
-  static const body2 =
-      'During a job we keep sharing it even when the app is closed, until '
-      'you finish the task or go offline.';
+  static const body2 = RunnerLocationCopy.disclosureBody2;
   static const body3 =
       "We never share your location when you're offline, and customers only "
       "see it while you're working on their task.";
@@ -24,8 +22,8 @@ abstract final class LocationDisclosureCopy {
 /// `x-location-disclosure`: the prominent disclosure shown before the
 /// first OS location prompt (system design §7.2, row 123). `Continue`
 /// asks for when-in-use access and pops with the result; `Not now` (or
-/// back) pops with `null`. The background step is asked only when a job
-/// starts.
+/// back) pops with `null`. While-in-use only (row 245): there is no
+/// background or "Always" step later.
 class LocationDisclosureScreen extends StatefulWidget {
   const LocationDisclosureScreen({super.key});
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 import '../util/display.dart';
@@ -66,6 +67,11 @@ class ActiveJobs extends ChangeNotifier {
         _priceDecided[e.errandId] = e;
         unawaited(load());
       }),
+      // Row 248: the customer paid the difference; the reload raises
+      // requiredPurchase and clears differenceAwaitingPayment.
+      live.priceDifferencePayments.listen((e) {
+        if (_isHeld(e.errandId)) unawaited(load());
+      }),
     ]);
   }
 
@@ -81,9 +87,13 @@ class ActiveJobs extends ChangeNotifier {
   bool _loading = false;
   Object? _error;
   String? _notice;
+  InlineSpan? _noticeRich;
   final _optimisticStatus = <String, ErrandStatus>{};
   final _optimisticNotes = <String, String?>{};
   final _priceDecided = <String, PriceChangeDecided>{};
+  int _loadRun = 0;
+  String? _accepted;
+  int _acceptedRun = 0;
 
   /// Jobs the runner holds, the working job first (API order otherwise).
   List<RunnerJobView> get held => _held;
@@ -105,11 +115,21 @@ class ActiveJobs extends ChangeNotifier {
   /// [takeNotice].
   String? get notice => _notice;
 
-  /// Returns and clears [notice].
+  /// [notice] with its numbers as Fira Code spans, when it has any (read
+  /// before [takeNotice]).
+  InlineSpan? get noticeRich => _noticeRich;
+
+  /// Returns and clears [notice] (and [noticeRich]).
   String? takeNotice() {
     final n = _notice;
     _notice = null;
+    _noticeRich = null;
     return n;
+  }
+
+  void _setNotice(String message, {InlineSpan? rich}) {
+    _notice = message;
+    _noticeRich = rich;
   }
 
   /// The last `price_change:decided` for [errandId] this session.
@@ -137,8 +157,20 @@ class ActiveJobs extends ChangeNotifier {
 
   bool _isHeld(String errandId) => byId(errandId) != null;
 
+  /// A successful accept (RUNNER_ASSIGNED → RUNNER_EN_ROUTE, row 113):
+  /// job pings start at once, while the app is visible (row 245), then the
+  /// held jobs reload. A load that was already running when the runner
+  /// accepted cannot stop those pings.
+  void accepted(String errandId) {
+    _accepted = errandId;
+    _acceptedRun = _loadRun + 1;
+    pings.setWorkingJob(errandId);
+    unawaited(load());
+  }
+
   /// Reloads the held jobs. Never throws.
   Future<void> load() async {
+    final run = ++_loadRun;
     _loading = true;
     if (!_loaded) notifyListeners();
     try {
@@ -157,7 +189,7 @@ class ActiveJobs extends ChangeNotifier {
             .pendingFor(id)
             .any((a) => a.kind == QueuedActionKind.runnerNotes),
       );
-      _sync();
+      _sync(staleForAccept: run < _acceptedRun);
     } on Object catch (e) {
       if (!_loaded) _error = e;
     } finally {
@@ -166,11 +198,15 @@ class ActiveJobs extends ChangeNotifier {
     }
   }
 
-  void _sync() {
+  /// [staleForAccept]: the read started before the last accept, so it may
+  /// not list that job yet; keep its pings until a fresh read.
+  void _sync({bool staleForAccept = false}) {
     final ids = [for (final j in _held) j.id];
     live.syncRooms(ids);
     uploads.retainOnly(ids);
-    pings.setWorkingJob(working?.id);
+    final w = working?.id;
+    if (!staleForAccept) _accepted = null;
+    pings.setWorkingJob(w ?? (staleForAccept ? _accepted : null));
   }
 
   /// `errand:access_revoked` or a `job_not_held` read: drop the job, stop
@@ -183,7 +219,7 @@ class ActiveJobs extends ChangeNotifier {
     ];
     _optimisticStatus.remove(errandId);
     _optimisticNotes.remove(errandId);
-    _notice = ActiveJobsCopy.revoked;
+    _setNotice(ActiveJobsCopy.revoked);
     _sync();
     notifyListeners();
   }
@@ -287,7 +323,14 @@ class ActiveJobs extends ChangeNotifier {
       }
       await load();
       final String message;
-      if (action.kind == QueuedActionKind.evidenceUpload) {
+      InlineSpan? rich;
+      if (reason == QueueDropReason.tooLarge) {
+        // Row 252: permanent; the queue already deleted the file. The drop
+        // carries no limit, so the API default is shown.
+        const max = EvidenceTooLarge.defaultMaxBytes;
+        message = RunnerEvidenceCopy.tooLarge(max);
+        rich = evidenceTooLargeSpan(max);
+      } else if (action.kind == QueuedActionKind.evidenceUpload) {
         message = reason == QueueDropReason.fileMissing
             ? ActiveJobsCopy.photoGone
             : ActiveJobsCopy.photoRefused;
@@ -300,7 +343,7 @@ class ActiveJobs extends ChangeNotifier {
             ? ActiveJobsCopy.revoked
             : ActiveJobsCopy.refusedReplay(label.toLowerCase());
       }
-      _notice = message;
+      _setNotice(message, rich: rich);
       notifyListeners();
     }());
   }
@@ -311,9 +354,11 @@ class ActiveJobs extends ChangeNotifier {
     _loaded = false;
     _error = null;
     _notice = null;
+    _noticeRich = null;
     _optimisticStatus.clear();
     _optimisticNotes.clear();
     _priceDecided.clear();
+    _accepted = null;
     live.syncRooms(const []);
     uploads.releaseAll();
     pings.reset();

@@ -239,7 +239,7 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
                   rows: [
                     ReceiptRow(
                       label: SummaryCopy.itemReimbursement,
-                      amount: item?.amount ?? job.itemAmount,
+                      amount: item?.amount ?? amountToSpend(job),
                     ),
                   ],
                   note: SummaryCopy.reimbursementNote,

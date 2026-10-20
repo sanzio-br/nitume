@@ -6,6 +6,7 @@ import 'package:nitume_core/nitume_core.dart';
 
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
+import '../../services/job_start_notice.dart';
 import '../../services/location_gate.dart';
 import '../../services/runner_live.dart';
 import '../../services/shell_controller.dart';
@@ -390,7 +391,8 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
       // Accepting is RUNNER_ASSIGNED → RUNNER_EN_ROUTE: the Active tab on
       // that job.
       _s.shell.showJob(o.id);
-      unawaited(_s.active.load());
+      _s.active.accepted(o.id);
+      showJobStartNotice(Navigator.of(context, rootNavigator: true), _s);
       unawaited(_load(silent: true));
     } on Object catch (e) {
       if (!mounted) return;

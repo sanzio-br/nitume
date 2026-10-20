@@ -82,6 +82,10 @@ class RunnerLive {
   Stream<PriceChangeDecided> get priceChangeDecisions =>
       runner?.priceChangeDecisions ?? const Stream.empty();
 
+  /// `price_change:difference_paid` (row 248): reload that job.
+  Stream<PriceDifferencePaid> get priceDifferencePayments =>
+      runner?.priceDifferencePayments ?? const Stream.empty();
+
   /// `location:ping` with its ack; not sent without a runner client.
   Future<LocationPingAck> sendLocationPing(LocationPing ping) async {
     final r = runner;

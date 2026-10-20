@@ -83,7 +83,8 @@ typedef _Seg = ({String text, bool numeric});
 
 List<List<_Seg>> _metaParts(RunnerJobView o, DevicePosition? fix) {
   final km = offerDistanceKm(o, fix);
-  final item = o.itemAmount;
+  // Row 248: what the runner may spend (requiredPurchase on send_to_runner).
+  final item = o.itemAmount == null ? null : amountToSpend(o);
   final paid = howItsPaid(o);
   return [
     if (km != null)
