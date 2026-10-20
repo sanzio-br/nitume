@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:nitume_core/nitume_core.dart';
 
 import '../util/display.dart';
@@ -86,6 +87,7 @@ class ActiveJobs extends ChangeNotifier {
   bool _loading = false;
   Object? _error;
   String? _notice;
+  InlineSpan? _noticeRich;
   final _optimisticStatus = <String, ErrandStatus>{};
   final _optimisticNotes = <String, String?>{};
   final _priceDecided = <String, PriceChangeDecided>{};
@@ -113,11 +115,21 @@ class ActiveJobs extends ChangeNotifier {
   /// [takeNotice].
   String? get notice => _notice;
 
-  /// Returns and clears [notice].
+  /// [notice] with its numbers as Fira Code spans, when it has any (read
+  /// before [takeNotice]).
+  InlineSpan? get noticeRich => _noticeRich;
+
+  /// Returns and clears [notice] (and [noticeRich]).
   String? takeNotice() {
     final n = _notice;
     _notice = null;
+    _noticeRich = null;
     return n;
+  }
+
+  void _setNotice(String message, {InlineSpan? rich}) {
+    _notice = message;
+    _noticeRich = rich;
   }
 
   /// The last `price_change:decided` for [errandId] this session.
@@ -207,7 +219,7 @@ class ActiveJobs extends ChangeNotifier {
     ];
     _optimisticStatus.remove(errandId);
     _optimisticNotes.remove(errandId);
-    _notice = ActiveJobsCopy.revoked;
+    _setNotice(ActiveJobsCopy.revoked);
     _sync();
     notifyListeners();
   }
@@ -311,7 +323,14 @@ class ActiveJobs extends ChangeNotifier {
       }
       await load();
       final String message;
-      if (action.kind == QueuedActionKind.evidenceUpload) {
+      InlineSpan? rich;
+      if (reason == QueueDropReason.tooLarge) {
+        // Row 252: permanent; the queue already deleted the file. The drop
+        // carries no limit, so the API default is shown.
+        const max = EvidenceTooLarge.defaultMaxBytes;
+        message = RunnerEvidenceCopy.tooLarge(max);
+        rich = evidenceTooLargeSpan(max);
+      } else if (action.kind == QueuedActionKind.evidenceUpload) {
         message = reason == QueueDropReason.fileMissing
             ? ActiveJobsCopy.photoGone
             : ActiveJobsCopy.photoRefused;
@@ -324,7 +343,7 @@ class ActiveJobs extends ChangeNotifier {
             ? ActiveJobsCopy.revoked
             : ActiveJobsCopy.refusedReplay(label.toLowerCase());
       }
-      _notice = message;
+      _setNotice(message, rich: rich);
       notifyListeners();
     }());
   }
@@ -335,6 +354,7 @@ class ActiveJobs extends ChangeNotifier {
     _loaded = false;
     _error = null;
     _notice = null;
+    _noticeRich = null;
     _optimisticStatus.clear();
     _optimisticNotes.clear();
     _priceDecided.clear();

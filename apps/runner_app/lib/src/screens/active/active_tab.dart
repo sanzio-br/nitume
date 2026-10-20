@@ -125,6 +125,7 @@ class _ActiveTabState extends State<ActiveTab> {
   String? _detailsKey;
   final _requested = <String>{};
   String? _error;
+  InlineSpan? _errorRich;
   bool _busy = false;
   DevicePosition? _fix;
 
@@ -172,9 +173,13 @@ class _ActiveTabState extends State<ActiveTab> {
 
   void _changed() {
     if (!mounted) return;
+    final rich = _a.noticeRich;
     final notice = _a.takeNotice();
     setState(() {
-      if (notice != null) _error = notice;
+      if (notice != null) {
+        _error = notice;
+        _errorRich = rich;
+      }
     });
     // Ended purchase jobs need their receipts and end time for the
     // selection rule and Other jobs (SA-1).
@@ -293,12 +298,14 @@ class _ActiveTabState extends State<ActiveTab> {
     setState(() {
       _busy = true;
       _error = null;
+      _errorRich = null;
     });
     final r = await _a.transition(job, to, note: note);
     if (!mounted) return;
     setState(() {
       _busy = false;
       _error = r.error;
+      _errorRich = null;
     });
     if (r.ok && to == ErrandStatus.awaitingCustomer) {
       await Nav.toJobSummary(context, job.id);
@@ -949,6 +956,7 @@ class _ActiveTabState extends State<ActiveTab> {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: NitumeNotice(
                   message: error,
+                  richMessage: _errorRich,
                   tone: NitumeNoticeTone.danger,
                 ),
               ),

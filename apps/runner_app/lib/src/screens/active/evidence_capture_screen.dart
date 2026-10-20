@@ -34,7 +34,6 @@ abstract final class EvidenceCopy {
       'Allow camera access in Settings to take photos.';
   static const openSettings = 'Open Settings';
   static const notAllowed = "You can't add photos to this job any more.";
-  static const tooLarge = "This photo couldn't be uploaded. Try again later.";
   static const windowClosed =
       'The upload window has closed. Contact support with your receipt.';
   static const stay = 'Stay';
@@ -86,6 +85,9 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
   bool _locationOff = false;
   String? _error;
 
+  /// Row 252: the last photo was refused as too large (not retried).
+  EvidenceTooLarge? _tooLarge;
+
   @override
   void initState() {
     super.initState();
@@ -131,15 +133,31 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
 
   void _onUploads() {
     if (!mounted) return;
+    // Row 252: a too-large photo is final. Its copy is already deleted;
+    // drop the tile and offer a new capture instead of Retry.
+    for (final i in _uploader.items.toList()) {
+      if (i.status == EvidenceUploadStatus.failed && i.tooLarge) {
+        _tooLarge = i.tooLargeError;
+        _error = null;
+        unawaited(_uploader.remove(i));
+      }
+    }
     NitumeApiException? e;
     for (final i in _uploader.items.reversed) {
-      if (i.status == EvidenceUploadStatus.failed && i.lastApiError != null) {
+      if (i.status == EvidenceUploadStatus.failed &&
+          !i.tooLarge &&
+          i.lastApiError != null) {
         e = i.lastApiError;
         break;
       }
     }
     final error = e;
-    setState(() => _error = error != null ? _messageFor(error) : _error);
+    setState(() {
+      if (error != null) {
+        _error = _messageFor(error);
+        _tooLarge = null;
+      }
+    });
   }
 
   String _messageFor(Object e) {
@@ -148,7 +166,8 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
       return ActiveJobsCopy.revoked;
     }
     if (e is NitumeApiException) {
-      if (e.isPayloadTooLarge) return EvidenceCopy.tooLarge;
+      final big = EvidenceTooLarge.of(e);
+      if (big != null) return RunnerEvidenceCopy.tooLarge(big.maxBytes);
       if (e.code == ApiErrorCodes.evidenceNotAllowed) {
         unawaited(_s.active.load());
         return EvidenceCopy.notAllowed;
@@ -167,7 +186,10 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
       setState(() => _camera = now);
       if (now != CameraAccess.granted) return;
     }
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _tooLarge = null;
+    });
     await _uploader.captureAndUpload(widget.errandId, type: _type);
   }
 
@@ -221,6 +243,7 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
     final queued = items.any((i) => i.status == EvidenceUploadStatus.queued);
     const pad = EdgeInsets.fromLTRB(20, 0, 20, 12);
     final error = _error;
+    final tooLarge = _tooLarge;
     final title = widget.type == EvidenceType.receipt
         ? EvidenceCopy.receiptTitle
         : EvidenceCopy.title;
@@ -241,6 +264,23 @@ class _EvidenceCaptureScreenState extends State<EvidenceCaptureScreen> {
                 child: NitumeNotice(
                   message: error,
                   tone: NitumeNoticeTone.danger,
+                ),
+              ),
+            if (tooLarge != null)
+              Padding(
+                padding: pad,
+                child: NitumeNotice(
+                  key: const ValueKey('evidence-too-large'),
+                  message: RunnerEvidenceCopy.tooLarge(tooLarge.maxBytes),
+                  richMessage: evidenceTooLargeSpan(tooLarge.maxBytes),
+                  tone: NitumeNoticeTone.danger,
+                  action: canCapture && _up != null
+                      ? NitumeButton.outline(
+                          label: EvidenceCopy.shutter,
+                          size: NitumeButtonSize.small,
+                          onPressed: _capture,
+                        )
+                      : null,
                 ),
               ),
             if (!canCapture)
