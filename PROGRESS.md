@@ -422,3 +422,22 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 - Tests on merged main: API 637 unit + 108 e2e (nitume_test), admin 250, core 509, runner_device 13,
   customer 131, runner 67.
 
+
+## 2026-10-20 (rounds 17–18)
+
+- Round 17 (all reviewed READY, awaiting owner merge): customer rounds 14–16 screens, admin finding 33 +
+  "No deadline yet", runner v-active family (active job, evidence offline store, price request, summary) and
+  RA-4/RA-5 (location ping, geofence arrival, runner realtime events). Board commit 9f81437.
+- Owner approved all recommendations on rows 245–255 (90-day job-location retention). Round 18 follow-ups
+  stack on the round 17 branches (a local integration merge needs the owner's go-ahead).
+- Round 18 so far: customer row 249 (b) reviewed READY on feat/customer-outside-area-b (157 tests).
+  In progress: api-contract (249, 250, 247, 248, 252–254), core-ui (245 C-V5, 246, 255, m-1, m-2);
+  flutter-runner follows core.
+- API round 18 reviewed READY: feat/api-outside-area-b (249 b, 250) and feat/api-runner-answers (247 job-ping
+  storage + 90-day purge, 248 differenceAwaitingPayment, 252 10 MB, 253 defaults pinned, 254 receipts in DISPUTED).
+- Runner round 18 reviewed READY: feat/core-runner-answers + feat/runner-answers (rows 245, 246, 248, 252, 254, 255;
+  audit docs/runner-round-18-audit PASS) and review follow-ups feat/core-runner-answers-fixes + feat/runner-answers-fixes
+  (queue opens only after a good read, reopens on resume; bare 413 scope; maxBytes; channel "Location during jobs").
+  Tests: runner 136, core 645, runner_device 25, customer 157, API 655/759 unit + e2e 111/120.
+- Not verified (no Xcode/devices): iOS plugin build, Android 14 / iOS background location, full APK (compileSdk 37?),
+  backup-restore. Open owner rows 256–259. Nothing merged; round 17 + 18 branches await the owner's merge.
