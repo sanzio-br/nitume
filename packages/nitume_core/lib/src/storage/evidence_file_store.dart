@@ -17,9 +17,13 @@ abstract interface class EvidenceFileStore {
 /// [EvidenceFileStore] in a sub-folder of [directory].
 ///
 /// [directory] should be app-private storage that is not cleared like a
-/// cache (the application-support directory). Getting that directory on a
-/// device needs `path_provider` (pending owner approval); tests pass a temp
-/// directory.
+/// cache (the application-support directory): on a device use
+/// `appSupportEvidenceFileStore()` from `package:nitume_runner_device`
+/// (`path_provider`, row 149); tests pass a temp directory.
+///
+/// Cleanup beside the per-file [discard] (B-1): [discardAll] at log out,
+/// after the queue is cleared; [discardExcept] at start, with the paths the
+/// loaded offline queue still holds, for copies left by a killed app.
 class DirectoryEvidenceFileStore implements EvidenceFileStore {
   DirectoryEvidenceFileStore(this.directory, {this.folder = 'nitume_evidence'});
 
@@ -43,6 +47,30 @@ class DirectoryEvidenceFileStore implements EvidenceFileStore {
         '${dir.path}${Platform.pathSeparator}${stamp}_${_seq++}_$name';
     await File(sourcePath).copy(target);
     return target;
+  }
+
+  /// Every kept file, oldest name first. Empty when the folder does not
+  /// exist yet.
+  Future<List<String>> keptPaths() async {
+    final dir = await _root();
+    final files = [
+      for (final e in await dir.list().toList())
+        if (e is File) e.path,
+    ]..sort();
+    return files;
+  }
+
+  /// Deletes every kept file (log out). Missing files are ignored.
+  Future<void> discardAll() => discardExcept(const []);
+
+  /// Deletes every kept file whose path is not in [keep] (start-up: keep the
+  /// paths the offline queue still holds).
+  Future<void> discardExcept(Iterable<String> keep) async {
+    final wanted = {for (final p in keep) File(p).absolute.path};
+    for (final path in await keptPaths()) {
+      if (wanted.contains(File(path).absolute.path)) continue;
+      await discard(path);
+    }
   }
 
   @override

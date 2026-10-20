@@ -41,6 +41,15 @@ abstract final class RunnerQueuedActions {
     'lon': ?lon,
   };
 
+  /// The kept photo paths of the queued evidence uploads in [actions]
+  /// (e.g. `queue.pending` after `load`): pass them to
+  /// `DirectoryEvidenceFileStore.discardExcept` at start-up.
+  static Set<String> evidencePaths(Iterable<QueuedAction> actions) => {
+    for (final a in actions)
+      if (a.kind == QueuedActionKind.evidenceUpload)
+        if (a.payload['path'] case final String path) path,
+  };
+
   /// An `OfflineActionQueue.onSettled` hook that deletes the kept photo of
   /// an evidence action once it leaves the queue (uploaded, refused,
   /// superseded or cleared).
