@@ -27,10 +27,14 @@ import { evidenceMaxUploadBytes, evidenceTooLarge } from './evidence-upload';
  * `urlExpiresAt` tells the app when to refetch. The storage key and any
  * permanent URL are never exposed.
  */
-/** RA-11, `v-evidence-capture`: the states in which the task's runner may upload each type. */
+/**
+ * RA-11, `v-evidence-capture`: the states in which the task's runner may
+ * upload each type. Row 254 (owner, 2026-10-20): receipts also while
+ * DISPUTED (they help resolve it); photos stay refused there.
+ */
 export const RUNNER_UPLOAD_STATES: Readonly<Record<'photo' | 'receipt', ReadonlySet<ErrandStatus>>> = {
   photo: new Set([ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS]),
-  receipt: new Set([ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS, ErrandStatus.AWAITING_CUSTOMER]),
+  receipt: new Set([ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS, ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.DISPUTED]),
 };
 
 /** Row 129: receipts also after the task ended this way, inside the window. */
@@ -179,9 +183,9 @@ export class EvidenceService implements OnModuleInit {
   }
 
   /**
-   * RA-11 (rows 121, 129): a runner uploads photos (ARRIVED, IN_PROGRESS)
-   * and receipts (ARRIVED … AWAITING_CUSTOMER, and up to 24 h after
-   * CANCELLED/FAILED), images only, no video. Errors: 400
+   * RA-11 (rows 121, 129, 254): a runner uploads photos (ARRIVED,
+   * IN_PROGRESS) and receipts (ARRIVED … AWAITING_CUSTOMER, DISPUTED, and up
+   * to 24 h after CANCELLED/FAILED), images only, no video. Errors: 400
    * evidence_type_not_allowed (`allowed`); 409 evidence_not_allowed
    * (`status`, `type`); 409 reimbursement_window_closed (`endedAt`,
    * `windowEndsAt`).

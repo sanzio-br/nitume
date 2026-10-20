@@ -67,6 +67,8 @@ describe('EvidenceService runner uploads (RA-11, rows 121, 129)', () => {
     ['receipt', 'AWAITING_CUSTOMER'],
     ['receipt', 'CANCELLED'],
     ['receipt', 'FAILED'],
+    // Row 254: receipts while DISPUTED.
+    ['receipt', 'DISPUTED'],
   ])('accepts a %s in %s', async (type, status) => {
     const { service, storage } = build(status);
     await service.upload('e-1', body(type) as never, runner);
@@ -77,8 +79,9 @@ describe('EvidenceService runner uploads (RA-11, rows 121, 129)', () => {
     ['photo', 'RUNNER_EN_ROUTE'],
     ['photo', 'AWAITING_CUSTOMER'],
     ['photo', 'CANCELLED'],
+    // Row 254: photos stay refused while DISPUTED.
+    ['photo', 'DISPUTED'],
     ['receipt', 'RUNNER_EN_ROUTE'],
-    ['receipt', 'DISPUTED'],
     ['receipt', 'COMPLETED'],
   ])('refuses a %s in %s with evidence_not_allowed', async (type, status) => {
     const { service, storage } = build(status);
