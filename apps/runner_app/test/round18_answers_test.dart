@@ -173,7 +173,7 @@ void main() {
           contentType: 'image/jpeg',
         ),
       );
-      b.services.active.onQueueDropped(action, QueueDropReason.tooLarge);
+      b.services.active.onQueueDropped(action, const QueueDropTooLarge());
       await t.pumpAndSettle();
 
       final message = RunnerEvidenceCopy.tooLarge(
@@ -200,6 +200,47 @@ void main() {
       expect(
         find.text("A photo couldn't be added to the job. Take it again."),
         findsNothing,
+      );
+    });
+  });
+
+  group('row 252: the queue drop carries the server limit', () {
+    test('QueueDropTooLarge(maxBytes: 5242880) names 5 MB', () async {
+      final b = TestBackend();
+      b.jobs.heldList = [heldJob(status: ErrandStatus.inProgress)];
+      await b.services.active.load();
+      final action = await b.services.queue.enqueue(
+        QueuedActionKind.evidenceUpload,
+        errandId: 'e1',
+        payload: RunnerQueuedActions.evidence(
+          path: 'kept/big.jpg',
+          type: EvidenceType.photo,
+          contentType: 'image/jpeg',
+        ),
+      );
+      b.services.active.onQueueDropped(
+        action,
+        const QueueDropTooLarge(maxBytes: 5242880),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      final rich = b.services.active.noticeRich;
+      expect(
+        b.services.active.takeNotice(),
+        'This photo is larger than 5 MB. Take it again.',
+      );
+      final spans = <InlineSpan>[];
+      rich!.visitChildren((s) {
+        spans.add(s);
+        return true;
+      });
+      expect(
+        spans
+            .whereType<TextSpan>()
+            .firstWhere((s) => s.text == '5 MB')
+            .style
+            ?.fontFamily,
+        NitumeTypography.numericFamily,
       );
     });
   });
