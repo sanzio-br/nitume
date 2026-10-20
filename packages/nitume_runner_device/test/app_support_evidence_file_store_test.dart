@@ -133,9 +133,11 @@ void main() {
     expect(cache.listSync(), isEmpty);
 
     // A killed app leaves copies: start-up keeps only what the queue holds.
+    // (Copies from the earlier run: another store instance, same folder.)
+    final earlier = appSupportEvidenceFileStore();
     final src = File('${cache.path}/x.jpg')..writeAsStringSync('x');
-    final queuedPath = await store.keep(src.path);
-    await store.keep(src.path); // orphan
+    final queuedPath = await earlier.keep(src.path);
+    await earlier.keep(src.path); // orphan
     await queue.enqueue(
       QueuedActionKind.evidenceUpload,
       errandId: 'e1',

@@ -211,6 +211,11 @@ class OfflineActionQueue extends ChangeNotifier {
   List<QueuedAction> _pending = [];
   bool _replaying = false;
   int _generation = 0;
+  bool _closed = false;
+
+  /// True after [clear] until the next [load]: [enqueue] refuses new work
+  /// (log out must not leave anything persisted for the next session).
+  bool get isClosed => _closed;
   Future<void> _writes = Future.value();
 
   /// Oldest first.
@@ -222,8 +227,10 @@ class OfflineActionQueue extends ChangeNotifier {
   List<QueuedAction> pendingFor(String errandId) =>
       _pending.where((a) => a.errandId == errandId).toList();
 
-  /// Reads the persisted queue (call once on start).
+  /// Reads the persisted queue (call once on start, and at each sign-in
+  /// after a [clear]); reopens a closed queue.
   Future<void> load() async {
+    _closed = false;
     _pending = [for (final raw in await store.read()) ?_decode(raw)];
     notifyListeners();
   }
@@ -236,12 +243,16 @@ class OfflineActionQueue extends ChangeNotifier {
     }
   }
 
-  /// Appends an action and persists it before returning.
+  /// Appends an action and persists it before returning. Throws
+  /// [StateError] while [isClosed] (after [clear], before [load]).
   Future<QueuedAction> enqueue(
     QueuedActionKind kind, {
     required String errandId,
     required Map<String, Object?> payload,
   }) async {
+    if (_closed) {
+      throw StateError('OfflineActionQueue is closed (cleared at log out)');
+    }
     final action = QueuedAction(
       id: _newId(),
       kind: kind,
@@ -317,8 +328,10 @@ class OfflineActionQueue extends ChangeNotifier {
     }
   }
 
-  /// Drops everything (log out). Settles each dropped action.
+  /// Drops everything (log out). Settles each dropped action and closes the
+  /// queue until the next [load] ([isClosed]).
   Future<void> clear() async {
+    _closed = true;
     _generation++;
     final dropped = _pending;
     _pending = [];

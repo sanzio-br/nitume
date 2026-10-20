@@ -26,12 +26,18 @@ abstract interface class EvidenceFileStore {
 /// Cleanup beside the per-file [discard] (B-1): [discardAll] at log out,
 /// after the queue is cleared; [discardExcept] at start, with the paths the
 /// loaded offline queue still holds, for copies left by a killed app.
+/// [discardExcept] never deletes a copy this instance kept in the current
+/// run, so a photo captured while the start-up clean-up runs is safe; use
+/// one instance per app run, shared by the uploaders and the queue.
 class DirectoryEvidenceFileStore implements EvidenceFileStore {
   DirectoryEvidenceFileStore(this.directory, {this.folder = 'nitume_evidence'});
 
   final Future<Directory> Function() directory;
   final String folder;
   int _seq = 0;
+
+  /// Copies kept by this instance in this run (normalised paths).
+  final _keptThisRun = <String>{};
 
   Future<Directory> _root() async {
     final base = await directory();
@@ -47,7 +53,16 @@ class DirectoryEvidenceFileStore implements EvidenceFileStore {
     final stamp = DateTime.now().microsecondsSinceEpoch;
     final target =
         '${dir.path}${Platform.pathSeparator}${stamp}_${_seq++}_$name';
-    await File(sourcePath).copy(target);
+    // Registered before the copy exists, so a concurrent discardExcept can
+    // never see it unprotected.
+    final key = _normal(target);
+    _keptThisRun.add(key);
+    try {
+      await File(sourcePath).copy(target);
+    } on Object {
+      _keptThisRun.remove(key);
+      rethrow;
+    }
     return target;
   }
 
@@ -62,15 +77,23 @@ class DirectoryEvidenceFileStore implements EvidenceFileStore {
     return files;
   }
 
-  /// Deletes every kept file (log out). Missing files are ignored.
-  Future<void> discardAll() => discardExcept(const []);
+  /// Deletes every kept file (log out), also those kept in this run.
+  /// Missing files are ignored.
+  Future<void> discardAll() async {
+    for (final path in await keptPaths()) {
+      await discard(path);
+    }
+  }
 
-  /// Deletes every kept file whose path is not in [keep] (start-up: keep the
-  /// paths the offline queue still holds).
+  /// Start-up clean-up of copies left by an earlier run: deletes every kept
+  /// file whose path is not in [keep] (the paths the offline queue still
+  /// holds) and that this instance did not keep in the current run.
   Future<void> discardExcept(Iterable<String> keep) async {
     final wanted = {for (final k in keep) _normal(k)};
     for (final path in await keptPaths()) {
-      if (wanted.contains(_normal(path))) continue;
+      final key = _normal(path);
+      // Checked right before each delete: a capture kept meanwhile is safe.
+      if (wanted.contains(key) || _keptThisRun.contains(key)) continue;
       await discard(path);
     }
   }
@@ -83,6 +106,7 @@ class DirectoryEvidenceFileStore implements EvidenceFileStore {
   Future<void> discard(String path) async {
     final dir = await _root();
     if (!await _isDirectChild(path, dir)) return;
+    _keptThisRun.remove(_normal(path));
     try {
       await File(path).delete();
     } on FileSystemException {
