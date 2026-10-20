@@ -227,9 +227,19 @@ class OfflineActionQueue extends ChangeNotifier {
   int _generation = 0;
   bool _closed = false;
 
-  /// True after [clear] until the next [load]: [enqueue] refuses new work
-  /// (log out must not leave anything persisted for the next session).
-  bool get isClosed => _closed;
+  /// Whether the store was read since the start or the last [clear]. Until
+  /// then [enqueue] reads it first, so it never writes over actions that
+  /// were persisted but not read yet.
+  bool _read = false;
+  Future<void>? _loading;
+
+  /// True after [clear], or after a [load] whose store read failed, until
+  /// the next good [load]: [enqueue] refuses new work. Log out must not
+  /// leave anything persisted for the next session, and an unread store
+  /// must never be written over (its earlier actions would be lost).
+  ///
+  /// False while a [load] is in flight: [enqueue] then waits for it.
+  bool get isClosed => _closed && _loading == null;
   Future<void> _writes = Future.value();
 
   /// Oldest first.
@@ -242,10 +252,34 @@ class OfflineActionQueue extends ChangeNotifier {
       _pending.where((a) => a.errandId == errandId).toList();
 
   /// Reads the persisted queue (call once on start, and at each sign-in
-  /// after a [clear]); reopens a closed queue.
-  Future<void> load() async {
+  /// after a [clear]) and opens the queue.
+  ///
+  /// The queue opens only after a good read. When [QueueStore.read] throws,
+  /// the error is rethrown and the queue stays (or becomes) closed
+  /// ([isClosed]): [enqueue] then throws [StateError], so the caller fails
+  /// the action with a retry instead of queueing it over the unread store.
+  /// Call [load] again later to open it. A [clear] during the read wins:
+  /// the queue stays closed and the read is ignored. Overlapping calls
+  /// share one read.
+  Future<void> load() =>
+      _loading ??= _load().whenComplete(() => _loading = null);
+
+  Future<void> _load() async {
+    final generation = _generation;
+    final List<String> raw;
+    try {
+      // Let queued writes land first, so the read sees them.
+      await _writes.catchError((Object _) {});
+      raw = await store.read();
+    } on Object {
+      _closed = true;
+      notifyListeners();
+      rethrow;
+    }
+    if (generation != _generation) return; // cleared meanwhile
+    _pending = [for (final r in raw) ?_decode(r)];
+    _read = true;
     _closed = false;
-    _pending = [for (final raw in await store.read()) ?_decode(raw)];
     notifyListeners();
   }
 
@@ -257,15 +291,28 @@ class OfflineActionQueue extends ChangeNotifier {
     }
   }
 
-  /// Appends an action and persists it before returning. Throws
-  /// [StateError] while [isClosed] (after [clear], before [load]).
+  /// Appends an action and persists it before returning. Waits for a
+  /// [load] in flight, and reads the store first when it was never read.
+  /// Throws [StateError] while the queue is closed (after [clear] or a
+  /// failed read, until the next good [load]).
   Future<QueuedAction> enqueue(
     QueuedActionKind kind, {
     required String errandId,
     required Map<String, Object?> payload,
   }) async {
+    final loading = _loading ?? (_read || _closed ? null : load());
+    if (loading != null) {
+      try {
+        await loading;
+      } on Object {
+        // Read failed: the queue is closed, refused below.
+      }
+    }
     if (_closed) {
-      throw StateError('OfflineActionQueue is closed (cleared at log out)');
+      throw StateError(
+        'OfflineActionQueue is closed (cleared at log out, or its store '
+        'could not be read)',
+      );
     }
     final action = QueuedAction(
       id: _newId(),
@@ -345,9 +392,10 @@ class OfflineActionQueue extends ChangeNotifier {
   }
 
   /// Drops everything (log out). Settles each dropped action and closes the
-  /// queue until the next [load] ([isClosed]).
+  /// queue until the next good [load] ([isClosed]).
   Future<void> clear() async {
     _closed = true;
+    _read = false;
     _generation++;
     final dropped = _pending;
     _pending = [];
