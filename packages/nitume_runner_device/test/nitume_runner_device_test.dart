@@ -61,6 +61,26 @@ void main() {
       expect(idle.foregroundNotificationConfig, isNull);
     });
 
+    test('Android notification channel is "Location during jobs" '
+        '(_shared.md §10, round 18), not geolocator\'s default', () {
+      const src = GeolocatorPositionSource();
+      expect(src.notificationChannelName, 'Location during jobs');
+      final s = src.settingsFor(
+        TargetPlatform.android,
+        interval: const Duration(seconds: 4),
+        distanceFilter: 15,
+        background: true,
+      ) as AndroidSettings;
+      expect(
+        s.foregroundNotificationConfig!.notificationChannelName,
+        'Location during jobs',
+      );
+      expect(
+        s.foregroundNotificationConfig!.notificationChannelName,
+        isNot('Background Location'),
+      );
+    });
+
     test('iOS job stream: background updates with the indicator', () {
       const src = GeolocatorPositionSource();
       final s = src.settingsFor(

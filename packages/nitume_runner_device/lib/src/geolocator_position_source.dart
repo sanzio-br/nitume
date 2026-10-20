@@ -16,7 +16,8 @@ import 'package:nitume_core/nitume_core.dart';
 /// `LocationPinger`, which only starts it in the foreground):
 /// * Android: geolocator's location foreground service (type `location`,
 ///   declared by the plugin) with the persistent, ongoing notification
-///   [notificationTitle] / [notificationText] (`_shared.md` §10, final).
+///   [notificationTitle] / [notificationText] (`_shared.md` §10, final) on
+///   the channel [notificationChannelName] (`_shared.md` §10, round 18).
 ///   It stops, and the notification goes, when the stream is cancelled (job
 ///   finished, runner offline).
 /// * iOS: background location updates with the blue indicator; needs
@@ -25,12 +26,19 @@ class GeolocatorPositionSource implements PositionSource {
   const GeolocatorPositionSource({
     this.notificationTitle = 'Nitume Runner',
     this.notificationText = 'Sharing your location for your active job.',
+    this.notificationChannelName = 'Location during jobs',
   });
 
   /// Android foreground-service notification shown while [positions] runs
   /// with `background: true`.
   final String notificationTitle;
   final String notificationText;
+
+  /// Android notification channel of that notification, listed under the
+  /// app's notification settings. Replaces geolocator's default
+  /// `Background Location`, which suggests background access the app does
+  /// not ask for (`_shared.md` §10).
+  final String notificationChannelName;
 
   /// The geolocator settings [positions] uses on [platform].
   @visibleForTesting
@@ -47,6 +55,7 @@ class GeolocatorPositionSource implements PositionSource {
           ? ForegroundNotificationConfig(
               notificationTitle: notificationTitle,
               notificationText: notificationText,
+              notificationChannelName: notificationChannelName,
               setOngoing: true,
             )
           : null,

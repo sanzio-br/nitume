@@ -127,7 +127,7 @@ abstract final class RunnerQueuedActions {
         }
         return ReplayOutcome.done;
       } on Object catch (e) {
-        return replayOutcomeFor(e);
+        return replayOutcomeFor(e, kind: action.kind);
       }
     };
   }
