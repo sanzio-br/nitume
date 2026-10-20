@@ -6,7 +6,6 @@ import 'package:nitume_core/nitume_core.dart';
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
 import '../../services/location_gate.dart';
-import '../../services/shell_controller.dart';
 import '../../widgets/common.dart';
 import 'jobs_tab.dart';
 import 'offer_presentation.dart';
@@ -101,7 +100,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         // Opened from a stale notification: a job this runner holds goes
         // to v-active, anything else is an ended offer.
         if (job.assignment.status == AssignmentStatus.accepted) {
-          Nav.toShellTab(context, RunnerTab.active);
+          s.shell.showJob(job.id);
+          Nav.popToRoot(context);
           return;
         }
         setState(() => _ended = true);
@@ -154,7 +154,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     try {
       await _s.jobs.accept(job.id);
       if (!mounted) return;
-      Nav.toShellTab(context, RunnerTab.active);
+      _s.shell.showJob(job.id);
+      unawaited(_s.active.load());
+      Nav.popToRoot(context);
     } on Object catch (e) {
       if (!mounted) return;
       final f = acceptFailure(e, busyMessage: OfferCopy.busyDetail);

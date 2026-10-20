@@ -36,7 +36,8 @@ class NitumeRunnerApp extends StatefulWidget {
   State<NitumeRunnerApp> createState() => _NitumeRunnerAppState();
 }
 
-class _NitumeRunnerAppState extends State<NitumeRunnerApp> {
+class _NitumeRunnerAppState extends State<NitumeRunnerApp>
+    with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late SessionStatus _status;
@@ -48,13 +49,25 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp> {
     super.initState();
     _status = _session.status;
     _session.addListener(_onSession);
+    WidgetsBinding.instance.addObserver(this);
     if (widget.restoreOnStart) _session.restore();
   }
 
   @override
   void dispose() {
     _session.removeListener(_onSession);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Idle pings pause in the background; queued actions replay on return.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final fg = state == AppLifecycleState.resumed;
+    widget.services.pings.setForeground(fg);
+    if (fg && _status == SessionStatus.signedIn) {
+      unawaited(widget.services.queue.replay());
+    }
   }
 
   void _onSession() {

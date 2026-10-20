@@ -178,7 +178,6 @@ class AppServices {
 
   /// Starts the signed-in runtime: socket, queue.
   Future<void> startSession() async {
-    pings.setForeground(true);
     await live.start();
     await queue.load();
     unawaited(queue.replay());

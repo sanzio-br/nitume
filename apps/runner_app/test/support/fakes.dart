@@ -890,6 +890,8 @@ class TestBackend {
       appConfig: appConfig,
       clock: () => now,
     );
+    // No idle ping timer in widget tests (tests flip it on when needed).
+    services.pings.setForeground(false);
   }
 
   final auth = FakeAuth();

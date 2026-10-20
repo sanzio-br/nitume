@@ -7,6 +7,7 @@ import 'package:nitume_core/nitume_core.dart';
 import '../../navigation/nav.dart';
 import '../../services/app_services.dart';
 import '../../services/location_gate.dart';
+import '../../services/runner_live.dart';
 import '../../services/shell_controller.dart';
 import '../../util/display.dart';
 import '../../widgets/common.dart';
@@ -65,9 +66,10 @@ enum _VerifyTarget { pending, id, selfie }
 /// `v-jobs` root tab: availability, the runner's open offers, accept and
 /// decline (rows 113, 210, 211, 215, 229).
 ///
-/// Offers refresh every 20 s while the tab shows: the runner socket room
-/// (`job:offered`, `job:offer_withdrawn`, RA-5) is not built, so polling is
-/// the only source (`_shared.md` §10 fallback). A card is removed at the
+/// Offers arrive live from the runner room (`job:offered`,
+/// `job:offer_withdrawn`, RA-5); the 20 s poll runs only while the socket
+/// is not connected (`_shared.md` §10 fallback), and a reconnect reloads
+/// once. A card is removed at the
 /// earlier of `offerExpiresAt` and `deadlineAt` (rows 185, 205), never when
 /// both are null (row 156).
 class JobsTab extends StatefulWidget {
@@ -98,6 +100,9 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
   Timer? _offerEnd;
   bool _foreground = true;
   ShellController? _shell;
+  RunnerLive? _live;
+  bool _wasConnected = false;
+  final _subs = <StreamSubscription<Object?>>[];
 
   AppServices get _s => AppScope.read(context);
 
@@ -108,6 +113,13 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _shell = _s.shell..addListener(_syncPolling);
+      final live = _live = _s.live;
+      _wasConnected = live.isConnected;
+      live.state.addListener(_onSocket);
+      _subs.addAll([
+        live.jobOffers.listen(_onOffered),
+        live.jobOfferWithdrawals.listen(_onWithdrawn),
+      ]);
       _load();
     });
   }
@@ -116,6 +128,10 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _shell?.removeListener(_syncPolling);
+    _live?.state.removeListener(_onSocket);
+    for (final sub in _subs) {
+      sub.cancel();
+    }
     _poll?.cancel();
     _offerEnd?.cancel();
     super.dispose();
@@ -132,8 +148,47 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
 
   bool get _visible => _foreground && _shell?.tab == RunnerTab.jobs;
 
+  void _onSocket() {
+    final now = _live?.isConnected ?? false;
+    // Back online: one reload replaces what the socket may have missed.
+    if (now && !_wasConnected) _load(silent: true);
+    _wasConnected = now;
+    _syncPolling();
+  }
+
+  /// `job:offered`: fetch the card and add it (newest first).
+  Future<void> _onOffered(JobOffered e) async {
+    final me = _me;
+    if (me == null || !me.isVerified) return;
+    if (_offers.any((o) => o.id == e.errandId)) return;
+    try {
+      final job = await _s.jobs.job(e.errandId);
+      if (!mounted || !job.isOpenOffer || job.offerEndedAt(_s.clock())) return;
+      if (_offers.any((o) => o.id == job.id)) return;
+      setState(() => _offers = [job, ..._offers]);
+      _armOfferEnd();
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        JobsCopy.newOffer,
+        TextDirection.ltr,
+      );
+    } on Object {
+      // The next reload shows it if it is still open.
+    }
+  }
+
+  /// `job:offer_withdrawn`: the card goes with the usual snackbar.
+  void _onWithdrawn(JobOfferWithdrawn e) {
+    if (!mounted || !_offers.any((o) => o.id == e.errandId)) return;
+    _remove(e.errandId);
+    showSnack(context, OfferCopy.unavailable);
+  }
+
   void _syncPolling() {
-    final want = _visible && (_me?.isVerified ?? false);
+    final want =
+        _visible &&
+        (_me?.isVerified ?? false) &&
+        !(_live?.isConnected ?? false);
     if (want && _poll == null) {
       _poll = Timer.periodic(JobsTab.pollInterval, (_) => _load(silent: true));
     } else if (!want) {
@@ -192,6 +247,7 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
           TextDirection.ltr,
         );
       }
+      s.pings.setOnline(me.isOnline || me.isBusy);
       setState(() {
         _me = me;
         _offers = fresh;
@@ -269,6 +325,7 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
         on ? RunnerAvailability.online : RunnerAvailability.offline,
       );
       if (!mounted) return;
+      _s.pings.setOnline(next.isOnline || next.isBusy);
       setState(() => _me = next);
       await _load(silent: true);
     } on NitumeApiException catch (e) {
@@ -301,8 +358,10 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
       await _s.jobs.accept(o.id);
       if (!mounted) return;
       _remove(o.id);
-      // Accepting is RUNNER_ASSIGNED → RUNNER_EN_ROUTE: the Active tab.
-      _s.shell.select(RunnerTab.active);
+      // Accepting is RUNNER_ASSIGNED → RUNNER_EN_ROUTE: the Active tab on
+      // that job.
+      _s.shell.showJob(o.id);
+      unawaited(_s.active.load());
       unawaited(_load(silent: true));
     } on Object catch (e) {
       if (!mounted) return;
@@ -421,7 +480,7 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
   Widget _activeJobCard(Errand job) {
     final p = runnerStatusPresentation(job.status);
     return NitumeCard(
-      onTap: () => _s.shell.select(RunnerTab.active),
+      onTap: () => _s.shell.showJob(job.id),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
       child: Row(
         children: [
