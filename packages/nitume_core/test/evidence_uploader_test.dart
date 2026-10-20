@@ -541,4 +541,62 @@ void main() {
       expect(item.lastError, isNull);
     });
   });
+
+  group('evidence_too_large (row 252)', () {
+    const tooLarge = NitumeApiException(
+      message: 'The file is larger than the limit',
+      statusCode: 413,
+      code: 'evidence_too_large',
+      details: {'maxBytes': 10485760},
+    );
+
+    test(
+      'failed, not retryable, copy deleted at once, typed maxBytes',
+      () async {
+        final u = make();
+        failWith = tooLarge;
+        final item = await u.captureAndUpload('e1', type: EvidenceType.receipt);
+        expect(item!.status, EvidenceUploadStatus.failed);
+        expect(item.tooLarge, isTrue);
+        expect(item.tooLargeError, const EvidenceTooLarge(maxBytes: 10485760));
+        expect(item.canRetry, isFalse);
+        expect(item.lastApiError?.code, ApiErrorCodes.evidenceTooLarge);
+        expect(kept(), isEmpty, reason: 'B-1: nothing kept that cannot upload');
+        expect(camera.discarded, hasLength(1));
+
+        failWith = null;
+        await u.retry(item);
+        expect(calls, hasLength(1), reason: 'never retried');
+        await u.remove(item);
+        expect(u.items, isEmpty);
+      },
+    );
+
+    test('never queued, even with a queue', () async {
+      final queue = OfflineActionQueue(
+        store: InMemoryQueueStore(),
+        runner: (_) async => ReplayOutcome.done,
+      );
+      final u = make(queue: queue);
+      failWith = const NitumeApiException(message: 'x', statusCode: 413);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.status, EvidenceUploadStatus.failed);
+      expect(item.tooLarge, isTrue);
+      expect(
+        item.tooLargeError!.maxBytes,
+        EvidenceTooLarge.defaultMaxBytes,
+        reason: 'a bare 413 falls back to the API default',
+      );
+      expect(queue.pending, isEmpty);
+      expect(kept(), isEmpty);
+    });
+
+    test('a later failure of another kind is not too large', () async {
+      final u = make();
+      failWith = const NitumeApiException(message: 'bad', statusCode: 422);
+      final item = await u.captureAndUpload('e1', type: EvidenceType.photo);
+      expect(item!.tooLarge, isFalse);
+      expect(item.canRetry, isTrue);
+    });
+  });
 }

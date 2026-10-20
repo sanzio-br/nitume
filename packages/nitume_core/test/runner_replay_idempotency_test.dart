@@ -184,6 +184,21 @@ void main() {
     expect(await run(_evidence()), ReplayOutcome.rejected);
   });
 
+  test('evidence_too_large (413, row 252) on replay is permanent', () async {
+    final a = _Adapter({
+      'POST /errands/e1/evidence': (
+        413,
+        {
+          'statusCode': 413,
+          'code': 'evidence_too_large',
+          'message': 'The file is larger than the limit',
+          'maxBytes': 10485760,
+        },
+      ),
+    });
+    expect(await runner(a)(_evidence()), ReplayOutcome.tooLarge);
+  });
+
   test('replayOutcomeFor: idempotency_in_progress is temporary', () {
     expect(
       replayOutcomeFor(

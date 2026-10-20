@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../api/api_exception.dart';
+import '../api/runner_error_details.dart';
 import '../repositories/payments_repository.dart';
 
 /// What a queued runner action does (§7.2: status transitions and evidence
@@ -127,6 +128,11 @@ enum ReplayOutcome {
   /// The queued photo is no longer on the phone: remove it and tell the
   /// runner to take it again.
   fileMissing,
+
+  /// The photo is above the server's size limit (413
+  /// [ApiErrorCodes.evidenceTooLarge], row 252). Permanent: remove it (its
+  /// file is deleted by `onSettled`) and tell the runner to take it again.
+  tooLarge,
 }
 
 /// Why an action left the queue without being applied.
@@ -140,17 +146,24 @@ enum QueueDropReason {
   /// An earlier status change for the same errand was refused, so this
   /// later one no longer applies.
   superseded,
+
+  /// Its photo is above the server's size limit ([ReplayOutcome.tooLarge],
+  /// row 252); show `RunnerEvidenceCopy.tooLarge`.
+  tooLarge,
 }
 
 /// Maps a replay failure to an outcome. Transport problems and temporary
 /// server answers (including 409 [ApiErrorCodes.idempotencyInProgress])
-/// retry later; only real refusals drop the action.
+/// retry later; only real refusals drop the action. A 413 (evidence too
+/// large, [EvidenceTooLarge.of]) is [ReplayOutcome.tooLarge].
 ReplayOutcome replayOutcomeFor(Object error) {
   if (error is NitumeApiException) {
     if (error.isNetworkError) return ReplayOutcome.retryLater;
     if (error.code == ApiErrorCodes.idempotencyInProgress) {
       return ReplayOutcome.retryLater;
     }
+    // Row 252: the same file never fits; never retried.
+    if (EvidenceTooLarge.of(error) != null) return ReplayOutcome.tooLarge;
     final status = error.statusCode;
     if (status == null ||
         status == 401 ||
@@ -182,7 +195,8 @@ typedef QueuedActionRunner = Future<ReplayOutcome> Function(
 /// calls [replay] when the connection returns.
 ///
 /// * Temporary failures keep the action and stop the replay (order kept).
-/// * A refused or file-missing action is dropped and passed to [onDropped]
+/// * A refused, file-missing or too-large action is dropped and passed to
+///   [onDropped]
 ///   so the screen reloads and tells the runner; a refused status change
 ///   also drops the later queued status changes of the same errand
 ///   ([QueueDropReason.superseded]).
@@ -295,9 +309,11 @@ class OfflineActionQueue extends ChangeNotifier {
         if (outcome != ReplayOutcome.done) {
           dropped.add((
             action,
-            outcome == ReplayOutcome.fileMissing
-                ? QueueDropReason.fileMissing
-                : QueueDropReason.refused,
+            switch (outcome) {
+              ReplayOutcome.fileMissing => QueueDropReason.fileMissing,
+              ReplayOutcome.tooLarge => QueueDropReason.tooLarge,
+              _ => QueueDropReason.refused,
+            },
           ));
           if (outcome == ReplayOutcome.rejected &&
               action.kind == QueuedActionKind.statusTransition) {

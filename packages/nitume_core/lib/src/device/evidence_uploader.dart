@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../api/api_exception.dart';
+import '../api/runner_error_details.dart';
 
 import '../models/enums.dart';
 import '../models/errand_activity.dart';
@@ -33,9 +34,60 @@ enum EvidenceUploadStatus {
   /// Saved on the phone; the offline queue sends it on reconnect.
   queued,
 
-  /// Not sent; see [EvidenceUploadItem.fileMissing]. Retry is possible
-  /// unless the file is missing.
+  /// Not sent; see [EvidenceUploadItem.fileMissing] and
+  /// [EvidenceUploadItem.tooLarge]. Retry is possible unless the file is
+  /// missing or too large.
   failed,
+}
+
+/// Which runner evidence a task state takes, mirroring the API's
+/// `RUNNER_UPLOAD_STATES` (A5, rows 121, 129, 254). Use it for every
+/// client-side guard (capture buttons, the capture screen) so the app and
+/// the API agree; the API still answers 409 `evidence_not_allowed`
+/// (`RunnerErrorDetails.evidenceRefusedStatus`) when the state moved.
+///
+/// Whether a job needs a receipt at all (`send_to_runner`) is the screen's
+/// own rule on top of this.
+abstract final class RunnerEvidenceRules {
+  /// Photos: ARRIVED, IN_PROGRESS.
+  static const photoStatuses = {ErrandStatus.arrived, ErrandStatus.inProgress};
+
+  /// Receipts: ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER and DISPUTED (row
+  /// 254: a receipt helps resolve the dispute; photos stay refused there).
+  static const receiptStatuses = {
+    ErrandStatus.arrived,
+    ErrandStatus.inProgress,
+    ErrandStatus.awaitingCustomer,
+    ErrandStatus.disputed,
+  };
+
+  /// Receipts also after the task ended this way, only inside the 24 h
+  /// window (row 129; the API answers 409 `reimbursement_window_closed`
+  /// after it).
+  static const receiptAfterEndStatuses = {
+    ErrandStatus.cancelled,
+    ErrandStatus.failed,
+  };
+
+  /// The runner evidence types [status] takes (photo, receipt; never
+  /// video, row 121). [receiptWindowOpen]: whether the row-129 window is
+  /// still open, for CANCELLED / FAILED (pass `false` once it closed).
+  static Set<EvidenceType> allowedIn(
+    ErrandStatus status, {
+    bool receiptWindowOpen = true,
+  }) => {
+    if (photoStatuses.contains(status)) EvidenceType.photo,
+    if (receiptStatuses.contains(status) ||
+        (receiptWindowOpen && receiptAfterEndStatuses.contains(status)))
+      EvidenceType.receipt,
+  };
+
+  /// True when [status] takes [type] (see [allowedIn]).
+  static bool allows(
+    ErrandStatus status,
+    EvidenceType type, {
+    bool receiptWindowOpen = true,
+  }) => allowedIn(status, receiptWindowOpen: receiptWindowOpen).contains(type);
 }
 
 /// Runners upload photos and receipts only (row 121: no video).
@@ -98,6 +150,16 @@ class EvidenceUploadItem extends ChangeNotifier {
   /// (proposed copy: `This photo is no longer on your phone. Take it again.`).
   bool get fileMissing => _fileMissing;
 
+  /// The server refused the photo as too large (413, row 252): it was not
+  /// queued, its copy is already deleted (B-1) and [canRetry] is false. Show
+  /// `RunnerEvidenceCopy.tooLarge(tooLargeError!.maxBytes)` and offer a
+  /// new capture.
+  bool get tooLarge => _tooLarge != null;
+
+  /// The typed refusal behind [tooLarge]; `null` otherwise.
+  EvidenceTooLarge? get tooLargeError => _tooLarge;
+  EvidenceTooLarge? _tooLarge;
+
   /// Why the last attempt failed, while [status] is `failed`; `null`
   /// otherwise. A [NitumeApiException] for an API refusal (read it with
   /// [lastApiError]), a `FileSystemException` when the file is missing.
@@ -113,7 +175,8 @@ class EvidenceUploadItem extends ChangeNotifier {
   };
 
   /// Retry makes sense: failed, and the file is still there.
-  bool get canRetry => _status == EvidenceUploadStatus.failed && !_fileMissing;
+  bool get canRetry =>
+      _status == EvidenceUploadStatus.failed && !_fileMissing && !tooLarge;
 
   /// Tile state for [CaptureThumbnail]: queued items still show as
   /// uploading (pair with the offline notice).
@@ -151,6 +214,9 @@ class EvidenceUploadItem extends ChangeNotifier {
 /// * Temporary failure (offline, timeout, 5xx, 408, 429) with a [queue]:
 ///   the action is queued with the kept copy, which the queue's
 ///   `RunnerQueuedActions.cleanupFor` hook deletes later.
+/// * Too large (413 `evidence_too_large`, row 252): permanent. The item is
+///   `failed` with [EvidenceUploadItem.tooLarge], never queued, and its
+///   copy is deleted at once (B-1); no retry.
 /// * Refused: the item is `failed` and keeps its copy for [retry]; [remove]
 ///   or [dispose] deletes it (screens confirm before leaving, as the spec's
 ///   `Leave while uploading?` dialog).
@@ -348,6 +414,15 @@ class EvidenceUploader extends ChangeNotifier {
       await _release(item);
       await _finish(item, EvidenceUploadStatus.uploaded, evidence: ev);
     } on Object catch (e) {
+      final big = EvidenceTooLarge.of(e);
+      if (big != null) {
+        // Row 252: the same file never fits. Not queued, not retried; the
+        // copy goes now (B-1).
+        item._tooLarge = big;
+        await _release(item);
+        await _finish(item, EvidenceUploadStatus.failed, error: e);
+        return;
+      }
       final q = queue;
       // Queue only while this uploader is open and the queue takes work:
       // after release / log out the copy must not outlive the session (B-1).
