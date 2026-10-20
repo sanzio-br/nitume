@@ -1211,7 +1211,7 @@ Build health:
    - Claim-form copy (proposed, as `v-job-summary` Data).
    - No ETA minutes on the nav chip (the spec hides minutes when unknown).
 6. **Two-button dialogs** (`Finish` / `Not yet`, `Send` / `Back`, `Mark as failed` / `Keep going`, `Leave` / `Stay`): confirm outline, cancel primary. Accepted: this is the core `showNitumeConfirmDialog` convention, used across the app.
-7. **SuccessMark contrast (core review question)**: change it. The green check `#04AF4D` on green-050 `#E3F8EA` is about 2.6:1, below the 3:1 WCAG 1.4.11 minimum for a meaningful graphic. Use **green-700 `#038A3D`** (about 4.0:1): a derived tone in the design system, and the same choice as the success-chip text (row 33). R-24 is amended in `_shared.md`; core-ui changes `success_mark.dart:37` and the golden. Not a builder finding.
+7. **SuccessMark contrast (core review question)**: change it. The green check `#04AF4D` on green-050 `#E3F8EA` is about 2.6:1, below the 3:1 WCAG 1.4.11 minimum for a meaningful graphic. Use **green-700 `#038A3D`** (about 4.0:1): a derived tone in the design system, and the same choice as the success-chip text (row 33). R-24 is amended in `_shared.md`; core-ui changes `success_mark.dart:39` and the golden. Not a builder finding.
 
 ### Per screen
 
