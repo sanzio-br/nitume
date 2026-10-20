@@ -1,4 +1,6 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, HttpStatus, Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApiError } from '../common/api-error';
 import { AssignmentDeclineReason, AssignmentStatus, ErrandCategory, ErrandStatus, ErrandUrgency, StatusHistoryActor } from '../common/enums';
 import { ErrandAssignment } from '../errands/errand-assignment.entity';
 import { BUDGET_CATEGORIES } from '../errands/errand-rules';
@@ -65,6 +67,15 @@ export interface RunnerJobView {
   assignment: RunnerJobAssignment;
 }
 
+/**
+ * A2: 403 `job_not_held` = this runner does not hold the job (never
+ * offered, declined, offer lapsed or withdrawn, reassigned). A job the
+ * runner accepted stays readable after it ends (the accepted assignment
+ * stays current), so the app maps this code to "access revoked".
+ */
+const jobNotHeld = (): ApiError =>
+  new ApiError(HttpStatus.FORBIDDEN, 'job_not_held', 'This job is not assigned to you');
+
 const FIRST_POINT_ORDER = ['task_site', 'pickup', 'dropoff'];
 
 const firstPointOf = (locations: ErrandLocationView[]): ErrandLocationView | null =>
@@ -87,6 +98,7 @@ export class RunnerJobsService {
     private readonly ledger: RunnerPayoutsService,
     private readonly payments: PaymentsService,
     private readonly purchaseLimits: PurchaseLimitService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   /**
@@ -118,17 +130,50 @@ export class RunnerJobsService {
   }
 
   /**
+   * `GET /runners/me/jobs` (A1): the jobs this runner accepted that are in
+   * the active set, or finished within `errands.receiptWindowHours` (24 h,
+   * row 129), as `RunnerJobView`s, newest accept first. Never open offers
+   * (those are `GET /runners/me/offers`).
+   */
+  async heldJobs(
+    userId: string,
+    opts: { limit?: number; cursor?: string | null } = {},
+    now: Date = new Date(),
+  ): Promise<{ items: RunnerJobView[]; nextCursor: string | null }> {
+    const profile = await this.runners.profileByUserId(userId);
+    const hours = this.config?.get<number>('errands.receiptWindowHours', 24) ?? 24;
+    const page = await this.errands.heldJobsFor(profile.id, {
+      since: new Date(now.getTime() - hours * 3_600_000),
+      limit: opts.limit,
+      cursor: opts.cursor ?? null,
+    });
+    const extra = await this.errands.locationsAndItemsFor(page.items.map((i) => i.errand.id));
+    const items: RunnerJobView[] = [];
+    for (const { errand, assignment } of page.items) {
+      items.push(
+        await this.project(errand, assignment, extra.locations.get(errand.id) ?? [], extra.items.get(errand.id) ?? [], profile.id),
+      );
+    }
+    return { items, nextCursor: page.nextCursor };
+  }
+
+  /**
    * `GET /runners/me/jobs/:errandId`: the job as the runner sees it, while
    * the runner holds the current assignment (open offer or accepted). 403
    * otherwise (including after a decline or lapse).
    */
   async job(userId: string, errandId: string): Promise<RunnerJobView> {
     const viewer: ViewerContext = { role: 'runner', userId };
-    const errand = await this.errands.getById(errandId, viewer);
+    let errand: Errand;
+    try {
+      errand = await this.errands.getById(errandId, viewer);
+    } catch (err) {
+      throw err instanceof ForbiddenException ? jobNotHeld() : err;
+    }
     const profile = await this.runners.profileByUserId(userId);
     const assignment = await this.errands.activeAssignmentFor(errandId);
     if (assignment?.runnerProfileId !== profile.id) {
-      throw new ForbiddenException('You do not have access to this errand');
+      throw jobNotHeld();
     }
     const extra = await this.errands.locationsAndItemsFor([errandId]);
     return this.project(errand, assignment, extra.locations.get(errandId) ?? [], extra.items.get(errandId) ?? [], profile.id);

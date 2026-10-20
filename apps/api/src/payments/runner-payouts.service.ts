@@ -862,6 +862,8 @@ export class RunnerPayoutsService implements OnModuleInit {
     if (!assignment || assignment.runnerProfileId !== runner.id) {
       throw new ForbiddenException('You were not the runner on this task');
     }
+    // Row 129 (RA-12): claims within 24 h of the end, then the ops process.
+    await this.errands.assertReceiptWindowOpen(errand.id);
     const receipt = await this.evidence.findById(input.receiptEvidenceId);
     if (
       !receipt ||

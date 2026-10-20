@@ -14,7 +14,7 @@ import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { PaymentsService } from '../src/payments/payments.service';
 import { RunnerPayoutsService } from '../src/payments/runner-payouts.service';
-import { deleteRunnerVerifications, readyRunner } from './support/runner-fixtures';
+import { deleteRunnerVerifications, readyRunner, runnerPhoto } from './support/runner-fixtures';
 import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
@@ -214,6 +214,7 @@ describe('Owner answers 6 (e2e)', () => {
     if (receipt) {
       await upload(runner, errandId);
     }
+    await runnerPhoto(baseUrl, runner.token, errandId);
     await setStatus(runner, errandId, 'AWAITING_CUSTOMER');
     await setStatus(customer, errandId, 'COMPLETED');
     expect(await linesOf(errandId)).toEqual([]);
@@ -362,18 +363,19 @@ describe('Owner answers 6 (e2e)', () => {
     for (const to of ['RUNNER_EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']) {
       await setStatus(runner, errand.id, to);
     }
+    // RA-11: photos only while ARRIVED / IN_PROGRESS (receipts also after the end).
+    const photo = await upload(runner, errand.id, 'photo');
     await http().post('/api/v1/disputes').set(bearer(customer.token)).send({ errandId: errand.id, reason: 'Never delivered' }).expect(201);
     await http()
       .patch(`/api/v1/errands/${errand.id}/resolve-dispute`)
       .set(bearer(admin.token))
       .send({ verdict: 'customer', rationale: 'The customer was not served; the task is cancelled.' })
       .expect(200);
-    return actors;
+    return { ...actors, photo };
   };
 
   it('CANCELLED after the purchase: item claim with a receipt, on hold, never a runner fee (row 106)', async () => {
-    const { runner, errand } = await cancelledAfterPurchase();
-    const photo = await upload(runner, errand.id, 'photo');
+    const { runner, errand, photo } = await cancelledAfterPurchase();
     const receipt = await upload(runner, errand.id);
     const url = '/api/v1/runners/me/reimbursement-claims';
     const noReceipt = await http()
@@ -527,6 +529,7 @@ describe('Owner answers 6 (e2e)', () => {
 
   const confirmFromInProgress = async (customer: Actor, runner: Actor, errandId: string) => {
     await upload(runner, errandId);
+    await runnerPhoto(baseUrl, runner.token, errandId);
     await setStatus(runner, errandId, 'AWAITING_CUSTOMER');
     await setStatus(customer, errandId, 'COMPLETED');
     await app

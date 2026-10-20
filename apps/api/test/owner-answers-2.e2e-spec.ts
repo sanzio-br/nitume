@@ -11,7 +11,7 @@ import { UserRole } from '../src/common/enums';
 import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
-import { deleteRunnerVerifications, readyRunner } from './support/runner-fixtures';
+import { deleteRunnerVerifications, readyRunner, runnerPhoto } from './support/runner-fixtures';
 
 /**
  * Contract checks for the owner answers of 2026-10-08 (BOARD rows 25-65):
@@ -222,6 +222,7 @@ describe('Owner answers 2 (e2e)', () => {
       await setStatus(runner, errandId, to);
     }
     if (until === 'IN_PROGRESS') return;
+    await runnerPhoto(baseUrl, runner.token, errandId);
     await setStatus(runner, errandId, 'AWAITING_CUSTOMER');
   };
 

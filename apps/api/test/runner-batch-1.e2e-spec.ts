@@ -12,7 +12,7 @@ import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { ErrandsService } from '../src/errands/errands.service';
-import { deleteRunnerVerifications, readyRunner } from './support/runner-fixtures';
+import { deleteRunnerVerifications, readyRunner, runnerPhoto } from './support/runner-fixtures';
 
 /**
  * Runner API batch 1 (RA-1, RA-2, RA-3, RA-8, RA-10, RA-18, RA-20; owner
@@ -85,7 +85,8 @@ describe('Runner API batch 1 (e2e)', () => {
       await ds.query('DELETE FROM "payments" WHERE "errandId" = ANY($1)', [errandIds]);
       await ds.query('DELETE FROM "refund_reviews" WHERE "errandId" = ANY($1)', [errandIds]);
       // Explicit list (reviewer minor 7): the tables this file writes with an
-      // errandId. It never writes evidence, disputes, chat, ratings, price
+      // errandId (evidence: the RA-11 completion photo, deleted below). It
+      // never writes disputes, chat, ratings, price
       // changes, runner locations or any append-only table.
       for (const table of [
         'errand_assignments',
@@ -100,6 +101,7 @@ describe('Runner API batch 1 (e2e)', () => {
       // A queued feed job may still write a notification for these errands: clear and retry.
       for (let attempt = 0; ; attempt += 1) {
         await ds.query('DELETE FROM "notifications" WHERE "errandId" = ANY($1)', [errandIds]);
+        await ds.query('DELETE FROM "evidence" WHERE "errandId" = ANY($1)', [errandIds]);
         try {
           await ds.query('DELETE FROM "errands" WHERE id = ANY($1)', [errandIds]);
           break;
@@ -373,6 +375,7 @@ describe('Runner API batch 1 (e2e)', () => {
         await setStatus(runner, errand.id, to);
         expect((await me(runner)).availability).toBe('busy');
       }
+      await runnerPhoto(baseUrl, runner.token, errand.id);
       const done = await setStatus(runner, errand.id, 'AWAITING_CUSTOMER');
       expect(done.body.errand).toMatchObject({ quotedPrice: null });
       expect((await me(runner)).availability).toBe('online');

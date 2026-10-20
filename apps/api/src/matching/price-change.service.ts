@@ -25,6 +25,14 @@ import { ErrandsService } from '../errands/errands.service';
 import { PriceChangeRequest } from './price-change-request.entity';
 import { RequestPriceChangeDto } from './dto/price-change.dto';
 
+/**
+ * RA-5: a price change was decided (after commit). The realtime gateway
+ * sends `price_change:decided` to the current runner and the errand room.
+ */
+export const PRICE_CHANGE_DECIDED_EVENT = 'price_change.decided';
+
+export type PriceChangeOutcome = 'approved' | 'rejected' | 'cancelled';
+
 const PRICE_CHANGEABLE = new Set<ErrandStatus>([
   ErrandStatus.QUOTED,
   ErrandStatus.ACCEPTED,
@@ -214,6 +222,7 @@ export class PriceChangeService {
       const saved = await manager.getRepository(PriceChangeRequest).save(req);
       return { saved, recorded, refund };
     });
+    this.emitDecided(decided.saved, 'approved');
     // The STK charge for a send_to_runner difference goes out only after the
     // approval has committed (rows 44, 48).
     const differencePayment = decided.recorded
@@ -249,6 +258,8 @@ export class PriceChangeService {
     };
     if (actor.role === UserRole.ADMIN) {
       const saved = await this.requests.manager.transaction(rejectWithin);
+      // Row 55: an admin rejection only rejects; the task continues.
+      this.emitDecided(saved, 'rejected');
       return Object.assign(saved, { differencePayment: null, refundReview: null });
     }
     const errand = await this.errands.findOne({ where: { id: errandId } });
@@ -274,6 +285,8 @@ export class PriceChangeService {
       rejectWithin,
       guard,
     );
+    // Row 37: the customer's reject cancels the task.
+    this.emitDecided(extra, 'cancelled');
     // A paid task gets its cancellation review in the same transaction.
     const review = await this.refunds.cancellationReviewFor(errandId);
     return Object.assign(extra, {
@@ -361,6 +374,19 @@ export class PriceChangeService {
     if (!errand || ownerId !== errand.customerId) {
       throw new ForbiddenException('Only the task owner can decide a price change');
     }
+  }
+
+  private emitDecided(req: PriceChangeRequest, outcome: PriceChangeOutcome): void {
+    const event = {
+      errandId: req.errandId,
+      requestId: req.id,
+      status: outcome === 'approved' ? 'approved' : 'rejected',
+      outcome,
+      fromPrice: req.fromPrice,
+      toPrice: req.toPrice,
+      decidedAt: (req.decidedAt ?? new Date()).toISOString(),
+    };
+    setImmediate(() => this.events.emit(PRICE_CHANGE_DECIDED_EVENT, event));
   }
 
   /** Runner on the errand's current assignment (BOARD rows 27, 65). */

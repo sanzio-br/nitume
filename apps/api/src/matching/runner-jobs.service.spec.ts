@@ -39,6 +39,9 @@ const build = (opts: { verified?: boolean; holder?: string } = {}) => {
       Promise.resolve({ locations: new Map([['e-1', locations]]), items: new Map([['e-1', []]]) }),
     ),
     getById: vi.fn(() => Promise.resolve(errand)),
+    heldJobsFor: vi.fn(() =>
+      Promise.resolve({ items: [{ errand, assignment: { ...offer, status: AssignmentStatus.ACCEPTED } }], nextCursor: 'c-2' }),
+    ),
     activeAssignmentFor: vi.fn(() => Promise.resolve({ ...offer, runnerProfileId: opts.holder ?? 'rp-1' })),
     transition: vi.fn(() => Promise.resolve({ errand, history: { id: 'h-1' } })),
   };
@@ -87,8 +90,14 @@ describe('RunnerJobsService (RA-1, RA-2)', () => {
   });
 
   it('the job view is only for the runner holding the current assignment', async () => {
-    await expect(build({ holder: 'rp-2' }).service.job('u-1', 'e-1')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(build({ holder: 'rp-2' }).service.job('u-1', 'e-1')).rejects.toMatchObject({ code: 'job_not_held', status: 403 });
     await expect(build().service.job('u-1', 'e-1')).resolves.toMatchObject({ id: 'e-1' });
+  });
+
+  it('codes the errand access refusal as job_not_held too (A2)', async () => {
+    const built = build();
+    built.errands.getById.mockRejectedValueOnce(new ForbiddenException());
+    await expect(built.service.job('u-1', 'e-1')).rejects.toMatchObject({ code: 'job_not_held' });
   });
 
   it('accept is the runner RUNNER_ASSIGNED -> RUNNER_EN_ROUTE transition', async () => {
@@ -101,5 +110,17 @@ describe('RunnerJobsService (RA-1, RA-2)', () => {
       undefined,
       { role: 'runner', userId: 'u-1' },
     );
+  });
+});
+
+describe('RunnerJobsService.heldJobs (A1)', () => {
+  it('reads accepted held jobs since the 24 h window as RunnerJobViews', async () => {
+    const { service, errands } = build();
+    const now = new Date('2026-10-19T12:00:00Z');
+    const page = await service.heldJobs('u-1', { limit: 5, cursor: 'c-1' }, now);
+    expect(errands.heldJobsFor).toHaveBeenCalledWith('rp-1', { since: new Date('2026-10-18T12:00:00Z'), limit: 5, cursor: 'c-1' });
+    expect(page.nextCursor).toBe('c-2');
+    expect(page.items[0]).toMatchObject({ id: 'e-1', runnerFee: '300.00', offerExpiresAt: null, assignment: { status: 'accepted' } });
+    expect(page.items[0]).not.toHaveProperty('feeTotal');
   });
 });

@@ -4,12 +4,14 @@ import { ApiError } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
 import {
+  GeoPoint,
   RunnerAvailability,
   RunnerSkill,
   RunnerVerificationType,
   VerificationLevel,
   VerificationStatus,
 } from '../common/enums';
+import { RunnerLocation } from './runner-location.entity';
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification, RunnerVerificationSide } from './runner-verification.entity';
@@ -286,6 +288,42 @@ export class RunnersService {
     }
     const [lng, lat] = profile.currentLocation.coordinates;
     return { lat, lng, capturedAt: profile.lastPingAt };
+  }
+
+  /**
+   * RA-4, §2.2, §4.2: stores one location ping (location queue worker only).
+   * The last-known position on `runner_profiles` moves forward only (an
+   * older ping processed late never overwrites a newer one); with `trail`
+   * the ping is also kept in `runner_locations` (the sampled trail).
+   * Returns whether the last-known position changed.
+   */
+  async recordPing(ping: {
+    runnerProfileId: string;
+    errandId: string | null;
+    lat: number;
+    lng: number;
+    capturedAt: Date;
+    trail: boolean;
+  }): Promise<boolean> {
+    const point: GeoPoint = { type: 'Point', coordinates: [ping.lng, ping.lat] };
+    const result = await this.profiles
+      .createQueryBuilder()
+      .update(RunnerProfile)
+      .set({ currentLocation: point, lastPingAt: ping.capturedAt })
+      .where('id = :id', { id: ping.runnerProfileId })
+      .andWhere('("lastPingAt" IS NULL OR "lastPingAt" < :at)', { at: ping.capturedAt })
+      .execute();
+    // Row 247 proposal: only job pings ever join the trail.
+    if (ping.trail && ping.errandId) {
+      const trail = this.profiles.manager.getRepository(RunnerLocation);
+      await trail.insert({
+        runnerProfileId: ping.runnerProfileId,
+        errandId: ping.errandId,
+        coordinates: point,
+        capturedAt: ping.capturedAt,
+      });
+    }
+    return (result.affected ?? 0) > 0;
   }
 
   /**

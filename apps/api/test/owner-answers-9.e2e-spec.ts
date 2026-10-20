@@ -23,7 +23,7 @@ import {
 } from '../src/runners/verification-storage/verification-document-storage';
 import { NOTIFICATIONS_QUEUE } from '../src/infra/queue/queues';
 import { FEED_JOB, FeedJob, NotificationsService } from '../src/notifications/notifications.service';
-import { findInVerificationQueue, readyRunner } from './support/runner-fixtures';
+import { findInVerificationQueue, readyRunner, runnerPhoto } from './support/runner-fixtures';
 import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
@@ -263,6 +263,7 @@ describe('Owner answers 9 (e2e)', () => {
       await setStatus(ctx.runner, ctx.errand.id, to);
     }
     await upload(ctx.runner, ctx.errand.id);
+    await runnerPhoto(baseUrl, ctx.runner.token, ctx.errand.id);
     await setStatus(ctx.runner, ctx.errand.id, 'AWAITING_CUSTOMER');
     await setStatus(ctx.customer, ctx.errand.id, 'COMPLETED');
     await app
@@ -663,6 +664,7 @@ describe('Owner answers 9 (e2e)', () => {
         await setStatus(runner, errand.id, to);
       }
       await upload(runner, errand.id);
+      await runnerPhoto(baseUrl, runner.token, errand.id);
       await setStatus(runner, errand.id, 'AWAITING_CUSTOMER');
       await http()
         .post('/api/v1/disputes')

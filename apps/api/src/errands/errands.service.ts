@@ -442,6 +442,44 @@ export interface AssignmentExpiredEvent {
   offerExpiresAt: string;
 }
 
+/**
+ * RA-5: an offer was made to a runner (admin assign, rows 113, 137).
+ * Emitted after the offer has committed; the realtime gateway pushes
+ * `job:offered` to that runner's own room.
+ */
+export const OFFER_MADE_EVENT = 'assignment.offer_made';
+
+export interface OfferMadeEvent {
+  errandId: string;
+  assignmentId: string;
+  runnerProfileId: string;
+  /** ISO; null only on pre-row-141 offers (row 156), never on a new one. */
+  offerExpiresAt: string | null;
+  offeredAt: string;
+}
+
+/**
+ * Why an open offer ended without the runner accepting it (RA-5). The
+ * customer deadline (row 185/205) and an offer lapse (rows 150, 157) both
+ * read `expired`: the runner is never told which (`_shared.md` §6).
+ */
+export type OfferWithdrawnReason = 'expired' | 'declined' | 'cancelled';
+
+/**
+ * RA-5: an open offer ended (lapse, deadline, decline, admin cancel).
+ * Emitted after commit; the gateway pushes `job:offer_withdrawn` to the
+ * runner's room.
+ */
+export const OFFER_WITHDRAWN_EVENT = 'assignment.offer_withdrawn';
+
+export interface OfferWithdrawnEvent {
+  errandId: string;
+  assignmentId: string;
+  runnerProfileId: string;
+  reason: OfferWithdrawnReason;
+  at: string;
+}
+
 export interface AssignmentDeclinedEvent {
   errandId: string;
   reference: string;
@@ -471,6 +509,17 @@ export type AcceptGuard = (
 ) => Promise<void>;
 
 /**
+ * Runs inside the runner's IN_PROGRESS -> AWAITING_CUSTOMER transaction
+ * (errand locked) and returns what is still missing; a non-empty list
+ * refuses the step with 409 `evidence_required` (`missing`). The evidence
+ * module registers the §3.3 "evidence uploaded" check here (RA-11).
+ */
+export type CompletionCheck = (
+  manager: EntityManager,
+  ctx: { errandId: string; runnerUserId: string },
+) => Promise<string[]>;
+
+/**
  * Runs inside the admin assign transaction (errand locked) before the offer
  * is written; throwing refuses the assign. Matching checks the runner's
  * eligibility here (row 186: purchase limit).
@@ -490,6 +539,24 @@ export const RUNNER_ACTIVE_JOB_STATES: ReadonlySet<ErrandStatus> = new Set([
   ErrandStatus.ARRIVED,
   ErrandStatus.IN_PROGRESS,
 ]);
+
+/** A1: a held job's active set (`v-active`; row 211: busy + waiting/disputed). */
+export const HELD_ACTIVE_STATES: readonly ErrandStatus[] = [
+  ErrandStatus.RUNNER_EN_ROUTE,
+  ErrandStatus.ARRIVED,
+  ErrandStatus.IN_PROGRESS,
+  ErrandStatus.AWAITING_CUSTOMER,
+  ErrandStatus.DISPUTED,
+];
+
+/** A1: finished states a held job stays listed in for a while (the ended card, row 129). */
+export const HELD_FINISHED_STATES: readonly ErrandStatus[] = [
+  ErrandStatus.COMPLETED,
+  ErrandStatus.CONFIRMED,
+  ErrandStatus.SETTLED,
+  ErrandStatus.CANCELLED,
+  ErrandStatus.FAILED,
+];
 
 /** Row 185: the task's customer deadline has passed (deadlineAt null = no deadline). */
 export const deadlinePassed = (errand: { deadlineAt: Date | null }, now: Date = new Date()): boolean =>
@@ -604,12 +671,15 @@ export type EligibleRemainingCounter = (manager: EntityManager | undefined, erra
 @Injectable()
 export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
+  /** Other domain events queued inside a transaction, emitted after it commits (see inTx). */
+  private readonly afterCommitEvents = new WeakMap<EntityManager, { name: string; payload: unknown }[]>();
   private eligibleCounter: EligibleRemainingCounter | null = null;
   private readonly terminationHooks: TerminationHook[] = [];
   private readonly confirmationHooks: ConfirmationHook[] = [];
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
   private readonly requoteGuards: RequoteGuard[] = [];
   private readonly acceptGuards: AcceptGuard[] = [];
+  private readonly completionChecks: CompletionCheck[] = [];
   private readonly assignGuards: AssignGuard[] = [];
 
   private readonly logger = new Logger(ErrandsService.name);
@@ -1022,6 +1092,23 @@ export class ErrandsService {
   }
 
   /**
+   * §4.3 geofence: whether (lat, lng) is within `meters` of one errand
+   * point (PostGIS `ST_DWithin` on geography, metres). No access check.
+   */
+  async isWithinPoint(locationId: string, lat: number, lng: number, meters: number): Promise<boolean> {
+    const rows: unknown[] = await this.locations
+      .createQueryBuilder('l')
+      .select('1', 'hit')
+      .where('l.id = :id', { id: locationId })
+      .andWhere(
+        'ST_DWithin(l.coordinates, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :meters)',
+        { lng, lat, meters },
+      )
+      .getRawMany();
+    return rows.length > 0;
+  }
+
+  /**
    * Current (assigned/accepted) assignment for an errand, or null. Public so
    * other modules (location, realtime) go through this service instead of
    * reading `errand_assignments` themselves.
@@ -1078,6 +1165,57 @@ export class ErrandsService {
    * (no deadline, or `offerExpiresAt` in the future) and before the task's
    * own deadline (row 185). Cursor over the offer's creation (opaque).
    */
+  /**
+   * A1: the jobs a runner holds, newest accept first: their **accepted**
+   * current assignment on a task in the active set (RUNNER_EN_ROUTE,
+   * ARRIVED, IN_PROGRESS, AWAITING_CUSTOMER, DISPUTED), or in a finished
+   * state (COMPLETED, CONFIRMED, SETTLED, CANCELLED, FAILED) entered after
+   * `since`. Never open offers. Cursor over the assignment (opaque).
+   */
+  async heldJobsFor(
+    runnerProfileId: string,
+    opts: { since: Date; limit?: number; cursor?: string | null },
+  ): Promise<{ items: { errand: Errand; assignment: ErrandAssignment }[]; nextCursor: string | null }> {
+    const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+    const qb = this.assignments
+      .createQueryBuilder('a')
+      .innerJoin(Errand, 'e', 'e.id = a."errandId"')
+      .where('a."runnerProfileId" = :runnerProfileId', { runnerProfileId })
+      .andWhere('a.status = :accepted', { accepted: AssignmentStatus.ACCEPTED })
+      .andWhere(
+        `a.id = (SELECT a2.id FROM "errand_assignments" a2 WHERE a2."errandId" = a."errandId"
+                  ORDER BY a2."createdAt" DESC, a2.id DESC LIMIT 1)`,
+      )
+      .andWhere(
+        `(e.status IN (:...active) OR (e.status IN (:...finished) AND
+          (SELECT max(h."createdAt") FROM "errand_status_history" h
+            WHERE h."errandId" = e.id AND h."toStatus" = e.status) >= :since))`,
+        { active: HELD_ACTIVE_STATES, finished: HELD_FINISHED_STATES, since: opts.since },
+      )
+      .orderBy('a."createdAt"', 'DESC')
+      .addOrderBy('a.id', 'DESC')
+      .limit(limit + 1);
+    const decoded = decodeCursor(opts.cursor);
+    if (decoded) {
+      qb.andWhere('(a."createdAt", a.id) < (:cAt, :cId)', { cAt: new Date(decoded[0]), cId: decoded[1] });
+    }
+    const rows = await qb.getMany();
+    const page = rows.slice(0, limit);
+    const errands = page.length === 0 ? [] : await this.errands.find({ where: { id: In(page.map((a) => a.errandId)) } });
+    const byId = new Map(errands.map((e) => [e.id, e]));
+    const last = page[page.length - 1];
+    return {
+      items: page.flatMap((a) => {
+        const errand = byId.get(a.errandId);
+        return errand ? [{ errand, assignment: a }] : [];
+      }),
+      nextCursor:
+        rows.length > limit && last
+          ? Buffer.from(`${last.createdAt.toISOString()}::${last.id}`, 'utf-8').toString('base64')
+          : null,
+    };
+  }
+
   async openOffersFor(
     runnerProfileId: string,
     opts: { limit?: number; cursor?: string | null; now?: Date } = {},
@@ -1751,6 +1889,18 @@ export class ErrandsService {
         }
       }
     }
+    // §3.3 "IN_PROGRESS -> AWAITING_CUSTOMER: runner (evidence uploaded)", RA-11.
+    if (fromStatus === ErrandStatus.IN_PROGRESS && to === ErrandStatus.AWAITING_CUSTOMER && actor.id) {
+      const missing: string[] = [];
+      for (const check of this.completionChecks) {
+        missing.push(...(await check(manager, { errandId, runnerUserId: actor.id })));
+      }
+      if (missing.length > 0) {
+        throw new ApiError(HttpStatus.CONFLICT, 'evidence_required', 'Upload the required evidence before finishing', {
+          missing: [...new Set(missing)],
+        });
+      }
+    }
     // RA-20: the runner is free again once the job leaves the active states.
     if (RUNNER_ACTIVE_JOB_STATES.has(fromStatus) && !RUNNER_ACTIVE_JOB_STATES.has(to)) {
       const holder = await this.activeAssignmentFor(errandId, manager);
@@ -1818,9 +1968,23 @@ export class ErrandsService {
     // so no view or room keeps an unaccepted runner on an ended task. Runs
     // after the termination hooks so they still see the task as it was.
     if (fromStatus === ErrandStatus.RUNNER_ASSIGNED && (to === ErrandStatus.CANCELLED || to === ErrandStatus.EXPIRED)) {
+      const open = await manager
+        .getRepository(ErrandAssignment)
+        .find({ where: { errandId, status: AssignmentStatus.ASSIGNED } });
+      const closedAt = new Date();
       await manager
         .getRepository(ErrandAssignment)
-        .update({ errandId, status: AssignmentStatus.ASSIGNED }, { status: AssignmentStatus.EXPIRED, decidedAt: new Date() });
+        .update({ errandId, status: AssignmentStatus.ASSIGNED }, { status: AssignmentStatus.EXPIRED, decidedAt: closedAt });
+      // RA-5: the offered runner's card goes (deadline expiry included, row 205).
+      for (const offer of open) {
+        this.emitAfterCommit(manager, OFFER_WITHDRAWN_EVENT, {
+          errandId,
+          assignmentId: offer.id,
+          runnerProfileId: offer.runnerProfileId,
+          reason: to === ErrandStatus.CANCELLED ? 'cancelled' : 'expired',
+          at: closedAt.toISOString(),
+        } satisfies OfferWithdrawnEvent);
+      }
     }
 
     if (to === ErrandStatus.CONFIRMED) {
@@ -1850,13 +2014,25 @@ export class ErrandsService {
       return fn(manager);
     });
     const queued = used ? (this.afterCommit.get(used) ?? []) : [];
+    const others = used ? (this.afterCommitEvents.get(used) ?? []) : [];
     if (used) {
       this.afterCommit.delete(used);
+      this.afterCommitEvents.delete(used);
     }
     for (const event of queued) {
       setImmediate(() => this.events.emit('errand.status_changed', event));
     }
+    for (const { name, payload } of others) {
+      setImmediate(() => this.events.emit(name, payload));
+    }
     return result;
+  }
+
+  /** Queues a domain event on `manager`'s transaction; inTx emits it once that commits. */
+  private emitAfterCommit(manager: EntityManager, name: string, payload: unknown): void {
+    const list = this.afterCommitEvents.get(manager) ?? [];
+    list.push({ name, payload });
+    this.afterCommitEvents.set(manager, list);
   }
 
   /**
@@ -1934,6 +2110,11 @@ export class ErrandsService {
   /** Registers a check run inside every runner accept (see `AcceptGuard`). */
   onRunnerAccept(guard: AcceptGuard): void {
     this.acceptGuards.push(guard);
+  }
+
+  /** RA-11: registers a check for the runner's IN_PROGRESS -> AWAITING_CUSTOMER step. */
+  onRunnerCompletion(check: CompletionCheck): void {
+    this.completionChecks.push(check);
   }
 
   /** Registers a check run inside every admin assign (see `AssignGuard`). */
@@ -2126,6 +2307,13 @@ export class ErrandsService {
           this.events.emit('errand.access_changed', { errandId: id });
           // Admin feed item (N-20); the customer is not told: the task did not change.
           this.events.emit(ASSIGNMENT_EXPIRED_EVENT, event);
+          this.events.emit(OFFER_WITHDRAWN_EVENT, {
+            errandId: id,
+            assignmentId: event.assignmentId,
+            runnerProfileId: event.runnerProfileId,
+            reason: 'expired',
+            at: now.toISOString(),
+          } satisfies OfferWithdrawnEvent);
         });
       }
     }
@@ -2167,6 +2355,37 @@ export class ErrandsService {
       take: limit,
     });
     return rows.map((r) => r.id);
+  }
+
+  /**
+   * Row 129 (RA-12): on a CANCELLED or FAILED task the runner may upload
+   * receipts and claim item spend for `errands.receiptWindowHours` (24)
+   * after the task ended (the history row that ended it). Null for any
+   * other status.
+   */
+  async receiptWindowFor(errandId: string): Promise<{ endedAt: Date; windowEndsAt: Date } | null> {
+    const ended = await this.history.findOne({
+      where: { errandId, toStatus: In([ErrandStatus.CANCELLED, ErrandStatus.FAILED]) },
+      order: { createdAt: 'DESC' },
+    });
+    if (!ended) {
+      return null;
+    }
+    const hours = this.config?.get<number>('errands.receiptWindowHours', 24) ?? 24;
+    return { endedAt: ended.createdAt, windowEndsAt: new Date(ended.createdAt.getTime() + hours * 3_600_000) };
+  }
+
+  /** 409 `reimbursement_window_closed` (`endedAt`, `windowEndsAt`) once the row-129 window has passed. */
+  async assertReceiptWindowOpen(errandId: string, now: Date = new Date()): Promise<void> {
+    const window = await this.receiptWindowFor(errandId);
+    if (window && window.windowEndsAt.getTime() <= now.getTime()) {
+      throw new ApiError(
+        HttpStatus.CONFLICT,
+        'reimbursement_window_closed',
+        'The upload window for this task has closed. Contact support with your receipt.',
+        { endedAt: window.endedAt.toISOString(), windowEndsAt: window.windowEndsAt.toISOString() },
+      );
+    }
   }
 
   async historyFor(errandId: string): Promise<ErrandStatusHistory[]> {
@@ -2490,7 +2709,7 @@ export class ErrandsService {
     actor: ActorReference,
     note?: string,
   ): Promise<{ errand: Errand; history: ErrandStatusHistory | null; assignment: ErrandAssignment }> {
-    let lapsed = false;
+    let lapsed: ErrandAssignment | null = null;
     const result = await this.inTx(async (manager) => {
       const runner = await manager
         .getRepository(RunnerProfile)
@@ -2510,8 +2729,9 @@ export class ErrandsService {
           deadlineAt: (locked.deadlineAt as Date).toISOString(),
         });
       }
-      if (locked?.status === ErrandStatus.RUNNER_ASSIGNED && (await this.expireLapsedOfferIn(manager, errandId, new Date()))) {
-        lapsed = true; // The admin is acting on it already: no feed item.
+      if (locked?.status === ErrandStatus.RUNNER_ASSIGNED) {
+        // The admin is acting on it already: no feed item.
+        lapsed = await this.expireLapsedOfferIn(manager, errandId, new Date());
       }
       // Reassignment after a decline (row 108) or an expired offer (row 157):
       // the errand stays RUNNER_ASSIGNED (no transition, §3.3) and gets a new
@@ -2555,10 +2775,28 @@ export class ErrandsService {
       );
       return { errand: done.errand, history: done.history, assignment };
     });
-    if (lapsed) {
+    const previousOffer = lapsed as ErrandAssignment | null;
+    if (previousOffer) {
       // The previous runner loses access: the realtime gateway re-checks the room.
-      setImmediate(() => this.events.emit('errand.access_changed', { errandId }));
+      setImmediate(() => {
+        this.events.emit('errand.access_changed', { errandId });
+        this.events.emit(OFFER_WITHDRAWN_EVENT, {
+          errandId,
+          assignmentId: previousOffer.id,
+          runnerProfileId: previousOffer.runnerProfileId,
+          reason: 'expired',
+          at: new Date().toISOString(),
+        } satisfies OfferWithdrawnEvent);
+      });
     }
+    const made: OfferMadeEvent = {
+      errandId,
+      assignmentId: result.assignment.id,
+      runnerProfileId: result.assignment.runnerProfileId,
+      offerExpiresAt: result.assignment.offerExpiresAt?.toISOString() ?? null,
+      offeredAt: (result.assignment.createdAt ?? new Date()).toISOString(),
+    };
+    setImmediate(() => this.events.emit(OFFER_MADE_EVENT, made));
     return result;
   }
 
@@ -2638,12 +2876,19 @@ export class ErrandsService {
       };
       return out;
     });
-    const declined = event;
+    const declined = event as AssignmentDeclinedEvent | null;
     setImmediate(() => {
       // The runner loses access: the realtime gateway re-checks the room.
       this.events.emit('errand.access_changed', { errandId });
       if (declined) {
         this.events.emit(ASSIGNMENT_DECLINED_EVENT, declined);
+        this.events.emit(OFFER_WITHDRAWN_EVENT, {
+          errandId,
+          assignmentId: declined.assignmentId,
+          runnerProfileId: declined.runnerProfileId,
+          reason: 'declined',
+          at: now.toISOString(),
+        } satisfies OfferWithdrawnEvent);
       }
     });
     return saved;

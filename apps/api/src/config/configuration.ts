@@ -64,6 +64,8 @@ export interface AppConfig {
     disputeWindowHours: number;
     /** Rows 221, 235: a Flexible task (no customer deadline) gets payment confirmation + this many hours. */
     defaultDeadlineHours: number;
+    /** Row 129: a runner may upload receipts and claim item spend this long after CANCELLED/FAILED. */
+    receiptWindowHours: number;
   };
   runnerVerification: {
     /** console | cloudinary (defaults to the evidence driver: same provider, own folder). */
@@ -144,6 +146,25 @@ export interface AppConfig {
     disputeSweepIntervalSeconds: number;
     stkReconcileIntervalSeconds: number;
     offerExpirySweepIntervalSeconds: number;
+  };
+  /** Runner `location:ping` intake (§4.2, §4.3; RA-4). */
+  location: {
+    /** Pings from one runner closer together than this are dropped (`rate_limited`). */
+    pingMinIntervalMs: number;
+    /** A ping whose `ts` is older than this is dropped (`stale_ping`). */
+    pingMaxAgeSeconds: number;
+    /** TTL of the Redis live position (§4.2: ephemeral, 60 s). */
+    liveTtlSeconds: number;
+    /** Every Nth ping of a runner is also kept in `runner_locations` (§4.2: ~10th). */
+    trailEveryN: number;
+    /** Geofence radius around the arrival point (§4.3: e.g. 100 m). */
+    geofenceRadiusMeters: number;
+    /**
+     * Write pings to PostgreSQL (last-known position + sampled trail).
+     * Off until the owner decides location retention (BOARD row 247 /
+     * RQ-35): pings then live only in Redis (TTL `liveTtlSeconds`).
+     */
+    persistEnabled: boolean;
   };
   push: {
     fcm: {
@@ -296,6 +317,8 @@ export const configuration = (): AppConfig => ({
     // TODO(owner): dispute window length is not defined anywhere. After it,
     // the system moves COMPLETED -> CONFIRMED (payout eligibility).
     disputeWindowHours: Number.parseFloat(process.env.ERRANDS_DISPUTE_WINDOW_HOURS ?? '24'),
+    // Row 129 (owner, 2026-10-13): 24 h after CANCELLED/FAILED, then ops.
+    receiptWindowHours: Number.parseFloat(process.env.ERRANDS_RECEIPT_WINDOW_HOURS ?? '24'),
   },
   // Rows 125, 144, 154, 161: runner ID/selfie images in restricted storage,
   // kept for a configurable period after the runner's last retention event,
@@ -352,6 +375,16 @@ export const configuration = (): AppConfig => ({
     stkReconcileIntervalSeconds: int(process.env.PAYMENTS_STK_RECONCILE_INTERVAL_SECONDS, 60),
     // How often lapsed offers are marked expired (task stays RUNNER_ASSIGNED, row 157).
     offerExpirySweepIntervalSeconds: int(process.env.MATCHING_OFFER_EXPIRY_SWEEP_INTERVAL_SECONDS, 30),
+  },
+  // Runner location pings (§4.2, §4.3, RA-4). Client cadence is decided
+  // (row 123: 4-8 s on a job, 30 s online); these are the server-side guards.
+  location: {
+    pingMinIntervalMs: int(process.env.LOCATION_PING_MIN_INTERVAL_MS, 2000),
+    pingMaxAgeSeconds: int(process.env.LOCATION_PING_MAX_AGE_SECONDS, 60),
+    liveTtlSeconds: int(process.env.LOCATION_LIVE_TTL_SECONDS, 60),
+    trailEveryN: Math.max(1, int(process.env.LOCATION_TRAIL_EVERY_N, 10)),
+    geofenceRadiusMeters: int(process.env.LOCATION_GEOFENCE_RADIUS_M, 100),
+    persistEnabled: (process.env.LOCATION_PERSIST_ENABLED ?? 'false').trim().toLowerCase() === 'true',
   },
   // FCM push (row 31). All three set -> firebase-admin; otherwise a no-op.
   // The private key may use literal \n sequences (single-line env value).

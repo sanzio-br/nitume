@@ -28,6 +28,7 @@ const build = (status: ErrandStatus) => {
       {
         update: vi.fn(() => Promise.resolve({ affected: 0 })),
         findOne: vi.fn(() => Promise.resolve(null)),
+        find: vi.fn(() => Promise.resolve([] as unknown[])),
       },
     ],
     [
@@ -738,6 +739,25 @@ describe('ErrandsService closes an open offer when the task ends before an accep
       );
     },
   );
+  it.each([
+    [ErrandStatus.CANCELLED, 'cancelled'],
+    [ErrandStatus.EXPIRED, 'expired'],
+  ])('RUNNER_ASSIGNED -> %s tells the offered runner after commit (RA-5)', async (to, reason) => {
+    const built = build(ErrandStatus.RUNNER_ASSIGNED);
+    const assignments = built.manager.getRepository(ErrandAssignment) as { find: ReturnType<typeof vi.fn> };
+    assignments.find.mockResolvedValueOnce([{ id: 'a-1', runnerProfileId: 'rp-1' }]);
+    const actor =
+      to === ErrandStatus.CANCELLED ? { type: StatusHistoryActor.ADMIN, id: 'admin-1' } : { type: StatusHistoryActor.SYSTEM };
+    await built.service.transition('e-1', to, actor);
+    await new Promise((r) => setImmediate(r));
+    expect(built.emit).toHaveBeenCalledWith('assignment.offer_withdrawn', {
+      errandId: 'e-1',
+      assignmentId: 'a-1',
+      runnerProfileId: 'rp-1',
+      reason,
+      at: expect.any(String),
+    });
+  });
 });
 
 describe('runner accept checks and busy (RA-3, RA-8, RA-20, row 185)', () => {
@@ -929,5 +949,42 @@ describe('ErrandsService.expirePastDeadline (row 185)', () => {
     hook.mockRejectedValueOnce(new Error('refund review failed'));
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     await expect(service.expirePastDeadline()).resolves.toEqual([]);
+  });
+});
+
+describe('runner completion requires evidence (§3.3, RA-11)', () => {
+  const held = () => {
+    const built = build(ErrandStatus.IN_PROGRESS);
+    const offer = { id: 'a-1', errandId: 'e-1', runnerProfileId: 'rp-1', status: 'accepted', offerExpiresAt: null };
+    const qb = { where: vi.fn(), andWhere: vi.fn(), getOne: vi.fn(() => Promise.resolve(offer)) };
+    qb.where.mockReturnValue(qb);
+    qb.andWhere.mockReturnValue(qb);
+    const repo = {
+      createQueryBuilder: vi.fn(() => qb),
+      findOne: vi.fn(() => Promise.resolve(offer)),
+      find: vi.fn(() => Promise.resolve([])),
+      update: vi.fn(() => Promise.resolve({})),
+    };
+    const original = built.manager.getRepository;
+    built.manager.getRepository = (entity: unknown) => (entity === ErrandAssignment ? repo : original(entity));
+    return built;
+  };
+  const runner = { type: StatusHistoryActor.RUNNER, id: 'u-r' };
+
+  it('refuses IN_PROGRESS -> AWAITING_CUSTOMER with evidence_required naming what is missing', async () => {
+    const built = held();
+    built.service.onRunnerCompletion(() => Promise.resolve(['photo']));
+    const err = await built.service.transition('e-1', ErrandStatus.AWAITING_CUSTOMER, runner).catch((e: unknown) => e);
+    expect((err as { getResponse: () => unknown }).getResponse()).toMatchObject({ code: 'evidence_required', missing: ['photo'] });
+    expect(built.errand.status).toBe(ErrandStatus.IN_PROGRESS);
+  });
+
+  it('passes the runner user id to the check and finishes when nothing is missing', async () => {
+    const built = held();
+    const check = vi.fn(() => Promise.resolve([] as string[]));
+    built.service.onRunnerCompletion(check);
+    await built.service.transition('e-1', ErrandStatus.AWAITING_CUSTOMER, runner);
+    expect(check).toHaveBeenCalledWith(built.manager, { errandId: 'e-1', runnerUserId: 'u-r' });
+    expect(built.errand.status).toBe(ErrandStatus.AWAITING_CUSTOMER);
   });
 });

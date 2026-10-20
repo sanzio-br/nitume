@@ -13,7 +13,7 @@ import { CustomersService } from '../src/customers/customers.service';
 import { RunnersService } from '../src/runners/runners.service';
 import { UsersService } from '../src/users/users.service';
 import { PaymentsService } from '../src/payments/payments.service';
-import { deleteRunnerVerifications, readyRunner } from './support/runner-fixtures';
+import { deleteRunnerVerifications, readyRunner, runnerPhoto } from './support/runner-fixtures';
 import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
@@ -379,6 +379,7 @@ describe('Owner answers 7 (e2e)', () => {
       await setStatus(runner, errand.id, to);
     }
     await upload(runner, errand.id);
+    await runnerPhoto(baseUrl, runner.token, errand.id);
     await setStatus(runner, errand.id, 'AWAITING_CUSTOMER');
     await http()
       .post('/api/v1/disputes')

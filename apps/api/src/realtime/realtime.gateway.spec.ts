@@ -10,6 +10,8 @@ const build = (opts: {
   verify?: () => Promise<unknown>;
   user?: unknown;
   getById?: () => Promise<unknown>;
+  holder?: () => Promise<unknown>;
+  profile?: () => Promise<unknown>;
 } = {}) => {
   const jwt = {
     verifyAsync: vi.fn(opts.verify ?? (() => Promise.resolve({ sub: 'u-1', type: 'access' }))),
@@ -24,15 +26,29 @@ const build = (opts: {
       ),
     ),
   };
-  const errands = { getById: vi.fn(opts.getById ?? (() => Promise.resolve({ id: ERRAND_ID }))) };
-  const gateway = new RealtimeGateway(jwt as never, config as never, users as never, errands as never);
+  const errands = {
+    getById: vi.fn(opts.getById ?? (() => Promise.resolve({ id: ERRAND_ID }))),
+    activeAssignmentFor: vi.fn(opts.holder ?? (() => Promise.resolve({ runnerProfileId: 'rp-1', status: 'accepted' }))),
+  };
+  const runners = {
+    profileByUserId: vi.fn(opts.profile ?? (() => Promise.resolve({ id: 'rp-1' }))),
+  };
+  const location = { ingest: vi.fn(() => Promise.resolve({ ok: true })) };
+  const gateway = new RealtimeGateway(
+    jwt as never,
+    config as never,
+    users as never,
+    errands as never,
+    runners as never,
+    location as never,
+  );
   const emit = vi.fn();
   const to = vi.fn(() => ({ emit }));
   const roomSockets: object[] = [];
   const fetchSockets = vi.fn(() => Promise.resolve(roomSockets));
   const inRoom = vi.fn(() => ({ fetchSockets }));
   gateway.server = { to, in: inRoom } as never;
-  return { gateway, jwt, users, errands, to, emit, roomSockets, inRoom };
+  return { gateway, jwt, users, errands, runners, location, to, emit, roomSockets, inRoom };
 };
 
 const socket = (auth: Record<string, unknown> = { token: 'abc' }, headers = {}) => ({
@@ -204,10 +220,11 @@ describe('RealtimeGateway pushes (A-1, A-2)', () => {
     expect(emit).toHaveBeenCalledWith('merchant_details:changed', event);
   });
 
-  it('emits location:update with the §4.2 payload', () => {
-    const { gateway, emit } = build();
+  it('emits location:update with the §4.2 payload to the errand room and admins', () => {
+    const { gateway, to, emit } = build();
     const payload = { errandId: ERRAND_ID, lat: -4.04, lng: 39.67, eta: 300, ts: 'x' };
     gateway.emitLocationUpdate(payload);
+    expect(to).toHaveBeenCalledWith([`errand:${ERRAND_ID}`, 'admins']);
     expect(emit).toHaveBeenCalledWith('location:update', payload);
   });
 });
@@ -292,5 +309,107 @@ describe('RealtimeGateway room re-check (row 65 follow-up)', () => {
     const { gateway, inRoom } = build();
     await gateway.onAccessChanged({ errandId: ERRAND_ID });
     expect(inRoom).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
+  });
+});
+
+describe('RealtimeGateway runner room (RA-5, row 139)', () => {
+  const runnerUser = { id: 'r-1', role: UserRole.RUNNER, phone: '+254700000002', status: UserStatus.ACTIVE };
+
+  it('joins runner:{profileId}:status on connect from the JWT user', async () => {
+    const { gateway, runners } = build({ user: runnerUser });
+    const client = socket();
+    await gateway.handleConnection(client as never);
+    expect(runners.profileByUserId).toHaveBeenCalledWith('r-1');
+    expect(client.join).toHaveBeenCalledWith('runner:rp-1:status');
+    expect((client.data as { runnerProfileId?: string }).runnerProfileId).toBe('rp-1');
+  });
+
+  it('keeps the connection without a room when the runner has no profile', async () => {
+    const { gateway } = build({ user: runnerUser, profile: () => Promise.reject(new Error('none')) });
+    const client = socket();
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).not.toHaveBeenCalled();
+    expect(client.join).not.toHaveBeenCalled();
+  });
+
+  it('never puts customers or admins in a runner room', async () => {
+    const { gateway, runners } = build();
+    await gateway.handleConnection(socket() as never);
+    expect(runners.profileByUserId).not.toHaveBeenCalled();
+  });
+
+  it('pushes job:offered to the offered runner only', () => {
+    const { gateway, to, emit } = build();
+    gateway.onOfferMade({
+      errandId: ERRAND_ID,
+      assignmentId: 'as-1',
+      runnerProfileId: 'rp-9',
+      offerExpiresAt: '2026-10-19T10:10:00.000Z',
+      offeredAt: '2026-10-19T10:00:00.000Z',
+    });
+    expect(to).toHaveBeenCalledWith('runner:rp-9:status');
+    expect(emit).toHaveBeenCalledWith('job:offered', {
+      errandId: ERRAND_ID,
+      assignmentId: 'as-1',
+      offerExpiresAt: '2026-10-19T10:10:00.000Z',
+      offeredAt: '2026-10-19T10:00:00.000Z',
+    });
+  });
+
+  it('pushes job:offer_withdrawn with the reason, without the runner id', () => {
+    const { gateway, to, emit } = build();
+    gateway.onOfferWithdrawn({ errandId: ERRAND_ID, assignmentId: 'as-1', runnerProfileId: 'rp-9', reason: 'expired', at: 'x' });
+    expect(to).toHaveBeenCalledWith('runner:rp-9:status');
+    expect(emit).toHaveBeenCalledWith('job:offer_withdrawn', { errandId: ERRAND_ID, assignmentId: 'as-1', reason: 'expired', at: 'x' });
+  });
+
+  it('pushes price_change:decided to the errand room and the current runner', async () => {
+    const { gateway, to, emit } = build();
+    const event = {
+      errandId: ERRAND_ID,
+      requestId: 'pc-1',
+      status: 'approved' as const,
+      outcome: 'approved' as const,
+      fromPrice: '40000.00',
+      toPrice: '45000.00',
+      decidedAt: 'x',
+    };
+    await gateway.onPriceChangeDecided(event);
+    expect(to).toHaveBeenCalledWith([`errand:${ERRAND_ID}`, 'runner:rp-1:status']);
+    expect(emit).toHaveBeenCalledWith('price_change:decided', event);
+  });
+
+  it('still pushes price_change:decided to the errand room when the holder lookup fails', async () => {
+    const { gateway, to } = build({ holder: () => Promise.reject(new Error('db')) });
+    await gateway.onPriceChangeDecided({
+      errandId: ERRAND_ID,
+      requestId: 'pc-1',
+      status: 'rejected',
+      outcome: 'rejected',
+      fromPrice: '1.00',
+      toPrice: '2.00',
+      decidedAt: 'x',
+    });
+    expect(to).toHaveBeenCalledWith([`errand:${ERRAND_ID}`]);
+  });
+});
+
+describe('RealtimeGateway location:ping (RA-4)', () => {
+  it('refuses an unauthenticated socket', async () => {
+    const { gateway, location } = build();
+    await expect(gateway.locationPing(socket() as never, { lat: 1, lng: 1 })).resolves.toEqual({
+      ok: false,
+      error: 'unauthenticated',
+    });
+    expect(location.ingest).not.toHaveBeenCalled();
+  });
+
+  it('hands the socket user and body to the intake and acks its result', async () => {
+    const { gateway, location } = build();
+    const client = socket();
+    client.data.user = { userId: 'r-1', role: UserRole.RUNNER };
+    const body = { lat: -1.28, lng: 36.82 };
+    await expect(gateway.locationPing(client as never, body)).resolves.toEqual({ ok: true });
+    expect(location.ingest).toHaveBeenCalledWith({ userId: 'r-1', role: UserRole.RUNNER }, body);
   });
 });

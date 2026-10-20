@@ -2830,6 +2830,317 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "14_Runner_Active_Job_2026_10_19",
+      "item": [
+        {
+          "name": "Runner held jobs (accepted; active set + finished in the last 24 h; cursor)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/jobs?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "jobs?limit=20"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner job view (readable after the end; 403 job_not_held)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/runners/me/jobs/{{errand_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "runners",
+                "me",
+                "jobs",
+                "{{errand_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner transition with Idempotency-Key (replay returns the first result)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "queue-action-1"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"ARRIVED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner photo (ARRIVED, IN_PROGRESS; 409 evidence_not_allowed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "queue-action-2"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"photo\",\n  \"contentType\": \"image/jpeg\",\n  \"data\": \"cGhvdG8=\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/evidence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "evidence"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner receipt (ARRIVED..AWAITING_CUSTOMER, 24 h after CANCELLED/FAILED; 409 reimbursement_window_closed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "queue-action-3"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"receipt\",\n  \"contentType\": \"image/jpeg\",\n  \"data\": \"cmVjZWlwdA==\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/evidence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "evidence"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner notes with Idempotency-Key",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "queue-action-4"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"runnerNotes\": \"Checked every room.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/runner-notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "runner-notes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Runner finish (409 evidence_required { missing: [photo] })",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "runner"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"AWAITING_CUSTOMER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tracking snapshot (runnerLocation from the Redis live position)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nitume_access_token}}"
+              },
+              {
+                "key": "x-nitume-acting-role",
+                "value": "customer"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/errands/{{errand_id}}/tracking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "errands",
+                "{{errand_id}}",
+                "tracking"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

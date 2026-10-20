@@ -72,3 +72,16 @@ export const findInVerificationQueue = async (
   } while (cursor);
   return undefined;
 };
+
+/**
+ * §3.3 / RA-11: IN_PROGRESS -> AWAITING_CUSTOMER needs at least one photo
+ * by the runner. Uploads one (console storage in e2e). Files that delete
+ * their errands must delete `evidence` rows first.
+ */
+export const runnerPhoto = async (baseUrl: string, runnerToken: string, errandId: string): Promise<void> => {
+  await request(baseUrl)
+    .post(`/api/v1/errands/${errandId}/evidence`)
+    .set({ Authorization: `Bearer ${runnerToken}` })
+    .send({ type: 'photo', contentType: 'image/jpeg', data: Buffer.from('photo-bytes').toString('base64') })
+    .expect(201);
+};
