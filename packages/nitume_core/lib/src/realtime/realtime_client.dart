@@ -66,6 +66,10 @@ abstract final class RealtimeEvents {
   /// RA-5, A8: a price change was decided (`PriceChangeDecided`); to the
   /// runner's room and `errand:{id}`.
   static const priceChangeDecided = 'price_change:decided';
+
+  /// Row 248: the difference of an approved `send_to_runner` increase was
+  /// paid (`PriceDifferencePaid`); to the runner's room and `errand:{id}`.
+  static const priceChangeDifferencePaid = 'price_change:difference_paid';
 }
 
 /// `location:update {errandId, lat, lng, eta, ts}`.

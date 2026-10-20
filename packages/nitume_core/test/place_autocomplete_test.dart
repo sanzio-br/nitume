@@ -213,4 +213,54 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('a screen focuses the field through focusNode (m-2)', (
+    tester,
+  ) async {
+    final node = FocusNode();
+    addTearDown(node.dispose);
+    await pumpThemed(
+      tester,
+      PlaceAutocompleteField(
+        service: _FakePlaces(),
+        onPlaceSelected: (_) {},
+        focusNode: node,
+        savedAddresses: const [
+          SavedAddress(
+            id: 'a1',
+            label: 'Home',
+            addressText: 'Nyali, Mombasa',
+            isDefault: true,
+          ),
+        ],
+        onSavedAddressSelected: (_) {},
+      ),
+    );
+    expect(node.hasFocus, isFalse);
+    expect(find.text('Home'), findsNothing);
+    node.requestFocus();
+    await tester.pump();
+    expect(node.hasFocus, isTrue);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode, same(node));
+    expect(find.text('Home'), findsOneWidget, reason: 'focus rebuilds');
+
+    // The field never disposes the caller's node.
+    await pumpThemed(tester, const SizedBox());
+    node.requestFocus();
+  });
+
+  testWidgets('autofocus focuses the field on first build', (tester) async {
+    await pumpThemed(
+      tester,
+      PlaceAutocompleteField(
+        service: _FakePlaces(),
+        onPlaceSelected: (_) {},
+        autofocus: true,
+      ),
+    );
+    await tester.pump();
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode!.hasFocus, isTrue);
+  });
 }

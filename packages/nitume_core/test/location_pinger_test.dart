@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nitume_core/nitume_core.dart';
 
@@ -37,6 +38,39 @@ class _FakeSource implements PositionSource {
       background: background,
     );
     return controller.stream;
+  }
+}
+
+/// A source that opens a new stream per `positions()` call (so a stream
+/// the system ended can be reopened) and counts permission requests.
+class _ReopeningSource implements PositionSource {
+  final streams = <StreamController<DevicePosition>>[];
+  int requests = 0;
+  Object? openError;
+
+  @override
+  Future<LocationAccess> access() async => LocationAccess.whileInUse;
+
+  @override
+  Future<LocationAccess> requestAccess() async {
+    requests++;
+    return LocationAccess.whileInUse;
+  }
+
+  @override
+  Future<DevicePosition?> current() async => null;
+
+  @override
+  Stream<DevicePosition> positions({
+    required Duration interval,
+    double distanceFilterMeters = 0,
+    bool background = false,
+  }) {
+    final e = openError;
+    if (e != null) throw e;
+    final c = StreamController<DevicePosition>();
+    streams.add(c);
+    return c.stream;
   }
 }
 
@@ -133,6 +167,219 @@ void main() {
     expect(source.controller.hasListener, isFalse);
     await advance(const Duration(seconds: 30));
     expect(pings, hasLength(4));
+  });
+
+  group('foreground-start rule (row 245)', () {
+    testWidgets('active job set in the background waits for the foreground', (
+      tester,
+    ) async {
+      final source = _FakeSource()..currentFix = _at(-4.03);
+      final pings = <LocationPing>[];
+      final p = LocationPinger(
+        source: source,
+        onPing: pings.add,
+        appInForeground: false,
+      );
+      p.setMode(const PingActiveJob('e1'));
+      await tester.pump(const Duration(seconds: 20));
+      expect(source.lastStream, isNull);
+      expect(source.currentCalls, 0);
+      expect(p.collecting, isFalse);
+      expect(p.waitingForForeground, isTrue);
+      expect(pings, isEmpty);
+
+      p.setAppForeground(true);
+      expect(source.lastStream!.background, isTrue);
+      expect(p.waitingForForeground, isFalse);
+      source.controller.add(_at(-4.03));
+      await tester.pump();
+      expect(pings.single.errandId, 'e1');
+      p.dispose();
+    });
+
+    testWidgets('a started stream keeps running in the background', (
+      tester,
+    ) async {
+      final source = _FakeSource()..currentFix = _at(-4.03);
+      final pings = <LocationPing>[];
+      final p = LocationPinger(source: source, onPing: pings.add);
+      p.setMode(const PingActiveJob('e1'));
+      p.setAppForeground(false);
+      expect(source.controller.hasListener, isTrue);
+      await tester.pump(const Duration(seconds: 8));
+      expect(pings, hasLength(1));
+      expect(pings.single.errandId, 'e1');
+
+      // Job finished: the stream (foreground service) stops.
+      p.setMode(const PingIdle());
+      expect(source.controller.hasListener, isFalse);
+      await tester.pump(const Duration(minutes: 1));
+      expect(pings, hasLength(1));
+      p.dispose();
+    });
+
+    testWidgets('another working job keeps the running stream', (tester) async {
+      final source = _FakeSource()..currentFix = _at(-4.03);
+      final pings = <LocationPing>[];
+      final p = LocationPinger(source: source, onPing: pings.add);
+      p.setMode(const PingActiveJob('e1'));
+      source.controller.add(_at(-4.03));
+      await tester.pump();
+      p.setAppForeground(false);
+      source.lastStream = null;
+      p.setMode(const PingActiveJob('e2'));
+      expect(source.lastStream, isNull, reason: 'no new stream');
+      expect(source.controller.hasListener, isTrue);
+      expect(pings.last.errandId, 'e2');
+      p.dispose();
+    });
+
+    testWidgets('stream ended by the system restarts only in the foreground', (
+      tester,
+    ) async {
+      final source = _FakeSource();
+      final statuses = <PingerStatus>[];
+      final p = LocationPinger(
+        source: source,
+        onPing: (_) {},
+        onStatus: statuses.add,
+      );
+      p.setMode(const PingActiveJob('e1'));
+      p.setAppForeground(false);
+      source.lastStream = null;
+      await source.controller.close();
+      await tester.pump(const Duration(seconds: 20));
+      expect(p.waitingForForeground, isTrue);
+      expect(statuses.last, PingerStatus.locationUnavailable);
+      expect(source.lastStream, isNull, reason: 'never from the background');
+
+      p.setAppForeground(true);
+      expect(source.lastStream!.background, isTrue);
+      p.dispose();
+    });
+
+    testWidgets(
+      'same job again restarts a stream the system ended (foreground)',
+      (tester) async {
+        final source = _ReopeningSource();
+        final pings = <LocationPing>[];
+        final p = LocationPinger(source: source, onPing: pings.add);
+        p.setMode(const PingActiveJob('e1'));
+        expect(source.streams, hasLength(1));
+        await source.streams.single.close();
+        await tester.pump();
+        expect(p.waitingForForeground, isTrue);
+
+        p.setMode(const PingActiveJob('e1'));
+        expect(source.streams, hasLength(2), reason: 'reopened at once');
+        expect(p.waitingForForeground, isFalse);
+        source.streams.last.add(_at(-4.03));
+        await tester.pump();
+        expect(pings.last.errandId, 'e1');
+
+        // Running: the same job again changes nothing.
+        p.setMode(const PingActiveJob('e1'));
+        expect(source.streams, hasLength(2));
+        expect(source.requests, 0, reason: 'never asks for permission');
+        p.dispose();
+      },
+    );
+
+    testWidgets('same job again from the background still waits', (
+      tester,
+    ) async {
+      final source = _ReopeningSource();
+      final p = LocationPinger(source: source, onPing: (_) {});
+      p.setMode(const PingActiveJob('e1'));
+      p.setAppForeground(false);
+      await source.streams.single.close();
+      await tester.pump();
+
+      p.setMode(const PingActiveJob('e1'));
+      expect(source.streams, hasLength(1), reason: 'never from background');
+      expect(p.waitingForForeground, isTrue);
+
+      p.setAppForeground(true);
+      expect(source.streams, hasLength(2));
+      p.dispose();
+    });
+
+    testWidgets('a source that fails to open never throws', (tester) async {
+      final source = _ReopeningSource()..openError = StateError('denied');
+      final statuses = <PingerStatus>[];
+      final p = LocationPinger(
+        source: source,
+        onPing: (_) {},
+        onStatus: statuses.add,
+      );
+      p.setMode(const PingActiveJob('e1'));
+      expect(p.waitingForForeground, isTrue);
+      expect(statuses, [PingerStatus.locationUnavailable]);
+      p.setMode(const PingActiveJob('e1'));
+      source.openError = null;
+      p.setMode(const PingActiveJob('e1'));
+      expect(source.streams, hasLength(1));
+      expect(source.requests, 0);
+      await tester.pump(const Duration(seconds: 8));
+      p.dispose();
+    });
+
+    testWidgets('location refused never throws; status reports it', (
+      tester,
+    ) async {
+      final source = _FakeSource()..currentError = StateError('denied');
+      final statuses = <PingerStatus>[];
+      final p = LocationPinger(
+        source: source,
+        onPing: (_) {},
+        onStatus: statuses.add,
+      );
+      p.setMode(const PingActiveJob('e1'));
+      source.controller.addError(StateError('denied'));
+      await tester.pump(const Duration(seconds: 8));
+      expect(p.status, PingerStatus.locationUnavailable);
+      expect(statuses, [PingerStatus.locationUnavailable]);
+      p.dispose();
+    });
+  });
+
+  group('LocationPingerLifecycle', () {
+    test('maps lifecycle states', () {
+      expect(
+        LocationPingerLifecycle.isForeground(AppLifecycleState.resumed),
+        isTrue,
+      );
+      for (final s in [
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.detached,
+      ]) {
+        expect(LocationPingerLifecycle.isForeground(s), isFalse);
+      }
+      expect(
+        LocationPingerLifecycle.isForeground(AppLifecycleState.inactive),
+        isNull,
+      );
+    });
+
+    testWidgets('forwards binding lifecycle changes to the pinger', (
+      tester,
+    ) async {
+      final source = _FakeSource()..currentFix = _at(-4.03);
+      final p = LocationPinger(source: source, onPing: (_) {});
+      final lifecycle = LocationPingerLifecycle(p)..attach();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      expect(p.appInForeground, isFalse);
+      p.setMode(const PingActiveJob('e1'));
+      expect(p.waitingForForeground, isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(p.appInForeground, isTrue);
+      expect(p.waitingForForeground, isFalse);
+      lifecycle.detach();
+      p.dispose();
+    });
   });
 
   test('DevicePosition.distanceTo is a haversine in metres', () {

@@ -3,7 +3,9 @@
 library;
 
 export 'src/app_support_evidence_file_store.dart';
+export 'src/backup_exclusion.dart';
 export 'src/geolocator_position_source.dart';
 export 'src/image_picker_capture_source.dart';
 export 'src/permission_handler_device_permissions.dart';
+export 'src/shared_preferences_one_time_flag.dart';
 export 'src/shared_preferences_queue_store.dart';

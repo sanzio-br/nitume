@@ -89,8 +89,9 @@ class NitumeApiException implements Exception {
   /// this rather than the code.
   bool get isPayloadTooLarge => statusCode == 413;
 
-  /// `maxBytes` of a [ApiErrorCodes.verificationDocumentTooLarge] error;
-  /// `null` when absent (fall back to `VerificationDocumentRules.maxBytes`).
+  /// `maxBytes` of a [ApiErrorCodes.verificationDocumentTooLarge] or
+  /// [ApiErrorCodes.evidenceTooLarge] error; `null` when absent (fall back
+  /// to `VerificationDocumentRules.maxBytes` / `EvidenceTooLarge.of`).
   int? get maxBytes => intDetail('maxBytes');
 
   /// `offerExpiresAt` of an [ApiErrorCodes.offerExpired] error, when sent.
@@ -578,10 +579,17 @@ abstract final class ApiErrorCodes {
 
   /// `POST /errands/:id/evidence` in a state that does not take this type
   /// (409, A5: photos in ARRIVED / IN_PROGRESS, receipts ARRIVED …
-  /// AWAITING_CUSTOMER and 24 h after CANCELLED / FAILED). Details:
+  /// AWAITING_CUSTOMER, DISPUTED (row 254) and 24 h after CANCELLED /
+  /// FAILED; `RunnerEvidenceRules`). Details:
   /// `status`, `type` (`RunnerErrorDetails.evidenceRefusedStatus`,
   /// `evidenceRefusedType`). Reload the job.
   static const evidenceNotAllowed = 'evidence_not_allowed';
+
+  /// `POST /errands/:id/evidence` with a file above the limit (413, row
+  /// 252: 10 MB by default, configurable). Details: `maxBytes`. Read it
+  /// with `EvidenceTooLarge.of`, which also covers a bare 413 (proxy, older
+  /// API). Permanent: never retry the same file.
+  static const evidenceTooLarge = 'evidence_too_large';
 
   /// A receipt upload or `POST /runners/me/reimbursement-claims` after the
   /// 24 h window (409, row 129, A10). Details: `endedAt`, `windowEndsAt`
