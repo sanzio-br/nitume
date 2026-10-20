@@ -324,12 +324,10 @@ class ActiveJobs extends ChangeNotifier {
       await load();
       final String message;
       InlineSpan? rich;
-      if (reason == QueueDropReason.tooLarge) {
-        // Row 252: permanent; the queue already deleted the file. The drop
-        // carries no limit, so the API default is shown.
-        const max = EvidenceTooLarge.defaultMaxBytes;
-        message = RunnerEvidenceCopy.tooLarge(max);
-        rich = evidenceTooLargeSpan(max);
+      if (reason case QueueDropTooLarge(:final maxBytes)) {
+        // Row 252: permanent; the queue already deleted the file.
+        message = RunnerEvidenceCopy.tooLarge(maxBytes);
+        rich = evidenceTooLargeSpan(maxBytes);
       } else if (action.kind == QueuedActionKind.evidenceUpload) {
         message = reason == QueueDropReason.fileMissing
             ? ActiveJobsCopy.photoGone

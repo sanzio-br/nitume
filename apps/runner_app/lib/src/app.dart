@@ -68,7 +68,7 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final fg = state == AppLifecycleState.resumed;
     if (fg && _status == SessionStatus.signedIn) {
-      unawaited(widget.services.queue.replay());
+      unawaited(widget.services.resumeQueue());
     }
   }
 

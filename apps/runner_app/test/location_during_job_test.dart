@@ -56,12 +56,20 @@ class _RecordingSource implements PositionSource {
   }
 }
 
+/// A store whose reads fail while [broken]; then it behaves.
 class _ThrowingQueueStore implements QueueStore {
-  @override
-  Future<List<String>> read() async => throw const FileSystemError();
+  bool broken = true;
+  List<String> entries = [];
 
   @override
-  Future<void> write(List<String> entries) async {}
+  Future<List<String>> read() async {
+    if (broken) throw const FileSystemError();
+    return List.of(entries);
+  }
+
+  @override
+  Future<void> write(List<String> entries) async =>
+      this.entries = List.of(entries);
 }
 
 class FileSystemError implements Exception {
@@ -306,6 +314,49 @@ void main() {
       expect(b.services.live.isConnected, isTrue);
       // The unread queue may still need its photos: nothing deleted.
       expect(b.evidenceStore.discarded, isEmpty);
+      // It stays closed: never written over the unread store (a resume
+      // with the store still unreadable keeps it closed).
+      await b.services.resumeQueue();
+      await pumpEventQueue();
+      expect(b.services.queue.isClosed, isTrue);
+    });
+
+    test('closed after a failed read: an offline action fails with a retry, '
+        'then resume reopens the queue', () async {
+      final store = _ThrowingQueueStore();
+      final b = TestBackend(queueStore: store);
+      b.jobs.heldList = [heldJob(id: 'w1')];
+      await b.services.startSession();
+      await b.services.active.load();
+      final job = b.services.active.held.single;
+
+      b.jobs.transitionErrors.add(networkError);
+      final r = await b.services.active.transition(job, ErrandStatus.arrived);
+      expect(r.ok, isFalse);
+      expect(r.queued, isFalse);
+      expect(r.error, isNotNull);
+      expect(b.services.active.hasQueued('w1'), isFalse);
+      expect(store.entries, isEmpty);
+
+      // App resumed with a readable store: the queue opens again.
+      store.broken = false;
+      await b.services.resumeQueue();
+      expect(b.services.queue.isClosed, isFalse);
+      b.jobs.transitionErrors.add(networkError);
+      final again = await b.services.active.transition(
+        job,
+        ErrandStatus.arrived,
+      );
+      expect(again.queued, isTrue);
+      expect(store.entries, hasLength(1));
+    });
+
+    test('after log out, resume never reopens the cleared queue', () async {
+      final b = TestBackend();
+      await b.services.startSession();
+      await b.services.endSession();
+      await b.services.resumeQueue();
+      expect(b.services.queue.isClosed, isTrue);
     });
 
     test('a good read still cleans up photos no action needs', () async {
