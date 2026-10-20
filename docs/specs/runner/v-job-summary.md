@@ -21,7 +21,7 @@ AWAITING_CUSTOMER (main case), COMPLETED, CONFIRMED, SETTLED, DISPUTED; CANCELLE
 Body centred, padding-top 10.
 1. C-10 header `Job complete`.
 2. Success mark: 70px circle green-050 with a green check (complete state, allowed); margin 0 auto 12. Core R-24 `SuccessMark` (NEW, C-V7): the customer app already draws the same circle in `apps/customer_app/lib/src/widgets/stk_view.dart`, so a runner copy would be the second copy. For CANCELLED / FAILED the mark is not shown; the R-01 danger chip takes its place (proposed).
-3. Heading 17/600 (design-system `.t-h3`; mockup 17 bold) `Nice work, Brian.` (first word of `displayName`; `Nice work.` when empty), margin 0 0 4.
+3. Heading 17/600 (design-system `.t-h3`; mockup 17 bold) `Nice work, Brian.` (first word of `displayName`; `Nice work.` when empty), margin 0 0 4. CANCELLED / FAILED (proposed, amended 2026-10-20): heading `Job ended` instead, since `Nice work` reads wrong on a task that failed or was cancelled.
 4. Sub 12.5 slate-600: `{title} · {status line}`, margin 0 0 20; status line by state (below).
 5. Earnings card C-18 `ReceiptCard` (left aligned, margin 0 20 12):
    - `Runner fee` → `KSh 1,750` (one line; row 119: the mockup's `Base + report fee` and `Distance bonus` components are not shown until pricing rates exist, row 47).

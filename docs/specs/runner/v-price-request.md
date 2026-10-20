@@ -36,7 +36,7 @@ Field labels: the mockup uses the uppercase section-label style for the three ca
 ## Validation (proposed, mirrors `RequestPriceChangeDto`)
 | Field | Rule | Message |
 |---|---|---|
-| New price | required, number ≥ 1, ≤ 10,000,000, at most 2 decimals | `Enter the new price in KSh.` |
+| New price | required, whole shillings ≥ 1, ≤ 10,000,000 (amended 2026-10-20: core C-17 `NitumeField.money` takes digits only; cents are not used for item prices) | `Enter the new price in KSh.` |
 | New price | differs from the original | `Enter a price different from the original.` |
 | Reason | required in the app (the API keeps it optional; the customer needs it), 10–500 characters after trimming | `Tell the customer why the price changed.` |
 
