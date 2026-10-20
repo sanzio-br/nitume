@@ -435,3 +435,9 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   flutter-runner follows core.
 - API round 18 reviewed READY: feat/api-outside-area-b (249 b, 250) and feat/api-runner-answers (247 job-ping
   storage + 90-day purge, 248 differenceAwaitingPayment, 252 10 MB, 253 defaults pinned, 254 receipts in DISPUTED).
+- Runner round 18 reviewed READY: feat/core-runner-answers + feat/runner-answers (rows 245, 246, 248, 252, 254, 255;
+  audit docs/runner-round-18-audit PASS) and review follow-ups feat/core-runner-answers-fixes + feat/runner-answers-fixes
+  (queue opens only after a good read, reopens on resume; bare 413 scope; maxBytes; channel "Location during jobs").
+  Tests: runner 136, core 645, runner_device 25, customer 157, API 655/759 unit + e2e 111/120.
+- Not verified (no Xcode/devices): iOS plugin build, Android 14 / iOS background location, full APK (compileSdk 37?),
+  backup-restore. Open owner rows 256–259. Nothing merged; round 17 + 18 branches await the owner's merge.
