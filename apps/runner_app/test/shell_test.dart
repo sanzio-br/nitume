@@ -48,7 +48,11 @@ void main() {
         find
             .descendant(
               of: find.byType(NitumeTopBar),
-              matching: find.text(label == 'Jobs' ? 'Nearby jobs' : label),
+              matching: find.text(switch (label) {
+                'Jobs' => 'Nearby jobs',
+                'Active' => 'Active job',
+                _ => label,
+              }),
             )
             .hitTestable(),
         findsOneWidget,
