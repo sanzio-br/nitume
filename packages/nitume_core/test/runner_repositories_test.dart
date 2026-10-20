@@ -246,9 +246,9 @@ void main() {
   });
 
   group('RunnerJobsRepository', () {
-    test('activeJobs queries the runner active set', () async {
+    test('activeJobs queries the runner active set, without open offers', () async {
       final a = _Adapter({
-        'GET /errands?status=RUNNER_ASSIGNED%2CRUNNER_EN_ROUTE%2CARRIVED%2CIN_PROGRESS%2CAWAITING_CUSTOMER%2CDISPUTED':
+        'GET /errands?status=RUNNER_EN_ROUTE%2CARRIVED%2CIN_PROGRESS%2CAWAITING_CUSTOMER%2CDISPUTED':
             (
               200,
               {

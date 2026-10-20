@@ -242,10 +242,11 @@ class RunnerAccountRepository {
 /// accept / decline, runner transitions, notes, evidence and price-change
 /// requests.
 ///
-/// Read the job through [job] / [offers] ([RunnerJobView], RA-2): it has the
-/// runner fee, item amount and route and no customer fees. [get] and
-/// [activeJobs] return the customer-shaped `Errand`: **never show
-/// [Errand.feeTotal] or any customer fee to a runner**.
+/// Read the job through [job] / [readJob] / [heldJobs] / [offers]
+/// ([RunnerJobView], RA-2): it has the runner fee, item amount and route
+/// and no customer fees. [get] and [activeJobs] return the customer-shaped
+/// `Errand`: **never show [Errand.feeTotal] or any customer fee to a
+/// runner**.
 class RunnerJobsRepository {
   RunnerJobsRepository(this._api)
     : _errands = ErrandRepository(_api),
@@ -259,15 +260,39 @@ class RunnerJobsRepository {
   final PriceChangeRepository _priceChanges;
   final DisputesRepository _disputes;
 
-  /// `v-active` set (`_shared.md` §6).
+  /// Working states (row 211): the runner is busy and gets job pings. A
+  /// runner holds at most one job in this set. Mirrors the API's
+  /// `RUNNER_ACTIVE_JOB_STATES`.
+  static const workingStatuses = {
+    ErrandStatus.runnerEnRoute,
+    ErrandStatus.arrived,
+    ErrandStatus.inProgress,
+  };
+
+  /// `v-active` set (`_shared.md` §6): accepted jobs only, i.e.
+  /// [workingStatuses] plus AWAITING_CUSTOMER and DISPUTED. RUNNER_ASSIGNED
+  /// is an open offer (`v-jobs` / `v-job-detail`) and is not in it.
   static const activeStatuses = {
-    ErrandStatus.runnerAssigned,
     ErrandStatus.runnerEnRoute,
     ErrandStatus.arrived,
     ErrandStatus.inProgress,
     ErrandStatus.awaitingCustomer,
     ErrandStatus.disputed,
   };
+
+  /// Ended states a held job stays listed by [heldJobs] for
+  /// [endedJobWindow] (CANCELLED / FAILED: the receipt window, row 129;
+  /// COMPLETED / CONFIRMED / SETTLED: until the runner leaves the job).
+  static const recentlyEndedStatuses = {
+    ErrandStatus.completed,
+    ErrandStatus.confirmed,
+    ErrandStatus.settled,
+    ErrandStatus.cancelled,
+    ErrandStatus.failed,
+  };
+
+  /// How long an ended job stays in [heldJobs] (row 129).
+  static const endedJobWindow = Duration(hours: 24);
 
   /// Finished set (`_shared.md` §6).
   static const finishedStatuses = {
@@ -317,10 +342,98 @@ class RunnerJobsRepository {
   }
 
   /// `GET /runners/me/jobs/:errandId`: the runner's view of an offered or
-  /// held job (RA-2). 403 when the runner does not hold the current
-  /// assignment (also after a decline or a lapsed offer).
+  /// held job (RA-2), also after the job ended for the runner who accepted
+  /// it (DISPUTED … SETTLED, CANCELLED, FAILED; API item A2). 403 when the
+  /// runner does not hold the current assignment: reassigned, never
+  /// accepted (row 197), or after a decline or a lapsed offer. Prefer
+  /// [readJob] for a held job, which turns that 403 into
+  /// [RunnerJobAccessRevoked].
   Future<RunnerJobView> job(String errandId) =>
       _api.getMap('/runners/me/jobs/$errandId').then(RunnerJobView.fromJson);
+
+  /// [job], with the "no longer yours" 403 as a result instead of an error
+  /// (C-V4): [RunnerJobAvailable] with the view, or [RunnerJobAccessRevoked]
+  /// (`v-active`: `This job is no longer assigned to you.`). Other errors
+  /// are thrown as by [job].
+  Future<RunnerJobRead> readJob(String errandId) async {
+    try {
+      return RunnerJobAvailable(await job(errandId));
+    } on NitumeApiException catch (e) {
+      if (isAccessRevoked(e)) return RunnerJobAccessRevoked(errandId);
+      rethrow;
+    }
+  }
+
+  /// True for the 403 the API answers on a job this runner no longer holds
+  /// (reassigned, or never accepted): a 403 without a code. A coded 403
+  /// (e.g. [ApiErrorCodes.runnerNotVerified], [ApiErrorCodes.roleMismatch],
+  /// [ApiErrorCodes.accountSuspended]) is something else.
+  static bool isAccessRevoked(Object error) =>
+      error is NitumeApiException &&
+      error.statusCode == 403 &&
+      error.code == null;
+
+  /// Largest page `GET /errands` returns.
+  static const _maxListPage = 100;
+
+  /// Most pages [heldJobs] reads of the active set (it is small: at most
+  /// one working job plus the AWAITING_CUSTOMER / DISPUTED ones).
+  static const _maxActivePages = 5;
+
+  /// The runner's held jobs (C-V3) as [RunnerJobView]s, **accepted
+  /// assignments only** (no open offers): every job in [activeStatuses],
+  /// plus jobs in [recentlyEndedStatuses] last updated within
+  /// [endedJobWindow] of [now]. The working job (at most one, in
+  /// [workingStatuses]) comes first, then newest first. The screen picks
+  /// the job to show (`v-active` selection rule).
+  ///
+  /// Until API item A1 gives one list call in runner projection, this is
+  /// `GET /errands?status=…` (ids only; open offers and the customer shape
+  /// are dropped) then [readJob] per job; a job that answers
+  /// [RunnerJobAccessRevoked] meanwhile is left out. The ended window uses
+  /// the errand's `updatedAt`, since the list has no end time; the receipt
+  /// window itself is the CANCELLED / FAILED history time (row 129).
+  /// Ended jobs come from the newest 100 ended errands.
+  Future<List<RunnerJobView>> heldJobs({DateTime? now}) async {
+    final at = (now ?? DateTime.now()).toUtc();
+    final ids = <String>[];
+    String? cursor;
+    for (var page = 0; page < _maxActivePages; page++) {
+      final p = await _errands.list(
+        statuses: activeStatuses,
+        limit: _maxListPage,
+        cursor: cursor,
+      );
+      ids.addAll(p.items.map((e) => e.id));
+      cursor = p.nextCursor;
+      if (cursor == null) break;
+    }
+    final ended = await _errands.list(
+      statuses: recentlyEndedStatuses,
+      limit: _maxListPage,
+    );
+    for (final e in ended.items) {
+      final updated = e.updatedAt;
+      if (updated == null || at.difference(updated) >= endedJobWindow) {
+        continue;
+      }
+      ids.add(e.id);
+    }
+    final unique = ids.toSet().toList();
+    final reads = await Future.wait(unique.map(readJob));
+    final held = [
+      for (final r in reads)
+        if (r case RunnerJobAvailable(:final job)
+            when job.assignment.status == AssignmentStatus.accepted &&
+                (activeStatuses.contains(job.status) ||
+                    recentlyEndedStatuses.contains(job.status)))
+          job,
+    ];
+    return [
+      ...held.where((j) => workingStatuses.contains(j.status)),
+      ...held.where((j) => !workingStatuses.contains(j.status)),
+    ];
+  }
 
   /// `POST /errands/:id/accept`: RUNNER_ASSIGNED → RUNNER_EN_ROUTE (row
   /// 113); the runner becomes busy. Returns the job and the history row.
@@ -360,8 +473,10 @@ class RunnerJobsRepository {
       .postMap('/errands/$errandId/decline', data: {'reason': reason.wire})
       .then(OfferDeclineResult.fromJson);
 
-  /// The runner's current job(s): `GET /errands?status=…` (runner-scoped
-  /// to the current assignment by the API).
+  /// The runner's jobs in [activeStatuses]: `GET /errands?status=…`
+  /// (runner-scoped to the current assignment by the API), first page, in
+  /// the customer shape. Open offers are not included (RUNNER_ASSIGNED is
+  /// not queried). For `v-active` use [heldJobs] (runner projection).
   Future<List<Errand>> activeJobs() async =>
       (await _errands.list(statuses: activeStatuses)).items;
 
@@ -464,4 +579,25 @@ class RunnerJobsRepository {
   /// `GET /errands/:id/dispute` (runner sees the resolution note, row 79);
   /// `null` when none.
   Future<Dispute?> dispute(String errandId) => _disputes.forErrand(errandId);
+}
+
+/// [RunnerJobsRepository.readJob] result (C-V4).
+sealed class RunnerJobRead {
+  const RunnerJobRead();
+}
+
+/// The runner can read the job.
+final class RunnerJobAvailable extends RunnerJobRead {
+  const RunnerJobAvailable(this.job);
+
+  final RunnerJobView job;
+}
+
+/// The job is no longer this runner's (reassigned, or never accepted): drop
+/// it, stop pings if it was the working job, and show `This job is no
+/// longer assigned to you.` (`v-active`).
+final class RunnerJobAccessRevoked extends RunnerJobRead {
+  const RunnerJobAccessRevoked(this.errandId);
+
+  final String errandId;
 }
