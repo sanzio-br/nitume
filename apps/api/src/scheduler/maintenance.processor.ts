@@ -1,16 +1,19 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, Optional } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { ErrandsService } from '../errands/errands.service';
 import { MAINTENANCE_QUEUE, PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
 import { PaymentsService } from '../payments/payments.service';
 import { IdDocumentRetentionService } from './id-document-retention.service';
+import { LocationRetentionService } from './location-retention.service';
 
 export const DISPUTE_WINDOW_JOB = 'dispute-window';
 export const STK_RECONCILE_JOB = 'stk-reconcile';
 export const OFFER_EXPIRY_JOB = 'offer-expiry';
 /** Daily deletion of runner ID/selfie images past retention (row 154). */
 export const ID_DOCUMENT_PURGE_JOB = 'id-document-purge';
+/** Daily deletion of job location samples past retention (row 247). */
+export const LOCATION_PURGE_JOB = 'location-purge';
 
 /**
  * Scheduled system jobs (rows 26, 50, 52). Every write goes through the
@@ -24,6 +27,7 @@ export class MaintenanceProcessor extends WorkerHost {
     private readonly errands: ErrandsService,
     private readonly payments: PaymentsService,
     private readonly idDocuments: IdDocumentRetentionService,
+    @Optional() private readonly locations?: LocationRetentionService,
   ) {
     super();
   }
@@ -36,6 +40,8 @@ export class MaintenanceProcessor extends WorkerHost {
         return this.offerExpiry();
       case ID_DOCUMENT_PURGE_JOB:
         return this.idDocumentPurge();
+      case LOCATION_PURGE_JOB:
+        return this.locationPurge();
       case STK_RECONCILE_JOB:
         return { resolved: await this.payments.resolveTimedOut() };
       case PAYMENT_VERIFY_JOB:
@@ -83,6 +89,15 @@ export class MaintenanceProcessor extends WorkerHost {
       this.logger.log(`ID document purge: deleted ${purged.length}`);
     }
     return { purged };
+  }
+
+  /** Row 247: delete job location samples of tasks that ended past retention (open disputes held). */
+  async locationPurge(): Promise<{ errandIds: string[]; deleted: number }> {
+    const out = (await this.locations?.purgeExpired()) ?? { errandIds: [], deleted: 0 };
+    if (out.deleted > 0) {
+      this.logger.log(`Location purge: deleted ${out.deleted} samples of ${out.errandIds.length} tasks`);
+    }
+    return out;
   }
 
   /** COMPLETED past the dispute window -> CONFIRMED, then CONFIRMED -> SETTLED. */

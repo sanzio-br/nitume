@@ -1120,6 +1120,30 @@ export class ErrandsService {
   }
 
   /**
+   * Row 247 (location retention): of `errandIds`, the tasks in a terminal
+   * state (SETTLED, CANCELLED, FAILED, EXPIRED; §3.3, no way out) that
+   * reached it before `cutoff`. The end time is the newest history row into
+   * the current status (the errand's `updatedAt` when there is none).
+   */
+  async endedBefore(errandIds: string[], cutoff: Date): Promise<string[]> {
+    const unique = [...new Set(errandIds)].filter(Boolean);
+    if (unique.length === 0) {
+      return [];
+    }
+    const terminal = Object.values(ErrandStatus).filter((s) => ErrandStateMachine.isTerminal(s));
+    const rows: { id: string }[] = await this.errands.query(
+      `SELECT e.id FROM "errands" e
+        WHERE e.id = ANY($1::uuid[]) AND e.status::text = ANY($2::text[])
+          AND COALESCE(
+                (SELECT MAX(h."createdAt") FROM "errand_status_history" h
+                  WHERE h."errandId" = e.id AND h."toStatus" = e.status),
+                e."updatedAt") < $3::timestamptz`,
+      [unique, terminal, cutoff.toISOString()],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  /**
    * The runner's latest assignment on an errand, whatever its status (audit
    * records, row 151). Null when the runner was never assigned.
    */

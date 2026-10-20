@@ -3,7 +3,13 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Queue } from 'bullmq';
 import { MAINTENANCE_QUEUE } from '../infra/queue/queues';
-import { DISPUTE_WINDOW_JOB, ID_DOCUMENT_PURGE_JOB, OFFER_EXPIRY_JOB, STK_RECONCILE_JOB } from './maintenance.processor';
+import {
+  DISPUTE_WINDOW_JOB,
+  ID_DOCUMENT_PURGE_JOB,
+  LOCATION_PURGE_JOB,
+  OFFER_EXPIRY_JOB,
+  STK_RECONCILE_JOB,
+} from './maintenance.processor';
 
 /**
  * Registers the repeatable maintenance jobs. upsertJobScheduler is
@@ -37,6 +43,12 @@ export class MaintenanceScheduler implements OnApplicationBootstrap {
         ID_DOCUMENT_PURGE_JOB,
         { pattern: this.config.get<string>('runnerVerification.purgeCron', '0 3 * * *'), tz: 'Africa/Nairobi' },
         { name: ID_DOCUMENT_PURGE_JOB },
+      );
+      // Row 247: once a day (default 03:30 EAT), never on start-up.
+      await this.queue.upsertJobScheduler(
+        LOCATION_PURGE_JOB,
+        { pattern: this.config.get<string>('location.retentionCron', '30 3 * * *'), tz: 'Africa/Nairobi' },
+        { name: LOCATION_PURGE_JOB },
       );
     } catch (err) {
       this.logger.error(

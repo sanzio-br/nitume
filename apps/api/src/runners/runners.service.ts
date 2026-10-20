@@ -333,6 +333,35 @@ export class RunnersService {
   }
 
   /**
+   * Row 247 retention: one page of the tasks that have stored location
+   * samples, by task id after `afterErrandId` (keyset). The purge asks the
+   * errands and disputes modules which of them may go.
+   */
+  async errandsWithLocationSamples(afterErrandId: string | null, batch = 500): Promise<string[]> {
+    const qb = this.profiles.manager
+      .getRepository(RunnerLocation)
+      .createQueryBuilder('l')
+      .select('DISTINCT l."errandId"', 'errandId')
+      .where('l."errandId" IS NOT NULL')
+      .orderBy('l."errandId"', 'ASC')
+      .limit(batch);
+    if (afterErrandId) {
+      qb.andWhere('l."errandId" > :after', { after: afterErrandId });
+    }
+    const rows = await qb.getRawMany<{ errandId: string }>();
+    return rows.map((r) => r.errandId);
+  }
+
+  /** Row 247 retention: deletes every location sample of the given tasks; returns how many. */
+  async deleteLocationSamples(errandIds: string[]): Promise<number> {
+    if (errandIds.length === 0) {
+      return 0;
+    }
+    const result = await this.profiles.manager.getRepository(RunnerLocation).delete({ errandId: In(errandIds) });
+    return result.affected ?? 0;
+  }
+
+  /**
    * RA-8, RA-20. The runner sets `online` or `offline`; `busy` is set by the
    * server while the runner holds an active job (400
    * availability_server_managed when sent). While busy: `offline` is refused

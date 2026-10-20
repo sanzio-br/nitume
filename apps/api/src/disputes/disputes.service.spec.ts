@@ -272,3 +272,17 @@ describe('DisputesService.runnersWithOpenDisputes (row 175)', () => {
     expect(disputes.find).not.toHaveBeenCalled();
   });
 });
+
+describe('DisputesService.errandsWithOpenDisputes (row 247)', () => {
+  it('returns the tasks with an open or under-review dispute', async () => {
+    const find = vi.fn(() => Promise.resolve([{ errandId: 'e-2' }]));
+    const service = new DisputesService({ find } as never, {} as never, {} as never);
+    await expect(service.errandsWithOpenDisputes(['e-1', 'e-2', 'e-2'])).resolves.toEqual(new Set(['e-2']));
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: expect.objectContaining({ _value: [DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW] }) }),
+      }),
+    );
+    await expect(service.errandsWithOpenDisputes([])).resolves.toEqual(new Set());
+  });
+});

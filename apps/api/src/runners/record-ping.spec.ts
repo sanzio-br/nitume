@@ -62,4 +62,14 @@ describe('RunnersService job location samples (row 247)', () => {
     });
     expect(trail.findOne).toHaveBeenCalledWith({ where: { runnerProfileId: 'rp-1', errandId: 'e-1' }, order: { capturedAt: 'DESC' } });
   });
+
+  it('pages the tasks with samples by id and deletes a task\'s samples', async () => {
+    const { service, qb, trail } = build();
+    await expect(service.errandsWithLocationSamples('e-0', 2)).resolves.toEqual(['e-1', 'e-2']);
+    expect(qb.andWhere).toHaveBeenCalledWith('l."errandId" > :after', { after: 'e-0' });
+    expect(qb.limit).toHaveBeenCalledWith(2);
+    await expect(service.deleteLocationSamples(['e-1'])).resolves.toBe(7);
+    await expect(service.deleteLocationSamples([])).resolves.toBe(0);
+    expect(trail.delete).toHaveBeenCalledTimes(1);
+  });
 });
