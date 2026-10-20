@@ -42,6 +42,9 @@ abstract final class JobsCopy {
   static const openSettings = 'Open Settings';
   static const newOffer = 'New job offer';
 
+  /// C-40 under the availability card after the socket is down 5 s.
+  static const reconnecting = 'Reconnecting…';
+
   /// `3 offers near you` / `1 offer near you` (the count is a Fira Code
   /// prefix).
   static String offersLabel(int n) =>
@@ -102,6 +105,11 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
   ShellController? _shell;
   RunnerLive? _live;
   bool _wasConnected = false;
+  Timer? _downTimer;
+  bool _reconnecting = false;
+
+  /// How long the socket may be down before `Reconnecting…` shows.
+  static const _reconnectGrace = Duration(seconds: 5);
   final _subs = <StreamSubscription<Object?>>[];
 
   AppServices get _s => AppScope.read(context);
@@ -116,6 +124,7 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
       final live = _live = _s.live;
       _wasConnected = live.isConnected;
       live.state.addListener(_onSocket);
+      _syncReconnecting();
       _subs.addAll([
         live.jobOffers.listen(_onOffered),
         live.jobOfferWithdrawals.listen(_onWithdrawn),
@@ -134,6 +143,7 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
     }
     _poll?.cancel();
     _offerEnd?.cancel();
+    _downTimer?.cancel();
     super.dispose();
   }
 
@@ -150,10 +160,29 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
 
   void _onSocket() {
     final now = _live?.isConnected ?? false;
+    _syncReconnecting();
     // Back online: one reload replaces what the socket may have missed.
     if (now && !_wasConnected) _load(silent: true);
     _wasConnected = now;
     _syncPolling();
+  }
+
+  /// Trying to connect (connecting / reconnecting) for 5 s shows the
+  /// notice; connected or deliberately disconnected hides it.
+  void _syncReconnecting() {
+    final state = _live?.state.value;
+    final trying =
+        state == RealtimeConnectionState.connecting ||
+        state == RealtimeConnectionState.reconnecting;
+    if (!trying) {
+      _downTimer?.cancel();
+      _downTimer = null;
+      if (_reconnecting && mounted) setState(() => _reconnecting = false);
+      return;
+    }
+    _downTimer ??= Timer(_reconnectGrace, () {
+      if (mounted) setState(() => _reconnecting = true);
+    });
   }
 
   /// `job:offered`: fetch the card and add it (newest first).
@@ -558,6 +587,11 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
           onChanged: me.isVerified && !_toggling ? _toggle : null,
         ),
       ),
+      if (_reconnecting)
+        const Padding(
+          padding: pad,
+          child: NitumeNotice(message: JobsCopy.reconnecting),
+        ),
       if (_locationRefusal != null)
         Padding(padding: pad, child: _locationNotice()),
     ];

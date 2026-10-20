@@ -400,6 +400,28 @@ void main() {
       expect(b.jobs.offersCalls, calls);
     });
 
+    testWidgets('Reconnecting… after the socket is down 5 s', (t) async {
+      final b = TestBackend();
+      await b.services.live.start();
+      await _pumpJobs(t, b);
+      b.realtime.setState(RealtimeConnectionState.reconnecting);
+      await t.pump(const Duration(seconds: 4));
+      expect(find.text('Reconnecting…'), findsNothing);
+      await t.pump(const Duration(seconds: 2));
+      expect(find.text('Reconnecting…'), findsOneWidget);
+
+      b.realtime.setState(RealtimeConnectionState.connected);
+      await t.pumpAndSettle();
+      expect(find.text('Reconnecting…'), findsNothing);
+    });
+
+    testWidgets('no notice when the socket was never started', (t) async {
+      final b = TestBackend();
+      await _pumpJobs(t, b);
+      await t.pump(const Duration(seconds: 6));
+      expect(find.text('Reconnecting…'), findsNothing);
+    });
+
     testWidgets('accept focuses the Active tab on that job', (t) async {
       final b = TestBackend();
       b.jobs.offerList = [offer()];
