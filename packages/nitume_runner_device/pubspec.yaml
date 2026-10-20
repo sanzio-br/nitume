@@ -5,7 +5,8 @@ publish_to: none
 
 environment:
   sdk: ^3.13.4
-  flutter: ">=1.17.0"
+  # 3.24: plugin `platforms:` and Swift Package Manager (ios/Package.swift).
+  flutter: ">=3.24.0"
 
 dependencies:
   flutter:
