@@ -454,10 +454,13 @@ class _ActiveTabState extends State<ActiveTab> {
     final photos = d.count(EvidenceType.photo);
     final receipts = d.count(EvidenceType.receipt);
     final notes = _a.notesOf(job)?.trim() ?? '';
-    final photoAction =
-        status == ErrandStatus.arrived || status == ErrandStatus.inProgress;
-    final receiptAction =
-        photoAction || status == ErrandStatus.awaitingCustomer;
+    // RunnerEvidenceRules mirrors the API (rows 121, 254): receipts also
+    // while DISPUTED, photos never there.
+    final photoAction = RunnerEvidenceRules.allows(status, EvidenceType.photo);
+    final receiptAction = RunnerEvidenceRules.allows(
+      status,
+      EvidenceType.receipt,
+    );
     final notesAction = RunnerJobsRepository.runnerNotesStatuses.contains(
       status,
     );

@@ -46,19 +46,15 @@ abstract final class EvidenceCopy {
       : "$n photos didn't upload. They'll be deleted from your phone.";
 }
 
-/// Evidence types a state accepts (spec Task states; the API enforces it
-/// too, `evidence_not_allowed`).
-Set<EvidenceType> allowedEvidence(RunnerJobView job, ErrandStatus status) =>
-    switch (status) {
-      ErrandStatus.arrived || ErrandStatus.inProgress => {
-        EvidenceType.photo,
-        if (needsReceipt(job)) EvidenceType.receipt,
-      },
-      ErrandStatus.awaitingCustomer ||
-      ErrandStatus.cancelled ||
-      ErrandStatus.failed => {if (needsReceipt(job)) EvidenceType.receipt},
-      _ => const {},
-    };
+/// Evidence types a state accepts: [RunnerEvidenceRules] (the API's rule,
+/// rows 121, 129, 254: receipts also while DISPUTED), plus this app's rule
+/// that only a job with a purchase to reimburse takes receipts. The 24 h
+/// window after CANCELLED / FAILED is the API's to enforce
+/// (`reimbursement_window_closed`).
+Set<EvidenceType> allowedEvidence(RunnerJobView job, ErrandStatus status) => {
+  for (final t in RunnerEvidenceRules.allowedIn(status))
+    if (t != EvidenceType.receipt || needsReceipt(job)) t,
+};
 
 /// `v-evidence-capture`: camera only (no gallery, so time and place stay
 /// trustworthy), each photo uploads at once through the job's R-22
