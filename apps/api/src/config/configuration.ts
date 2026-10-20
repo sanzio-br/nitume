@@ -134,6 +134,8 @@ export interface AppConfig {
     storageDriver: 'console' | 'cloudinary';
     /** Lifetime of signed evidence view URLs (row 25). */
     signedUrlTtlSeconds: number;
+    /** Row 252: largest evidence file (decoded bytes) on `POST /errands/:id/evidence`; default 10 MB. */
+    maxUploadBytes: number;
     cloudinary: {
       cloudName: string | null;
       apiKey: string | null;
@@ -365,6 +367,7 @@ export const configuration = (): AppConfig => ({
       (process.env.EVIDENCE_STORAGE_DRIVER as AppConfig['evidence']['storageDriver']) ??
       'console',
     signedUrlTtlSeconds: int(process.env.EVIDENCE_SIGNED_URL_TTL_SECONDS, 900),
+    maxUploadBytes: int(process.env.EVIDENCE_MAX_UPLOAD_BYTES, 10 * 1024 * 1024),
     cloudinary: {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? null,
       apiKey: process.env.CLOUDINARY_API_KEY ?? null,

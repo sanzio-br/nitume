@@ -19,6 +19,7 @@ import { Evidence } from './evidence.entity';
 import { EVIDENCE_STORAGE } from './evidence-storage/evidence-storage.provider';
 import { EvidenceStorage } from './evidence-storage/evidence-storage.interface';
 import { CreateEvidenceDto, EvidenceViewerContext } from './dto/evidence.dto';
+import { evidenceMaxUploadBytes, evidenceTooLarge } from './evidence-upload';
 
 /**
  * Evidence as returned to clients (row 25): `url` is a short-lived signed
@@ -99,6 +100,11 @@ export class EvidenceService implements OnModuleInit {
     const data = Buffer.from(dto.data, 'base64');
     if (data.length === 0) {
       throw new BadRequestException('Evidence data must not be empty');
+    }
+    // Row 252: 10 MB per file (configurable); the route's body limit matches.
+    const maxBytes = evidenceMaxUploadBytes(this.config);
+    if (data.length > maxBytes) {
+      throw evidenceTooLarge(maxBytes);
     }
     const isImage = dto.contentType.startsWith('image/');
     const isVideo = dto.contentType.startsWith('video/');

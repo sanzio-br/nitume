@@ -86,6 +86,19 @@ describe('EvidenceService runner uploads (RA-11, rows 121, 129)', () => {
     expect(storage.upload).not.toHaveBeenCalled();
   });
 
+  it('row 252: refuses a file over evidence.maxUploadBytes with 413 evidence_too_large', async () => {
+    const { service, storage } = build('IN_PROGRESS');
+    Object.assign(service, { config: { get: (k: string, d: unknown) => (k === 'evidence.maxUploadBytes' ? 4 : d) } });
+    const err = (await service
+      .upload('e-1', { type: 'photo', contentType: 'image/jpeg', data: Buffer.from('12345').toString('base64') } as never, runner)
+      .catch((e: unknown) => e)) as { getStatus: () => number; getResponse: () => unknown };
+    expect(err.getStatus()).toBe(413);
+    expect(err.getResponse()).toMatchObject({ code: 'evidence_too_large', maxBytes: 4 });
+    expect(storage.upload).not.toHaveBeenCalled();
+    await service.upload('e-1', { type: 'photo', contentType: 'image/jpeg', data: Buffer.from('1234').toString('base64') } as never, runner);
+    expect(storage.upload).toHaveBeenCalled();
+  });
+
   it('refuses a late receipt after the 24 h window', async () => {
     const { service, storage } = build('CANCELLED', false);
     expect(await code(service.upload('e-1', body('receipt') as never, runner))).toBe('reimbursement_window_closed');
