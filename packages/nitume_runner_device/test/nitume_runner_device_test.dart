@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
@@ -35,6 +36,59 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('GeolocatorPositionSource', () {
+    test('Android job stream: location foreground service, ongoing '
+        'notification with the final copy (row 245)', () {
+      const src = GeolocatorPositionSource();
+      final s =
+          src.settingsFor(
+                TargetPlatform.android,
+                interval: const Duration(seconds: 4),
+                distanceFilter: 15,
+                background: true,
+              )
+              as AndroidSettings;
+      final n = s.foregroundNotificationConfig!;
+      expect(n.notificationTitle, 'Nitume Runner');
+      expect(n.notificationText, 'Sharing your location for your active job.');
+      expect(n.setOngoing, isTrue);
+      expect(s.distanceFilter, 15);
+      expect(s.intervalDuration, const Duration(seconds: 4));
+
+      final idle =
+          src.settingsFor(
+                TargetPlatform.android,
+                interval: const Duration(seconds: 30),
+                distanceFilter: 0,
+                background: false,
+              )
+              as AndroidSettings;
+      expect(idle.foregroundNotificationConfig, isNull);
+    });
+
+    test('iOS job stream: background updates with the indicator', () {
+      const src = GeolocatorPositionSource();
+      final s =
+          src.settingsFor(
+                TargetPlatform.iOS,
+                interval: const Duration(seconds: 4),
+                distanceFilter: 15,
+                background: true,
+              )
+              as AppleSettings;
+      expect(s.allowBackgroundLocationUpdates, isTrue);
+      expect(s.showBackgroundLocationIndicator, isTrue);
+      expect(s.pauseLocationUpdatesAutomatically, isFalse);
+      final fg =
+          src.settingsFor(
+                TargetPlatform.iOS,
+                interval: const Duration(seconds: 4),
+                distanceFilter: 15,
+                background: false,
+              )
+              as AppleSettings;
+      expect(fg.allowBackgroundLocationUpdates, isFalse);
+    });
+
     test('maps permissions', () {
       expect(
         GeolocatorPositionSource.mapPermission(LocationPermission.whileInUse),
