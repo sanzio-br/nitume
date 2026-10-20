@@ -83,3 +83,6 @@ Heading announced on open; amounts read as currency; CTA above the safe area.
 
 ## Questions
 - None new. RQ-36 (BOARD row 248, open; `v-price-request.md`) may change what `Item reimbursement` shows after an approved increase that the customer has not paid yet.
+
+## Round 18 note (2026-10-20, owner row 248)
+- With no reimbursement line yet, `Item reimbursement` falls back to the amount to spend (`requiredPurchase` on `send_to_runner`), and the claim cap is min(amount to spend, purchase limit). While a difference waits for payment that is the old amount. Audited PASS (gap report §23).
