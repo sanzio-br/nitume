@@ -1493,7 +1493,8 @@ export class ErrandsService {
 
   /**
    * Number of errands visible to the viewer, with the same scoping and status
-   * filter as `listFor` (customers never see their DRAFTs).
+   * filter as `listFor` (customers never see their DRAFTs, nor tasks
+   * cancelled straight from DRAFT, row 250).
    */
   async countFor(
     viewer: ViewerContext,
@@ -1540,6 +1541,16 @@ export class ErrandsService {
       }
       qb.where('e."customerId" = :profileId', { profileId: profile.id });
       qb.andWhere('e.status != :draft', { draft: ErrandStatus.DRAFT });
+      // Row 250 (owner, 2026-10-20): a task cancelled straight from DRAFT
+      // (wizard discard, refused submit) was never submitted, so it is not
+      // part of the customer's history. Read from the status history (no
+      // schema change); detail by id stays reachable.
+      qb.andWhere(
+        `NOT (e.status = :cancelled AND EXISTS (
+           SELECT 1 FROM "errand_status_history" h
+            WHERE h."errandId" = e.id AND h."fromStatus" = :draft AND h."toStatus" = :cancelled))`,
+        { cancelled: ErrandStatus.CANCELLED, draft: ErrandStatus.DRAFT },
+      );
     }
 
     if (statuses.length === 1) {
