@@ -62,11 +62,11 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp>
     super.dispose();
   }
 
-  /// Idle pings pause in the background; queued actions replay on return.
+  /// Queued actions replay on return. (The pinger follows the lifecycle
+  /// itself through `LocationPingerLifecycle`, row 245.)
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final fg = state == AppLifecycleState.resumed;
-    widget.services.pings.setForeground(fg);
     if (fg && _status == SessionStatus.signedIn) {
       unawaited(widget.services.queue.replay());
     }

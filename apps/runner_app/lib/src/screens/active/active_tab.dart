@@ -188,6 +188,11 @@ class _ActiveTabState extends State<ActiveTab> {
     final key = '${job.id}:${_a.statusOf(job).wire}:${job.itemAmount}';
     if (key == _detailsKey) return;
     _detailsKey = key;
+    // v-active opened on a working job: job pings for it (row 245; a no-op
+    // when they already run). Never asks for location, never waits on it.
+    if (RunnerJobsRepository.workingStatuses.contains(_a.statusOf(job))) {
+      _s.pings.setWorkingJob(job.id);
+    }
     unawaited(_refreshDetails(job.id));
     unawaited(_readFix(job));
   }
