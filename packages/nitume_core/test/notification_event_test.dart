@@ -35,4 +35,20 @@ void main() {
     expect(_n('errand.SOMETHING_NEW').event, isNull);
     expect(_n('payout.paid').announcedStatus, isNull);
   });
+
+  test('service_area.outside parses tolerantly (rows 236, 241)', () {
+    final n = _n(NotificationEventType.outsideServiceAreaWire);
+    expect(
+      NotificationEventType.outsideServiceAreaWire,
+      'service_area.outside',
+    );
+    expect(n.isOutsideServiceArea, isTrue);
+    // Not an enum value: existing exhaustive switches keep compiling and
+    // fall to their null arm unless the app checks the flag first.
+    expect(n.event, isNull);
+    expect(NotificationEventType.tryFromWire('service_area.outside'), isNull);
+    expect(n.announcedStatus, isNull);
+    expect(n.errandId, 'e1');
+    expect(_n('errand.QUOTED').isOutsideServiceArea, isFalse);
+  });
 }

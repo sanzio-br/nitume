@@ -1,3 +1,4 @@
+import '../api/api_exception.dart' show ApiErrorCodes;
 import 'enums.dart';
 import 'errand_location.dart';
 import 'json_utils.dart';
@@ -38,6 +39,7 @@ class Errand {
     this.quoteExpiresAt,
     this.quoteRequestedAt,
     this.merchantDetailsUpdatedAt,
+    this.outsideServiceArea = false,
   });
 
   final String id;
@@ -58,6 +60,12 @@ class Errand {
 
   /// Authoritative deadline (Q19, decided). Urgency for display is derived
   /// from it by the screen when needed; [urgency] is the API value.
+  ///
+  /// `null` before payment for a `Flexible` task (rows 235, 239 (a)): its
+  /// deadline is set at PAYMENT_CONFIRMED (payment time +
+  /// `ErrandDefaults.defaultDeadline`). Before payment a non-null value is
+  /// always the customer's choice. See [hasNoDeadlineYet] and
+  /// [deadlinePassedBeforePayment].
   final DateTime? deadlineAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -117,8 +125,35 @@ class Errand {
   /// 80); `null` when never changed (the first entry does not set it).
   final DateTime? merchantDetailsUpdatedAt;
 
+  /// Customer views (row 236, C-14-2): the task is REQUESTED, QUOTED or
+  /// ACCEPTED and its location is inside no service area, so a quote is
+  /// refused ([ApiErrorCodes.locationOutsideServiceArea]); show the
+  /// `We can't take this task` state with `Cancel task`. The API works it
+  /// out on every read, so it can turn false again if the areas grow.
+  ///
+  /// Only `GET /errands/:id` and `GET /errands` send it. Missing reads as
+  /// `false`, and responses that don't send it (create, `PATCH /errands/:id`,
+  /// status transitions) always give `false`: read the task again with
+  /// `ErrandRepository.get` before relying on it.
+  final bool outsideServiceArea;
+
   /// True while a "Request a new quote" is waiting for an admin re-quote.
   bool get quoteRequestPending => quoteRequestedAt != null;
+
+  /// A `Flexible` task before payment: no deadline yet, its clock starts
+  /// when payment is confirmed (rows 235, 239 (a)). Show `No deadline yet`
+  /// rather than a time.
+  bool get hasNoDeadlineYet => deadlineAt == null && status.isBeforePayment;
+
+  /// True when, before payment, the customer's chosen deadline is at or
+  /// before [now] (row 237): payment is refused
+  /// (`ApiErrorCodes.deadlinePassedBeforePayment`) until the customer sets a
+  /// new one with `ErrandRepository.setDeadline`. Always false for a
+  /// `Flexible` task and once paid.
+  bool deadlinePassedBeforePayment(DateTime now) {
+    final d = deadlineAt;
+    return d != null && status.isBeforePayment && !now.isBefore(d);
+  }
 
   /// First pickup point in [locations], if any.
   ErrandLocation? get pickup => _point(ErrandPointType.pickup);
@@ -173,6 +208,7 @@ class Errand {
       quoteExpiresAt: _date(json['quoteExpiresAt']),
       quoteRequestedAt: _date(json['quoteRequestedAt']),
       merchantDetailsUpdatedAt: _date(json['merchantDetailsUpdatedAt']),
+      outsideServiceArea: json['outsideServiceArea'] == true,
     );
   }
 }
@@ -254,15 +290,42 @@ String? _nullableDecimalString(Object? value) {
 DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value) : null;
 
-/// Task defaults clients show but never hard-code (`GET /errands/defaults`,
-/// row 221).
-class ErrandDefaults {
-  const ErrandDefaults({this.defaultDeadlineHours});
+/// When a `Flexible` task's default deadline clock starts
+/// (`defaultDeadlineStartsAt` on `GET /errands/defaults`).
+enum DeadlineClockStart {
+  /// At ACCEPTED → PAYMENT_CONFIRMED (rows 235, 239 (a)): the caption says
+  /// the deadline is {duration} after the payment is confirmed.
+  paymentConfirmed('payment_confirmed');
 
-  /// Hours from creation to the deadline the API sets when the customer
-  /// gives none (24 today); `null` when the API did not send a usable
-  /// value, so the caption is hidden rather than guessed.
+  const DeadlineClockStart(this.wire);
+  final String wire;
+
+  /// `null` for unknown or absent values.
+  static DeadlineClockStart? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
+/// Task defaults clients show but never hard-code (`GET /errands/defaults`,
+/// rows 221, 235).
+class ErrandDefaults {
+  const ErrandDefaults({
+    this.defaultDeadlineHours,
+    this.defaultDeadlineStartsAt,
+  });
+
+  /// Hours from [defaultDeadlineStartsAt] to the deadline the API sets when
+  /// the customer gives none (24 today); `null` when the API did not send a
+  /// usable value, so the caption is hidden rather than guessed.
   final double? defaultDeadlineHours;
+
+  /// When that clock starts: [DeadlineClockStart.paymentConfirmed] today
+  /// (row 235). `null` when absent or a value this client does not know:
+  /// hide a caption that names the start rather than guess it.
+  final DeadlineClockStart? defaultDeadlineStartsAt;
 
   /// [defaultDeadlineHours] as a [Duration] (minute precision).
   Duration? get defaultDeadline {
@@ -274,6 +337,9 @@ class ErrandDefaults {
     final h = parseDouble(json['defaultDeadlineHours']);
     return ErrandDefaults(
       defaultDeadlineHours: h != null && h.isFinite && h > 0 ? h : null,
+      defaultDeadlineStartsAt: DeadlineClockStart.tryFromWire(
+        json['defaultDeadlineStartsAt'],
+      ),
     );
   }
 }

@@ -108,6 +108,13 @@ enum ErrandStatus {
   bool get isTerminal => this == cancelled || this == failed || this == expired;
 
   bool get isActive => !isTerminal && this != settled;
+
+  /// DRAFT, REQUESTED, QUOTED or ACCEPTED: the task is not paid yet. Here a
+  /// `Flexible` task has no `deadlineAt` (rows 235, 239 (a)), a non-null
+  /// `deadlineAt` is always the customer's choice (rows 239, 240), and the
+  /// customer may change it (`ErrandRepository.setDeadline`, row 237).
+  bool get isBeforePayment =>
+      this == draft || this == requested || this == quoted || this == accepted;
 }
 
 enum ErrandUrgency {
@@ -474,6 +481,15 @@ enum NotificationEventType {
   /// as `null` from [tryFromWire]. Read the state with
   /// `AppNotification.announcedStatus` (gives [ErrandStatus.expired]).
   static const errandExpiredWire = 'errand.EXPIRED';
+
+  /// `service_area.outside` (rows 236, 241): the task was refused at quote
+  /// because its location is inside no service area; the customer may
+  /// cancel. Opens `x-awaiting-quote`. Like [errandExpiredWire] it is not an
+  /// enum value (that would break the apps' exhaustive switches), so
+  /// [tryFromWire] gives `null`; check `AppNotification.isOutsideServiceArea`
+  /// before switching on `AppNotification.event`. The feed shows the API's
+  /// title and body as sent.
+  static const outsideServiceAreaWire = 'service_area.outside';
 
   /// The errand state the notification announces; `null` for non-status
   /// events (price change, refund).

@@ -68,6 +68,25 @@ class ErrandRepository {
         await _api.patchMap('/errands/$errandId', data: {'title': title}),
       );
 
+  /// Partial edit (`PATCH /errands/:id` `{ title?, deadlineAt? }`): sends
+  /// only the fields set on [update]. Returns the updated errand. See
+  /// [ErrandUpdate] for the rules and error codes.
+  Future<Errand> update(String errandId, ErrandUpdate update) async =>
+      Errand.fromJson(
+        await _api.patchMap('/errands/$errandId', data: update.toJson()),
+      );
+
+  /// Customer sets a new deadline before payment, or `null` to switch back
+  /// to `Flexible` (`PATCH /errands/:id` `{ deadlineAt }`, rows 237, 243,
+  /// 244). This is how the customer answers
+  /// [ApiErrorCodes.deadlinePassedBeforePayment]. Throws
+  /// [NitumeApiException] with [ApiErrorCodes.deadlineInPast],
+  /// [ApiErrorCodes.deadlineNotEditable] or
+  /// [ApiErrorCodes.deadlineCustomerOnly] (read it with
+  /// [NitumeApiException.deadlineProblem]).
+  Future<Errand> setDeadline(String errandId, DateTime? deadlineAt) =>
+      update(errandId, const ErrandUpdate().withDeadline(deadlineAt));
+
   /// Newest first, cursor-paginated (`GET /errands?status=A,B`). Customers
   /// never see their own drafts in this list.
   Future<ErrandPage> list({
@@ -98,8 +117,9 @@ class ErrandRepository {
     return (data['count'] as num?)?.toInt() ?? 0;
   }
 
-  /// Task defaults (`GET /errands/defaults`, row 221):
-  /// `{ defaultDeadlineHours }` for the customer `Flexible` deadline caption
+  /// Task defaults (`GET /errands/defaults`, rows 221, 235):
+  /// `{ defaultDeadlineHours, defaultDeadlineStartsAt }` for the customer
+  /// `Flexible` deadline caption
   /// (`v-new-details`). Any signed-in role may read it.
   Future<ErrandDefaults> defaults() async =>
       ErrandDefaults.fromJson(await _api.getMap('/errands/defaults'));
