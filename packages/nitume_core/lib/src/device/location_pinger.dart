@@ -25,7 +25,9 @@ class LocationPing {
 }
 
 /// What the pinger is doing (owner row 123). Modes compare by value, so
-/// setting the same mode again is a no-op.
+/// setting the same mode again changes nothing, except that a
+/// [PingActiveJob] whose stream the system ended restarts it (foreground
+/// only, see [LocationPinger.setMode]).
 sealed class PingMode {
   const PingMode();
 }
@@ -106,8 +108,10 @@ enum PingerStatus {
 /// background updates) is only ever **started** while the app is in the
 /// foreground. Set while the app is in the background, or when the system
 /// ended the stream (service stopped), it waits ([waitingForForeground])
-/// and starts on the next `setAppForeground(true)`. Once started it keeps
-/// running in the background until the mode changes. Switching from one
+/// and starts on the next `setAppForeground(true)`, or at once when
+/// `setMode` is called again with the same job while the app is visible.
+/// Once started it keeps running in the background until the mode
+/// changes. Switching from one
 /// [PingActiveJob] to another keeps the running stream. The pinger never
 /// asks for a permission; a refusal only sets [status].
 ///
@@ -162,9 +166,17 @@ class LocationPinger {
   /// next `setAppForeground(true)`.
   bool get waitingForForeground => _mode is PingActiveJob && _sub == null;
 
-  /// Switches cadence. Setting the same mode again is a no-op.
+  /// Switches cadence. Setting the same mode again is a no-op, with one
+  /// exception: the same [PingActiveJob] while its stream is not running
+  /// ([waitingForForeground], e.g. the system ended it) and the app is in
+  /// the foreground restarts the stream at once instead of waiting for the
+  /// next resume. From the background it still waits (row 245). Never asks
+  /// for a permission and never throws.
   void setMode(PingMode mode) {
-    if (mode == _mode) return;
+    if (mode == _mode) {
+      if (mode is PingActiveJob && _sub == null && _foreground) _restart();
+      return;
+    }
     final previous = _mode;
     _mode = mode;
     if (previous is PingActiveJob && mode is PingActiveJob && _sub != null) {
@@ -211,18 +223,25 @@ class LocationPinger {
         // Never start the foreground service / background updates from the
         // background (row 245); wait for the app to be visible.
         if (!_foreground) return;
-        _sub = source
-            .positions(
-              interval: activeMinInterval,
-              distanceFilterMeters: activeDistanceMeters,
-              background: true,
-            )
-            .listen(
-              (p) => _onActiveFix(p, run),
-              onError: (Object _) =>
-                  _setStatus(PingerStatus.locationUnavailable),
-              onDone: () => _onActiveDone(run),
-            );
+        try {
+          _sub = source
+              .positions(
+                interval: activeMinInterval,
+                distanceFilterMeters: activeDistanceMeters,
+                background: true,
+              )
+              .listen(
+                (p) => _onActiveFix(p, run),
+                onError: (Object _) =>
+                    _setStatus(PingerStatus.locationUnavailable),
+                onDone: () => _onActiveDone(run),
+              );
+        } on Object {
+          // A source that fails to open never escapes; the heartbeat keeps
+          // trying current() and a later setMode / resume retries.
+          _sub = null;
+          _setStatus(PingerStatus.locationUnavailable);
+        }
         _armHeartbeat(run);
     }
   }
@@ -283,7 +302,8 @@ class LocationPinger {
 
   /// The system ended the stream (e.g. it stopped the service). The
   /// heartbeat keeps trying `current()`; the stream restarts on the next
-  /// `setAppForeground(true)` (never from the background).
+  /// `setAppForeground(true)`, or on `setMode` with the same job while the
+  /// app is in the foreground (never from the background).
   void _onActiveDone(int run) {
     if (run != _run) return;
     _sub = null;
