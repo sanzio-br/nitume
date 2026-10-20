@@ -54,6 +54,14 @@ class _Fix implements PositionSource {
   }) => const Stream.empty();
 }
 
+/// Waits (up to ~2 s) for background file clean-up, which runs unawaited
+/// after dispose.
+Future<void> _until(bool Function() done) async {
+  for (var i = 0; i < 400 && !done(); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+}
+
 void main() {
   final now = DateTime.utc(2026, 10, 13, 7, 31);
   late Directory cache;
@@ -183,7 +191,7 @@ void main() {
           .captureAndUpload('e1', type: EvidenceType.photo);
       expect(pickerFilesLeft(), isTrue);
       uploads.releaseAll();
-      await Future<void>.delayed(Duration.zero);
+      await _until(() => !pickerFilesLeft());
       expect(pickerFilesLeft(), isFalse);
     });
 
@@ -200,7 +208,7 @@ void main() {
       expect(item.canRetry, isTrue);
       expect(queue.pending, isEmpty);
       u.dispose();
-      await Future<void>.delayed(Duration.zero);
+      await _until(() => !pickerFilesLeft());
       expect(pickerFilesLeft(), isFalse);
     });
 
@@ -306,8 +314,6 @@ void main() {
   });
 
   group('C-V2: uploads outlive the screen', () {
-    Future<void> settle() => Future<void>.delayed(Duration.zero);
-
     /// Real file I/O runs before the upload call: wait for it.
     Future<void> untilUploading() async {
       for (var i = 0; i < 500 && calls.isEmpty; i++) {
@@ -349,7 +355,7 @@ void main() {
       gate!.complete();
       final item = await pending;
       expect(item!.status, EvidenceUploadStatus.failed);
-      await settle();
+      await _until(() => kept().isEmpty);
       expect(kept(), isEmpty);
     });
 
