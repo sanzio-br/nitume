@@ -684,6 +684,34 @@ class FakePayouts extends RunnerPayoutRepository {
   }
 }
 
+/// Push fake: the test adds taps to [opened].
+class FakePushService implements PushService {
+  final opened = StreamController<PushMessage>.broadcast();
+  PushMessage? initial;
+
+  @override
+  bool get isAvailable => true;
+  @override
+  Future<bool> requestPermission() async => true;
+  @override
+  Future<String?> getToken() async => null;
+  @override
+  Stream<String> get tokenRefreshes => const Stream.empty();
+  @override
+  Future<void> deleteToken() async {}
+  @override
+  Future<PushMessage?> initialMessage() async {
+    final m = initial;
+    initial = null;
+    return m;
+  }
+
+  @override
+  Stream<PushMessage> get openedMessages => opened.stream;
+  @override
+  Stream<PushMessage> get foregroundMessages => const Stream.empty();
+}
+
 /// Socket fake: both client interfaces, events pushed by the test.
 class FakeRealtime implements RealtimeClient, RunnerRealtimeClient {
   final _state = StreamController<RealtimeConnectionState>.broadcast();
@@ -883,6 +911,7 @@ class TestBackend {
       files: files,
       payouts: payouts,
       collectLocation: false,
+      push: pushService,
       live: RunnerLive(
         client: realtime,
         runner: realtime,
@@ -904,6 +933,7 @@ class TestBackend {
   final files = FakeFiles();
   final payouts = FakePayouts();
   final realtime = FakeRealtime();
+  final pushService = FakePushService();
   DateTime now = testNow;
   late final AppServices services;
 

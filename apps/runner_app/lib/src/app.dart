@@ -11,6 +11,7 @@ import 'screens/auth/splash_screen.dart';
 import 'screens/shell/runner_shell.dart';
 import 'services/app_services.dart';
 import 'services/onboarding_routing.dart';
+import 'services/push_routing.dart';
 import 'services/session.dart';
 import 'util/display.dart';
 
@@ -56,6 +57,7 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp>
   @override
   void dispose() {
     _session.removeListener(_onSession);
+    _pushSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -77,7 +79,10 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp>
     if (next == SessionStatus.signedIn) {
       widget.services.shell.reset();
       unawaited(widget.services.startSession());
+      _listenPush();
     } else if (_status == SessionStatus.signedIn) {
+      _pushSub?.cancel();
+      _pushSub = null;
       unawaited(widget.services.endSession());
     }
     setState(() => _status = next);
@@ -100,6 +105,27 @@ class _NitumeRunnerAppState extends State<NitumeRunnerApp>
         ?..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  StreamSubscription<PushMessage>? _pushSub;
+
+  /// Push taps deep-link by runner kind once signed in (`_shared.md` §10).
+  void _listenPush() {
+    final push = widget.services.push;
+    _pushSub?.cancel();
+    _pushSub = push.openedMessages.listen(_openPush);
+    push
+        .initialMessage()
+        .then((m) {
+          if (m != null) _openPush(m);
+        })
+        .catchError((Object _) {});
+  }
+
+  void _openPush(PushMessage m) {
+    final nav = _navigatorKey.currentState;
+    if (!mounted || nav == null || _status != SessionStatus.signedIn) return;
+    routePush(m, nav, widget.services);
   }
 
   Future<void> _routeOnboarding() async {
