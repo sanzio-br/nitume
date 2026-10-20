@@ -160,11 +160,17 @@ export interface AppConfig {
     /** Geofence radius around the arrival point (§4.3: e.g. 100 m). */
     geofenceRadiusMeters: number;
     /**
-     * Write pings to PostgreSQL (last-known position + sampled trail).
-     * Off until the owner decides location retention (BOARD row 247 /
-     * RQ-35): pings then live only in Redis (TTL `liveTtlSeconds`).
+     * Row 247 (owner, 2026-10-20): write job pings to PostgreSQL (the
+     * sampled `runner_locations` trail, linked to the task). Idle pings (no
+     * job) are never written, whatever this says: they stay Redis presence
+     * only (TTL `liveTtlSeconds`). On by default; false keeps job pings in
+     * Redis only too.
      */
     persistEnabled: boolean;
+    /** Row 247: job location samples are deleted this many days after the task ends (default 90). */
+    retentionDays: number;
+    /** Row 247: when the daily job-location purge runs (cron, Africa/Nairobi). */
+    retentionCron: string;
   };
   push: {
     fcm: {
@@ -384,7 +390,9 @@ export const configuration = (): AppConfig => ({
     liveTtlSeconds: int(process.env.LOCATION_LIVE_TTL_SECONDS, 60),
     trailEveryN: Math.max(1, int(process.env.LOCATION_TRAIL_EVERY_N, 10)),
     geofenceRadiusMeters: int(process.env.LOCATION_GEOFENCE_RADIUS_M, 100),
-    persistEnabled: (process.env.LOCATION_PERSIST_ENABLED ?? 'false').trim().toLowerCase() === 'true',
+    persistEnabled: (process.env.LOCATION_PERSIST_ENABLED ?? 'true').trim().toLowerCase() !== 'false',
+    retentionDays: Math.max(1, int(process.env.LOCATION_RETENTION_DAYS, 90)),
+    retentionCron: process.env.LOCATION_RETENTION_CRON || '30 3 * * *',
   },
   // FCM push (row 31). All three set -> firebase-admin; otherwise a no-op.
   // The private key may use literal \n sequences (single-line env value).

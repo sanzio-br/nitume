@@ -36,7 +36,7 @@ const build = (status: ErrandStatus, withRunner = true) => {
     ),
   };
   const runners = {
-    lastKnownLocation: vi.fn(() =>
+    lastJobLocation: vi.fn(() =>
       Promise.resolve({ lat: -4.05, lng: 39.66, capturedAt: new Date('2026-10-07T08:00:00Z') }),
     ),
   };
@@ -46,12 +46,12 @@ const build = (status: ErrandStatus, withRunner = true) => {
 const viewer = { role: 'customer', userId: 'u-1' };
 
 describe('LocationService.trackingFor (A-3)', () => {
-  it('returns points, runner and last-known position while live', async () => {
+  it('returns points, runner and the newest job sample while live (row 247)', async () => {
     const { service, runners } = build(ErrandStatus.RUNNER_EN_ROUTE);
 
     const snap = await service.trackingFor('e-1', viewer);
 
-    expect(runners.lastKnownLocation).toHaveBeenCalledWith('runner-1');
+    expect(runners.lastJobLocation).toHaveBeenCalledWith('runner-1', 'e-1');
     expect(snap).toEqual({
       errandId: 'e-1',
       status: ErrandStatus.RUNNER_EN_ROUTE,
@@ -70,7 +70,7 @@ describe('LocationService.trackingFor (A-3)', () => {
     const snap = await service.trackingFor('e-1', viewer);
     expect(snap.live).toBe(false);
     expect(snap.runnerLocation).toBeNull();
-    expect(runners.lastKnownLocation).not.toHaveBeenCalled();
+    expect(runners.lastJobLocation).not.toHaveBeenCalled();
   });
 
   it('has no runner before assignment', async () => {
@@ -89,7 +89,7 @@ describe('LocationService.trackingFor live position (RA-4, row 247)', () => {
     const snap = await service.trackingFor('e-1', viewer);
     expect(live.liveFor).toHaveBeenCalledWith('runner-1');
     expect(snap.runnerLocation).toEqual({ lat: -1.1, lng: 36.9, capturedAt: new Date('2026-10-19T10:00:00Z') });
-    expect(runners.lastKnownLocation).not.toHaveBeenCalled();
+    expect(runners.lastJobLocation).not.toHaveBeenCalled();
   });
 
   it('falls back to the last-known value when Redis has none', async () => {

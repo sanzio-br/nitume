@@ -47,9 +47,10 @@ export interface LocationMessage {
   ts: string;
 }
 
+/** Row 247: only job pings are ever queued for PostgreSQL, so `errandId` is always set. */
 export interface LocationPersistJob {
   runnerProfileId: string;
-  errandId: string | null;
+  errandId: string;
   lat: number;
   lng: number;
   capturedAt: string;
@@ -171,14 +172,15 @@ export const parsePing = (body: unknown, now: Date): ParsedPing | null => {
 
 /**
  * RA-4: runner `location:ping` intake (§4.2, §4.3). Synchronous work is
- * Redis only (throttle, GEO cache, live key, PUBLISH for the fan-out);
- * every PostgreSQL write goes through the `location` queue (§9), and the
- * position writes are off until location retention is decided (row 247). Pings are
+ * Redis only (throttle, live key, PUBLISH for the fan-out); every
+ * PostgreSQL write goes through the `location` queue (§9). Pings are
  * accepted only from an online or busy runner (row 123: none offline) and,
  * with an `errandId`, only from the runner holding that job's accepted
  * assignment while it is RUNNER_EN_ROUTE, ARRIVED or IN_PROGRESS (rows 27,
- * 65, 183). Errand-less pings (online, no job) feed the GEO cache and the
- * last-known position, never any viewer.
+ * 65, 183). Row 247 (owner, 2026-10-20): only those job pings are stored
+ * (`location.persistEnabled`, sampled trail linked to the task, deleted
+ * `location.retentionDays` after the task ends); errand-less pings (online,
+ * no job) are Redis live presence only, never stored and never fanned out.
  */
 @Injectable()
 export class LocationIngestService {
@@ -252,9 +254,9 @@ export class LocationIngestService {
         };
         await this.redis.publish(this.redis.channel(locationChannel(ping.errandId)), JSON.stringify(message));
       }
-      // Row 247 (open): no PostgreSQL write unless persistence is switched on.
-      if (this.config?.get<boolean>('location.persistEnabled', false)) {
-        await this.enqueuePersist(runner.runnerProfileId, ping);
+      // Row 247: job pings only; idle positions stay Redis presence.
+      if (ping.errandId && job && this.config?.get<boolean>('location.persistEnabled', true)) {
+        await this.enqueuePersist(runner.runnerProfileId, ping.errandId, ping);
       }
       if (ping.errandId && job?.status === ErrandStatus.RUNNER_EN_ROUTE) {
         await this.checkGeofence(ping.errandId, runner.runnerProfileId, job, ping);
@@ -362,20 +364,19 @@ export class LocationIngestService {
   }
 
   /**
-   * Every ping moves the last-known position; the first and every Nth job
-   * ping also join the trail (§4.2). Idle pings (no errandId) never do (row
-   * 247 proposal: only job pings are ever stored).
+   * A job ping (row 247): moves `lastPingAt`; the first and every Nth also
+   * join the trail (§4.2), linked to the task.
    */
-  private async enqueuePersist(runnerProfileId: string, ping: ParsedPing): Promise<void> {
+  private async enqueuePersist(runnerProfileId: string, errandId: string, ping: ParsedPing): Promise<void> {
     const n = await this.redis.incrementWithTtl(`location:count:${runnerProfileId}`, 3600);
     const every = this.cfg('trailEveryN', 10);
     const data: LocationPersistJob = {
       runnerProfileId,
-      errandId: ping.errandId,
+      errandId,
       lat: ping.lat,
       lng: ping.lng,
       capturedAt: ping.capturedAt.toISOString(),
-      trail: ping.errandId !== null && (n % every === 1 || every === 1),
+      trail: n % every === 1 || every === 1,
     };
     // Positions are ephemeral: one attempt, never kept once done.
     await this.queue.add(LOCATION_PERSIST_JOB, data, { attempts: 1, removeOnComplete: true, removeOnFail: 100 });

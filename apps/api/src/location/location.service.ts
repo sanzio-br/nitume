@@ -55,11 +55,11 @@ export class LocationService {
     // customer, so there is no runner (and no position) to share before accept.
     const runnerId = errand.assignment?.runner?.id ?? null;
     const live = LIVE_TRACKING_STATUSES.has(errand.status) && runnerId !== null;
-    // Redis live position first (§4.2; the only store while row 247 is
-    // open), then the last-known value on runner_profiles.
+    // Redis live position first (§4.2), then the runner's newest stored
+    // sample on this task (row 247: positions are stored per job only).
     const runnerLocation =
       live && runnerId
-        ? ((await this.live?.liveFor(runnerId)) ?? (await this.runners.lastKnownLocation(runnerId)))
+        ? ((await this.live?.liveFor(runnerId)) ?? (await this.runners.lastJobLocation(runnerId, errand.id)))
         : null;
 
     return {
