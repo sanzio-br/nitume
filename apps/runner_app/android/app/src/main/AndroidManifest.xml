@@ -20,7 +20,11 @@
     <application
         android:label="Nitume Runner"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- Backup rules (owner row 255): the offline evidence folder
+             (files/nitume_evidence) is never backed up or transferred. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

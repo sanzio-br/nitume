@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and lower Auto Backup (android:fullBackupContent).
+     Evidence photos waiting to upload offline live in
+     getFilesDir()/nitume_evidence (path_provider app-support directory);
+     they never go into a device backup (owner row 255). -->
+<full-backup-content>
+    <exclude domain="file" path="nitume_evidence"/>
+</full-backup-content>
