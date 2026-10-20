@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../screens/active/evidence_capture_screen.dart';
+import '../screens/active/price_request_screen.dart';
 import '../screens/auth/otp_screen.dart';
 import '../screens/jobs/job_detail_screen.dart';
 import '../screens/location/location_disclosure_screen.dart';
@@ -32,6 +33,7 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
       final a = args! as EvidenceArgs;
       return EvidenceCaptureScreen(errandId: a.errandId, type: a.type);
     }(),
+    Routes.priceRequest => PriceRequestScreen(errandId: args! as String),
     _ => null,
   };
   if (screen == null) return null;
