@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 361–384 (`#v-new-details`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0)
 - Implementation: `apps/customer_app/lib/src/screens/wizard/details_screen.dart` (+ `task_draft.dart`) on branch `feat/customer-owner-answers`
-- Status: partial (rows 206, 221: the `Flexible` deadline caption is not built; everything else matches-design)
+- Status: matches-design (re-audit 2026-10-19, `feat/customer-round-14` @ `31b703e`, customer gap report; implementation on that branch)
 
 ## Purpose
 Collect what the runner must do, where, by when, the item budget (Buy For Me and Get It For Me only), and (for Buy For Me) a structured shopping list.

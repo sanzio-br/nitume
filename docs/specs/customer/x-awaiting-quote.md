@@ -3,7 +3,7 @@
 - Mockup: **not drawn.** Required by OA-3 (authoritative REQUESTED → QUOTED → ACCEPTED flow after the wizard preview) and OA-5 (merchant payment route chosen at checkout). Built from design-system patterns and existing mockup components (`.stk-wrap`, `.form-card`, `.receipt-row`, `.chip` column, `.pm-card`, `.cta-fixed`). Copy is **(proposed)** unless marked "mockup".
 - Shared conventions: `_shared.md` (OA-n §0, fees and routes §8)
 - Implementation: `apps/customer_app/lib/src/screens/checkout/awaiting_quote_screen.dart` on branch `feat/customer-owner-answers`
-- Status: partial (rounds 14b–15, rows 236, 237, 239, 242–244: outside-area notice, the new-deadline step, the `Deadline` line with `Change`; the rest matches-design, re-audited 2026-10-09 @ `c420265`)
+- Status: matches-design (re-audit 2026-10-19, `feat/customer-round-14` @ `31b703e`, customer gap report; implementation on that branch)
 
 ## Purpose
 One screen per errand with two main states, plus the expired-quote state of checkout and the "new quote requested" waiting state:

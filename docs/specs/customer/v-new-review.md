@@ -3,7 +3,7 @@
 - Mockup: `docs/design/nitume_customer_app.html` lines 386–408 (`#v-new-review`, overlay)
 - Shared conventions: `_shared.md` (OA-n = owner answers, §0; fees §8)
 - Implementation: `apps/customer_app/lib/src/screens/wizard/review_screen.dart` on branch `feat/customer-integrations`
-- Status: partial (round 14, row 233: the out-of-area refusal notice is new; waits for the API code; the rest matches-design)
+- Status: matches-design (re-audit 2026-10-19, `feat/customer-round-14` @ `31b703e`, customer gap report; implementation on that branch)
 
 ## Purpose
 Submit the task for its authoritative quote. A **preview** of the price, clearly labelled as an estimate (OA-3), appears here only once real pricing rates exist (row 47); until then the screen shows no price at all. Payment does **not** happen here; it happens after the customer accepts the final quote on `x-awaiting-quote` (checkout).
