@@ -30,6 +30,14 @@ String _chipIn(WidgetTester t, String rowLabel) {
       .label;
 }
 
+/// A backend whose `GET /runners/me` carries no ID checks (an API without
+/// the summary for the sides), so the records alone decide the ID tiles
+/// and rows.
+TestBackend _recordsOnly() => TestBackend()
+  ..account.current = runnerMe(
+    verification: const RunnerVerificationSummary(verified: false),
+  );
+
 Future<void> _pickFromSheet(WidgetTester t, String option) async {
   await t.tap(find.byKey(const ValueKey('id-drop-zone')));
   await t.pumpAndSettle();
@@ -40,7 +48,7 @@ Future<void> _pickFromSheet(WidgetTester t, String option) async {
 void main() {
   group('v-onboard-pending', () {
     testWidgets('rows, chips, in-review body and privacy text', (t) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [
         _of(RunnerVerificationType.phone, VerificationStatus.approved),
         _id(VerificationStatus.pending, _front),
@@ -70,7 +78,7 @@ void main() {
 
     testWidgets('one rejected ID side: Not approved, caption, Upload again '
         'opens that side', (t) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [
         _of(RunnerVerificationType.phone, VerificationStatus.approved),
         _id(VerificationStatus.approved, _front),
@@ -113,7 +121,7 @@ void main() {
     testWidgets('ID or selfie not started, none rejected: upload body', (
       t,
     ) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [
         _of(RunnerVerificationType.phone, VerificationStatus.approved),
         _id(VerificationStatus.pending, _front),
@@ -166,6 +174,97 @@ void main() {
       expect(opened, [Uri.parse('https://nitume.example/privacy')]);
     });
 
+    group('RN-L1: a side approved via an unlabelled photo', () {
+      List<RunnerVerification> records() => [
+        _of(RunnerVerificationType.phone, VerificationStatus.approved),
+        verification(
+          RunnerVerificationType.governmentId,
+          VerificationStatus.approved,
+          id: 'legacy',
+          createdAt: DateTime.utc(2026, 1, 2),
+        ),
+        _id(VerificationStatus.approved, _back),
+        _of(RunnerVerificationType.selfie, VerificationStatus.approved),
+      ];
+
+      testWidgets('from the API summary: National ID Verified', (t) async {
+        final b = TestBackend();
+        b.account.records = records();
+        b.account.current = runnerMe(
+          verification: RunnerVerificationSummary(
+            verified: false,
+            level2Missing: const [],
+            checks: [
+              check(
+                RunnerVerificationType.phone,
+                VerificationCheckStatus.approved,
+              ),
+              check(
+                RunnerVerificationType.governmentId,
+                VerificationCheckStatus.approved,
+                side: _front,
+              ),
+              check(
+                RunnerVerificationType.governmentId,
+                VerificationCheckStatus.approved,
+                side: _back,
+              ),
+              check(
+                RunnerVerificationType.selfie,
+                VerificationCheckStatus.approved,
+              ),
+              check(
+                RunnerVerificationType.paymentIdentity,
+                VerificationCheckStatus.missing,
+              ),
+            ],
+          ),
+        );
+        await b.pumpScreen(t, const OnboardPendingScreen());
+        expect(_chipIn(t, 'National ID'), 'Verified');
+        expect(find.text('Upload again'), findsNothing);
+        expect(find.text('Front photo not approved'), findsNothing);
+      });
+
+      testWidgets('me() fails: the records alone, same result', (t) async {
+        final b = TestBackend();
+        b.account.records = records();
+        b.account.meError = networkError;
+        await b.pumpScreen(t, const OnboardPendingScreen());
+        expect(_chipIn(t, 'National ID'), 'Verified');
+        expect(_chipIn(t, 'Selfie / liveness check'), 'Verified');
+        expect(find.text('Upload again'), findsNothing);
+      });
+
+      testWidgets('the summary wins over the records', (t) async {
+        final b = TestBackend();
+        b.account.records = [
+          _id(VerificationStatus.pending, _front),
+          _id(VerificationStatus.pending, _back),
+        ];
+        b.account.current = runnerMe(
+          verification: RunnerVerificationSummary(
+            verified: false,
+            checks: [
+              check(
+                RunnerVerificationType.governmentId,
+                VerificationCheckStatus.approved,
+                side: _front,
+              ),
+              check(
+                RunnerVerificationType.governmentId,
+                VerificationCheckStatus.rejected,
+                side: _back,
+              ),
+            ],
+          ),
+        );
+        await b.pumpScreen(t, const OnboardPendingScreen());
+        expect(_chipIn(t, 'National ID'), 'Not approved');
+        expect(find.text('Back photo not approved'), findsOneWidget);
+      });
+    });
+
     testWidgets('load error offers Try again', (t) async {
       final b = TestBackend();
       b.account.recordsError = networkError;
@@ -183,7 +282,7 @@ void main() {
     testWidgets('front then back upload with their side, then Continue', (
       t,
     ) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [];
       await b.pumpScreen(t, const OnboardIdScreen());
 
@@ -242,7 +341,7 @@ void main() {
     testWidgets('a gallery photo above 10 MB is discarded, never sent', (
       t,
     ) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [];
       // Gallery picks are no longer downscaled: the full-size original.
       b.files.size = VerificationDocumentRules.maxBytes + 1;
@@ -272,7 +371,7 @@ void main() {
     });
 
     testWidgets('upload error: Not uploaded, notice, Retry resends', (t) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [];
       b.account.uploadErrors.add(networkError);
       await b.pumpScreen(t, const OnboardIdScreen());
@@ -289,7 +388,7 @@ void main() {
     });
 
     testWidgets('uploaded sides from the server enable Continue', (t) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [
         _id(VerificationStatus.pending, _front),
         _id(VerificationStatus.pending, _back),
@@ -307,7 +406,7 @@ void main() {
     });
 
     testWidgets('first run: back asks Leave verification?', (t) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [];
       await b.pumpScreen(t, const RunnerShell());
       Navigator.of(t.element(find.byType(RunnerShell))).push(
@@ -341,7 +440,7 @@ void main() {
     testWidgets('selfie upload enables Submit, which shows the status', (
       t,
     ) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [
         _id(VerificationStatus.pending, _front),
         _id(VerificationStatus.pending, _back),
@@ -392,7 +491,7 @@ void main() {
     });
 
     testWidgets('a selfie above 10 MB is never sent', (t) async {
-      final b = TestBackend();
+      final b = _recordsOnly();
       b.account.records = [];
       b.files.size = VerificationDocumentRules.maxBytes + 1;
       await b.pumpScreen(t, const OnboardSelfieScreen());
