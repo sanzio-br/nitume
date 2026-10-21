@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_runner_app.html` lines 340–352 (`#v-onboard-pending`, overlay)
 - Shared conventions: `_shared.md` (§9)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/runner_app/lib/src/screens/onboarding/onboard_pending_screen.dart` (see `SCREEN_MAP.md`)
+- Status: partial (RN-L1 addendum 2026-10-21 not built; otherwise matches-design)
 
 ## Purpose
 Show the status of each verification check, explain what happens next, and let the runner fix a rejected item. Also the target of Profile → `Verification documents` (the mockup row has no target; this screen is the proposed one).
@@ -22,7 +22,7 @@ None.
 2. White card C-07 (margin 0 20 12, padding 16): four R-05 rows (padding 12 0, hairline between), label 13 Sans left, C-05 **small status chip** right (mockup: coloured text; design system: amber/red only as chip accents):
    - `Phone number`, `National ID`, `Selfie / liveness check`, `M-Pesa identity match`.
    - Rejected rows add, under the label, a C-04 link `Upload again` (ID) / `Retake selfie` (selfie).
-   - **`National ID` combines the two sides (row 209, owner 2026-10-19)**: front and back are two records (`side`); the newest record of each side counts. The row is `Verified` only if both sides are approved; `Not approved` if either side is rejected; otherwise `In review` if either side is pending; otherwise `Not started` (a side not uploaded yet, none pending or rejected; proposed). A legacy ID record without a `side` does not count (proposed). When one side is rejected, a caption 11.5 slate-600 under the label names it: `Front photo not approved` / `Back photo not approved` / `Both photos not approved` (proposed), and `Upload again` opens `v-onboard-id` with that side selected.
+   - **`National ID` combines the two sides (row 209, owner 2026-10-19)**: front and back are two records (`side`); the newest record of each side counts. The row is `Verified` only if both sides are approved; `Not approved` if either side is rejected; otherwise `In review` if either side is pending; otherwise `Not started` (a side not uploaded yet, none pending or rejected; proposed). A legacy ID record without a `side` counts only by the row-268 rule (approved fills a missing side; superseded 2026-10-21, see the RN-L1 section below). When one side is rejected, a caption 11.5 slate-600 under the label names it: `Front photo not approved` / `Back photo not approved` / `Both photos not approved` (proposed), and `Upload again` opens `v-onboard-id` with that side selected.
 3. Body 12.5 slate-600, padding 14 20 0 (copy below, changes with the overall state).
 3a. Privacy paragraph (row 158), 11.5 slate-600 Fira Sans, padding 12 20 0: the owner's full sentence (Copy), then on its own line a C-04 link `Privacy Policy` (48 dp hit area) → `AppConfig.privacyLink`, opened externally; the link is hidden until `NITUME_PRIVACY_URL` holds the real published URL (no placeholder; row 173). Shown in every overall state.
 4. Fixed bottom C-03 outline `Back to app` (pill; mockup `.cta-outline` radius 14).
@@ -79,3 +79,31 @@ Rows read as `National ID, verified`; chips are not colour-only (text label). CT
 
 ## Questions
 - None (row 173 decided: the link appears once the URL is configured; the URL itself is still to be published).
+
+## RN-L1 addendum (2026-10-21): sides approved via an unlabelled photo, Level drops
+
+Applies to this screen in both entries (onboarding and Profile → `Verification documents`). Rows 263, 266, 268 answered 2026-10-21; rows 269–274 open. Core: `fix/core-runner-level2-missing` (`2c391fc`, `cd8b598`).
+
+### Data
+- Load `GET /runners/me/verifications` and `GET /runners/me` in parallel. `VerificationRows` builds its documents with `RunnerVerificationDocuments.fromRecords(records, summary: me.verification)`; the `National ID` row reads `docs.nationalIdStatus`, the caption reads `docs.idRejectedSides` (both now use `idStatusFor`, row 268).
+- `GET /runners/me` fails (or an older API sends no ID checks): render from the records alone; core falls back to the same row-268 rule. `GET /runners/me/verifications` fails: the C-33 load error as today.
+
+### How a side approved via an unlabelled photo shows
+- Both sides approved (labelled, unlabelled or mixed): `National ID` chip `Verified` (success), no caption, no link. Same as any approved ID.
+- One side approved via an unlabelled photo, the other labelled:
+  - other side `pending` → `In review`; no caption;
+  - other side `rejected` → `Not approved`, caption `Back photo not approved` (or `Front …`), `Upload again` → `v-onboard-id` with that side selected; the approved side is shown done there (no re-capture, `v-onboard-id` RN-L1);
+  - other side `missing` → `Not started` and the body `Upload your ID and a selfie to start accepting jobs.` (unchanged copy).
+- Never a thumbnail (this screen shows no ID image at all). No new copy.
+
+### Level 1 after a drop (row 263 (a), row 266): what the runner sees here
+A verified Level-2 runner becomes not verified **and** Level 1 in the same moment a Level-2 check stops being approved. Existing copy only:
+| Cause | National ID / Selfie row | Body | CTA |
+|---|---|---|---|
+| Ops reject the ID side or selfie (push `verification decided`, RA-6, or next open / resume) | `Not approved` (+ side caption for the ID) + `Upload again` / `Retake selfie` | `Some checks weren't approved. Fix them below and we'll review again.` | `Back to app` (C-03) |
+| The runner re-uploads (new `pending` record) | `In review` | mockup body (`Verification usually takes under 24 hours. …`) | `Back to app` |
+| Row-265 re-check at deploy (no action of the runner) | whatever the API says (such runners are not verified already) | unchanged | unchanged |
+No level label, no downgrade notice and no reason are shown (the level is on `v-profile` only when verified). Withdrawn offers: `v-jobs` (row 266). Whether the runner is also set offline is row 273 (open): no copy until it is answered.
+
+### Current vs design (2026-10-21, `onboard_pending_screen.dart`)
+1. (blocker) `VerificationRows(records)` calls `fromRecords(records)` without the summary and the screen loads only `verifications()`. It already gets the row-268 rule through the core fallback once the branch is merged, but the API summary is the source of truth. Fix: also load `account.me()` and pass `summary: me.verification` (constructor parameter on `VerificationRows`); keep rendering when `me()` fails.

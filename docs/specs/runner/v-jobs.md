@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_runner_app.html` lines 183–208 (`#v-jobs`, root view) + tab bar 285–290
 - Shared conventions: `_shared.md` (§1 shell, §6 states, §8 money, §9 gate, §10 live data)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/runner_app/lib/src/screens/jobs/jobs_tab.dart` (see `SCREEN_MAP.md`)
+- Status: partial (RN-L1 addendum 2026-10-21: two small items; otherwise matches-design)
 
 ## Purpose
 Home tab. The runner switches availability on or off and sees the job offers addressed to them, with pay, distance and purchase terms, and accepts or declines each.
@@ -119,3 +119,15 @@ Proposed:
 ## Questions
 - Rows 150, 157, 167, 185 and 205 settle what happens after a lapse and at the deadline (AQ-25 answered by row 205: the offer ends at once).
 - RQ-32 decided (BOARD row 229, owner 2026-10-19): the runner must pick a reason; `Other reason` has no free-text box. Rows 231 (ops feed body) and 232 (no feed after the admin's own expiry) change no runner copy.
+
+## RN-L1 addendum (2026-10-21): verification card, Level drops
+
+Rows 263, 266, 268 answered 2026-10-21; rows 272, 273, 274 open (not decided here).
+
+- **Verification card (re-checked, no change)**: `_verifyTarget` / `_verifyState` read `me.verification.checks`; with the API on `feat/api-verification-answers` those ID front / back statuses already count an approved unlabelled photo (row 268), so such a side is `approved`, never `missing`, and the card never sends the runner to `v-onboard-id` for it. Copy unchanged (`We're reviewing your documents. …` / `Some checks weren't approved. …` / `Upload your ID and a selfie to start accepting jobs.`; `View status` / `Continue verification`). `level2Missing` is not needed here (it also lists pending and rejected checks, so it cannot tell "capture" from "in review"). Add a test: ID front check `approved` with no front record, back and selfie `pending` → reviewing copy, `View status`.
+- **Drop to Level 1 while on this tab** (row 263 (a), 266): open offers arrive as `job:offer_withdrawn` (reason `expired`): each card goes with the usual `That offer is no longer available.` (no reason). Accepted and in-progress jobs continue on `v-active`. The verification card then replaces the offers with the rejected or reviewing copy above.
+  1. (minor, proposed) Today `me` is only reloaded on resume, reconnect or a refused action, so after the withdrawals the tab can sit with `me.isVerified == true`, no offers and an enabled switch. Fix: after `_onWithdrawn` removes a card, `_load(silent: true)` (one reload, coalesced if several arrive) so the card and the disabled switch appear.
+     Built 2026-10-21 (`fbeb0da`): accepted at audit with a 500 ms coalescing window (timer restarted by each withdrawal; one `_load(silent: true)` after the last), gap report §26.
+  2. (minor, proposed; depends on row 273, open) A dropped runner may still be `online` (the API does not set offline today). The switch is disabled whenever not verified, so the runner sees `Online` and cannot turn it off while pings continue. Proposed: when not verified, the switch can still go **off** (never on); the disabled reason `You can go online once your verification is approved.` shows only while offline. If the owner answers row 273 yes (server sets offline), this case does not arise and no runner copy is added.
+- Row 272 (open): a deploy re-check that cannot push `job:offer_withdrawn` is covered by the next load / 20 s poll; no change.
+- Row 274 (open) is customer-facing only.

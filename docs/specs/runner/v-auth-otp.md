@@ -61,3 +61,15 @@ Errors and states: as the customer spec (wrong code with attempts left, expired 
 
 ## Questions
 - None new.
+
+## RN-L1 addendum (2026-10-21): onboarding routing step 3 (`services/onboarding_routing.dart`)
+
+Rows 263, 268 answered 2026-10-21. Step 3 decides from `GET /runners/me` `verification`, with an approved unlabelled ID photo counting for a missing side (row 268). Order:
+1. `me.isVerified` → shell (`v-jobs`), unchanged.
+2. **`me.verification.level2Missing` present** (API on `feat/api-verification-answers`):
+   - `[]` (`meetsLevel2 == true`): ID and selfie are done → `pending` (shell + `v-onboard-pending`; only phone or M-Pesa identity remains). Never `v-onboard-id` / `v-onboard-selfie`, and no `GET /runners/me/verifications` call is needed.
+   - non-empty: the list also names **pending and rejected** checks (it is "newest record not approved"), so it says *which* checks to look at, not that they must be captured. For each listed entry in API order, read its status from `me.verification.checkFor(...)` (absent check = `missing`): `government_id_front` / `government_id_back` with status `missing` → `id`; else `selfie` with status `missing` → `selfie`; otherwise (only pending / rejected entries) → `pending`. A rejected item is fixed from `v-onboard-pending` (`Upload again` / `Retake selfie`), as today.
+3. **`level2Missing` absent** (older API, `null`): fall back to `RunnerVerificationDocuments.fromRecords(await account.verifications(), summary: me.verification)`: `idStatusFor(front)` or `idStatusFor(back)` is `missing` → `id`; `selfie == null` → `selfie`; else `pending`. Replaces `docs.idFront == null || docs.idBack == null`, which sent a runner with an approved unlabelled photo back to capture.
+4. Any failure → shell (unchanged).
+
+Effect: a runner whose ID side is approved only through an unlabelled photo is never routed to `v-onboard-id`; a runner who dropped to Level 1 (row 263 (a)) lands on the shell with `v-onboard-pending` showing the rejected or in-review row (existing copy). Tests: `level2Missing: []` + not verified → `pending`; `[government_id_back, selfie]` with back `missing` → `id`; with back `pending`, selfie `missing` → `selfie`; all listed `pending`/`rejected` → `pending`; `null` + one approved unlabelled record + labelled back pending + selfie → `pending`.
