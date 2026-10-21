@@ -94,7 +94,7 @@ export class RunnersController {
    * `?status=pending|approved|rejected&cursor&limit` -> `{ items, nextCursor }`.
    * Each item: the check (no storage key; `hasDocument`, `purgedAt`, `side`),
    * `runnerProfile { id, userId, verificationLevel, serviceAreas[{ id, name }],
-   * appliedAt }`, `user { id, phone, displayName, shortName }` (row 260),
+   * appliedAt, level2Missing }`, `user { id, phone, displayName, shortName }` (row 260),
    * `reviewer`, `reReviews[]`.
    */
   @UseGuards(JwtAuthGuard)
@@ -113,10 +113,10 @@ export class RunnersController {
    * `?status=pending|approved|rejected|all` (default `pending`) `&cursor&limit`
    * (1-100, default 20) -> `{ items, nextCursor, total, awaitingReviewCount }`.
    * Item: `{ runnerProfile { id, userId, verificationLevel, serviceAreas[{ id,
-   * name }], appliedAt }, user { id, phone, displayName, shortName },
+   * name }], appliedAt, level2Missing }, user { id, phone, displayName, shortName },
    * checks[] (every record of the runner, history included, newest first,
    * same shape as GET /runners/verifications items), pendingCount,
-   * oldestPendingAt, verification { verified, checks[{ type, side, status }] } }`.
+   * oldestPendingAt, verification { verified, checks[{ type, side, status }], level2Missing } }`.
    * Runners with only phone records are left out. "Latest" = newest record
    * of each (type, side). `pending`: any latest record pending, oldest
    * pending first (A-9: a pending record superseded by a newer upload of
@@ -191,7 +191,7 @@ export class RunnersController {
   /**
    * RA-18: the runner's own view (`RunnerSelfView`): shortName, skills,
    * serviceAreas `[{ id, name }]`, availability, maxPurchaseAdvance and
-   * `verification { verified, checks[{ type, side, status }] }`. No trust
+   * `verification { verified, checks[{ type, side, status }], level2Missing }`. No trust
    * score or stored location. 404 without a runner profile.
    */
   @UseGuards(JwtAuthGuard)

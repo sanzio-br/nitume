@@ -60,9 +60,12 @@ const build = (opts: { raceTo?: VerificationStatus; extra?: Row[]; areas?: strin
     findOne: vi.fn(({ where }: { where: Record<string, unknown> }) =>
       Promise.resolve(rows.find((r) => matches(r, where)) ?? null),
     ),
-    find: vi.fn(({ where }: { where: { runnerProfileId: string } }) =>
-      Promise.resolve(rows.filter((r) => r.runnerProfileId === where.runnerProfileId)),
-    ),
+    find: vi.fn(({ where }: { where: { runnerProfileId: string | { value: string[] } } }) => {
+      const wanted = where.runnerProfileId;
+      // A string, or TypeORM's In([...]) (a FindOperator with `value`).
+      const ids = typeof wanted === 'string' ? [wanted] : wanted.value;
+      return Promise.resolve(rows.filter((r) => ids.includes(r.runnerProfileId)));
+    }),
     update: vi.fn((where: Record<string, unknown>, patch: Partial<RunnerVerification>) => {
       events.push('verification.update');
       if (opts.raceTo) {
@@ -256,6 +259,7 @@ describe('PATCH /runners/:runnerId/verifications/:verificationId', () => {
         verificationLevel: '1_basic',
         serviceAreas: [{ id: 'westlands', name: 'Westlands' }],
         appliedAt: APPLIED,
+        level2Missing: ['government_id_back', 'selfie'],
       },
       user: { id: 'u-1', phone: '+254700000001', displayName: 'Mary Wanjiku', shortName: 'Mary W.' },
       reviewer: { id: 'admin-1', displayName: 'Verifier' },
@@ -291,6 +295,7 @@ describe('A-4 / row 261: Level 2 needs ID front, ID back and selfie approved', (
     expect(b.events).toEqual(['verification.update', 'profile.lock', 'profile.update', 'commit']);
     expect(b.transaction).toHaveBeenCalledTimes(1);
     expect(view.runnerProfile?.verificationLevel).toBe('2_id_verified');
+    expect(view.runnerProfile?.level2Missing).toEqual([]);
   });
 
   it('approving the selfie last also re-evaluates the rule', async () => {

@@ -26,7 +26,14 @@ import {
 import { UsersService } from '../users/users.service';
 import { shortNameOf } from './short-name';
 import { ServiceArea, ServiceAreaOption, areasContaining, listedAreaIds, serviceAreaOptionsOf } from './service-areas';
-import { ID_VERIFIED_TYPES, VerificationSummary, meetsIdVerifiedRule, verificationSummaryOf } from './verification-summary';
+import {
+  ID_VERIFIED_TYPES,
+  Level2Check,
+  VerificationSummary,
+  level2MissingOf,
+  meetsIdVerifiedRule,
+  verificationSummaryOf,
+} from './verification-summary';
 
 /** Skills a runner may choose in the MVP (OA-18: Business Tasks not offered). */
 export const OFFERED_SKILLS: readonly RunnerSkill[] = [
@@ -123,6 +130,8 @@ export interface AdminRunnerRef {
   serviceAreas: ServiceAreaOption[];
   /** When the runner applied: the runner profile's `createdAt`. */
   appliedAt: Date;
+  /** N-L1: Level 2 checks not met (`level2MissingOf`), ID front, ID back, selfie order; [] when met. */
+  level2Missing: Level2Check[];
 }
 
 export interface AdminRunnerUser {
@@ -1091,7 +1100,7 @@ export class RunnersService {
     });
   }
 
-  /** Runner and user refs per profile id: three batched queries, whatever the count (row 260). */
+  /** Runner and user refs per profile id: four batched queries, whatever the count (row 260, N-L1). */
   private async adminRunnerRefs(
     profileIds: string[],
   ): Promise<Map<string, { runnerProfile: AdminRunnerRef; user: AdminRunnerUser | null }>> {
@@ -1107,6 +1116,14 @@ export class RunnersService {
     for (const a of areas) {
       areasOf.set(a.runnerProfileId, [...(areasOf.get(a.runnerProfileId) ?? []), a.area]);
     }
+    const checks = await this.verifications.find({
+      where: { runnerProfileId: In(ids) },
+      select: { id: true, runnerProfileId: true, verificationType: true, side: true, status: true, createdAt: true },
+    });
+    const checksOf = new Map<string, RunnerVerification[]>();
+    for (const c of checks) {
+      checksOf.set(c.runnerProfileId, [...(checksOf.get(c.runnerProfileId) ?? []), c]);
+    }
     for (const p of profiles) {
       const contact = contacts.get(p.userId);
       out.set(p.id, {
@@ -1116,6 +1133,7 @@ export class RunnersService {
           verificationLevel: p.verificationLevel,
           serviceAreas: this.listedAreas(areasOf.get(p.id) ?? []),
           appliedAt: p.createdAt,
+          level2Missing: level2MissingOf(checksOf.get(p.id) ?? []),
         },
         user: contact
           ? {

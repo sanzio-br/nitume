@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { RunnerVerificationType as T, VerificationStatus as S } from '../common/enums';
 import { RunnerVerificationSide as Side } from './runner-verification.entity';
-import { ID_VERIFIED_CHECKS, REQUIRED_CHECKS, meetsIdVerifiedRule, verificationSummaryOf } from './verification-summary';
+import {
+  ID_VERIFIED_CHECKS,
+  REQUIRED_CHECKS,
+  level2MissingOf,
+  meetsIdVerifiedRule,
+  verificationSummaryOf,
+} from './verification-summary';
 
 /** Row 261: the one shared definition of "ID verified" (Level 2). */
 const at = (iso: string) => new Date(iso);
@@ -50,6 +56,7 @@ describe('meetsIdVerifiedRule', () => {
     it('one approved unlabelled record fills one side only (front first)', () => {
       const rows = [r(T.GOVERNMENT_ID, null, S.APPROVED), selfie];
       expect(meetsIdVerifiedRule(rows)).toBe(false);
+      expect(level2MissingOf(rows)).toEqual(['government_id_back']);
       expect(idChecks(rows)).toEqual([
         ['front', 'approved'],
         ['back', 'missing'],
@@ -120,5 +127,23 @@ describe('meetsIdVerifiedRule', () => {
     const all = [...full, r(T.PHONE, null, S.APPROVED), r(T.PAYMENT_IDENTITY, null, S.APPROVED)];
     expect(verificationSummaryOf(all).verified).toBe(true);
     expect(meetsIdVerifiedRule(all)).toBe(true);
+  });
+});
+
+describe('level2Missing (N-L1 / RN-L1)', () => {
+  it('names the Level 2 checks not approved, in front, back, selfie order, and agrees with meetsIdVerifiedRule', () => {
+    expect(verificationSummaryOf([]).level2Missing).toEqual(['government_id_front', 'government_id_back', 'selfie']);
+    const rows = [
+      r(T.GOVERNMENT_ID, Side.FRONT, S.APPROVED),
+      r(T.GOVERNMENT_ID, Side.BACK, S.REJECTED),
+      r(T.SELFIE, null, S.PENDING),
+      r(T.PAYMENT_IDENTITY, null, S.REJECTED),
+    ];
+    expect(verificationSummaryOf(rows).level2Missing).toEqual(['government_id_back', 'selfie']);
+    const met = [...rows, r(T.GOVERNMENT_ID, Side.BACK, S.APPROVED, '2026-10-21T08:00:00Z'), r(T.SELFIE, null, S.APPROVED, '2026-10-21T08:00:00Z')];
+    expect(verificationSummaryOf(met).level2Missing).toEqual([]);
+    expect(meetsIdVerifiedRule(met)).toBe(true);
+    // Level 2 met but not every required check (payment identity rejected): not verified for the gate.
+    expect(verificationSummaryOf(met).verified).toBe(false);
   });
 });

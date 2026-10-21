@@ -20,7 +20,17 @@ export interface VerificationCheck {
 export interface VerificationSummary {
   verified: boolean;
   checks: VerificationCheck[];
+  /**
+   * N-L1 / RN-L1: the Level 2 checks (row 261) whose newest record is not
+   * approved, in ID front, ID back, selfie order; empty when the runner meets
+   * the Level 2 rule. Computed here so clients never re-implement the rule
+   * (row 263 unlabelled IDs included).
+   */
+  level2Missing: Level2Check[];
 }
+
+/** A Level 2 check (row 261) as named in `level2Missing`. */
+export type Level2Check = 'government_id_front' | 'government_id_back' | 'selfie';
 
 type CheckRef = { type: RunnerVerificationType; side: RunnerVerificationSide | null };
 type CheckRow = Pick<RunnerVerification, 'verificationType' | 'side' | 'status' | 'createdAt'>;
@@ -97,9 +107,18 @@ const latestStatuses = (rows: ReadonlyArray<CheckRow>, refs: ReadonlyArray<Check
 const allApproved = (checks: ReadonlyArray<VerificationCheck>): boolean =>
   checks.every((c) => c.status === VerificationStatus.APPROVED);
 
+const level2NameOf = ({ type, side }: CheckRef): Level2Check =>
+  type === RunnerVerificationType.SELFIE ? 'selfie' : side === RunnerVerificationSide.BACK ? 'government_id_back' : 'government_id_front';
+
+/** N-L1: the Level 2 checks not met, from the same statuses as `meetsIdVerifiedRule`. */
+export const level2MissingOf = (rows: ReadonlyArray<CheckRow>): Level2Check[] =>
+  latestStatuses(rows, ID_VERIFIED_CHECKS)
+    .filter((c) => c.status !== VerificationStatus.APPROVED)
+    .map(level2NameOf);
+
 export const verificationSummaryOf = (rows: ReadonlyArray<CheckRow>): VerificationSummary => {
   const checks = latestStatuses(rows, REQUIRED_CHECKS);
-  return { verified: allApproved(checks), checks };
+  return { verified: allApproved(checks), checks, level2Missing: level2MissingOf(rows) };
 };
 
 /**
@@ -107,8 +126,7 @@ export const verificationSummaryOf = (rows: ReadonlyArray<CheckRow>): Verificati
  * approved. Every required-check gate (`verified`) implies this, since
  * REQUIRED_CHECKS contains ID_VERIFIED_CHECKS.
  */
-export const meetsIdVerifiedRule = (rows: ReadonlyArray<CheckRow>): boolean =>
-  allApproved(latestStatuses(rows, ID_VERIFIED_CHECKS));
+export const meetsIdVerifiedRule = (rows: ReadonlyArray<CheckRow>): boolean => level2MissingOf(rows).length === 0;
 
 /** Verification types whose approval can complete the Level 2 rule. */
 export const ID_VERIFIED_TYPES: ReadonlySet<RunnerVerificationType> = new Set(ID_VERIFIED_CHECKS.map((c) => c.type));
