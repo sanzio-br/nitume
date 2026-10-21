@@ -262,21 +262,52 @@ describe('Runner level drop (e2e)', () => {
       });
     expect(process.env.DATABASE_NAME).toMatch(/_test$/);
 
+    const database = process.env.DATABASE_NAME as string;
+    // The script exits 1 (execFileSync throws) with its message on stderr.
+    const refused = (...args: string[]): string => {
+      try {
+        script(...args);
+      } catch (err) {
+        const e = err as { status: number; stdout: string; stderr: string };
+        expect(e.status).toBe(1);
+        return `${e.stdout}${e.stderr}`;
+      }
+      throw new Error(`script ${args.join(' ')} did not exit 1`);
+    };
+
+    // The target line comes before the result (dotenv may print a banner first).
+    const targetLine = new RegExp(`^target host=\\S+ port=\\d+ database=${database}$`, 'm');
+    const printedFirst = (out: string, result: string): void => {
+      expect(out).toMatch(targetLine);
+      expect(out.search(targetLine)).toBeLessThan(out.indexOf(result));
+    };
+
     const dry = script();
-    expect(dry).toContain(`[dry run] database=${process.env.DATABASE_NAME}`);
+    printedFirst(dry, `[dry run] database=${database} `);
+    expect(dry).not.toContain('database=?');
     expect(dry).toContain(failing.profileId as string);
     expect(dry).not.toContain(fine.profileId as string);
     expect(dry).toContain('Nothing was changed');
     expect(await levelOf(failing)).toBe('2_id_verified');
     expect(await assignmentOf(offered.id, failing)).toMatchObject({ status: 'assigned' });
 
-    const applied = script('--apply');
-    expect(applied).toContain('[apply]');
+    // --apply without --database, or with another name, exits 1 before any write.
+    const missing = refused('--apply');
+    expect(missing).toMatch(targetLine);
+    expect(missing).toContain(`--apply requires --database=${database}`);
+    const mismatch = refused('--apply', '--database=nitume_dev');
+    expect(mismatch).toContain(`does not match the resolved database "${database}"`);
+    expect(refused('--database=nitume_dev')).toContain('does not match');
+    expect(await levelOf(failing)).toBe('2_id_verified');
+    expect(await assignmentOf(offered.id, failing)).toMatchObject({ status: 'assigned' });
+
+    const applied = script('--apply', `--database=${database}`);
+    printedFirst(applied, `[apply] database=${database} `);
     expect(applied).toContain(failing.profileId as string);
     expect(await levelOf(failing)).toBe('1_basic');
     expect(await levelOf(fine)).toBe('2_id_verified');
     expect(await assignmentOf(offered.id, failing)).toMatchObject({ status: 'expired' });
 
-    expect(() => script('--force')).toThrow();
+    expect(refused('--force')).toContain('Unknown argument');
   }, 180_000);
 });
