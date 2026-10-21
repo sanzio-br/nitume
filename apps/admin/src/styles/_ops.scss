@@ -635,6 +635,9 @@ button.verif-top {
 .doc-detail .verif-actions {
   margin-top: 8px;
 }
+.doc-detail .verif-actions .btn {
+  min-height: 40px;
+}
 .verif-actions {
   display: flex;
   gap: 8px;
