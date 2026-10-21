@@ -1,6 +1,14 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { AdminDataService, QueueCheck, QueueRunner, shortId, timeAgo } from '../admin-data.service';
+import {
+  AdminDataService,
+  QueueCheck,
+  QueueRunner,
+  checkKey,
+  newestPerCheck,
+  shortId,
+  timeAgo,
+} from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
 import { formatDateTime, formatPhone } from '../shared-format';
 import { LoadMoreComponent } from '../../../shared/load-more.component';
@@ -104,14 +112,11 @@ const ROW_ORDER: { type: VerificationType; side: VerificationSide | null }[] = [
  * shown by its newest record (per type, per side for the ID).
  */
 export function checkRows(item: QueueRunner): CheckRow[] {
-  const newestFirst = [...item.checks].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+  const newest = new Map(newestPerCheck(item.checks).map((c) => [checkKey(c), c]));
   const required = item.verification?.checks ?? [];
   const rows: CheckRow[] = [];
   for (const { type, side } of ROW_ORDER) {
-    const record =
-      newestFirst.find((c) => c.verificationType === type && (c.side ?? null) === side) ?? null;
+    const record = newest.get(checkKey({ verificationType: type, side })) ?? null;
     const summary: VerificationSummaryCheck | undefined = required.find(
       (c) => c.type === type && (c.side ?? null) === side,
     );
@@ -126,6 +131,32 @@ export function checkRows(item: QueueRunner): CheckRow[] {
     });
   }
   return rows;
+}
+
+/**
+ * Card sub line `Applied {relative time} · {area}` (`{first by name} +{n}`
+ * for more areas). Only the relative time value and `+{n}` are numeric data
+ * (Fira Code); `Applied`, `·` and the area name stay Fira Sans (W-2).
+ */
+export function appliedLine(
+  appliedAt: string | null | undefined,
+  serviceAreas: { name: string }[] | null | undefined,
+): TextPart[] {
+  const ago = timeAgo(appliedAt);
+  const parts: TextPart[] =
+    ago === '—'
+      ? [{ text: 'Applied', num: false }]
+      : [
+          { text: 'Applied ', num: false },
+          { text: ago === 'Yesterday' ? 'yesterday' : ago, num: true },
+        ];
+  const names = (serviceAreas ?? []).map((a) => a.name).sort((a, b) => a.localeCompare(b));
+  if (names.length === 0) return parts;
+  parts.push({ text: ` · ${names[0]}`, num: false });
+  if (names.length > 1) {
+    parts.push({ text: ' ', num: false }, { text: `+${names.length - 1}`, num: true });
+  }
+  return parts;
 }
 
 const STATUS_TEXT: Record<CheckRowStatus, string> = {
@@ -276,9 +307,9 @@ interface RejectTarget {
                     [id]="'verif-name-' + item.runnerProfile.id"
                     >{{ runnerLabel(item) }}</span
                   >
-                  <span class="verif-sub">{{ appliedLine(item) }}</span>
+                  <span class="verif-sub"><app-num-text [parts]="appliedParts(item)" /></span>
                   @if (idPhoneLine(item); as line) {
-                    <span class="verif-sub">{{ line }}</span>
+                    <span class="verif-sub num">{{ line }}</span>
                   }
                   @if (levelParts(item); as parts) {
                     <span class="verif-level"><app-num-text [parts]="parts" /></span>
@@ -797,14 +828,8 @@ export class VerificationsPanelComponent implements OnInit {
   }
 
   /** `Applied {relative} · {area}` (`{first} +{n}` for more areas). */
-  protected appliedLine(item: QueueRunner): string {
-    const ago = timeAgo(item.runnerProfile.appliedAt);
-    const applied = ago === '—' ? 'Applied' : `Applied ${ago === 'Yesterday' ? 'yesterday' : ago}`;
-    const names = (item.runnerProfile.serviceAreas ?? [])
-      .map((a) => a.name)
-      .sort((a, b) => a.localeCompare(b));
-    if (names.length === 0) return applied;
-    return `${applied} · ${names[0]}${names.length > 1 ? ` +${names.length - 1}` : ''}`;
+  protected appliedParts(item: QueueRunner): TextPart[] {
+    return appliedLine(item.runnerProfile.appliedAt, item.runnerProfile.serviceAreas);
   }
 
   /** `{short id} · {phone}`; the phone only when the name line already shows the id. */

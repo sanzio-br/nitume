@@ -5,12 +5,18 @@ import {
   VERIFICATION_STATUS_FILTERS,
   VerificationsPanelComponent,
   awaitingCopy,
+  appliedLine,
   checkRows,
   levelLine,
   nameInitials,
   verificationTypeLabel,
 } from './verifications.panel';
-import { AdminDataService, timeAgo } from '../admin-data.service';
+import {
+  AdminDataService,
+  newestPerCheck,
+  pendingCheckCount,
+  timeAgo,
+} from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
 import type {
   AdminRunnerRef,
@@ -174,6 +180,32 @@ describe('verification labels, rows and copy', () => {
     expect(nameInitials('   ')).toBe('R');
   });
 
+  it('splits the Applied line: only the relative time and +{n} are numeric (W-2)', () => {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    expect(appliedLine(yesterday, [{ name: 'Westlands' }, { name: 'Kilimani' }])).toEqual([
+      { text: 'Applied ', num: false },
+      { text: 'yesterday', num: true },
+      { text: ' · Kilimani', num: false },
+      { text: ' ', num: false },
+      { text: '+1', num: true },
+    ]);
+    expect(appliedLine(null, [{ name: 'Kilimani' }])).toEqual([
+      { text: 'Applied', num: false },
+      { text: ' · Kilimani', num: false },
+    ]);
+  });
+
+  it('picks the newest record per (type, side) and counts pending on it only (W-1)', () => {
+    const checks = [
+      check('old', { side: 'front', createdAt: '2026-10-18T07:00:00Z' }),
+      check('new', { side: 'front', status: 'approved', createdAt: '2026-10-21T07:00:00Z' }),
+      check('back', { side: 'back', status: 'approved' }),
+    ];
+    expect(newestPerCheck(checks).map((c) => c.id)).toEqual(['new', 'back']);
+    expect(pendingCheckCount(checks)).toBe(0);
+    expect(pendingCheckCount([...checks, check('selfie', { verificationType: 'selfie' })])).toBe(1);
+  });
+
   it('counts applications, not checks', () => {
     expect(awaitingCopy(0)).toBe('No applications awaiting review');
     expect(awaitingCopy(1)).toBe('1 application awaiting review');
@@ -321,6 +353,20 @@ describe('VerificationsPanelComponent', () => {
     expect(el.querySelector('.verif-name')?.textContent).toBe('Mercy W.');
     const subs = Array.from(el.querySelectorAll('.verif-sub')).map((s) => s.textContent);
     expect(subs).toEqual(['Applied 2d ago · Kilimani +1', '#NT-C0CA7 · +254 712 345 678']);
+    // W-2: Fira Code only for the relative time and +{n}; the id/phone line is all numeric.
+    const [applied, idPhone] = Array.from(el.querySelectorAll<HTMLElement>('.verif-sub'));
+    expect(applied.classList.contains('num')).toBe(false);
+    expect(Array.from(applied.querySelectorAll('.num')).map((n) => n.textContent)).toEqual([
+      '2d ago',
+      '+1',
+    ]);
+    const outside = Array.from(applied.querySelectorAll('app-num-text')[0].childNodes)
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent)
+      .join('');
+    expect(outside).toContain('Applied');
+    expect(outside).toContain('Kilimani');
+    expect(idPhone.classList.contains('num')).toBe(true);
     expect(el.querySelector('.verif-level')?.textContent).toBe(
       'Level 1 — Basic · Level 2 needs: ID front, ID back, selfie',
     );
@@ -481,6 +527,33 @@ describe('VerificationsPanelComponent', () => {
       '2 applications awaiting review',
     );
     expect(el.querySelectorAll('.verif-card').length).toBe(1);
+  });
+
+  it('counts only the newest record per check as pending (superseded pending ID front, W-1)', async () => {
+    const checks = [
+      check('v-front-new', { side: 'front', createdAt: '2026-10-21T07:00:00Z' }),
+      ...ownersChecks().map((c) =>
+        c.id === 'v-phone' ? c : { ...c, status: 'approved' as const },
+      ),
+      // The superseded upload: older, still `pending` in the history (row 271).
+      check('v-front-old', { side: 'front', createdAt: '2026-10-18T07:00:00Z' }),
+    ].filter((c) => c.id !== 'v-front');
+    const { fixture, el } = await render([runner(checks, { pendingCount: 1 })], {
+      awaitingReviewCount: 3,
+    });
+    // Only the newest front is on the card and decidable.
+    expect(el.querySelectorAll('.btn-approve').length).toBe(1);
+    button(detail(el, 'National ID · Front'), 'Approve').click();
+    http
+      .expectOne(`${API}/runners/${PROFILE}/verifications/v-front-new`)
+      .flush(check('v-front-new', { side: 'front', status: 'approved' }));
+    await settle(fixture);
+    expect(el.querySelector('.ops-topbar .sub')?.textContent).toBe(
+      '2 applications awaiting review',
+    );
+    const item = TestBed.inject(AdminDataService).verificationQueue()[0];
+    expect(item.pendingCount).toBe(0);
+    expect(item.checks.find((c) => c.id === 'v-front-old')?.status).toBe('pending');
   });
 
   it('takes the Level 2 gaps from the API, not from the rows (legacy ID counted by the API)', async () => {
@@ -946,6 +1019,22 @@ describe('VerificationsPanelComponent', () => {
     http.expectOne(queue).flush(page([runner(ownersChecks())]));
     await settle(fixture);
     expect(el.textContent).toContain("Couldn't save the review. Try again.");
+  });
+
+  it('merges a page into a card counting pending on the newest record per check (W-1)', async () => {
+    const old = check('v-front-old', { side: 'front', createdAt: '2026-10-18T07:00:00Z' });
+    const { fixture } = await render([runner([old])], { nextCursor: 'c1' });
+    button(fixture.nativeElement, 'Load more').click();
+    const newer = check('v-front-new', {
+      side: 'front',
+      status: 'approved',
+      createdAt: '2026-10-21T07:00:00Z',
+    });
+    http.expectOne(queue).flush(page([runner([newer])]));
+    await settle(fixture);
+    const item = TestBed.inject(AdminDataService).verificationQueue()[0];
+    expect(item.checks.map((c) => c.id)).toEqual(['v-front-new', 'v-front-old']);
+    expect(item.pendingCount).toBe(0);
   });
 
   it('loads more by runner, merging a runner already on screen into its card', async () => {

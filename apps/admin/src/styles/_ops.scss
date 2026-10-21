@@ -582,10 +582,15 @@ button.verif-top {
   font-size: 13.5px;
   font-weight: 600;
 }
+/* Fira Sans; only numeric parts (`.num`) are Fira Code (W-2). The
+   `{short id} · {phone}` line holds numeric data only: `.verif-sub.num`. */
 .verif-sub {
   display: block;
   font-size: 11px;
   color: var(--nitume-slate-600);
+  font-family: var(--nitume-font-ui);
+}
+.verif-sub.num {
   font-family: var(--nitume-font-num);
 }
 /* Level line under the sub lines: Fira Sans, the level number in `.num`. */
