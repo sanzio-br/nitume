@@ -10,9 +10,12 @@ import { VerificationLevel } from '../common/enums';
  *  - the sign-in phone by digits (contains), with `07…`, `7…`, `2547…` and
  *    `+2547…` normalised to the stored `+2547…` form (leading `0` / `254`
  *    dropped), when `q` is only digits, spaces, `+`, `-` and brackets;
- *  - the short id `#NT-XXXXX` (`#`, `NT-` / `NT` optional): the client's
- *    `shortId` rule, the last 5 alphanumerics of the runner profile id
- *    (hex, so only 1-5 hex characters can match; contains).
+ *  - the short id `#NT-XXXXX`: the client's `shortId` rule, the last 5
+ *    alphanumerics of the runner profile id (hex). Row 284 (owner,
+ *    2026-10-21): `q` is read as a short id ONLY when it starts with
+ *    `#NT-`, `NT-` or `NT` followed by 1-5 hex characters (contains), or is
+ *    exactly 5 hex characters with no prefix; anything else (`#ab1`, `ab1`,
+ *    `#ab12f`) has no short-id match. Name and phone matching are unchanged.
  * The values are only ever bound as SQL parameters (never interpolated);
  * LIKE wildcards in the name are escaped (`common/like.ts`).
  */
@@ -29,7 +32,8 @@ export interface QueueSearch {
 }
 
 const PHONE_INPUT = /^[\d\s+()-]+$/;
-const SHORT_ID_INPUT = /^#?(?:nt-?)?([0-9a-f]{1,5})$/i;
+const SHORT_ID_PREFIXED = /^(?:#nt-|nt-?)([0-9a-f]{1,5})$/i;
+const SHORT_ID_BARE = /^([0-9a-f]{5})$/i;
 
 /** `q` -> the three search terms; 400 search_query_invalid unless 2-64 characters after trimming. */
 export const queueSearchOf = (q: string | null | undefined): QueueSearch | null => {
@@ -45,8 +49,12 @@ export const queueSearchOf = (q: string | null | undefined): QueueSearch | null 
       { minLength: QUEUE_SEARCH_MIN, maxLength: QUEUE_SEARCH_MAX },
     );
   }
-  return { text, phoneDigits: phoneDigitsOf(text), shortId: SHORT_ID_INPUT.exec(text)?.[1]?.toLowerCase() ?? null };
+  return { text, phoneDigits: phoneDigitsOf(text), shortId: shortIdOf(text) };
 };
+
+/** Row 284: the hex part of a prefixed short id, or exactly 5 bare hex characters; else null. */
+const shortIdOf = (text: string): string | null =>
+  (SHORT_ID_PREFIXED.exec(text) ?? SHORT_ID_BARE.exec(text))?.[1]?.toLowerCase() ?? null;
 
 const phoneDigitsOf = (text: string): string | null => {
   if (!PHONE_INPUT.test(text)) {

@@ -53,14 +53,26 @@ describe('queueSearchOf (AV-2)', () => {
     ['nt-ab12f', 'ab12f'],
     ['NTab12f', 'ab12f'],
     ['ab12f', 'ab12f'],
-    ['#ab1', 'ab1'],
+    ['AB12F', 'ab12f'],
+    ['#NT-ab1', 'ab1'],
+    ['NT-a', 'a'],
+    ['nt12', '12'],
+    [' 12345 ', '12345'],
   ])('reads the short id from %s', (q, part) => {
     expect(queueSearchOf(q)?.shortId).toBe(part);
   });
 
-  it('has no short id part for text that cannot be one (non-hex, or more than 5)', () => {
-    expect(queueSearchOf('Mary')?.shortId).toBeNull();
-    expect(queueSearchOf('#NT-AB12F9')?.shortId).toBeNull();
+  it.each(['#ab1', 'ab1', 'ab12', '#ab12f', 'abc', 'dead', 'cafe', 'face', 'Mary', '#NT-AB12F9', 'ab12f9', '#NT', 'NT-', '#ntab1'])(
+    'row 284: %s has no short-id part (no #NT-/NT-/NT prefix and not exactly 5 hex)',
+    (q) => {
+      expect(queueSearchOf(q)?.shortId).toBeNull();
+    },
+  );
+
+  it('row 284: name and phone matching are unchanged for short, hex-looking words', () => {
+    expect(queueSearchOf('cafe')).toMatchObject({ text: 'cafe', phoneDigits: null, shortId: null });
+    expect(queueSearchOf('0712')).toMatchObject({ phoneDigits: '712', shortId: null });
+    expect(queueSearchOf('07123')).toMatchObject({ phoneDigits: '7123', shortId: '07123' });
   });
 
   it('level must be one of the four values (400 level_invalid)', () => {
