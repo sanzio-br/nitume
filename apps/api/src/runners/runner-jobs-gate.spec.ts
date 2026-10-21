@@ -55,12 +55,14 @@ describe('verificationSummaryOf (RA-8, row 126)', () => {
     expect(verificationSummaryOf(rows).verified).toBe(true);
   });
 
-  it('needs both ID sides; an ID row without a side (pre row 195) does not count', () => {
+  it('needs both ID sides; an approved unlabelled ID row (pre row 195) fills a missing side (row 263)', () => {
     const rows = allApproved().filter((r) => r.side !== RunnerVerificationSide.BACK);
+    expect(verificationSummaryOf(rows).verified).toBe(false);
+    expect(verificationSummaryOf(rows).checks[2]).toEqual({ type: 'government_id', side: 'back', status: 'missing' });
     rows.push(v(RunnerVerificationType.GOVERNMENT_ID, VerificationStatus.APPROVED, 3, null));
     const s = verificationSummaryOf(rows);
-    expect(s.verified).toBe(false);
-    expect(s.checks[2]).toEqual({ type: 'government_id', side: 'back', status: 'missing' });
+    expect(s.verified).toBe(true);
+    expect(s.checks[2]).toEqual({ type: 'government_id', side: 'back', status: 'approved' });
   });
 });
 

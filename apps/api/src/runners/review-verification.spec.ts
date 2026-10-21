@@ -340,7 +340,7 @@ describe('A-4 / row 261: Level 2 needs ID front, ID back and selfie approved', (
     expect(b.profiles[0].verificationLevel).toBe(VerificationLevel.TWO_ID_VERIFIED);
   });
 
-  it('an ID row without a side (older rows, row 195) counts for neither side', async () => {
+  it('row 263: an approved unlabelled ID row (older rows, row 195) fills the missing back', async () => {
     const b = build({
       extra: [
         {
@@ -358,7 +358,7 @@ describe('A-4 / row 261: Level 2 needs ID front, ID back and selfie approved', (
       ],
     });
     await b.service.reviewVerification('rp-1', 'v-front', { decision: 'approved' }, 'admin-1');
-    expect(b.profileRepo.update).not.toHaveBeenCalled();
+    expect(b.profileRepo.update).toHaveBeenCalledWith('rp-1', { verificationLevel: VerificationLevel.TWO_ID_VERIFIED });
   });
 
   it('row 263: rejecting the newest ID side or selfie drops 2_id_verified to 1_basic, in the same transaction', async () => {

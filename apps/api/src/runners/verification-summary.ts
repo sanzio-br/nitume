@@ -32,8 +32,8 @@ const SELFIE: CheckRef = { type: RunnerVerificationType.SELFIE, side: null };
 /**
  * Required checks (row 126, runner `_shared.md` §9): phone (approved at the
  * OTP sign-in), ID front and back (row 195: every ID image carries its side;
- * older ID rows without a side do not count), selfie, payment identity
- * (M-Pesa name match by ops).
+ * older unlabelled ID rows fill a side only as in `idSideStatuses`, row 263),
+ * selfie, payment identity (M-Pesa name match by ops).
  */
 export const REQUIRED_CHECKS: ReadonlyArray<CheckRef> = [
   { type: RunnerVerificationType.PHONE, side: null },
@@ -50,10 +50,45 @@ export const REQUIRED_CHECKS: ReadonlyArray<CheckRef> = [
  */
 export const ID_VERIFIED_CHECKS: ReadonlyArray<CheckRef> = [ID_FRONT, ID_BACK, SELFIE];
 
-/** The newest record of each given check (row 195: an ID row without a side matches no side). */
+/**
+ * Row 263 (owner, 2026-10-21, AQ-38): the status of ID front and ID back.
+ * A side with a labelled record takes its newest labelled record (labelled
+ * records always win over unlabelled ones). A side with no labelled record
+ * is filled by an approved unlabelled government_id record (rows from
+ * before row 195), each such record filling one side only: two distinct
+ * approved unlabelled records fill front and back; one approved unlabelled
+ * record plus a labelled side fills the other side. Unlabelled records that
+ * are pending or rejected fill nothing (the side stays `missing`). With one
+ * unlabelled record and both sides unlabelled, front is filled first.
+ */
+const idSideStatuses = (newestFirst: ReadonlyArray<CheckRow>): Record<RunnerVerificationSide, CheckStatus> => {
+  const ids = newestFirst.filter((r) => r.verificationType === RunnerVerificationType.GOVERNMENT_ID);
+  let spare = ids.filter((r) => !r.side && r.status === VerificationStatus.APPROVED).length;
+  const statusOf = (side: RunnerVerificationSide): CheckStatus => {
+    const labelled = ids.find((r) => r.side === side);
+    if (labelled) {
+      return labelled.status;
+    }
+    if (spare > 0) {
+      spare -= 1;
+      return VerificationStatus.APPROVED;
+    }
+    return 'missing';
+  };
+  // A labelled side never spends a spare record, so the order only matters when both sides are unlabelled.
+  const front = statusOf(RunnerVerificationSide.FRONT);
+  const back = statusOf(RunnerVerificationSide.BACK);
+  return { [RunnerVerificationSide.FRONT]: front, [RunnerVerificationSide.BACK]: back };
+};
+
+/** The newest record of each given check; ID sides as in `idSideStatuses` (rows 195, 263). */
 const latestStatuses = (rows: ReadonlyArray<CheckRow>, refs: ReadonlyArray<CheckRef>): VerificationCheck[] => {
   const newestFirst = [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const sides = idSideStatuses(newestFirst);
   return refs.map(({ type, side }) => {
+    if (type === RunnerVerificationType.GOVERNMENT_ID && side) {
+      return { type, side, status: sides[side] };
+    }
     const row = newestFirst.find((r) => r.verificationType === type && (side === null || r.side === side));
     return { type, side, status: (row?.status ?? 'missing') as CheckStatus };
   });
