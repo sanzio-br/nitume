@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
+import { escapeLike } from '../common/like';
 import { UserRole, UserStatus } from '../common/enums';
 import { User } from './user.entity';
 
@@ -116,6 +117,31 @@ export class UsersService {
       select: { id: true, phone: true, displayName: true },
     });
     return new Map(rows.map((u) => [u.id, { phone: u.phone ?? null, displayName: u.displayName || null }]));
+  }
+
+  /**
+   * Row 278 (AV-2, admin verification search): ids of the users with `role`
+   * whose display name contains `nameContains` (case-insensitive; LIKE
+   * wildcards in it are matched literally) or, when `phoneDigits` is given,
+   * whose sign-in phone contains those digits. Parameterised; one query.
+   */
+  async idsMatching(search: { nameContains: string; phoneDigits?: string | null; role: UserRole }): Promise<string[]> {
+    const name = `%${escapeLike(search.nameContains)}%`;
+    const digits = search.phoneDigits?.replace(/\D/g, '') ?? '';
+    const rows = await this.users
+      .createQueryBuilder('u')
+      .select('u.id', 'id')
+      .where('u.role = :role', { role: search.role })
+      .andWhere(
+        new Brackets((qb) => {
+          qb.where(`u."displayName" ILIKE :name ESCAPE '\\'`, { name });
+          if (digits) {
+            qb.orWhere('strpos(u.phone, :digits) > 0', { digits });
+          }
+        }),
+      )
+      .getRawMany<{ id: string }>();
+    return rows.map((r) => r.id);
   }
 
   async getPublicProfile(userId: string): Promise<PublicUser> {

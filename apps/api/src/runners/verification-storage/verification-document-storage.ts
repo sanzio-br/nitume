@@ -38,6 +38,15 @@ export const decodeDocumentKey = (key: string): { format: string; publicId: stri
 };
 
 /**
+ * Row 283 (AV-3): stored formats a desktop browser (Chrome, Edge, Firefox)
+ * cannot display. The admin link for these asks Cloudinary's download API
+ * for a JPEG (`format=jpg`), which Cloudinary converts on the fly as a
+ * derived copy of the private original; the original is kept as uploaded.
+ */
+const BROWSER_SAFE_FORMAT: Record<string, string> = { heic: 'jpg', heif: 'jpg' };
+export const viewFormatOf = (storedFormat: string): string => BROWSER_SAFE_FORMAT[storedFormat.toLowerCase()] ?? storedFormat;
+
+/**
  * Cloudinary, the app's existing object store (evidence uses it): images are
  * uploaded with `authenticated` delivery under their own folder
  * (`nitume/runner-verification/...`, never the evidence folder), viewed with
@@ -50,6 +59,10 @@ export const decodeDocumentKey = (key: string): { format: string; publicId: stri
  * Uploads ask for `backup: false` (overrides the account's automatic backup
  * for these assets); `destroy` also deletes any backed-up versions first, so
  * a purged image cannot be restored from Cloudinary backups.
+ *
+ * Row 283: HEIC/HEIF originals are served as JPEG (`viewFormatOf`); the
+ * purge deletes every derived copy (such as that JPEG) explicitly before
+ * destroying the original, so no converted copy outlives it.
  */
 @Injectable()
 export class CloudinaryVerificationDocumentStorage extends VerificationDocumentStorage {
@@ -89,7 +102,7 @@ export class CloudinaryVerificationDocumentStorage extends VerificationDocumentS
     const credentials = this.credentials();
     const ttl = Math.min(Math.max(1, ttlSeconds), MAX_DOCUMENT_URL_TTL_SECONDS);
     const expiresAt = new Date(now.getTime() + ttl * 1000);
-    const url = cloudinary.utils.private_download_url(where.publicId, where.format, {
+    const url = cloudinary.utils.private_download_url(where.publicId, viewFormatOf(where.format), {
       ...credentials,
       resource_type: 'image',
       type: 'authenticated',
@@ -105,6 +118,7 @@ export class CloudinaryVerificationDocumentStorage extends VerificationDocumentS
     }
     const credentials = this.credentials();
     await this.deleteBackups(where.publicId, credentials);
+    await this.deleteDerived(where.publicId, credentials);
     const result = (await cloudinary.uploader.destroy(where.publicId, {
       ...credentials,
       resource_type: 'image',
@@ -148,6 +162,32 @@ export class CloudinaryVerificationDocumentStorage extends VerificationDocumentS
     };
     await api.delete_backed_up_assets(resource.asset_id, versionIds, credentials);
     this.logger.log(`[cloudinary] ${versionIds.length} backed-up version(s) of a verification image deleted`);
+  }
+
+  /**
+   * Row 283: deletes every derived copy of the asset (the JPEG served for a
+   * HEIC/HEIF original, or any other conversion) and invalidates their CDN
+   * copies, keeping the original for the `destroy` that follows. `destroy`
+   * also removes derived copies; this explicit step makes the purge not
+   * depend on that. Throws on failure, and unless the reply says the asset
+   * is `deleted` or `not_found` and is not `partial`, so the original is not
+   * destroyed, the purge keeps the row and retries the next day.
+   */
+  private async deleteDerived(publicId: string, credentials: CloudinaryCredentials): Promise<void> {
+    const reply = (await cloudinary.api.delete_resources([publicId], {
+      ...credentials,
+      resource_type: 'image',
+      type: 'authenticated',
+      keep_original: true,
+      invalidate: true,
+    })) as { deleted?: Record<string, string>; partial?: boolean } | undefined;
+    // Only a clear answer lets the original go: anything else keeps the row for tomorrow's retry.
+    const status = reply?.deleted?.[publicId];
+    if (reply?.partial === true || (status !== 'deleted' && status !== 'not_found')) {
+      throw new Error(
+        `Cloudinary derived delete incomplete (status ${String(status)}${reply?.partial === true ? ', partial' : ''})`,
+      );
+    }
   }
 
   private folder(): string {

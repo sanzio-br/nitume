@@ -127,8 +127,18 @@ export class RunnersController {
    * submission first. `total`: runners matching the filter;
    * `pendingCount` / `oldestPendingAt` over latest records only;
    * `awaitingReviewCount`: runners with a latest record pending, whole queue.
-   * Errors: 400 cursor_invalid (unreadable, or from another filter); 400 for
-   * an unknown status or a limit outside 1-100.
+   * Row 278 (AV-2), AND-combined with `status`: `serviceAreaId` (an id from
+   * `GET /runners/service-areas`), `level` (`1_basic` | `2_id_verified` |
+   * `3_trusted` | `4_professional`), `q` (2-64 characters after trimming;
+   * case-insensitive; display name contains, phone digits contain with
+   * `07…` / `+2547…` normalised, or short id `#NT-XXXXX` with `#NT-`
+   * optional). `total` follows every filter; `awaitingReviewCount` never
+   * does. Item `applicationStatus` (AV-5): pending > rejected > approved
+   * over the latest records.
+   * Errors: 400 cursor_invalid (unreadable, or from another filter set); 400
+   * service_area_invalid; 400 level_invalid; 400 search_query_invalid
+   * (`minLength`, `maxLength`); 400 for an unknown status or a limit
+   * outside 1-100.
    */
   @UseGuards(JwtAuthGuard)
   @Get('verifications/queue')
@@ -138,6 +148,9 @@ export class RunnersController {
       status: query.status,
       cursor: query.cursor,
       limit: query.limit,
+      serviceAreaId: query.serviceAreaId,
+      level: query.level,
+      q: query.q,
     });
   }
 
@@ -265,6 +278,22 @@ export class RunnersController {
   @Roles(UserRole.RUNNER)
   listVerifications(@CurrentUser() user: AuthContext) {
     return this.runners.verificationsByUserId(user.userId);
+  }
+
+  /**
+   * Row 278 (AV-1): one runner in the exact `GET /runners/verifications/queue`
+   * item shape (every record newest first, `pendingCount`,
+   * `oldestPendingAt`, `verification`, `applicationStatus`), whatever the
+   * queue filters; no document links. A runner with only phone records still
+   * answers (`applicationStatus` null). Errors: 400 for a malformed id; 404
+   * runner_not_found. Declared after every `me/...` and `verifications/...`
+   * route so it never shadows them.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get(':runnerProfileId/verifications')
+  @Roles(UserRole.ADMIN)
+  runnerVerifications(@Param('runnerProfileId', ParseUUIDPipe) runnerProfileId: string) {
+    return this.runners.verificationQueueItemForAdmin(runnerProfileId);
   }
 
   @UseGuards(JwtAuthGuard)

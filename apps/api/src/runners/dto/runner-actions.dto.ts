@@ -115,7 +115,12 @@ export class ListVerificationsQueryDto {
   status?: VerificationStatus;
 }
 
-/** GET /runners/verifications/queue (row 260). `status` defaults to `pending`. */
+/**
+ * GET /runners/verifications/queue (row 260). `status` defaults to `pending`.
+ * Row 278 (AV-2): `serviceAreaId`, `level` and `q` are checked by the service
+ * (400 service_area_invalid, level_invalid, search_query_invalid with a
+ * stable code); the caps here only stop oversized query strings.
+ */
 export class VerificationQueueQueryDto {
   @IsOptional()
   @Type(() => Number)
@@ -132,4 +137,19 @@ export class VerificationQueueQueryDto {
   @IsOptional()
   @IsIn([...Object.values(VerificationStatus), 'all'])
   status?: VerificationStatus | 'all';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  serviceAreaId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  level?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  q?: string;
 }

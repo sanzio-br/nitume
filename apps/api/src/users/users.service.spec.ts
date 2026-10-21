@@ -1,3 +1,4 @@
+import { Brackets } from 'typeorm';
 import { describe, expect, it, vi } from 'vitest';
 import { UserRole, UserStatus } from '../common/enums';
 import { User } from './user.entity';
@@ -73,5 +74,51 @@ describe('UsersService display name', () => {
     ]);
     expect(await service.contacts([])).toEqual(new Map());
     expect(repo.find).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('UsersService.idsMatching (row 278, AV-2)', () => {
+  const harness = () => {
+    const calls: { kind: string; sql: string; params?: Record<string, unknown> }[] = [];
+    const inner = {
+      where: vi.fn((sql: string, params: Record<string, unknown>) => {
+        calls.push({ kind: 'match', sql, params });
+        return inner;
+      }),
+      orWhere: vi.fn((sql: string, params: Record<string, unknown>) => {
+        calls.push({ kind: 'or', sql, params });
+        return inner;
+      }),
+    };
+    const qb = {
+      select: vi.fn(() => qb),
+      where: vi.fn((sql: string, params: Record<string, unknown>) => {
+        calls.push({ kind: 'where', sql, params });
+        return qb;
+      }),
+      andWhere: vi.fn((brackets: Brackets) => {
+        brackets.whereFactory(inner as never);
+        return qb;
+      }),
+      getRawMany: vi.fn(() => Promise.resolve([{ id: 'u-1' }, { id: 'u-2' }])),
+    };
+    const repo = { createQueryBuilder: vi.fn(() => qb) };
+    return { service: new UsersService(repo as never), calls };
+  };
+
+  it('only the given role; the name is bound as an escaped, case-insensitive contains pattern', async () => {
+    const h = harness();
+    expect(await h.service.idsMatching({ nameContains: "50%_o'\\", role: UserRole.RUNNER })).toEqual(['u-1', 'u-2']);
+    expect(h.calls[0]).toEqual({ kind: 'where', sql: 'u.role = :role', params: { role: UserRole.RUNNER } });
+    expect(h.calls[1].sql).toBe(`u."displayName" ILIKE :name ESCAPE '\\'`);
+    expect(h.calls[1].sql).not.toContain('50');
+    expect(h.calls[1].params).toEqual({ name: "%50\\%\\_o'\\\\%" });
+    expect(h.calls).toHaveLength(2);
+  });
+
+  it('adds the phone digits as a bound OR inside the role condition only when given', async () => {
+    const h = harness();
+    await h.service.idsMatching({ nameContains: '0712', phoneDigits: '712', role: UserRole.RUNNER });
+    expect(h.calls[2]).toEqual({ kind: 'or', sql: 'strpos(u.phone, :digits) > 0', params: { digits: '712' } });
   });
 });

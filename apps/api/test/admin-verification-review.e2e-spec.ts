@@ -131,6 +131,23 @@ describe('Admin verification review (e2e)', () => {
     expect(item).toMatchObject({ status: 'pending', reviewedBy: null });
   });
 
+  it('row 283: a HEIC upload is stored and the admin document link answers (console driver: url null)', async () => {
+    const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+    const runner = await makeUser(UserRole.RUNNER);
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypheic'), Buffer.alloc(52)]);
+    const id = (
+      await http()
+        .post('/api/v1/runners/me/verifications/documents')
+        .set(bearer(runner.token))
+        .field('verificationType', 'government_id')
+        .field('side', 'front')
+        .attach('file', heic, { filename: 'front.heic', contentType: 'image/heic' })
+        .expect(201)
+    ).body.id as string;
+    const res = await http().get(`/api/v1/runners/verifications/${id}/document`).set(bearer(admin.token)).expect(200);
+    expect(res.body).toEqual({ verificationId: id, url: null, expiresAt: null });
+  });
+
   it('runners cannot decide (403)', async () => {
     const runner = await makeUser(UserRole.RUNNER);
     const id = await addPaymentIdentity(runner);
