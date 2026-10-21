@@ -26,7 +26,7 @@ import {
 import { UsersService } from '../users/users.service';
 import { shortNameOf } from './short-name';
 import { ServiceArea, ServiceAreaOption, areasContaining, listedAreaIds, serviceAreaOptionsOf } from './service-areas';
-import { VerificationSummary, verificationSummaryOf } from './verification-summary';
+import { ID_VERIFIED_TYPES, VerificationSummary, meetsIdVerifiedRule, verificationSummaryOf } from './verification-summary';
 
 /** Skills a runner may choose in the MVP (OA-18: Business Tasks not offered). */
 export const OFFERED_SKILLS: readonly RunnerSkill[] = [
@@ -114,14 +114,53 @@ export interface ReReviewView {
   note: string | null;
 }
 
+/** Who the runner is, on admin verification items (rows 260, 261). */
+export interface AdminRunnerRef {
+  id: string;
+  userId: string;
+  verificationLevel: VerificationLevel;
+  /** The runner's listed service areas by name (row 116); unlisted ids are left out. */
+  serviceAreas: ServiceAreaOption[];
+  /** When the runner applied: the runner profile's `createdAt`. */
+  appliedAt: Date;
+}
+
+export interface AdminRunnerUser {
+  id: string;
+  phone: string | null;
+  /** The user's display name; null until set (row 260). */
+  displayName: string | null;
+  /** First name + last initial ("Mary W.", row 40); null until a name is set. */
+  shortName: string | null;
+}
+
 export type AdminVerificationView = VerificationView & {
-  runnerProfile: { id: string; userId: string } | null;
-  user: { id: string; phone: string | null } | null;
+  runnerProfile: AdminRunnerRef | null;
+  user: AdminRunnerUser | null;
   /** The admin who decided, with a display name (round-10 spec). */
   reviewer: { id: string; displayName: string | null } | null;
   /** Re-reviews of the evidence, oldest first (row 171). */
   reReviews: ReReviewView[];
 };
+
+/** `status` of the runner-grouped queue: a verification status, or `all`. */
+export type VerificationQueueStatus = VerificationStatus | 'all';
+
+/**
+ * One runner in the admin verification queue (row 260): the runner (level,
+ * areas, `appliedAt`), the user (phone, displayName, shortName), every
+ * record they have (history included, newest first, admin item shape), how
+ * many are pending and since when, and the required-check summary (newest
+ * record of each check, `missing` when never submitted).
+ */
+export interface AdminVerificationQueueItem {
+  runnerProfile: AdminRunnerRef;
+  user: AdminRunnerUser | null;
+  checks: AdminVerificationView[];
+  pendingCount: number;
+  oldestPendingAt: Date | null;
+  verification: VerificationSummary;
+}
 
 /** Rows 171, 180 (decided): optional re-review note, at most 500 characters after trim, no minimum. */
 export const RE_REVIEW_NOTE_MAX = 500;
@@ -129,6 +168,20 @@ export const RE_REVIEW_NOTE_MAX = 500;
 export const toVerificationView = (v: RunnerVerification): VerificationView => {
   const { documentS3Key, ...rest } = v;
   return { ...rest, purgedAt: v.purgedAt ?? null, hasDocument: !!documentS3Key };
+};
+
+/**
+ * What the runner sees of their own verification (row 262, A-8): the
+ * reviewer's note and the reviewer's identity are internal to ops and never
+ * sent on a runner-facing endpoint.
+ */
+export type RunnerVerificationView = Omit<VerificationView, 'reviewerNote' | 'reviewedBy'>;
+
+export const toRunnerVerificationView = (v: RunnerVerification): RunnerVerificationView => {
+  const view: Partial<VerificationView> = toVerificationView(v);
+  delete view.reviewerNote;
+  delete view.reviewedBy;
+  return view as RunnerVerificationView;
 };
 
 /**
@@ -614,7 +667,7 @@ export class RunnersService {
     userId: string,
     verificationType: RunnerVerificationType,
     documentS3Key?: string | null,
-  ): Promise<VerificationView> {
+  ): Promise<RunnerVerificationView> {
     if (documentS3Key || DOCUMENT_VERIFICATION_TYPES.includes(verificationType)) {
       throw new ApiError(
         HttpStatus.BAD_REQUEST,
@@ -626,7 +679,7 @@ export class RunnersService {
     const saved = await this.verifications.save(
       this.verifications.create({ runnerProfileId: profile.id, verificationType, documentS3Key: null }),
     );
-    return toVerificationView(saved);
+    return toRunnerVerificationView(saved);
   }
 
   /**
@@ -643,7 +696,7 @@ export class RunnersService {
     file: UploadedImage | undefined,
     ip: string | null,
     sideInput?: string | null,
-  ): Promise<VerificationView> {
+  ): Promise<RunnerVerificationView> {
     if (!DOCUMENT_VERIFICATION_TYPES.includes(verificationType)) {
       throw new ApiError(
         HttpStatus.BAD_REQUEST,
@@ -698,7 +751,7 @@ export class RunnersService {
       );
       throw err;
     }
-    return toVerificationView(saved);
+    return toRunnerVerificationView(saved);
   }
 
   /**
@@ -958,13 +1011,14 @@ export class RunnersService {
     );
   }
 
-  async verificationsByUserId(userId: string): Promise<VerificationView[]> {
+  /** `GET /runners/me/verifications`: the runner's own checks, newest first, without the reviewer's note or id (row 262, A-8). */
+  async verificationsByUserId(userId: string): Promise<RunnerVerificationView[]> {
     const rows = await this.verifications
       .createQueryBuilder('v')
       .innerJoin(RunnerProfile, 'p', 'p.id = v."runnerProfileId" AND p."userId" = :userId', { userId })
       .orderBy('v."createdAt"', 'DESC')
       .getMany();
-    return rows.map(toVerificationView);
+    return rows.map(toRunnerVerificationView);
   }
 
   /**
@@ -1007,27 +1061,155 @@ export class RunnersService {
   /**
    * The admin queue item for each row (same shape for the list and the
    * PATCH answer, so the client can merge). A fixed number of queries per
-   * page: profiles, phones (one batch, A-6), re-reviews, reviewer names.
+   * page: profiles, users (phone + display name, one batch, A-6), service
+   * areas, re-reviews, reviewer names.
    */
   private async adminVerificationViews(rows: RunnerVerification[]): Promise<AdminVerificationView[]> {
     if (rows.length === 0) {
       return [];
     }
-    const profiles = await this.profiles.find({ where: { id: In([...new Set(rows.map((r) => r.runnerProfileId))]) } });
-    const byId = new Map(profiles.map((p) => [p.id, p]));
-    const phones = await this.users.phones(profiles.map((p) => p.userId));
+    const runners = await this.adminRunnerRefs(rows.map((r) => r.runnerProfileId));
     const reReviews = await this.reReviewsOf(rows.map((r) => r.id));
     const names = await this.users.displayNames(rows.map((r) => r.reviewedBy).filter((v): v is string => !!v));
     return rows.map((r) => {
-      const p = byId.get(r.runnerProfileId);
+      const runner = runners.get(r.runnerProfileId);
       return {
         ...toVerificationView(r),
-        runnerProfile: p ? { id: p.id, userId: p.userId } : null,
-        user: p ? { id: p.userId, phone: phones.get(p.userId) ?? null } : null,
+        runnerProfile: runner?.runnerProfile ?? null,
+        user: runner?.user ?? null,
         reviewer: r.reviewedBy ? { id: r.reviewedBy, displayName: names.get(r.reviewedBy) ?? null } : null,
         reReviews: reReviews.get(r.id) ?? [],
       };
     });
+  }
+
+  /** Runner and user refs per profile id: three batched queries, whatever the count (row 260). */
+  private async adminRunnerRefs(
+    profileIds: string[],
+  ): Promise<Map<string, { runnerProfile: AdminRunnerRef; user: AdminRunnerUser | null }>> {
+    const ids = [...new Set(profileIds)];
+    const out = new Map<string, { runnerProfile: AdminRunnerRef; user: AdminRunnerUser | null }>();
+    if (ids.length === 0) {
+      return out;
+    }
+    const profiles = await this.profiles.find({ where: { id: In(ids) } });
+    const contacts = await this.users.contacts(profiles.map((p) => p.userId));
+    const areas = await this.serviceAreas.find({ where: { runnerProfileId: In(ids) } });
+    const areasOf = new Map<string, string[]>();
+    for (const a of areas) {
+      areasOf.set(a.runnerProfileId, [...(areasOf.get(a.runnerProfileId) ?? []), a.area]);
+    }
+    for (const p of profiles) {
+      const contact = contacts.get(p.userId);
+      out.set(p.id, {
+        runnerProfile: {
+          id: p.id,
+          userId: p.userId,
+          verificationLevel: p.verificationLevel,
+          serviceAreas: this.listedAreas(areasOf.get(p.id) ?? []),
+          appliedAt: p.createdAt,
+        },
+        user: contact
+          ? {
+              id: p.userId,
+              phone: contact.phone,
+              displayName: contact.displayName,
+              shortName: shortNameOf(contact.displayName),
+            }
+          : null,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * `GET /runners/verifications/queue` (row 260): the admin verification
+   * queue paginated by runner. Runners whose only records are phone checks
+   * (approved at sign-in) are not in the queue. "Latest" below is the newest
+   * record of each (type, side).
+   *  - `pending` (default): at least one pending record; oldest pending first.
+   *  - `rejected`: at least one latest record rejected; most recently decided first.
+   *  - `approved`: every latest record approved; most recently decided first.
+   *  - `all`: every queued runner; most recent submission first.
+   * Each item carries all of the runner's records whatever the filter
+   * (history included, newest first) plus the required-check summary.
+   * `total` counts the runners matching the filter; `awaitingReviewCount`
+   * counts the runners with a pending record across the whole queue.
+   * Keyset cursor (opaque, bound to the filter): 400 cursor_invalid
+   * otherwise. A fixed number of queries per page (no N+1).
+   */
+  async verificationQueueForAdmin(opts: {
+    status?: VerificationQueueStatus | null;
+    cursor?: string | null;
+    limit?: number;
+  } = {}): Promise<{
+    items: AdminVerificationQueueItem[];
+    nextCursor: string | null;
+    total: number;
+    awaitingReviewCount: number;
+  }> {
+    const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
+    const status = opts.status ?? VerificationStatus.PENDING;
+    const after = decodeQueueCursor(opts.cursor, status);
+    const { filter, sortAt, dir } = QUEUE_FILTERS[status];
+    const page: { id: string; sortKey: string; pendingCount: number; oldestPendingAt: Date | null }[] =
+      await this.verifications.query(
+        `WITH q AS (${QUEUE_BASE_SQL})
+         SELECT q.id, q."pendingCount", q."oldestPendingAt",
+                to_char(${sortAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "sortKey"
+           FROM q
+          WHERE ${filter}
+            AND ($1::timestamptz IS NULL OR (${sortAt}, q.id) ${dir === 'ASC' ? '>' : '<'} ($1::timestamptz, $2::uuid))
+          ORDER BY ${sortAt} ${dir}, q.id ${dir}
+          LIMIT $3`,
+        [after?.at ?? null, after?.id ?? null, limit + 1],
+      );
+    const counted: { total: number; awaiting: number }[] = await this.verifications.query(
+      `WITH q AS (${QUEUE_BASE_SQL})
+       SELECT (COUNT(*) FILTER (WHERE ${filter}))::int AS total,
+              (COUNT(*) FILTER (WHERE q."pendingCount" > 0))::int AS awaiting
+         FROM q`,
+    );
+    let nextCursor: string | null = null;
+    if (page.length > limit) {
+      page.pop();
+      const last = page[page.length - 1];
+      nextCursor = encodeQueueCursor(status, last.sortKey, last.id);
+    }
+    const ids = page.map((r) => r.id);
+    const rows = ids.length
+      ? await this.verifications.find({
+          where: { runnerProfileId: In(ids) },
+          order: { createdAt: 'DESC', id: 'DESC' },
+        })
+      : [];
+    const views = await this.adminVerificationViews(rows);
+    const byRunner = new Map<string, AdminVerificationView[]>();
+    for (const v of views) {
+      byRunner.set(v.runnerProfileId, [...(byRunner.get(v.runnerProfileId) ?? []), v]);
+    }
+    const items: AdminVerificationQueueItem[] = [];
+    for (const r of page) {
+      const checks = byRunner.get(r.id) ?? [];
+      const first = checks[0];
+      if (!first?.runnerProfile) {
+        continue; // A profile deleted under the page; nothing to show.
+      }
+      items.push({
+        runnerProfile: first.runnerProfile,
+        user: first.user,
+        checks,
+        pendingCount: Number(r.pendingCount),
+        oldestPendingAt: r.oldestPendingAt ? new Date(r.oldestPendingAt) : null,
+        verification: verificationSummaryOf(checks),
+      });
+    }
+    return {
+      items,
+      nextCursor,
+      total: Number(counted[0]?.total ?? 0),
+      awaitingReviewCount: Number(counted[0]?.awaiting ?? 0),
+    };
   }
 
   /**
@@ -1134,54 +1316,90 @@ export class RunnersService {
    * belong to `runnerProfileId` (A-1: else 404, as for an unknown id). Only a
    * pending check can be decided: 409 verification_already_decided
    * (`status`) otherwise (A-2), also when a second admin's decision lands
-   * between the read and the write. Returns the admin queue item shape (A-3).
+   * between the read and the write. `reviewerNote` is optional, trimmed,
+   * blank -> null, at most 500 characters (row 262: 400
+   * reviewer_note_invalid, `maxLength`); it is internal and never shown to
+   * the runner. Approving an ID side or the selfie re-evaluates Level 2
+   * (row 261, `meetsIdVerifiedRule`): `1_basic` -> `2_id_verified` only when
+   * the newest ID front, ID back and selfie are all approved. The decision
+   * and the level change commit together; the profile row is locked so two
+   * approvals landing at once cannot both miss the upgrade. A rejection
+   * never changes the level. Returns the admin queue item shape (A-3).
    */
   async reviewVerification(
     runnerProfileId: string,
     verificationId: string,
-    review: { decision: 'approved' | 'rejected'; reviewerNote?: string },
+    review: { decision: 'approved' | 'rejected'; reviewerNote?: string | null },
     adminUserId: string,
   ): Promise<AdminVerificationView> {
-    const verification = await this.verifications.findOne({
-      where: { id: verificationId, runnerProfileId },
-    });
-    if (!verification) {
-      throw new NotFoundException('Verification not found');
-    }
-    if (verification.status !== VerificationStatus.PENDING) {
-      throw alreadyDecided(verification.status);
-    }
-    const decided = {
-      status: review.decision === 'approved' ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
-      reviewerNote: review.reviewerNote ?? null,
-      reviewedBy: adminUserId,
-      reviewedAt: new Date(),
-    };
-    // Conditional write: only a still-pending row is decided (two admins clicking at once).
-    const result = await this.verifications.update(
-      { id: verification.id, status: VerificationStatus.PENDING },
-      decided,
-    );
-    if (!result.affected) {
-      const now = await this.verifications.findOne({ where: { id: verification.id } });
-      throw alreadyDecided(now?.status ?? null);
-    }
-    Object.assign(verification, decided);
-
-    if (
-      review.decision === 'approved' &&
-      verification.verificationType === RunnerVerificationType.GOVERNMENT_ID
-    ) {
-      const profile = await this.profileById(verification.runnerProfileId);
-      if (profile.verificationLevel === VerificationLevel.ONE_BASIC) {
-        profile.verificationLevel = VerificationLevel.TWO_ID_VERIFIED;
-        await this.profiles.save(profile);
+    const reviewerNote = reviewerNoteOf(review.reviewerNote);
+    const verification = await this.verifications.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(RunnerVerification);
+      const row = await repo.findOne({ where: { id: verificationId, runnerProfileId } });
+      if (!row) {
+        throw new NotFoundException('Verification not found');
       }
-    }
+      if (row.status !== VerificationStatus.PENDING) {
+        throw alreadyDecided(row.status);
+      }
+      const decided = {
+        status: review.decision === 'approved' ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
+        reviewerNote,
+        reviewedBy: adminUserId,
+        reviewedAt: new Date(),
+      };
+      // Conditional write: only a still-pending row is decided (two admins clicking at once).
+      const result = await repo.update({ id: row.id, status: VerificationStatus.PENDING }, decided);
+      if (!result.affected) {
+        const now = await repo.findOne({ where: { id: row.id } });
+        throw alreadyDecided(now?.status ?? null);
+      }
+      Object.assign(row, decided);
+      if (decided.status === VerificationStatus.APPROVED && ID_VERIFIED_TYPES.has(row.verificationType)) {
+        await this.applyIdVerifiedLevel(manager, row.runnerProfileId);
+      }
+      return row;
+    });
     const [view] = await this.adminVerificationViews([verification]);
     return view;
   }
+
+  /**
+   * Row 261, inside the decision's transaction: `1_basic` -> `2_id_verified`
+   * when the runner meets the ID-verified rule. Never downgrades and never
+   * touches a higher level. The profile lock is taken after the decision
+   * write, and the checks are read after the lock, so of two concurrent
+   * approvals (front and back) the second one sees the first.
+   */
+  private async applyIdVerifiedLevel(manager: EntityManager, runnerProfileId: string): Promise<void> {
+    const profile = await this.lockProfile(manager, runnerProfileId);
+    if (profile.verificationLevel !== VerificationLevel.ONE_BASIC) {
+      return;
+    }
+    const rows = await manager.getRepository(RunnerVerification).find({
+      where: { runnerProfileId },
+      select: { id: true, verificationType: true, side: true, status: true, createdAt: true },
+    });
+    if (meetsIdVerifiedRule(rows)) {
+      await manager
+        .getRepository(RunnerProfile)
+        .update(profile.id, { verificationLevel: VerificationLevel.TWO_ID_VERIFIED });
+    }
+  }
 }
+
+/** Row 262: optional, trimmed, blank -> null, at most 500 characters. */
+export const REVIEWER_NOTE_MAX = 500;
+
+export const reviewerNoteOf = (input: string | null | undefined): string | null => {
+  const trimmed = typeof input === 'string' ? input.trim() : '';
+  if (trimmed.length > REVIEWER_NOTE_MAX) {
+    throw new ApiError(HttpStatus.BAD_REQUEST, 'reviewer_note_invalid', `Keep the note to ${REVIEWER_NOTE_MAX} characters`, {
+      maxLength: REVIEWER_NOTE_MAX,
+    });
+  }
+  return trimmed || null;
+};
 
 /** A-2: 409 for a check that is no longer pending, with its current status. */
 const alreadyDecided = (status: VerificationStatus | null): ApiError =>
@@ -1217,4 +1435,74 @@ const decodeCursor = (cursor: string | null | undefined): [string, string] | nul
   } catch {
     return null;
   }
+};
+
+/**
+ * Per runner with at least one non-phone record (row 260): pending count and
+ * oldest pending, last submission, last decision, and over the latest record
+ * of each (type, side) whether all are approved / any is rejected.
+ */
+const QUEUE_BASE_SQL = `
+  SELECT g.id, g."pendingCount", g."oldestPendingAt", g."lastSubmittedAt", g."lastDecidedAt",
+         l."allApproved", l."anyRejected"
+    FROM (
+      SELECT v."runnerProfileId" AS id,
+             (COUNT(*) FILTER (WHERE v.status::text = 'pending'))::int AS "pendingCount",
+             MIN(v."createdAt") FILTER (WHERE v.status::text = 'pending') AS "oldestPendingAt",
+             MAX(v."createdAt") AS "lastSubmittedAt",
+             MAX(COALESCE(v."reviewedAt", v."createdAt")) FILTER (WHERE v.status::text <> 'pending') AS "lastDecidedAt",
+             bool_or(v."verificationType"::text <> 'phone') AS "hasReviewable"
+        FROM "runner_verifications" v
+       GROUP BY v."runnerProfileId"
+    ) g
+    JOIN (
+      SELECT latest."runnerProfileId" AS id,
+             bool_and(latest.status = 'approved') AS "allApproved",
+             bool_or(latest.status = 'rejected') AS "anyRejected"
+        FROM (
+          SELECT DISTINCT ON (v."runnerProfileId", v."verificationType", v.side)
+                 v."runnerProfileId", v.status::text AS status
+            FROM "runner_verifications" v
+           ORDER BY v."runnerProfileId", v."verificationType", v.side, v."createdAt" DESC, v.id DESC
+        ) latest
+       GROUP BY latest."runnerProfileId"
+    ) l ON l.id = g.id
+   WHERE g."hasReviewable"`;
+
+/** Filter, sort column and direction of each queue `status` (row 260). */
+const QUEUE_FILTERS: Record<VerificationQueueStatus, { filter: string; sortAt: string; dir: 'ASC' | 'DESC' }> = {
+  [VerificationStatus.PENDING]: { filter: 'q."pendingCount" > 0', sortAt: 'q."oldestPendingAt"', dir: 'ASC' },
+  [VerificationStatus.REJECTED]: { filter: 'q."anyRejected"', sortAt: 'q."lastDecidedAt"', dir: 'DESC' },
+  [VerificationStatus.APPROVED]: { filter: 'q."allApproved"', sortAt: 'q."lastDecidedAt"', dir: 'DESC' },
+  all: { filter: 'TRUE', sortAt: 'q."lastSubmittedAt"', dir: 'DESC' },
+};
+
+/** Opaque keyset cursor of the runner queue; bound to its `status` so a cursor of another filter is refused. */
+const encodeQueueCursor = (status: VerificationQueueStatus, at: string, id: string): string =>
+  Buffer.from(JSON.stringify({ s: status, at, id }), 'utf-8').toString('base64url');
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const decodeQueueCursor = (
+  cursor: string | null | undefined,
+  status: VerificationQueueStatus,
+): { at: string; id: string } | null => {
+  if (!cursor) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8')) as { s?: unknown; at?: unknown; id?: unknown };
+    if (
+      parsed.s === status &&
+      typeof parsed.at === 'string' &&
+      !Number.isNaN(Date.parse(parsed.at)) &&
+      typeof parsed.id === 'string' &&
+      UUID_RE.test(parsed.id)
+    ) {
+      return { at: parsed.at, id: parsed.id };
+    }
+  } catch {
+    // Falls through to the 400.
+  }
+  throw new ApiError(HttpStatus.BAD_REQUEST, 'cursor_invalid', 'Unknown cursor');
 };

@@ -5,7 +5,10 @@ import {
   IsArray,
   IsEnum,
   IsIn,
+  IsInt,
   IsOptional,
+  Max,
+  Min,
   IsString,
   MaxLength,
 } from 'class-validator';
@@ -65,13 +68,19 @@ export class ReReviewVerificationDto {
   note?: string;
 }
 
+/**
+ * PATCH /runners/:runnerId/verifications/:verificationId. `reviewerNote`
+ * (row 262): optional, internal, at most 500 characters after trimming
+ * (checked by the service: 400 reviewer_note_invalid); blank is stored as
+ * null. The DTO cap only stops oversized bodies.
+ */
 export class ReviewVerificationDto {
   @IsIn(['approved', 'rejected'])
   decision: 'approved' | 'rejected';
 
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(2000)
   reviewerNote?: string;
 }
 
@@ -104,4 +113,23 @@ export class ListVerificationsQueryDto {
   @IsEnum(VerificationStatus)
   @Type(() => String)
   status?: VerificationStatus;
+}
+
+/** GET /runners/verifications/queue (row 260). `status` defaults to `pending`. */
+export class VerificationQueueQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  cursor?: string;
+
+  @IsOptional()
+  @IsIn([...Object.values(VerificationStatus), 'all'])
+  status?: VerificationStatus | 'all';
 }

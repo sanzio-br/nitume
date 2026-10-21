@@ -102,17 +102,20 @@ export class UsersService {
     );
   }
 
-  /** Sign-in phones keyed by user id, in one query (missing users are omitted). */
-  async phones(userIds: string[]): Promise<Map<string, string | null>> {
+  /**
+   * Sign-in phone and display name keyed by user id, in one query (missing
+   * users are omitted). For admin lists that show who a runner is (row 260).
+   */
+  async contacts(userIds: string[]): Promise<Map<string, { phone: string | null; displayName: string | null }>> {
     const unique = [...new Set(userIds)].filter(Boolean);
     if (unique.length === 0) {
       return new Map();
     }
     const rows = await this.users.find({
       where: { id: In(unique) },
-      select: { id: true, phone: true },
+      select: { id: true, phone: true, displayName: true },
     });
-    return new Map(rows.map((u) => [u.id, u.phone ?? null]));
+    return new Map(rows.map((u) => [u.id, { phone: u.phone ?? null, displayName: u.displayName || null }]));
   }
 
   async getPublicProfile(userId: string): Promise<PublicUser> {
