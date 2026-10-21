@@ -1001,3 +1001,43 @@ Tokens: no hex colours, inline `font-family` or `GoogleFonts` in the panel (chec
 
 ### Verdict
 **FAIL** (`p-runners-verification-documents` and the `p-runners` verification part). Blockers: 34, 35, 36, 37, 45, 48. Minors: 38–44, 46, 47, 49. Earlier findings 18, 19, 20, 22, 23, 28 are superseded by 36, 35/36, 39, 45, 44, 39 respectively. Builder order: 34, 35, 36, 39, 41, 42 (no owner input needed) first; 37, 38, 40, 46 after AQ-35 and API item A-5; 45 now.
+
+## Re-audit 2026-10-21: verification inbox (`fix/admin-verification-inbox` @ `7638f3e`)
+
+Audited: web-parity `386c961` (`fix(admin): wire verification inbox to the real API shape`) and `7638f3e` (`test(admin): cover verification inbox review, image and re-review flows`), stacked on `docs/admin-verification-audit`. Files: `apps/admin/src/app/features/admin/panels/verifications.panel.ts`, `verifications.panel.spec.ts`, `core/services/api.service.ts:289-318`, `features/admin/admin-data.service.ts:68-79, 562-628`, `core/api-types.ts:693-788`, `shared/status-chip.component.ts`. API side read against both shapes: `main` @ `1f4524f` (bare PATCH answer, 404 when decided) and api-contract's `fix/api-verification-review` (`dfcc72b`, `38a6a58`, `e117ac6`: A-1 runner scope, A-2 409 `verification_already_decided` `{ status }` with a conditional write, A-3 full list item, A-6 batched phones; 400 on a malformed id).
+Spec updated in this round: PATCH contract and error list (409 for already decided, 404 for unknown or another runner's check, 400 malformed, both response shapes) in `p-runners-verification-documents.md` (Actions, Data) and `_shared.md` N-23 (f); N-23 (e) corrected (re-review endpoint is on `main`).
+Build health: `tsc -p tsconfig.app.json --noEmit` clean; `ng test --watch=false` 28 files, 272 tests pass (was 27 / 259), 13 new in `verifications.panel.spec.ts`. Token scan of the diff: no hex colours, no inline `font-family` or `style=`, no wallet / escrow wording, `in_review` gone from the type, the filter and the chip vocabulary.
+
+### Findings claimed built
+| # | Verdict | Evidence |
+|---|---|---|
+| 34 | PASS | `api.service.ts:294-299` three-segment path with `runnerProfileId`; `admin-data.service.ts:568-597` merges the answer over the item (status, reviewedBy, reviewedAt, reviewerNote; runnerProfile, user, reReviews, reviewer kept from the item when absent), so both the bare and the full answer work (spec tests "merges the bare answer" and "accepts the full list item"). Panel `:376-396`: per-check `busy` map, only the clicked button relabels (`Approving…` / `Rejecting…`, `:232`, `:241`), both disabled; `Check approved.` / `Check rejected.`; 403 → `FORBIDDEN_COPY`; 404 / 409 → reload + `This check was already decided. The list is updated.`; other → `Couldn't save the review. Try again.` |
+| 35 | PASS | `api-types.ts:745-788` matches the API item (`createdAt`, `side`, `reviewedAt`, `purgedAt`, `hasDocument`, `reviewer`, `reReviews`; no `submittedAt`, `documentKey`, `user.email`). `Submitted` = `formatDateTime(createdAt)` in `.num` (`:141`). `timeAgo` returns `—` on a missing or invalid date (`admin-data.service.ts:70-73`). |
+| 36 | PASS | `docUrl` deleted; `imageState` (`:57-61`) gives Stored / Deleted / No image / hidden from `hasDocument` + `purgedAt`; `View image` → `Opening…` disabled; `GET …/document` only on click, fresh each time, `window.open(url, '_blank', 'noopener,noreferrer')` (`:399-423`); `url: null`, 410 (with `purgedAt`), 404 `verification_document_missing`, 403 and other copy exact. Deleted row: `Deleted {date}` (date Fira Code) + the retention caption. |
+| 39 | PASS | `verificationTypeLabel` (`:28-47`): `National ID · Front` / `· Back` from `side`, `National ID` when null, `Selfie / liveness check`, `Phone number`, `M-Pesa identity match`, `Reference check`, `Business check`; unknown type `Verification check`, never a raw enum. |
+| 41 | PASS | `:115-117` exact spec copy; level claim gone. |
+| 42 | PASS | `VERIFICATION_STATUS_FILTERS` (`:22-26`) + `All statuses`; `in_review` removed from `api-types.ts:696` and `status-chip.component.ts`. |
+| 43 | PASS | Phone in `.verif-sub` (`:131`, Fira Code 11, `_ops.scss:573`). |
+| 44 | PASS | `Admin note` only when `reviewerNote && !purgedAt` (`:190`); `markVerificationPurged` also nulls the note and re-review notes after a 410. |
+| 45 | PASS | `Re-review evidence` (`.btn .btn-outline .btn-sm`, not green) only via `canReReview` (decided, ID/selfie, stored, not purged; `:64-66`, `:244-257`); A-08 confirm with exact title, body, `Note (optional)`, hint, `{n}/500` counter, `Back` / `Record re-review` / `Recording…` (`:271-310`); trimmed note, blank sent as no note (`:441-449`, `api.service.ts:312-318`); `Re-review recorded.` and the row appended (`admin-data.service.ts:600-605`); 409 / 410 / 404 `verification_document_missing` / 403 / other per the spec (`:455-473`). `Reviews` list `Decided · {outcome} · {admin}` + `Re-reviewed · {admin}` with the note on a second line, times Fira Code (`.drawer-row b`, `_ops.scss:861`). |
+| 47 | PASS | Accessible names: `Approve {check} for {runner}` / `Reject …` (`:228`, `:237`), `View {check} image for {runner}, opens in a new tab` (`:151-157`), re-review names the check; avatar `aria-hidden` (`:126`). `{runner}` is the short id until A-5 brings a name (follows finding 38). |
+| 48 | PASS | `verifications.panel.spec.ts`: labels with `side`, filter values, `timeAgo`, the owner's five checks rendered, PATCH path and both answer shapes, 404/409 reload, View image on click only, 410 / missing, purged note hidden, re-review with trimmed / blank note and 409. All pass. |
+| 49 | PASS | `implements OnInit` (`:314`); `load()` resets `loadingMore` and the cursor on failure (`:339-353`); `Loading…` before the first answer (`:119-120`, sub `:520`). |
+
+### Deferred by design (open; not counted against this verdict)
+- 37 (blocker, open): card markup still `vc-header` / `vc-row` / `vc-actions` / `.runner-avatar` with `.btn-primary` / `.btn-outline`; the mockup classes `.verif-top`, `.verif-avatar`, `.verif-name`, `.doc-row`, `.doc-status`, `.btn-approve`, `.btn-reject` unused. Waits on AQ-35 (rows 260–262).
+- 38 (minor, open): initials from the profile UUID (`:127`, `:490-497`). Waits on A-5 (runner name on the item).
+- 40 (minor, open): title `Verification inbox`, sub `{n} items · {n} pending` / `No verifications synced yet` (`:86`, `:519-524`). Waits on AQ-35.
+- 46 (minor, open): the auto-approved phone check is a full card. Waits on AQ-35.
+- For the AQ-35 rebuild (spec "Current vs design" note, not findings now): a failed load after a filter change leaves the previous list on screen, and `No verifications match` shows under the load-error notice.
+
+### Rulings on the builder's notes
+- (a) Removed the duplicate unstyled `Approved` / `Rejected` badge: **accepted**. Finding 37 named the double status as a defect; the `app-status-chip` (A-02 `kind="verification"`) stays as the one status until the `.doc-status` rebuild.
+- (b) `By` falls back to the admin short id after a decision against `main`'s bare answer: **accepted**. Once `fix/api-verification-review` merges, the PATCH carries `reviewer { displayName }` and the merge uses it (tested). Recorded in the spec.
+- (c) Success notices do not auto-dismiss: **accepted**. The spec asks for an A-11 notice, not a timer; they are dismissible. Any shared timer belongs to `InlineNoticeComponent` (all panels), not this screen.
+- (d) 404 and 409 both reload with `This check was already decided. The list is updated.`: **accepted**. The client always sends the item's own `runnerProfileId`, so after A-1 a 404 can only mean the check is gone; the reload shows the truth. Spec error list updated (409 primary, 404 same handling, 400 / other → save error).
+- (e) Labels: **accepted**, match the spec (mockup wording; `Reference check` / `Business check` were the proposed labels in finding 39).
+- (f) Panel note copy: **accepted**, exact spec text.
+
+### Verdict
+**PASS** for the scoped re-audit (findings 34–36, 39, 41–45, 47–49 closed; earlier 18, 19, 20, 22, 23, 28 closed with them). The screen does **not** match the design yet: 37 (blocker), 38, 40, 46 stay open, deferred to AQ-35 and API A-5, so `SCREEN_MAP.md` moves to `built`, not `matches-design`. API-side A-1, A-2, A-3, A-6 are built on `fix/api-verification-review` (not on `main`); A-4 waits on AQ-36, A-5 on AQ-35, A-7 on AQ-37.
