@@ -361,13 +361,45 @@ describe('A-4 / row 261: Level 2 needs ID front, ID back and selfie approved', (
     expect(b.profileRepo.update).not.toHaveBeenCalled();
   });
 
-  it('a rejection never touches the level (current behaviour: no downgrade)', async () => {
-    const b = build({ extra: rest(VerificationStatus.APPROVED, VerificationStatus.APPROVED) });
+  it('row 263: rejecting the newest ID side or selfie drops 2_id_verified to 1_basic, in the same transaction', async () => {
+    for (const id of ['v-front', 'v-selfie-1']) {
+      const b = build({ extra: rest(VerificationStatus.APPROVED, VerificationStatus.PENDING) });
+      b.rows[0].status = id === 'v-front' ? VerificationStatus.PENDING : VerificationStatus.APPROVED;
+      b.profiles[0].verificationLevel = VerificationLevel.TWO_ID_VERIFIED;
+      await b.service.reviewVerification('rp-1', id, { decision: 'rejected' }, 'admin-1');
+      expect(b.events).toEqual(['verification.update', 'profile.lock', 'profile.update', 'commit']);
+      expect(b.profiles[0].verificationLevel).toBe(VerificationLevel.ONE_BASIC);
+    }
+  });
+
+  it('row 263: rejecting a superseded older record keeps 2_id_verified (the newest records are all approved)', async () => {
+    const b = build({
+      extra: [
+        ...rest(VerificationStatus.APPROVED, VerificationStatus.APPROVED),
+        {
+          id: 'v-front-2',
+          runnerProfileId: 'rp-1',
+          verificationType: RunnerVerificationType.GOVERNMENT_ID,
+          side: RunnerVerificationSide.FRONT,
+          status: VerificationStatus.APPROVED,
+          createdAt: new Date('2026-10-21T08:00:00Z'),
+        },
+      ],
+    });
     b.profiles[0].verificationLevel = VerificationLevel.TWO_ID_VERIFIED;
     await b.service.reviewVerification('rp-1', 'v-front', { decision: 'rejected' }, 'admin-1');
-    expect(b.events).not.toContain('profile.lock');
     expect(b.profileRepo.update).not.toHaveBeenCalled();
     expect(b.profiles[0].verificationLevel).toBe(VerificationLevel.TWO_ID_VERIFIED);
+  });
+
+  it('row 263: a rejection never touches levels 3 and 4', async () => {
+    for (const level of [VerificationLevel.THREE_TRUSTED, VerificationLevel.FOUR_PROFESSIONAL]) {
+      const b = build({ extra: rest(VerificationStatus.APPROVED, VerificationStatus.APPROVED) });
+      b.profiles[0].verificationLevel = level;
+      await b.service.reviewVerification('rp-1', 'v-front', { decision: 'rejected' }, 'admin-1');
+      expect(b.profileRepo.update).not.toHaveBeenCalled();
+      expect(b.profiles[0].verificationLevel).toBe(level);
+    }
   });
 
   it('a payment identity approval neither locks the profile nor re-evaluates', async () => {

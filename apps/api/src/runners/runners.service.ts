@@ -689,7 +689,9 @@ export class RunnersService {
    * 400 verification_type_not_uploadable, verification_document_type_invalid
    * (also when the bytes are not that image type), verification_document_empty;
    * 413 verification_document_too_large. If the row cannot be written the
-   * stored image is deleted again.
+   * stored image is deleted again. Row 263: the upload is the newest record
+   * of its check, so a runner at `2_id_verified` drops to `1_basic` in the
+   * same transaction (profile row locked); levels 3 and 4 are not touched.
    */
   async uploadVerificationDocument(
     userId: string,
@@ -731,6 +733,9 @@ export class RunnersService {
     let saved: RunnerVerification;
     try {
       saved = await this.verifications.manager.transaction(async (manager) => {
+        // Row 263: the profile lock comes before the insert (the insert's FK
+        // key-share lock would otherwise deadlock two concurrent uploads).
+        const locked = await this.lockProfile(manager, profile.id);
         const row = await manager.getRepository(RunnerVerification).save(
           manager.getRepository(RunnerVerification).create({
             runnerProfileId: profile.id,
@@ -740,6 +745,8 @@ export class RunnersService {
           }),
         );
         await this.logAccess(manager, row, VerificationDocumentAction.UPLOAD, userId, ip);
+        // A new pending ID side or selfie is the newest record of its check: Level 2 -> 1.
+        await this.syncIdVerifiedLevel(manager, locked);
         return row;
       });
     } catch (err) {
@@ -1323,12 +1330,15 @@ export class RunnersService {
    * between the read and the write. `reviewerNote` is optional, trimmed,
    * blank -> null, at most 500 characters (row 262: 400
    * reviewer_note_invalid, `maxLength`); it is internal and never shown to
-   * the runner. Approving an ID side or the selfie re-evaluates Level 2
-   * (row 261, `meetsIdVerifiedRule`): `1_basic` -> `2_id_verified` only when
-   * the newest ID front, ID back and selfie are all approved. The decision
-   * and the level change commit together; the profile row is locked so two
-   * approvals landing at once cannot both miss the upgrade. A rejection
-   * never changes the level. Returns the admin queue item shape (A-3).
+   * the runner. Deciding an ID side or the selfie re-evaluates Level 2
+   * (rows 261, 263, `meetsIdVerifiedRule`): `1_basic` -> `2_id_verified`
+   * when the newest ID front, ID back and selfie are all approved, and
+   * `2_id_verified` -> `1_basic` when one of them is not (a rejection of the
+   * newest record). Deciding a superseded older record changes nothing,
+   * since the rule reads the newest records. The decision and the level
+   * change commit together; the profile row is locked so two decisions
+   * landing at once cannot both miss the change. Levels 3 and 4 are never
+   * touched. Returns the admin queue item shape (A-3).
    */
   async reviewVerification(
     runnerProfileId: string,
@@ -1359,8 +1369,8 @@ export class RunnersService {
         throw alreadyDecided(now?.status ?? null);
       }
       Object.assign(row, decided);
-      if (decided.status === VerificationStatus.APPROVED && ID_VERIFIED_TYPES.has(row.verificationType)) {
-        await this.applyIdVerifiedLevel(manager, row.runnerProfileId);
+      if (ID_VERIFIED_TYPES.has(row.verificationType)) {
+        await this.syncIdVerifiedLevel(manager, await this.lockProfile(manager, row.runnerProfileId));
       }
       return row;
     });
@@ -1369,25 +1379,26 @@ export class RunnersService {
   }
 
   /**
-   * Row 261, inside the decision's transaction: `1_basic` -> `2_id_verified`
-   * when the runner meets the ID-verified rule. Never downgrades and never
-   * touches a higher level. The profile lock is taken after the decision
-   * write, and the checks are read after the lock, so of two concurrent
-   * approvals (front and back) the second one sees the first.
+   * Rows 261, 263, inside the decision's or upload's transaction, with the
+   * profile row already locked by the caller (after a decision write, before
+   * an upload insert) and the checks read after the lock, so of two
+   * concurrent writes the second one sees the first: `1_basic` <->
+   * `2_id_verified` following `meetsIdVerifiedRule`. Levels 3 and 4 are
+   * never changed here (owner question open).
    */
-  private async applyIdVerifiedLevel(manager: EntityManager, runnerProfileId: string): Promise<void> {
-    const profile = await this.lockProfile(manager, runnerProfileId);
-    if (profile.verificationLevel !== VerificationLevel.ONE_BASIC) {
+  private async syncIdVerifiedLevel(manager: EntityManager, profile: RunnerProfile): Promise<void> {
+    const level = profile.verificationLevel;
+    if (level !== VerificationLevel.ONE_BASIC && level !== VerificationLevel.TWO_ID_VERIFIED) {
       return;
     }
     const rows = await manager.getRepository(RunnerVerification).find({
-      where: { runnerProfileId },
+      where: { runnerProfileId: profile.id },
       select: { id: true, verificationType: true, side: true, status: true, createdAt: true },
     });
-    if (meetsIdVerifiedRule(rows)) {
-      await manager
-        .getRepository(RunnerProfile)
-        .update(profile.id, { verificationLevel: VerificationLevel.TWO_ID_VERIFIED });
+    const target = meetsIdVerifiedRule(rows) ? VerificationLevel.TWO_ID_VERIFIED : VerificationLevel.ONE_BASIC;
+    if (target !== level) {
+      await manager.getRepository(RunnerProfile).update(profile.id, { verificationLevel: target });
+      profile.verificationLevel = target;
     }
   }
 }
