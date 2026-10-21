@@ -31,7 +31,7 @@ fun mapsApiKey(): String {
 
 android {
     namespace = "com.nitume.runner_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
