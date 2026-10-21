@@ -26,6 +26,7 @@ import {
 } from './verification-storage/verification-document-storage';
 import { UsersService } from '../users/users.service';
 import { shortNameOf } from './short-name';
+import { queueFilterFingerprint, queueLevelOf, queueSearchOf } from './verification-queue-search';
 import { ServiceArea, ServiceAreaOption, areasContaining, listedAreaIds, serviceAreaOptionsOf } from './service-areas';
 import {
   ID_VERIFIED_TYPES,
@@ -187,6 +188,23 @@ export interface AdminVerificationQueueItem {
   pendingCount: number;
   oldestPendingAt: Date | null;
   verification: VerificationSummary;
+  /**
+   * Row 278 (AV-5): over the latest records, `pending` when any is pending,
+   * else `rejected` when any is rejected, else `approved` (the `status`
+   * filter expressions). Null only on `GET /runners/:id/verifications` for a
+   * runner who is not in the queue (no ID or selfie record).
+   */
+  applicationStatus: VerificationStatus | null;
+}
+
+/** One runner's queue statistics row (row 260; AV-5 `applicationStatus`). */
+interface QueueStatsRow {
+  id: string;
+  pendingCount: number;
+  oldestPendingAt: Date | string | null;
+  applicationStatus: VerificationStatus | null;
+  hasReviewable: boolean;
+  sortKey?: string;
 }
 
 /** Rows 171, 180 (decided): optional re-review note, at most 500 characters after trim, no minimum. */
@@ -1190,18 +1208,27 @@ export class RunnersService {
    *  - `rejected`: at least one latest record rejected; most recently decided first.
    *  - `approved`: every latest record approved; most recently decided first.
    *  - `all`: every queued runner; most recent submission first.
-   * Each item carries all of the runner's records whatever the filter
-   * (history included, newest first) plus the required-check summary.
+   * Row 278 (AV-2), AND-combined with `status`: `serviceAreaId` (a
+   * configured area id; else 400 service_area_invalid), `level` (else 400
+   * level_invalid) and `q` (2-64 characters trimmed, else 400
+   * search_query_invalid; name, phone digits or short id, see
+   * `verification-queue-search.ts`). Each item carries all of the runner's
+   * records whatever the filter (history included, newest first), the
+   * required-check summary and `applicationStatus` (AV-5).
    * `pendingCount` / `oldestPendingAt` are over the latest records too.
-   * `total` counts the runners matching the filter; `awaitingReviewCount`
-   * counts the runners with a latest record pending across the whole queue.
-   * Keyset cursor (opaque, bound to the filter): 400 cursor_invalid
-   * otherwise. A fixed number of queries per page (no N+1).
+   * `total` counts the runners matching every filter; `awaitingReviewCount`
+   * counts the runners with a latest record pending across the whole queue,
+   * whatever the filters. Keyset cursor (opaque, bound to the whole filter
+   * set): 400 cursor_invalid otherwise. A fixed number of queries per page
+   * (no N+1; one more, to the users module, when searching).
    */
   async verificationQueueForAdmin(opts: {
     status?: VerificationQueueStatus | null;
     cursor?: string | null;
     limit?: number;
+    serviceAreaId?: string | null;
+    level?: string | null;
+    q?: string | null;
   } = {}): Promise<{
     items: AdminVerificationQueueItem[];
     nextCursor: string | null;
@@ -1210,32 +1237,92 @@ export class RunnersService {
   }> {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
     const status = opts.status ?? VerificationStatus.PENDING;
-    const after = decodeQueueCursor(opts.cursor, status);
+    const serviceAreaId = this.queueAreaOf(opts.serviceAreaId);
+    const level = queueLevelOf(opts.level);
+    const search = queueSearchOf(opts.q);
+    const fingerprint = queueFilterFingerprint({ status, serviceAreaId, level, search: search?.text ?? null });
+    const after = decodeQueueCursor(opts.cursor, status, fingerprint);
+    const userIds = search
+      ? await this.users.idsMatching({ nameContains: search.text, phoneDigits: search.phoneDigits })
+      : [];
+    const extra = [serviceAreaId, level, !!search, userIds, search?.shortId ?? null];
     const { filter, sortAt, dir } = QUEUE_FILTERS[status];
-    const page: { id: string; sortKey: string; pendingCount: number; oldestPendingAt: Date | null }[] =
-      await this.verifications.query(
-        `WITH q AS (${QUEUE_BASE_SQL})
-         SELECT q.id, q."pendingCount", q."oldestPendingAt",
-                to_char(${sortAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "sortKey"
-           FROM q
-          WHERE ${filter}
-            AND ($1::timestamptz IS NULL OR (${sortAt}, q.id) ${dir === 'ASC' ? '>' : '<'} ($1::timestamptz, $2::uuid))
-          ORDER BY ${sortAt} ${dir}, q.id ${dir}
-          LIMIT $3`,
-        [after?.at ?? null, after?.id ?? null, limit + 1],
-      );
+    const page: QueueStatsRow[] = await this.verifications.query(
+      `WITH q AS (${QUEUE_BASE_SQL})
+       SELECT q.id, q."pendingCount", q."oldestPendingAt", q."applicationStatus", q."hasReviewable",
+              to_char(${sortAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "sortKey"
+         FROM q
+         LEFT JOIN "runner_profiles" p ON p.id = q.id
+        WHERE ${filter}
+          AND ${queueExtraFilterSql(4)}
+          AND ($1::timestamptz IS NULL OR (${sortAt}, q.id) ${dir === 'ASC' ? '>' : '<'} ($1::timestamptz, $2::uuid))
+        ORDER BY ${sortAt} ${dir}, q.id ${dir}
+        LIMIT $3`,
+      [after?.at ?? null, after?.id ?? null, limit + 1, ...extra],
+    );
     const counted: { total: number; awaiting: number }[] = await this.verifications.query(
       `WITH q AS (${QUEUE_BASE_SQL})
-       SELECT (COUNT(*) FILTER (WHERE ${filter}))::int AS total,
+       SELECT (COUNT(*) FILTER (WHERE ${filter} AND ${queueExtraFilterSql(1)}))::int AS total,
               (COUNT(*) FILTER (WHERE q."pendingCount" > 0))::int AS awaiting
-         FROM q`,
+         FROM q
+         LEFT JOIN "runner_profiles" p ON p.id = q.id`,
+      extra,
     );
     let nextCursor: string | null = null;
     if (page.length > limit) {
       page.pop();
       const last = page[page.length - 1];
-      nextCursor = encodeQueueCursor(status, last.sortKey, last.id);
+      nextCursor = encodeQueueCursor(status, fingerprint, last.sortKey ?? '', last.id);
     }
+    return {
+      items: await this.queueItemsOf(page),
+      nextCursor,
+      total: Number(counted[0]?.total ?? 0),
+      awaitingReviewCount: Number(counted[0]?.awaiting ?? 0),
+    };
+  }
+
+  /**
+   * Row 278 (AV-1): `GET /runners/:runnerProfileId/verifications`, one
+   * runner in the queue item shape (built by the same code as the queue),
+   * whatever the queue filters. A runner with only phone records, or none,
+   * still answers (empty or phone-only `checks`, `applicationStatus` null:
+   * not in the queue). 404 runner_not_found for an unknown profile.
+   */
+  async verificationQueueItemForAdmin(runnerProfileId: string): Promise<AdminVerificationQueueItem> {
+    const notFound = () => new ApiError(HttpStatus.NOT_FOUND, 'runner_not_found', 'Runner not found');
+    const profile = await this.profiles.findOne({ where: { id: runnerProfileId }, select: { id: true } });
+    if (!profile) {
+      throw notFound();
+    }
+    const stats: QueueStatsRow[] = await this.verifications.query(
+      `WITH q AS (${queueStatsSql('$1')})
+       SELECT q.id, q."pendingCount", q."oldestPendingAt", q."applicationStatus", q."hasReviewable" FROM q`,
+      [runnerProfileId],
+    );
+    const row: QueueStatsRow = stats[0] ?? {
+      id: runnerProfileId,
+      pendingCount: 0,
+      oldestPendingAt: null,
+      applicationStatus: null,
+      hasReviewable: false,
+    };
+    const [item] = await this.queueItemsOf([row], { keepWithoutChecks: true });
+    if (!item) {
+      throw notFound(); // Deleted between the two reads.
+    }
+    return item;
+  }
+
+  /**
+   * Queue items for stats rows, in their order: every record of each runner
+   * (newest first, admin item shape) in one batch. A runner without records
+   * is dropped unless `keepWithoutChecks` (AV-1), then built from the profile.
+   */
+  private async queueItemsOf(
+    page: QueueStatsRow[],
+    opts: { keepWithoutChecks?: boolean } = {},
+  ): Promise<AdminVerificationQueueItem[]> {
     const ids = page.map((r) => r.id);
     const rows = ids.length
       ? await this.verifications.find({
@@ -1248,28 +1335,39 @@ export class RunnersService {
     for (const v of views) {
       byRunner.set(v.runnerProfileId, [...(byRunner.get(v.runnerProfileId) ?? []), v]);
     }
+    const bare = opts.keepWithoutChecks ? await this.adminRunnerRefs(ids.filter((id) => !byRunner.has(id))) : new Map();
     const items: AdminVerificationQueueItem[] = [];
     for (const r of page) {
       const checks = byRunner.get(r.id) ?? [];
-      const first = checks[0];
-      if (!first?.runnerProfile) {
+      const ref = checks[0]?.runnerProfile ? { runnerProfile: checks[0].runnerProfile, user: checks[0].user } : bare.get(r.id);
+      if (!ref?.runnerProfile) {
         continue; // A profile deleted under the page; nothing to show.
       }
       items.push({
-        runnerProfile: first.runnerProfile,
-        user: first.user,
+        runnerProfile: ref.runnerProfile,
+        user: ref.user ?? null,
         checks,
         pendingCount: Number(r.pendingCount),
         oldestPendingAt: r.oldestPendingAt ? new Date(r.oldestPendingAt) : null,
         verification: verificationSummaryOf(checks),
+        applicationStatus: r.hasReviewable ? (r.applicationStatus ?? null) : null,
       });
     }
-    return {
-      items,
-      nextCursor,
-      total: Number(counted[0]?.total ?? 0),
-      awaitingReviewCount: Number(counted[0]?.awaiting ?? 0),
-    };
+    return items;
+  }
+
+  /** Row 278 (AV-2): `serviceAreaId` must be a configured area id (400 service_area_invalid). */
+  private queueAreaOf(serviceAreaId: string | null | undefined): string | null {
+    if (serviceAreaId === undefined || serviceAreaId === null) {
+      return null;
+    }
+    const id = serviceAreaId.trim();
+    if (!this.areaList().some((a) => a.id === id)) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'service_area_invalid', 'Choose an area from the list', {
+        allowed: this.areaList().map((a) => a.id),
+      });
+    }
+    return id;
   }
 
   /**
@@ -1581,21 +1679,31 @@ const decodeCursor = (cursor: string | null | undefined): [string, string] | nul
 };
 
 /**
- * Per runner with at least one non-phone record (row 260): last submission
- * and last decision over every record; over the latest record of each
- * (type, side) the pending count, the oldest pending submission, and whether
- * all are approved / any is rejected (A-9, row 264: an older pending record
- * superseded by a newer upload of the same check is not counted).
+ * Per runner (row 260): last submission and last decision over every
+ * record; over the latest record of each (type, side) the pending count, the
+ * oldest pending submission, and whether all are approved / any is rejected
+ * (A-9, row 264: an older pending record superseded by a newer upload of the
+ * same check is not counted); `applicationStatus` with the precedence
+ * pending > rejected > approved (row 278, AV-5), the same expressions as the
+ * `status` filters. The queue keeps runners with at least one non-phone
+ * record; `only` (a bind placeholder such as `$1`) restricts the scan to one
+ * runner profile and keeps phone-only runners (AV-1).
  */
-const QUEUE_BASE_SQL = `
+const queueStatsSql = (only: string | null = null): string => {
+  const one = only ? `WHERE v."runnerProfileId" = ${only}::uuid` : '';
+  return `
   SELECT g.id, l."pendingCount", l."oldestPendingAt", g."lastSubmittedAt", g."lastDecidedAt",
-         l."allApproved", l."anyRejected"
+         l."allApproved", l."anyRejected", g."hasReviewable",
+         CASE WHEN l."pendingCount" > 0 THEN 'pending'
+              WHEN l."anyRejected" THEN 'rejected'
+              ELSE 'approved' END AS "applicationStatus"
     FROM (
       SELECT v."runnerProfileId" AS id,
              MAX(v."createdAt") AS "lastSubmittedAt",
              MAX(COALESCE(v."reviewedAt", v."createdAt")) FILTER (WHERE v.status::text <> 'pending') AS "lastDecidedAt",
              bool_or(v."verificationType"::text <> 'phone') AS "hasReviewable"
         FROM "runner_verifications" v
+       ${one}
        GROUP BY v."runnerProfileId"
     ) g
     JOIN (
@@ -1608,11 +1716,15 @@ const QUEUE_BASE_SQL = `
           SELECT DISTINCT ON (v."runnerProfileId", v."verificationType", v.side)
                  v."runnerProfileId", v.status::text AS status, v."createdAt"
             FROM "runner_verifications" v
+           ${one}
            ORDER BY v."runnerProfileId", v."verificationType", v.side, v."createdAt" DESC, v.id DESC
         ) latest
        GROUP BY latest."runnerProfileId"
     ) l ON l.id = g.id
-   WHERE g."hasReviewable"`;
+   WHERE ${only ? 'TRUE' : 'g."hasReviewable"'}`;
+};
+
+const QUEUE_BASE_SQL = queueStatsSql();
 
 /** Filter, sort column and direction of each queue `status` (row 260). */
 const QUEUE_FILTERS: Record<VerificationQueueStatus, { filter: string; sortAt: string; dir: 'ASC' | 'DESC' }> = {
@@ -1622,23 +1734,51 @@ const QUEUE_FILTERS: Record<VerificationQueueStatus, { filter: string; sortAt: s
   all: { filter: 'TRUE', sortAt: 'q."lastSubmittedAt"', dir: 'DESC' },
 };
 
-/** Opaque keyset cursor of the runner queue; bound to its `status` so a cursor of another filter is refused. */
-const encodeQueueCursor = (status: VerificationQueueStatus, at: string, id: string): string =>
-  Buffer.from(JSON.stringify({ s: status, at, id }), 'utf-8').toString('base64url');
+/**
+ * Row 278 (AV-2): the area, level and search conditions on the queue CTE
+ * `q` joined to `runner_profiles p`, with bind placeholders from `$first`
+ * on: area id, level, "searching" flag, matching user ids, short-id part.
+ * Every value is a bind parameter; a null one switches its condition off.
+ */
+const queueExtraFilterSql = (first: number): string => {
+  const $ = (i: number) => `$${first + i}`;
+  return `(${$(0)}::text IS NULL OR EXISTS (
+            SELECT 1 FROM "runner_service_areas" a
+             WHERE a."runnerProfileId" = q.id AND a.area::text = ${$(0)}::text))
+      AND (${$(1)}::text IS NULL OR p."verificationLevel"::text = ${$(1)}::text)
+      AND (NOT ${$(2)}::boolean
+           OR p."userId"::text = ANY(${$(3)}::text[])
+           OR (${$(4)}::text IS NOT NULL AND strpos(right(replace(q.id::text, '-', ''), 5), ${$(4)}::text) > 0))`;
+};
+
+/**
+ * Opaque keyset cursor of the runner queue; bound to its `status` and to the
+ * fingerprint of the whole filter set (row 278) so a cursor of another
+ * filter set is refused.
+ */
+const encodeQueueCursor = (status: VerificationQueueStatus, filters: string, at: string, id: string): string =>
+  Buffer.from(JSON.stringify({ s: status, f: filters, at, id }), 'utf-8').toString('base64url');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const decodeQueueCursor = (
   cursor: string | null | undefined,
   status: VerificationQueueStatus,
+  filters: string,
 ): { at: string; id: string } | null => {
   if (!cursor) {
     return null;
   }
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8')) as { s?: unknown; at?: unknown; id?: unknown };
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8')) as {
+      s?: unknown;
+      f?: unknown;
+      at?: unknown;
+      id?: unknown;
+    };
     if (
       parsed.s === status &&
+      parsed.f === filters &&
       typeof parsed.at === 'string' &&
       !Number.isNaN(Date.parse(parsed.at)) &&
       typeof parsed.id === 'string' &&
