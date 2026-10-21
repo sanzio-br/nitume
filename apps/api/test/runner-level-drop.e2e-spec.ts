@@ -5,6 +5,8 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
+import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { UserRole } from '../src/common/enums';
@@ -236,4 +238,45 @@ describe('Runner level drop (e2e)', () => {
       .expect(409);
     expect(again.body).toMatchObject({ code: 'runner_not_eligible', reason: 'not_verified' });
   });
+
+  it('row 265: the re-check script lists on a dry run, changes nothing, and drops only with --apply', async () => {
+    const [customer, admin, failing, fine] = [
+      await makeUser(UserRole.CUSTOMER),
+      await makeUser(UserRole.ADMIN),
+      await makeUser(UserRole.RUNNER),
+      await makeUser(UserRole.RUNNER),
+    ];
+    await levelTwo(failing);
+    await levelTwo(fine);
+    const offered = await paidErrand(customer, admin);
+    await assign(admin, offered.id, failing);
+    // Then the rule stops holding without any decision (e.g. data from before the rule changed).
+    await pendingCheck(failing, 'government_id', 'back');
+
+    // Same database and queue prefix as this run (vitest sets them on process.env).
+    const script = (...args: string[]) =>
+      execFileSync('npx', ['ts-node', join('src', 'runners', 'scripts', 'recheck-id-verified-levels.ts'), ...args], {
+        cwd: join(__dirname, '..'),
+        env: { ...process.env, TS_NODE_TRANSPILE_ONLY: '1' },
+        encoding: 'utf-8',
+      });
+    expect(process.env.DATABASE_NAME).toMatch(/_test$/);
+
+    const dry = script();
+    expect(dry).toContain(`[dry run] database=${process.env.DATABASE_NAME}`);
+    expect(dry).toContain(failing.profileId as string);
+    expect(dry).not.toContain(fine.profileId as string);
+    expect(dry).toContain('Nothing was changed');
+    expect(await levelOf(failing)).toBe('2_id_verified');
+    expect(await assignmentOf(offered.id, failing)).toMatchObject({ status: 'assigned' });
+
+    const applied = script('--apply');
+    expect(applied).toContain('[apply]');
+    expect(applied).toContain(failing.profileId as string);
+    expect(await levelOf(failing)).toBe('1_basic');
+    expect(await levelOf(fine)).toBe('2_id_verified');
+    expect(await assignmentOf(offered.id, failing)).toMatchObject({ status: 'expired' });
+
+    expect(() => script('--force')).toThrow();
+  }, 180_000);
 });
