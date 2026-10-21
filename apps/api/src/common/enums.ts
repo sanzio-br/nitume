@@ -264,6 +264,8 @@ export enum NotificationEventType {
   ASSIGNMENT_DECLINED = 'assignment.declined',
   /** Admin feed: an admin offer lapsed unaccepted; the task needs another runner (row 157, N-20). */
   ASSIGNMENT_EXPIRED = 'assignment.expired',
+  /** Admin feed (row 270): a runner dropped to Level 1 and their open offer on the task was withdrawn (row 266). */
+  RUNNER_LEVEL_DROPPED = 'runner.level_dropped',
   /** Admin feed: a RUNNER_ASSIGNED task expired at its customer deadline (row 185). */
   DEADLINE_PASSED = 'deadline_passed',
   /** Customer: the task was refused at quote, inside no service area; they may cancel (row 236). */
