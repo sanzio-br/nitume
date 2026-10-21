@@ -11,6 +11,7 @@ import { ErrandStatusHistory } from './errand-status-history.entity';
 import { Errand } from './errand.entity';
 import { ErrandsController } from './errands.controller';
 import { ErrandsService } from './errands.service';
+import { RunnerLevelWatcher } from './runner-level.watcher';
 import { Quote } from './quote.entity';
 
 @Module({
@@ -29,7 +30,7 @@ import { Quote } from './quote.entity';
     ]),
   ],
   controllers: [ErrandsController],
-  providers: [ErrandsService],
+  providers: [ErrandsService, RunnerLevelWatcher],
   exports: [ErrandsService],
 })
 export class ErrandsModule {}

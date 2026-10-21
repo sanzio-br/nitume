@@ -26,6 +26,7 @@ import {
   ReviewVerificationDto,
   UploadVerificationDocumentDto,
   SetAvailabilityDto,
+  VerificationQueueQueryDto,
   SetServiceAreasDto,
   SetSkillsDto,
 } from './dto/runner-actions.dto';
@@ -59,11 +60,19 @@ export class RunnersController {
 
   /**
    * Admin decision on one pending check, `{ decision, reviewerNote? }`.
-   * `:runnerId` is the runner profile id. 200 with the same item shape as
+   * `:runnerId` is the runner profile id. `reviewerNote` (row 262) is
+   * optional and internal (never sent to the runner): trimmed, blank ->
+   * null, at most 500 characters. 200 with the same item shape as
    * `GET /runners/verifications` (user, runnerProfile, side, hasDocument,
    * purgedAt, reviewer, reReviews), so the client can replace its item.
-   * Errors: 400 for a malformed id; 404 when the verification is unknown or
-   * belongs to another runner; 409 verification_already_decided (`status`).
+   * Approving an ID side or the selfie moves a `1_basic` runner to
+   * `2_id_verified` once the newest ID front, ID back and selfie are all
+   * approved (row 261), in the same transaction. Rejecting the newest ID
+   * front, ID back or selfie drops a `2_id_verified` runner to `1_basic`
+   * (row 263(a)), in the same transaction; other rejections, and runners at
+   * Level 3 or 4, keep their level. Errors: 400 for a malformed id; 400 reviewer_note_invalid
+   * (`maxLength`); 404 when the verification is unknown or belongs to
+   * another runner; 409 verification_already_decided (`status`).
    */
   @UseGuards(JwtAuthGuard)
   @Patch(':runnerId/verifications/:verificationId')
@@ -82,6 +91,14 @@ export class RunnersController {
     );
   }
 
+  /**
+   * Admin verification list, one item per check, newest first,
+   * `?status=pending|approved|rejected&cursor&limit` -> `{ items, nextCursor }`.
+   * Each item: the check (no storage key; `hasDocument`, `purgedAt`, `side`),
+   * `runnerProfile { id, userId, verificationLevel, serviceAreas[{ id, name }],
+   * appliedAt, level2Missing }`, `user { id, phone, displayName, shortName }` (row 260),
+   * `reviewer`, `reReviews[]`.
+   */
   @UseGuards(JwtAuthGuard)
   @Get('verifications')
   @Roles(UserRole.ADMIN)
@@ -90,6 +107,37 @@ export class RunnersController {
       limit: query.limit,
       cursor: query.cursor,
       status: query.status,
+    });
+  }
+
+  /**
+   * Row 260: the admin verification queue, one item per runner,
+   * `?status=pending|approved|rejected|all` (default `pending`) `&cursor&limit`
+   * (1-100, default 20) -> `{ items, nextCursor, total, awaitingReviewCount }`.
+   * Item: `{ runnerProfile { id, userId, verificationLevel, serviceAreas[{ id,
+   * name }], appliedAt, level2Missing }, user { id, phone, displayName, shortName },
+   * checks[] (every record of the runner, history included, newest first,
+   * same shape as GET /runners/verifications items), pendingCount,
+   * oldestPendingAt, verification { verified, checks[{ type, side, status }], level2Missing } }`.
+   * Runners with only phone records are left out. "Latest" = newest record
+   * of each (type, side). `pending`: any latest record pending, oldest
+   * pending first (A-9: a pending record superseded by a newer upload of
+   * the same check is not counted); `rejected`: any latest record rejected; `approved`: every latest
+   * record approved (both most recently decided first); `all`: most recent
+   * submission first. `total`: runners matching the filter;
+   * `pendingCount` / `oldestPendingAt` over latest records only;
+   * `awaitingReviewCount`: runners with a latest record pending, whole queue.
+   * Errors: 400 cursor_invalid (unreadable, or from another filter); 400 for
+   * an unknown status or a limit outside 1-100.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('verifications/queue')
+  @Roles(UserRole.ADMIN)
+  verificationQueue(@Query() query: VerificationQueueQueryDto) {
+    return this.runners.verificationQueueForAdmin({
+      status: query.status,
+      cursor: query.cursor,
+      limit: query.limit,
     });
   }
 
@@ -145,7 +193,7 @@ export class RunnersController {
   /**
    * RA-18: the runner's own view (`RunnerSelfView`): shortName, skills,
    * serviceAreas `[{ id, name }]`, availability, maxPurchaseAdvance and
-   * `verification { verified, checks[{ type, side, status }] }`. No trust
+   * `verification { verified, checks[{ type, side, status }], level2Missing }`. No trust
    * score or stored location. 404 without a runner profile.
    */
   @UseGuards(JwtAuthGuard)
@@ -211,6 +259,7 @@ export class RunnersController {
     return this.runners.uploadVerificationDocument(user.userId, dto.verificationType, file, ip ?? null, dto.side);
   }
 
+  /** The runner's own checks, newest first. Never carries `reviewerNote` or `reviewedBy` (row 262, A-8: internal). */
   @UseGuards(JwtAuthGuard)
   @Get('me/verifications')
   @Roles(UserRole.RUNNER)

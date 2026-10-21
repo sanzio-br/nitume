@@ -52,24 +52,26 @@ describe('UsersService display name', () => {
     expect(await service.displayNames([])).toEqual(new Map());
   });
 
-  it('batches sign-in phones in one query, de-duplicated', async () => {
+  it('batches sign-in phones and display names in one query, de-duplicated', async () => {
     const repo = {
       find: vi.fn(() =>
         Promise.resolve([
-          { id: 'u-1', phone: '+254712345678' },
-          { id: 'u-2', phone: '+254700000002' },
+          { id: 'u-1', phone: '+254712345678', displayName: 'Mary Wanjiku' },
+          { id: 'u-2', phone: '+254700000002', displayName: null },
         ]),
       ),
     };
     const service = new UsersService(repo as never);
-    const phones = await service.phones(['u-1', 'u-2', 'u-1']);
+    const contacts = await service.contacts(['u-1', 'u-2', 'u-1']);
     expect(repo.find).toHaveBeenCalledTimes(1);
-    expect(repo.find).toHaveBeenCalledWith(expect.objectContaining({ select: { id: true, phone: true } }));
-    expect([...phones.entries()]).toEqual([
-      ['u-1', '+254712345678'],
-      ['u-2', '+254700000002'],
+    expect(repo.find).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { id: true, phone: true, displayName: true } }),
+    );
+    expect([...contacts.entries()]).toEqual([
+      ['u-1', { phone: '+254712345678', displayName: 'Mary Wanjiku' }],
+      ['u-2', { phone: '+254700000002', displayName: null }],
     ]);
-    expect(await service.phones([])).toEqual(new Map());
+    expect(await service.contacts([])).toEqual(new Map());
     expect(repo.find).toHaveBeenCalledTimes(1);
   });
 });

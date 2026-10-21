@@ -28,7 +28,8 @@
     "schema:sync": "npm run typeorm -- schema:sync -d src/databases/data-source.ts",
     "schema:drop": "npm run typeorm -- schema:drop -d src/databases/data-source.ts",
     "migration:refresh": "TS_NODE_TRANSPILE_ONLY=1 ts-node src/databases/scripts/refresh-schema.ts && npm run seed:admin",
-    "seed:admin": "TS_NODE_TRANSPILE_ONLY=1 ts-node src/databases/seeds/seed-admin.ts"
+    "seed:admin": "TS_NODE_TRANSPILE_ONLY=1 ts-node src/databases/seeds/seed-admin.ts",
+    "runners:recheck-level2": "TS_NODE_TRANSPILE_ONLY=1 ts-node src/runners/scripts/recheck-id-verified-levels.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^12.0.0",

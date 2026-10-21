@@ -2381,6 +2381,64 @@ export class ErrandsService {
   }
 
   /**
+   * Row 266 (owner, 2026-10-21): a runner dropped below Level 2. Every open
+   * offer to that runner (the task's current assignment, `assigned`, task
+   * RUNNER_ASSIGNED) is withdrawn through the offer-expiry path: the
+   * assignment becomes `expired` (decidedAt = now; no new state), the task
+   * stays RUNNER_ASSIGNED with no open offer for the admin to offer again
+   * (row 157), the runner loses access (`errand.access_changed`) and gets
+   * `job:offer_withdrawn` with reason `expired` (the runner is never told
+   * why, `_shared.md` §6). No admin feed item: the `assignment_expired`
+   * copy says the runner did not accept in time (owner question). Accepted
+   * and in-progress jobs are not touched. Each errand is re-checked under
+   * its row lock. Returns the errand ids whose offer was withdrawn.
+   */
+  async withdrawOpenOffersOf(runnerProfileId: string, now: Date = new Date()): Promise<string[]> {
+    const open = await this.assignments
+      .createQueryBuilder('a')
+      .select('a."errandId"', 'errandId')
+      .innerJoin(Errand, 'e', 'e.id = a."errandId"')
+      .where('a."runnerProfileId" = :runnerProfileId', { runnerProfileId })
+      .andWhere('a.status = :open', { open: AssignmentStatus.ASSIGNED })
+      .andWhere('e.status = :assigned', { assigned: ErrandStatus.RUNNER_ASSIGNED })
+      .getRawMany<{ errandId: string }>();
+    const withdrawn: string[] = [];
+    for (const { errandId } of open) {
+      const offer = await this.inTx(async (manager) => {
+        const errand = await manager
+          .getRepository(Errand)
+          .findOne({ where: { id: errandId }, lock: { mode: 'pessimistic_write' } });
+        if (errand?.status !== ErrandStatus.RUNNER_ASSIGNED) {
+          return null;
+        }
+        const current = await this.activeAssignmentFor(errandId, manager);
+        if (current?.status !== AssignmentStatus.ASSIGNED || current.runnerProfileId !== runnerProfileId) {
+          return null; // Accepted, declined, expired or re-offered meanwhile.
+        }
+        await manager.getRepository(ErrandAssignment).update(current.id, {
+          status: AssignmentStatus.EXPIRED,
+          decidedAt: now,
+        });
+        return current;
+      });
+      if (offer) {
+        withdrawn.push(errandId);
+        setImmediate(() => {
+          this.events.emit('errand.access_changed', { errandId });
+          this.events.emit(OFFER_WITHDRAWN_EVENT, {
+            errandId,
+            assignmentId: offer.id,
+            runnerProfileId,
+            reason: 'expired',
+            at: now.toISOString(),
+          } satisfies OfferWithdrawnEvent);
+        });
+      }
+    }
+    return withdrawn;
+  }
+
+  /**
    * With the errand row already locked: marks the current offer `expired`
    * when it is still open (`assigned`) and its deadline has passed, and
    * returns it. Null when there is nothing to expire (accepted, declined,

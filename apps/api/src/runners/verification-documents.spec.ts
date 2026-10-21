@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../common/api-error';
-import { RunnerVerificationType, VerificationStatus } from '../common/enums';
-import { RunnerVerification } from './runner-verification.entity';
+import { RunnerVerificationType, VerificationLevel, VerificationStatus } from '../common/enums';
+import { RunnerVerification, RunnerVerificationSide } from './runner-verification.entity';
 import { VerificationDocumentAction } from './verification-document-access-log.entity';
 import { RunnersService } from './runners.service';
 
@@ -11,8 +11,9 @@ const codeOf = (p: Promise<unknown>) =>
     (e: unknown) => (e instanceof ApiError ? e.code : String(e)),
   );
 
-const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
+const build = (dueIds: string[] = [], clockAt: Date | null = null, level = VerificationLevel.ONE_BASIC) => {
   const rows: RunnerVerification[] = [];
+  const events: string[] = [];
   const log: {
     action: VerificationDocumentAction;
     actorUserId: string | null;
@@ -23,6 +24,7 @@ const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
   const verificationRepo = {
     create: vi.fn((v: Partial<RunnerVerification>) => v),
     save: vi.fn((v: RunnerVerification) => {
+      events.push('verification.insert');
       const row = Object.assign(new RunnerVerification(), { status: VerificationStatus.PENDING, purgedAt: null }, v, {
         id: v.id ?? `v-${rows.length + 1}`,
         createdAt: new Date(),
@@ -31,6 +33,9 @@ const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
       return Promise.resolve(row);
     }),
     findOne: vi.fn(({ where }: { where: { id: string } }) => Promise.resolve(rows.find((r) => r.id === where.id) ?? null)),
+    find: vi.fn(({ where }: { where: { runnerProfileId: string } }) =>
+      Promise.resolve(rows.filter((r) => r.runnerProfileId === where.runnerProfileId)),
+    ),
     update: vi.fn((where: { id: string }, patch: Partial<RunnerVerification>) => {
       const row = rows.find((r) => r.id === where.id && !r.purgedAt);
       if (row) {
@@ -66,8 +71,23 @@ const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
     }
     return Promise.resolve([]);
   });
+  const profile = { id: 'rp-1', userId: 'u-run', verificationLevel: level };
+  const profileRepo = {
+    findOne: vi.fn(({ lock }: { lock?: unknown }) => {
+      if (lock) {
+        events.push('profile.lock');
+      }
+      return Promise.resolve({ ...profile });
+    }),
+    update: vi.fn((_id: string, patch: Partial<typeof profile>) => {
+      events.push('profile.update');
+      Object.assign(profile, patch);
+      return Promise.resolve({ affected: 1 });
+    }),
+  };
   const manager = {
-    getRepository: (e: { name: string }) => (e.name === 'VerificationDocumentAccessLog' ? logRepo : verificationRepo),
+    getRepository: (e: { name: string }) =>
+      e.name === 'VerificationDocumentAccessLog' ? logRepo : e.name === 'RunnerProfile' ? profileRepo : verificationRepo,
     query: managerQuery,
   };
   const verifications = {
@@ -90,7 +110,7 @@ const build = (dueIds: string[] = [], clockAt: Date | null = null) => {
     storage as never,
     config as never,
   );
-  return { service, rows, log, storage, verificationRepo };
+  return { service, rows, log, storage, verificationRepo, profile, profileRepo, events };
 };
 
 const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
@@ -277,5 +297,50 @@ describe('ID side (row 195)', () => {
     expect(back.side).toBe('back');
     const selfie = await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, image, null);
     expect(selfie.side ?? null).toBeNull();
+  });
+});
+
+describe('Row 263: an upload is the newest record of its check', () => {
+  const approvedSet = (b: ReturnType<typeof build>) => {
+    const at = new Date('2026-10-01T08:00:00Z');
+    for (const [verificationType, side] of [
+      [RunnerVerificationType.GOVERNMENT_ID, RunnerVerificationSide.FRONT],
+      [RunnerVerificationType.GOVERNMENT_ID, RunnerVerificationSide.BACK],
+      [RunnerVerificationType.SELFIE, null],
+    ] as const) {
+      b.rows.push(
+        Object.assign(new RunnerVerification(), {
+          id: `ok-${verificationType}-${side}`,
+          runnerProfileId: 'rp-1',
+          verificationType,
+          side,
+          status: VerificationStatus.APPROVED,
+          createdAt: at,
+        }),
+      );
+    }
+  };
+
+  it('a re-upload drops 2_id_verified to 1_basic in the upload transaction, profile locked before the insert', async () => {
+    for (const [type, side] of [
+      [RunnerVerificationType.GOVERNMENT_ID, 'back'],
+      [RunnerVerificationType.SELFIE, undefined],
+    ] as const) {
+      const b = build([], null, VerificationLevel.TWO_ID_VERIFIED);
+      approvedSet(b);
+      await b.service.uploadVerificationDocument('u-run', type, image, null, side);
+      expect(b.profile.verificationLevel).toBe(VerificationLevel.ONE_BASIC);
+      expect(b.events).toEqual(['profile.lock', 'verification.insert', 'profile.update']);
+    }
+  });
+
+  it('never touches levels 3 and 4, and leaves 1_basic as it is', async () => {
+    for (const level of [VerificationLevel.THREE_TRUSTED, VerificationLevel.ONE_BASIC]) {
+      const b = build([], null, level);
+      approvedSet(b);
+      await b.service.uploadVerificationDocument('u-run', RunnerVerificationType.SELFIE, image, null);
+      expect(b.profile.verificationLevel).toBe(level);
+      expect(b.profileRepo.update).not.toHaveBeenCalled();
+    }
   });
 });
