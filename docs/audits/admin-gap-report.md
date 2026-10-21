@@ -1169,3 +1169,26 @@ Row 269 (levels 3 / 4), 270 (admin feed item on a drop), 271 (superseded pending
 
 ### Verdict
 **PASS.** No findings. N-L1 closed; AQ-39 closed by row 267. `SCREEN_MAP.md` stays `matches-design`. `feat/api-verification-answers` must merge before (or with) `feat/admin-verification-cards`: the queue and `level2Missing` do not exist on `main`.
+
+## Owner answers 2026-10-21: rows 267, 269–275 (`docs/verification-owner-answers-269`)
+
+Spec-only round plus a desk check of `feat/admin-verification-cards` @ `f1255f4` (identical in this worktree) against the answers. The owner approved every recommendation on 2026-10-21. Spec updated: `docs/specs/admin/p-runners-verification-documents.md` (`Owner answers 2026-10-21`, Check rows, Answers and errors, Card header, Copy, Numeric fields, Data), `docs/specs/admin/drawer-task-offer.md` (Live updates: `runner_level_dropped`), `docs/specs/admin/_shared.md` §1 (rows 263–275).
+
+| Row | Answer | Admin effect |
+|---|---|---|
+| 267 | Panel note wording confirmed as built | Copy now owner-approved; no change |
+| 269 | Levels 3 / 4 untouched | none |
+| 270 | Feed item `runner_level_dropped`, `{runner} dropped to Level 1 — open offer on {task} withdrawn` | API (api-contract, `feat/api-level-drop-followups`). The admin web renders no API notification feed today (`Live feed` is derived from tasks), so no web-parity item |
+| 271 | Superseded `pending` records stay; admin hides their Approve / Reject | Card already shows only the newest record per check (no actions on older ones). W-1 below for the client count |
+| 272 | Script not pushing sockets accepted | none |
+| 273 | Runner set offline at the drop | none (runner `v-jobs`) |
+| 274 | Customer badge shows the live level | none |
+| 275 | Runner `Verified` caption, no Retake | none |
+
+### p-runners-verification-documents: FAIL (2 minor, from the answers; the build was PASS before them)
+1. **W-1 (minor)** `apps/admin/src/app/features/admin/admin-data.service.ts:626-629` (`reviewVerification`) and `:737` (`mergeQueuePage`). Design (row 271 with A-9): a check is pending only when its **newest** record per (type, side) is `pending`; superseded older `pending` records never count. Code: `hadPending`, `pendingCount` and the decision that decrements `awaitingReviewCount` use `item.checks.some/filter(c => c.status === 'pending')` over every record, history included. Effect: a runner whose ID front was re-uploaded while the first upload was still pending (two `pending` front records), with nothing else pending, is approved on the newest front; the client still sees the old `pending` record, so the topbar `{n} applications awaiting review` is not decremented (the API's count is), and the merged `pendingCount` is 1. Fix: count pending over the newest record per (type, side) only (reuse the newest-per-check pick of `checkRows`, `verifications.panel.ts:106-128`, moved to a shared helper), in both places. Test: two `pending` ID front records (older and newer), all other checks decided; Approve the newer → topbar count minus one and `pendingCount` 0.
+2. **W-2 (minor)** `apps/admin/src/styles/_ops.scss:585-590` and `verifications.panel.ts:279-282`. Design (design rules, ruled 2026-10-21; resolves the spec contradiction between Card header "whole `.verif-sub` line is Fira Code" and Numeric fields "area name Fira Sans"): Fira Code only for numeric data, so on `Applied {relative time} · {area}` only the relative time value and `+{n}` are Fira Code; `Applied`, `·` and the area name are Fira Sans. Code: `.verif-sub` sets `font-family: var(--nitume-font-num)` on the whole line (as the mockup CSS does), so `Applied` and `Nairobi` render in Fira Code. Fix: drop the font-family from `.verif-sub` (Fira Sans inherits); render `appliedLine` through `app-num-text` with the relative time and `+{n}` as number parts; keep the `{short id} · {phone}` line in Fira Code (wrap in `.num` or a `.verif-sub.num` modifier). Test: on the Applied line, `Applied` and the area name are outside `.num`, the relative time inside; the id/phone line is inside `.num`.
+
+Not a finding (note for the orchestrator): the shared A-03 topbar `.sub` (`_ops.scss:172-177`, `_shared.md` §4, every panel) is all Fira Code in the mockup and the build, so `applications awaiting review` and similar words render in Fira Code. Same rule as W-2, but it touches every panel; left for a separate decision.
+
+Verdict: **FAIL** (minor W-1, W-2). `SCREEN_MAP.md` moved from `matches-design` to `built` until both are fixed and re-audited. Tokens, contrast, domain and copy unchanged from the PASS above.

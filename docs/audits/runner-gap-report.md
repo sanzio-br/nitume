@@ -1448,3 +1448,15 @@ Build: merge `427ca7f` of `fix/runner-level2-legacy-ids` (`ee141be`, `eabd85e`, 
 ### Still open
 - F-6 (row 273), F-7 (`v-profile` build).
 - Branch dependency: the screens rely on `level2Missing` and the row-268 checks from `feat/api-verification-answers` (records fallback otherwise), so merge order is API, then core, then runner.
+
+## 27. Owner answers 2026-10-21 (rows 269–275), on `docs/verification-owner-answers-269`
+
+Spec-only. The owner approved every recommendation. Specs updated: `_shared.md` §0 (rows 269–275) and §7 (downgrade bullet), `v-jobs.md`, `v-onboard-pending.md`, `v-onboard-id.md`, `v-profile.md` (RN-L1 addenda).
+
+- **F-6 closed, dropped (row 273)**: the server sets availability `offline` at the drop (api-contract, `feat/api-level-drop-followups`), so the disabled switch is right as built. What `v-jobs` shows after a drop, existing copy only (`v-jobs.md` RN-L1): switch `Offline`, disabled, `You can go online once your verification is approved.`; the verification card with the rejected (`Continue verification`) or reviewing (`View status`) copy; idle pings stop, a working job keeps its job pings (`job_pings.dart`, job mode does not depend on availability). Known and accepted: a drop with no open offer while the tab is open reaches the tab only at the next load (resume, reconnect, poll while the socket is down, or a refused action).
+- **F-4 owner-approved (row 275)**: `Verified` caption and no `Retake` / remove on a server-approved side; built `ba77321`, `a490a99`, PASS in §26.
+- Row 269 (Levels 3 / 4 untouched), 272 (script without sockets), 274 (customer live level), 270 / 271 (admin only): no runner change.
+- Still open: F-7 (`v-profile` build). No new flutter-runner item.
+- needs (api-contract, row 273): a runner who drops while `busy` with an accepted job (row 266: the job continues) must not be returned to `online` when that job ends; the job-end path should leave a not-verified runner `offline`. State what is built for the busy case.
+
+Statuses unchanged: `v-jobs`, `v-onboard-id`, `v-onboard-pending`, `v-auth-otp` stay `matches-design`.
