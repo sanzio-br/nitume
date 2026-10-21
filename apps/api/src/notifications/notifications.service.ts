@@ -32,6 +32,8 @@ import {
   OutsideServiceAreaEvent,
   TaskDeadlineExpiredEvent,
   ASSIGNMENT_EXPIRED_EVENT,
+  OFFER_WITHDRAWN_LEVEL_DROPPED_EVENT,
+  OfferWithdrawnLevelDroppedEvent,
   AssignmentDeclinedEvent,
   AssignmentExpiredEvent,
   MERCHANT_DETAILS_UPDATED_EVENT,
@@ -105,6 +107,12 @@ export type FeedJob =
   | { kind: 'assignment_declined'; errandId: string; reference: string; overPurchaseLimit?: boolean }
   /** Admin-facing (row 157): an admin offer lapsed; the task needs another runner. */
   | { kind: 'assignment_expired'; errandId: string; reference: string }
+  /**
+   * Admin-facing (row 270): the runner dropped to Level 1 and their open
+   * offer on this task was withdrawn (row 266). One per withdrawn offer.
+   * `runnerName` is filled by the worker (display name; null when unset).
+   */
+  | { kind: 'runner_level_dropped'; errandId: string; reference: string; runnerProfileId: string; runnerName?: string | null }
   /** Admin-facing (row 185): a RUNNER_ASSIGNED task expired at its customer deadline. */
   | { kind: 'deadline_passed'; errandId: string; reference: string }
   /** Admin-facing (rows 201, 220): a PAYMENT_CONFIRMED task is past its deadline; not expired. Once per task. */
@@ -217,6 +225,7 @@ const ADMIN_FEED_KINDS = new Set<FeedJob['kind']>([
   'quote_requested',
   'assignment_declined',
   'assignment_expired',
+  'runner_level_dropped',
   'deadline_passed',
   'paid_deadline_passed',
 ]);
@@ -438,6 +447,22 @@ export class NotificationsService {
   }
 
   /**
+   * Row 270: a Level 1 drop withdrew an open offer -> admin feed
+   * `runner_level_dropped`, one item per withdrawn offer (the feed item
+   * belongs to one task, like `assignment_expired`). The customer gets
+   * nothing: the task is still RUNNER_ASSIGNED.
+   */
+  @OnEvent(OFFER_WITHDRAWN_LEVEL_DROPPED_EVENT, { async: true })
+  async onOfferWithdrawnLevelDropped(event: OfferWithdrawnLevelDroppedEvent): Promise<void> {
+    await this.enqueue({
+      kind: 'runner_level_dropped',
+      errandId: event.errandId,
+      reference: event.reference,
+      runnerProfileId: event.runnerProfileId,
+    });
+  }
+
+  /**
    * Row 185: the task expired at its deadline -> admin feed `deadline_passed`.
    * The customer's `errand.EXPIRED` comes from the status change as usual.
    */
@@ -508,6 +533,9 @@ export class NotificationsService {
     if (job.kind === 'runner_job') {
       return this.deliverRunnerFeed(job);
     }
+    if (job.kind === 'runner_level_dropped') {
+      job = { ...job, runnerName: await this.runnerNameOf(job.runnerProfileId) };
+    }
     const copy = copyFor(job);
     if (!copy) {
       return null;
@@ -530,6 +558,19 @@ export class NotificationsService {
       recipients = profile ? [profile.userId] : [];
     }
     return this.writeFeed(recipients, errand.id, copy);
+  }
+
+  /** Row 270: the runner's display name for admin copy; null when unset or unknown. */
+  private async runnerNameOf(runnerProfileId: string): Promise<string | null> {
+    if (!this.runners || !this.users) {
+      return null;
+    }
+    try {
+      const profile = await this.runners.profileById(runnerProfileId);
+      return (await this.users.displayNames([profile.userId])).get(profile.userId) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -738,6 +779,13 @@ export const copyFor = (job: FeedJob): FeedCopy | null => {
         eventType: NotificationEventType.ASSIGNMENT_EXPIRED,
         title: 'Offer ended',
         body: `The runner didn't accept ${job.reference} in time. Offer it to another runner.`,
+      };
+    // Owner copy, row 270 (body word for word; the title is the builder's).
+    case 'runner_level_dropped':
+      return {
+        eventType: NotificationEventType.RUNNER_LEVEL_DROPPED,
+        title: 'Runner dropped to Level 1',
+        body: `${job.runnerName?.trim() || 'A runner'} dropped to Level 1 — open offer on ${job.reference} withdrawn`,
       };
     case 'merchant_details':
       return {

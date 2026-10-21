@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../common/api-error';
-import { RunnerVerificationType, VerificationLevel, VerificationStatus } from '../common/enums';
+import { RunnerAvailability, RunnerVerificationType, VerificationLevel, VerificationStatus } from '../common/enums';
 import { RunnerProfile } from './runner-profile.entity';
 import { RunnerServiceArea } from './runner-skill.entity';
 import { RunnerVerification, RunnerVerificationSide } from './runner-verification.entity';
@@ -398,6 +398,37 @@ describe('A-4 / row 261: Level 2 needs ID front, ID back and selfie approved', (
       });
       expect(b.profiles[0].verificationLevel).toBe(VerificationLevel.ONE_BASIC);
     }
+  });
+
+  it('row 273: the drop sets an online runner offline in the same write; busy and offline are kept', async () => {
+    const cases: [RunnerAvailability, RunnerAvailability][] = [
+      [RunnerAvailability.ONLINE, RunnerAvailability.OFFLINE],
+      [RunnerAvailability.BUSY, RunnerAvailability.BUSY],
+      [RunnerAvailability.OFFLINE, RunnerAvailability.OFFLINE],
+    ];
+    for (const [before, after] of cases) {
+      const b = build({ extra: rest(VerificationStatus.APPROVED, VerificationStatus.PENDING) });
+      b.rows[0].status = VerificationStatus.APPROVED;
+      b.profiles[0].verificationLevel = VerificationLevel.TWO_ID_VERIFIED;
+      b.profiles[0].availability = before;
+      await b.service.reviewVerification('rp-1', 'v-selfie-1', { decision: 'rejected' }, 'admin-1');
+      expect(b.profileRepo.update).toHaveBeenCalledTimes(1);
+      expect(b.profileRepo.update).toHaveBeenCalledWith(
+        'rp-1',
+        before === RunnerAvailability.ONLINE
+          ? { verificationLevel: VerificationLevel.ONE_BASIC, availability: RunnerAvailability.OFFLINE }
+          : { verificationLevel: VerificationLevel.ONE_BASIC },
+      );
+      expect(b.profiles[0]).toMatchObject({ verificationLevel: VerificationLevel.ONE_BASIC, availability: after });
+    }
+  });
+
+  it('row 273: a raise to Level 2 never changes availability', async () => {
+    const b = build({ extra: rest(VerificationStatus.APPROVED, VerificationStatus.APPROVED) });
+    b.profiles[0].availability = RunnerAvailability.ONLINE;
+    await b.service.reviewVerification('rp-1', 'v-front', { decision: 'approved' }, 'admin-1');
+    expect(b.profileRepo.update).toHaveBeenCalledWith('rp-1', { verificationLevel: VerificationLevel.TWO_ID_VERIFIED });
+    expect(b.profiles[0].availability).toBe(RunnerAvailability.ONLINE);
   });
 
   it('row 263: rejecting a superseded older record keeps 2_id_verified (the newest records are all approved)', async () => {

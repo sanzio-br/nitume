@@ -199,6 +199,12 @@ describe('startJob / endJob (RA-8, RA-20)', () => {
     expect(await codeOf(b.service.startJob('rp-1', b.manager as never))).toBe('runner_offline');
   });
 
+  it('row 273: endJob sets a busy runner who is no longer verified offline, not online', async () => {
+    const { service, profile, manager } = build({ availability: RunnerAvailability.BUSY, verified: false });
+    await service.endJob('rp-1', manager as never);
+    expect(profile.availability).toBe('offline');
+  });
+
   it('endJob leaves an online or offline runner as is', async () => {
     const { service, profile, manager } = build({ availability: RunnerAvailability.OFFLINE });
     await service.endJob('rp-1', manager as never);

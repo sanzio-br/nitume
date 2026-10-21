@@ -191,6 +191,29 @@ describe('Runner level drop (e2e)', () => {
     )) as { status: string; decidedAt: Date | null }[])[0];
   const errandStatus = async (errandId: string) =>
     ((await db().query(`SELECT status::text AS s FROM "errands" WHERE id = $1`, [errandId])) as { s: string }[])[0].s;
+  const availabilityOf = async (runner: Actor): Promise<string> =>
+    ((await db().query(`SELECT availability::text AS a FROM "runner_profiles" WHERE id = $1`, [runner.profileId])) as {
+      a: string;
+    }[])[0].a;
+  const referenceOf = async (errandId: string): Promise<string> =>
+    ((await db().query(`SELECT reference FROM "errands" WHERE id = $1`, [errandId])) as { reference: string }[])[0].reference;
+  const setName = (actor: Actor, name: string) =>
+    db().query(`UPDATE "users" SET "displayName" = $2 WHERE id = $1`, [actor.id, name]);
+  /** Row 270: the admin's feed items of one kind on a task, once the queue worker has written them. */
+  const feedItems = async (admin: Actor, errandId: string, eventType: string, want = 1) => {
+    let rows: { title: string; body: string; eventType: string }[] = [];
+    for (let i = 0; i < 50; i += 1) {
+      rows = (await db().query(
+        `SELECT title, body, "eventType" FROM "notifications" WHERE "userId" = $1 AND "errandId" = $2 AND "eventType" = $3`,
+        [admin.id, errandId, eventType],
+      )) as typeof rows;
+      if (rows.length >= want) {
+        break;
+      }
+      await sleep(100);
+    }
+    return rows;
+  };
 
   it('row 266: on the drop, accepted jobs continue, open offers are withdrawn, no new offer', async () => {
     const [customer, admin, runner] = [
@@ -239,6 +262,96 @@ describe('Runner level drop (e2e)', () => {
     expect(again.body).toMatchObject({ code: 'runner_not_eligible', reason: 'not_verified' });
   });
 
+  it('row 270: one admin feed item per withdrawn offer, runner_level_dropped, none for the accepted job or the customer', async () => {
+    const [customer, admin, runner] = [
+      await makeUser(UserRole.CUSTOMER),
+      await makeUser(UserRole.ADMIN),
+      await makeUser(UserRole.RUNNER),
+    ];
+    await setName(runner, 'Brian Kamau');
+    await levelTwo(runner);
+    const first = await paidErrand(customer, admin);
+    const second = await paidErrand(customer, admin);
+    const accepted = await paidErrand(customer, admin);
+    await assign(admin, first.id, runner);
+    await assign(admin, second.id, runner);
+    await assign(admin, accepted.id, runner);
+    await accept(runner, accepted.id);
+
+    const selfie = await pendingCheck(runner, 'selfie');
+    await http()
+      .patch(`/api/v1/runners/${runner.profileId}/verifications/${selfie}`)
+      .set(bearer(admin.token))
+      .send({ decision: 'rejected' })
+      .expect(200);
+
+    for (const task of [first, second]) {
+      const items = await feedItems(admin, task.id, 'runner.level_dropped');
+      expect(items).toEqual([
+        {
+          eventType: 'runner.level_dropped',
+          title: 'Runner dropped to Level 1',
+          body: `Brian Kamau dropped to Level 1 — open offer on ${await referenceOf(task.id)} withdrawn`,
+        },
+      ]);
+      // Not the "didn't accept in time" item.
+      expect(await feedItems(admin, task.id, 'assignment.expired', 0)).toEqual([]);
+    }
+    expect(await feedItems(admin, accepted.id, 'runner.level_dropped', 0)).toEqual([]);
+    const customerItems = (await db().query(
+      `SELECT id FROM "notifications" WHERE "userId" = $1 AND "eventType" = 'runner.level_dropped'`,
+      [customer.id],
+    )) as unknown[];
+    expect(customerItems).toEqual([]);
+  });
+
+  it('row 273: an online runner goes offline at the drop and cannot go online again until verified', async () => {
+    const [admin, runner] = [await makeUser(UserRole.ADMIN), await makeUser(UserRole.RUNNER)];
+    await levelTwo(runner);
+    expect(await availabilityOf(runner)).toBe('online');
+    const front = await pendingCheck(runner, 'government_id', 'front');
+    await http()
+      .patch(`/api/v1/runners/${runner.profileId}/verifications/${front}`)
+      .set(bearer(admin.token))
+      .send({ decision: 'rejected' })
+      .expect(200);
+    expect(await levelOf(runner)).toBe('1_basic');
+    const me = await http().get('/api/v1/runners/me').set(bearer(runner.token)).expect(200);
+    expect(me.body).toMatchObject({ verificationLevel: '1_basic', availability: 'offline' });
+    const online = await http()
+      .patch('/api/v1/runners/me/availability')
+      .set(bearer(runner.token))
+      .send({ availability: 'online' })
+      .expect(403);
+    expect(online.body.code).toBe('runner_not_verified');
+  });
+
+  it('row 273: a busy runner stays busy through the job (row 266), then ends offline, not online', async () => {
+    const [customer, admin, runner] = [
+      await makeUser(UserRole.CUSTOMER),
+      await makeUser(UserRole.ADMIN),
+      await makeUser(UserRole.RUNNER),
+    ];
+    await levelTwo(runner);
+    const job = await paidErrand(customer, admin);
+    await assign(admin, job.id, runner);
+    await accept(runner, job.id);
+    expect(await availabilityOf(runner)).toBe('busy');
+
+    const selfie = await pendingCheck(runner, 'selfie');
+    await http()
+      .patch(`/api/v1/runners/${runner.profileId}/verifications/${selfie}`)
+      .set(bearer(admin.token))
+      .send({ decision: 'rejected' })
+      .expect(200);
+    expect(await levelOf(runner)).toBe('1_basic');
+    expect(await availabilityOf(runner)).toBe('busy');
+
+    // The job ends (runner FAILED from RUNNER_EN_ROUTE): busy -> offline, since the runner is not verified.
+    await setStatus(runner, job.id, 'FAILED');
+    expect(await availabilityOf(runner)).toBe('offline');
+  });
+
   it('row 265: the re-check script lists on a dry run, changes nothing, and drops only with --apply', async () => {
     const [customer, admin, failing, fine] = [
       await makeUser(UserRole.CUSTOMER),
@@ -248,6 +361,7 @@ describe('Runner level drop (e2e)', () => {
     ];
     await levelTwo(failing);
     await levelTwo(fine);
+    await setName(failing, 'Achieng Otieno');
     const offered = await paidErrand(customer, admin);
     await assign(admin, offered.id, failing);
     // Then the rule stops holding without any decision (e.g. data from before the rule changed).
@@ -307,6 +421,14 @@ describe('Runner level drop (e2e)', () => {
     expect(await levelOf(failing)).toBe('1_basic');
     expect(await levelOf(fine)).toBe('2_id_verified');
     expect(await assignmentOf(offered.id, failing)).toMatchObject({ status: 'expired' });
+    // Row 273: offline in the same write; row 270: the script queued the feed item (this app's worker writes it).
+    expect(await availabilityOf(failing)).toBe('offline');
+    expect(await availabilityOf(fine)).toBe('online');
+    expect(await feedItems(admin, offered.id, 'runner.level_dropped')).toEqual([
+      expect.objectContaining({
+        body: `Achieng Otieno dropped to Level 1 — open offer on ${await referenceOf(offered.id)} withdrawn`,
+      }),
+    ]);
 
     expect(refused('--force')).toContain('Unknown argument');
   }, 180_000);

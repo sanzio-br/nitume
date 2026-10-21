@@ -445,6 +445,23 @@ export interface AssignmentExpiredEvent {
 }
 
 /**
+ * Row 270 (owner, 2026-10-21): an open offer was withdrawn because its
+ * runner dropped to Level 1 (row 266). One event per withdrawn offer, after
+ * its commit; the notifications module writes the admin feed item
+ * `runner_level_dropped`. Awaited (`emitAsync`), so the feed job is queued
+ * before the drop's request (or the row 265 script) finishes.
+ */
+export const OFFER_WITHDRAWN_LEVEL_DROPPED_EVENT = 'assignment.withdrawn_level_dropped';
+
+export interface OfferWithdrawnLevelDroppedEvent {
+  errandId: string;
+  reference: string;
+  assignmentId: string;
+  runnerProfileId: string;
+  at: string;
+}
+
+/**
  * RA-5: an offer was made to a runner (admin assign, rows 113, 137).
  * Emitted after the offer has committed; the realtime gateway pushes
  * `job:offered` to that runner's own room.
@@ -2388,10 +2405,11 @@ export class ErrandsService {
    * stays RUNNER_ASSIGNED with no open offer for the admin to offer again
    * (row 157), the runner loses access (`errand.access_changed`) and gets
    * `job:offer_withdrawn` with reason `expired` (the runner is never told
-   * why, `_shared.md` §6). No admin feed item: the `assignment_expired`
-   * copy says the runner did not accept in time (owner question). Accepted
-   * and in-progress jobs are not touched. Each errand is re-checked under
-   * its row lock. Returns the errand ids whose offer was withdrawn.
+   * why, `_shared.md` §6). The admins get one feed item per withdrawn
+   * offer, `runner_level_dropped` (row 270; not `assignment_expired`, whose
+   * copy says the runner did not accept in time). Accepted and in-progress
+   * jobs are not touched. Each errand is re-checked under its row lock.
+   * Returns the errand ids whose offer was withdrawn.
    */
   async withdrawOpenOffersOf(runnerProfileId: string, now: Date = new Date()): Promise<string[]> {
     const open = await this.assignments
@@ -2419,7 +2437,7 @@ export class ErrandsService {
           status: AssignmentStatus.EXPIRED,
           decidedAt: now,
         });
-        return current;
+        return { assignment: current, reference: errand.reference };
       });
       if (offer) {
         withdrawn.push(errandId);
@@ -2427,12 +2445,26 @@ export class ErrandsService {
           this.events.emit('errand.access_changed', { errandId });
           this.events.emit(OFFER_WITHDRAWN_EVENT, {
             errandId,
-            assignmentId: offer.id,
+            assignmentId: offer.assignment.id,
             runnerProfileId,
             reason: 'expired',
             at: now.toISOString(),
           } satisfies OfferWithdrawnEvent);
         });
+        // Row 270: admin feed item. A failing listener never stops the other withdrawals.
+        try {
+          await this.events.emitAsync(OFFER_WITHDRAWN_LEVEL_DROPPED_EVENT, {
+            errandId,
+            reference: offer.reference,
+            assignmentId: offer.assignment.id,
+            runnerProfileId,
+            at: now.toISOString(),
+          } satisfies OfferWithdrawnLevelDroppedEvent);
+        } catch (err) {
+          this.logger.error(
+            `Level-drop feed item for ${errandId} not queued: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
     }
     return withdrawn;

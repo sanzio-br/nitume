@@ -715,3 +715,69 @@ describe('assignment_expired admin feed (row 157, N-20)', () => {
     });
   });
 });
+
+describe('runner_level_dropped admin feed (row 270)', () => {
+  it('has the owner copy with the runner name and the task reference', () => {
+    expect(
+      copyFor({ kind: 'runner_level_dropped', errandId: 'e-1', reference: 'NT-7', runnerProfileId: 'rp-1', runnerName: 'Brian Kamau' }),
+    ).toEqual({
+      eventType: 'runner.level_dropped',
+      title: 'Runner dropped to Level 1',
+      body: 'Brian Kamau dropped to Level 1 — open offer on NT-7 withdrawn',
+    });
+    expect(copyFor({ kind: 'runner_level_dropped', errandId: 'e-1', reference: 'NT-7', runnerProfileId: 'rp-1' })?.body).toBe(
+      'A runner dropped to Level 1 — open offer on NT-7 withdrawn',
+    );
+  });
+
+  it('is queued once per withdrawn offer, never as a customer item', async () => {
+    const { service, queue } = build();
+    await service.onOfferWithdrawnLevelDropped({
+      errandId: 'e-1',
+      reference: 'NT-7',
+      assignmentId: 'a-1',
+      runnerProfileId: 'rp-1',
+      at: '2026-10-21T10:00:00.000Z',
+    });
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    expect(queue.add).toHaveBeenCalledWith(FEED_JOB, {
+      kind: 'runner_level_dropped',
+      errandId: 'e-1',
+      reference: 'NT-7',
+      runnerProfileId: 'rp-1',
+    });
+  });
+
+  it('the worker writes it to every active admin with the runner display name', async () => {
+    const saved: { userId: string; errandId: string; eventType: string; body: string }[] = [];
+    const notifications = {
+      create: vi.fn((row: object) => row),
+      save: vi.fn((row: (typeof saved)[number]) => {
+        saved.push(row);
+        return Promise.resolve({ id: `n-${saved.length}`, ...row });
+      }),
+    };
+    const service = new NotificationsService(
+      notifications as never,
+      { findOne: vi.fn(() => Promise.resolve({ id: 'e-1', customerId: 'c-1' })) } as never,
+      { findOne: vi.fn() } as never,
+      {} as never,
+      { add: vi.fn(() => Promise.resolve({})) } as never,
+      {} as never,
+      { enabled: false } as never,
+      {
+        activeAdminIds: vi.fn(() => Promise.resolve(['admin-1', 'admin-2'])),
+        displayNames: vi.fn(() => Promise.resolve(new Map([['u-r', 'Brian Kamau']]))),
+      } as never,
+      undefined,
+      { profileById: vi.fn(() => Promise.resolve({ id: 'rp-1', userId: 'u-r' })) } as never,
+    );
+    await service.deliverFeed({ kind: 'runner_level_dropped', errandId: 'e-1', reference: 'NT-7', runnerProfileId: 'rp-1' });
+    expect(saved.map((r) => r.userId)).toEqual(['admin-1', 'admin-2']);
+    expect(saved[0]).toMatchObject({
+      errandId: 'e-1',
+      eventType: 'runner.level_dropped',
+      body: 'Brian Kamau dropped to Level 1 — open offer on NT-7 withdrawn',
+    });
+  });
+});
