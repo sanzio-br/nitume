@@ -77,6 +77,7 @@ States (proposed):
 ## Data
 - Errands for the selector: `GET /api/v1/errands?status=PAYMENT_CONFIRMED,RUNNER_ASSIGNED,RUNNER_EN_ROUTE,ARRIVED,IN_PROGRESS,AWAITING_CUSTOMER` (multi-status filter on `feat/api-customer-gaps`).
 - Errand + runner: `GET /api/v1/errands/:id` (assignment + runner summary embedded). needs: api-contract — the runner's API-computed short name on the runner summary (row 40).
+- `Verified` in the runner meta (row 274, owner 2026-10-21): the runner's **live** `verificationLevel` (≥ `2_id_verified`, `v-task-detail.md` Q4), also mid-task; a runner who drops to Level 1 during the task loses `Verified` (meta reads the rating alone). No change to the build.
 - Timeline: `GET /api/v1/errands/:id/history` (exists) using §6 labels, interleaved with evidence events from `GET /errands/:errandId/evidence`; the next expected state is shown as pending (Q1 default).
 - Snapshot: `GET /api/v1/errands/:id/tracking` (exists). needs: api-contract — return no runner position outside the assignment window and for any assignment that is not current (rows 27, 65); 403/404 handling above.
 - Live (rows 23, 29; `_shared.md` §10): `errand:join` on the selected errand's room `errand:{id}` (`errand:leave` on switch or when the tab is hidden); `location:update` `{ lat, lng, eta }`, `errand:status_changed`, `evidence:uploaded`, `price_change:requested`. Fallback only while the socket is disconnected: poll `GET /errands/:id/tracking` every 10 s and `GET /errands/:id` every 15 s while the tab is visible.
