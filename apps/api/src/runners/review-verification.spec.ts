@@ -556,3 +556,43 @@ describe('GET /runners/verifications/queue (row 260)', () => {
     expect(sql[1].replace(/\s+/g, ' ')).toContain(`FILTER (WHERE q."pendingCount" > 0))::int AS awaiting`);
   });
 });
+
+describe('row 265: recheckIdVerifiedLevels', () => {
+  const setup = () => {
+    // rp-1 at Level 2 with front pending (fails the rule); rp-2 at Level 2 meeting it; rp-3 at Level 3 failing.
+    const b = build({
+      extra: [
+        ...rest(VerificationStatus.APPROVED, VerificationStatus.APPROVED),
+        { id: 'f2', runnerProfileId: 'rp-2', verificationType: RunnerVerificationType.GOVERNMENT_ID, side: RunnerVerificationSide.FRONT, status: VerificationStatus.APPROVED },
+        { id: 'b2', runnerProfileId: 'rp-2', verificationType: RunnerVerificationType.GOVERNMENT_ID, side: RunnerVerificationSide.BACK, status: VerificationStatus.APPROVED },
+      ],
+    });
+    b.rows[1].status = VerificationStatus.APPROVED; // rp-2 selfie
+    b.profiles[0].verificationLevel = VerificationLevel.TWO_ID_VERIFIED;
+    b.profiles[1].verificationLevel = VerificationLevel.TWO_ID_VERIFIED;
+    b.profiles.push({ id: 'rp-3', userId: 'u-3', verificationLevel: VerificationLevel.THREE_TRUSTED, createdAt: APPLIED });
+    b.profileRepo.find.mockImplementation((({ where }: { where?: { verificationLevel?: VerificationLevel } }) =>
+      Promise.resolve(b.profiles.filter((p) => !where?.verificationLevel || p.verificationLevel === where.verificationLevel))) as never);
+    return b;
+  };
+
+  it('dry run lists the Level 2 runners failing the rule and changes nothing', async () => {
+    const b = setup();
+    const out = await b.service.recheckIdVerifiedLevels();
+    expect(out).toEqual({ applied: false, runnerProfileIds: ['rp-1'] });
+    expect(b.transaction).not.toHaveBeenCalled();
+    expect(b.profileRepo.update).not.toHaveBeenCalled();
+    expect(b.emitted).toEqual([]);
+  });
+
+  it('--apply drops them in one transaction under the profile lock, then emits runner.level_dropped', async () => {
+    const b = setup();
+    (b.profileRepo as unknown as { manager: unknown }).manager = b.verificationRepo.manager;
+    const out = await b.service.recheckIdVerifiedLevels({ apply: true });
+    expect(out).toEqual({ applied: true, runnerProfileIds: ['rp-1'] });
+    expect(b.transaction).toHaveBeenCalledTimes(1);
+    expect(b.profiles.map((p) => p.verificationLevel)).toEqual(['1_basic', '2_id_verified', '3_trusted']);
+    expect(b.events).toEqual(['profile.lock', 'profile.update', 'commit', 'emit:runner.level_dropped']);
+    expect(b.emitted[0].payload).toMatchObject({ runnerProfileId: 'rp-1', cause: 'recheck' });
+  });
+});

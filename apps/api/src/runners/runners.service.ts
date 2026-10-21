@@ -47,8 +47,8 @@ export interface RunnerLevelDroppedEvent {
   runnerProfileId: string;
   from: VerificationLevel;
   to: VerificationLevel;
-  /** `upload` | `decision`. */
-  cause: 'upload' | 'decision';
+  /** `upload` | `decision` | `recheck` (row 265 one-time script). */
+  cause: 'upload' | 'decision' | 'recheck';
   at: string;
 }
 
@@ -1445,6 +1445,53 @@ export class RunnersService {
       profile.verificationLevel = target;
     }
     return target === VerificationLevel.ONE_BASIC && level === VerificationLevel.TWO_ID_VERIFIED;
+  }
+
+  /**
+   * Row 265 (owner, 2026-10-21): one-time re-check, at deploy, of every
+   * runner at `2_id_verified` under the current rule (`meetsIdVerifiedRule`,
+   * rows 261, 263, 268). Dry run by default: returns the runners that would
+   * drop to `1_basic` and changes nothing. With `apply`, drops them in one
+   * transaction (each profile row locked and re-checked under the lock, so a
+   * decision landing meanwhile is respected), logs each change, then emits
+   * `runner.level_dropped` per runner after the commit (open offers
+   * withdrawn, row 266). Never raises a level and never touches 3 or 4.
+   */
+  async recheckIdVerifiedLevels(opts: { apply?: boolean } = {}): Promise<{ applied: boolean; runnerProfileIds: string[] }> {
+    const candidates = await this.profiles.find({
+      where: { verificationLevel: VerificationLevel.TWO_ID_VERIFIED },
+      select: { id: true },
+      order: { id: 'ASC' },
+    });
+    const ids = candidates.map((p) => p.id);
+    const rows = ids.length
+      ? await this.verifications.find({
+          where: { runnerProfileId: In(ids) },
+          select: { id: true, runnerProfileId: true, verificationType: true, side: true, status: true, createdAt: true },
+        })
+      : [];
+    const byRunner = new Map<string, RunnerVerification[]>();
+    for (const r of rows) {
+      byRunner.set(r.runnerProfileId, [...(byRunner.get(r.runnerProfileId) ?? []), r]);
+    }
+    const failing = ids.filter((id) => !meetsIdVerifiedRule(byRunner.get(id) ?? []));
+    if (!opts.apply || failing.length === 0) {
+      return { applied: false, runnerProfileIds: failing };
+    }
+    const dropped: string[] = [];
+    await this.profiles.manager.transaction(async (manager) => {
+      for (const id of failing) {
+        const profile = await this.lockProfile(manager, id);
+        if (profile.verificationLevel === VerificationLevel.TWO_ID_VERIFIED && (await this.syncIdVerifiedLevel(manager, profile))) {
+          dropped.push(id);
+          this.logger.log(`Row 265 re-check: runner profile ${id} 2_id_verified -> 1_basic`);
+        }
+      }
+    });
+    for (const id of dropped) {
+      await this.levelDropped(id, 'recheck');
+    }
+    return { applied: true, runnerProfileIds: dropped };
   }
 
   /** After commit: tells the errands module (row 266). Listeners never throw. */
