@@ -1424,3 +1424,27 @@ Spec-only. Core is built on `fix/core-runner-level2-missing` (`2c391fc`, `cd8b59
 - 272: covered by the next load / poll.
 - 273: decides whether F-6 is needed; no runner copy until answered.
 - 274: customer-facing only.
+
+## 26. Re-audit 2026-10-21: RN-L1 F-1..F-5 (`docs/runner-level2-legacy-spec` @ `427ca7f`)
+
+Build: merge `427ca7f` of `fix/runner-level2-legacy-ids` (`ee141be`, `eabd85e`, `ba77321`, `fbeb0da`, `a490a99`; core merge `bd7cc53` of `fix/core-runner-level2-missing`: `2c391fc`, `cd8b598`, `09b17f4`). Checked against the RN-L1 addenda in `v-auth-otp.md`, `v-onboard-id.md`, `v-onboard-pending.md`, `v-jobs.md`, `_shared.md` §7 / §9 and §25 above. Build health (run by the auditor): `flutter analyze` clean in `apps/runner_app` and `packages/nitume_core`; `flutter test` runner 152 passed, core 680 passed. Token grep on the diff (`Color(0x`, `fontFamily`, `GoogleFonts`, wallet / escrow): none. F-6 (row 273) and F-7 (`v-profile` not built) deferred, not judged.
+
+### v-auth-otp (routing step 3): PASS
+- F-1 closed (`ee141be`, `services/onboarding_routing.dart`): verified → shell; `level2Missing` present → `[]` gives `pending` with no records call; otherwise an ID side whose check is `missing` (absent check read as missing) → `id`, else a `missing` selfie → `selfie`, else `pending`; `null` → `fromRecords(records, summary: me.verification)` with `idStatusFor(side) == missing` → `id`. The old `idFront/idBack == null` test is gone; failures still give shell. ID entries are checked before the selfie rather than strictly in list order: same result for every list, since the rule ranks ID before selfie. All five addendum tests present, plus "absent check reads as missing" and "summary ID checks win over the records".
+
+### v-onboard-pending: PASS
+- F-2 closed (`eabd85e`): `me()` and `verifications()` started in parallel; `VerificationRows(records, summary:)`; `me()` failure falls back to the records alone (core row-268 rule); a `verifications()` failure keeps the C-33 load error. Tests: approved unlabelled + labelled back + selfie → `National ID · Verified`, no `Upload again`; same result with `me()` failing; summary wins over records. No new copy.
+
+### v-onboard-id: PASS
+- F-3 closed (`ba77321`): tiles from `docs.idStatusFor(side)` (summary when `me()` answers); an approved side is `uploaded` with no image, not selectable (`_capture` returns early, no `onTap`), never targeted by the drop zone (`_firstToCapture` skips uploaded sides), and counts for `Continue →`. Both approved: no drop zone, `Continue →` enabled. Tests cover the records-only and summary paths and the semantics label `ID front, uploaded, Verified`.
+- F-4 ruling: **accepted** as specified. An approved side (labelled or row-268) has no `Retake` / remove control, and a pending side keeps its `Retake` (tested). Caption `Verified` uses the new core `CaptureCaptionStyle.text` → `NitumeTextStyles.mutedSmall` (Fira Sans 11.5 / 400 slate-600), which matches the addendum (meta under the tile, not green). Fira Code stays the default for time captions. It remains a proposal the owner may overrule; nothing blocks on it.
+- Observation, not a finding: the tile's `Semantics(image: true)` is set for an uploaded state with no image. This was already the case for server-loaded pending tiles and is harmless.
+
+### v-jobs: PASS (F-6 deferred)
+- F-5 ruling: **accepted** (`fbeb0da`). Each withdrawal that removes a card restarts a 500 ms timer, and when it fires there is one `_load(silent: true)`. A burst of withdrawals (the row-266 drop) therefore causes one `me` / offers reload, well inside the 20 s poll. The timer is cancelled in `dispose` and guarded by `mounted`. The window is short enough that the runner sees the verification card and the disabled switch almost at once, and long enough to coalesce the withdrawals of one drop, which arrive together. A single, unrelated withdrawal also triggers one extra silent reload, which is acceptable: it is silent and cheap. Test: two withdrawals 100 ms apart → one extra `me()` call, rejected card copy, switch disabled. The existing connected-socket test was updated to `offersCalls + 1`.
+- Card re-check test added (`ID front approved with no front record, back and selfie pending` → reviewing copy, `View status`).
+- F-6 stays open on owner row 273.
+
+### Still open
+- F-6 (row 273), F-7 (`v-profile` build).
+- Branch dependency: the screens rely on `level2Missing` and the row-268 checks from `feat/api-verification-answers` (records fallback otherwise), so merge order is API, then core, then runner.

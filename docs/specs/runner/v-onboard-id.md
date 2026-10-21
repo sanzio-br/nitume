@@ -107,3 +107,5 @@ The runner reaches this screen after a drop only through `Upload again` on `v-on
 ### Current vs design (2026-10-21, `onboard_id_screen.dart` `_load`)
 1. (blocker) Tiles are set from `docs.idFor(side)?.status`, so a side approved via an unlabelled photo shows as an empty tile, is selected, and the drop zone asks for it. Fix: `idStatusFor(side)` with `summary: me.verification` as above.
 2. (minor, proposed) Server-loaded approved sides keep the `Retake` (remove) control. Fix: no `onRemove` / `onTap` on an approved side; caption `Verified`.
+
+Built 2026-10-21 (`ba77321`, `a490a99`, core `09b17f4` `CaptureCaptionStyle.text`): both items closed, re-audit PASS (gap report §26). Item 2 accepted at audit as specified (approved side: no `Retake`, not selectable, caption `Verified` in Fira Sans 11.5 slate-600 `mutedSmall`); still a proposal the owner can overrule.
