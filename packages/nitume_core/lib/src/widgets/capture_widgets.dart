@@ -236,13 +236,26 @@ enum CaptureIssue {
   final String label;
 }
 
+/// How [CaptureThumbnail.caption] is set.
+enum CaptureCaptionStyle {
+  /// Numeric data (capture time `10:31 AM`): Fira Code 11 slate-600
+  /// ([NitumeTextStyles.meta]). The default.
+  numeric,
+
+  /// Words (`Verified`): Fira Sans 11.5 slate-600
+  /// ([NitumeTextStyles.mutedSmall]).
+  text,
+}
+
 /// R-15. Capture thumbnail (`.doc-thumb`) with its upload state.
 ///
 /// [aspectRatio] 1.4 for ID documents, 1 for evidence; inner-box radius.
 /// [image] is the local capture (e.g. `FileImage`), `null` while [state] is
 /// [CaptureState.empty]. [label] (`Front`, `Back`) shows on the empty tile
 /// in 11/600 slate-600 under [emptyIcon]. Optional [caption] (capture time,
-/// `10:31 AM`) renders in Fira Code 11 under the tile.
+/// `10:31 AM`) renders in Fira Code 11 under the tile; set [captionStyle] to
+/// [CaptureCaptionStyle.text] for a word caption (`Verified`) in Fira Sans
+/// 11.5.
 ///
 /// [onRemove] adds a 48dp retake / remove icon button in the corner
 /// ([removeLabel], default `Retake`). [onRetry] wires the `Retry` link on a
@@ -266,6 +279,7 @@ class CaptureThumbnail extends StatelessWidget {
     this.emptyIcon = Icons.badge_outlined,
     this.aspectRatio = 1,
     this.caption,
+    this.captionStyle = CaptureCaptionStyle.numeric,
     this.onTap,
     this.onRemove,
     this.removeLabel = 'Retake',
@@ -284,6 +298,10 @@ class CaptureThumbnail extends StatelessWidget {
   final IconData emptyIcon;
   final double aspectRatio;
   final String? caption;
+
+  /// Typeface of [caption]: [CaptureCaptionStyle.numeric] (default) for
+  /// times and counts, [CaptureCaptionStyle.text] for words.
+  final CaptureCaptionStyle captionStyle;
   final VoidCallback? onTap;
   final VoidCallback? onRemove;
   final String removeLabel;
@@ -456,7 +474,14 @@ class CaptureThumbnail extends StatelessWidget {
             state != CaptureState.failed &&
             issue == null) ...[
           const SizedBox(height: 4),
-          ExcludeSemantics(child: Text(caption!, style: NitumeTextStyles.meta)),
+          ExcludeSemantics(
+            child: Text(
+              caption!,
+              style: captionStyle == CaptureCaptionStyle.numeric
+                  ? NitumeTextStyles.meta
+                  : NitumeTextStyles.mutedSmall,
+            ),
+          ),
         ],
         if (issue != null)
           _ProblemRow(

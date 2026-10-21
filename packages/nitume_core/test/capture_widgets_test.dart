@@ -259,6 +259,45 @@ void main() {
       expect((retries, removes), (1, 1));
     });
 
+    testWidgets('caption style: numeric by default, text on request', (
+      tester,
+    ) async {
+      await pumpThemed(
+        tester,
+        Row(
+          children: [
+            Expanded(
+              child: CaptureThumbnail(
+                state: CaptureState.uploaded,
+                image: MemoryImage(_png),
+                label: 'Front',
+                caption: '10:31 AM',
+              ),
+            ),
+            Expanded(
+              child: CaptureThumbnail(
+                state: CaptureState.uploaded,
+                image: MemoryImage(_png),
+                label: 'ID',
+                caption: 'Verified',
+                captionStyle: CaptureCaptionStyle.text,
+              ),
+            ),
+          ],
+        ),
+      );
+      final numeric = tester.widget<Text>(find.text('10:31 AM')).style!;
+      expect(numeric.fontFamily, NitumeTypography.numericFamily);
+      expect(numeric.fontSize, 11);
+      expect(numeric.color, NitumeColors.slate600);
+      final text = tester.widget<Text>(find.text('Verified')).style!;
+      expect(text.fontFamily, NitumeTypography.uiFamily);
+      expect(text.fontSize, 11.5);
+      expect(text.color, NitumeColors.slate600);
+      expect(text, NitumeTextStyles.mutedSmall);
+      expect(find.bySemanticsLabel('ID, uploaded, Verified'), findsOneWidget);
+    });
+
     testWidgets('defaults: no outline, no side chip, no issue', (tester) async {
       await pumpThemed(
         tester,
