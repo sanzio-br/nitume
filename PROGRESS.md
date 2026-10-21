@@ -441,3 +441,16 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   Tests: runner 136, core 645, runner_device 25, customer 157, API 655/759 unit + e2e 111/120.
 - Not verified (no Xcode/devices): iOS plugin build, Android 14 / iOS background location, full APK (compileSdk 37?),
   backup-restore. Open owner rows 256–259. Nothing merged; round 17 + 18 branches await the owner's merge.
+
+## 2026-10-21 — runner compileSdk 37, admin verification inbox
+- Runner Android build: compileSdk 37 for permission_handler_android (8d0f436), reviewed READY, merged and pushed
+  by the owner (main 1f4524f). Debug APK builds; not yet run on a device.
+- Admin verification inbox (p-runners-verification-documents): owner saw failed saves, "NaNd ago", no Front/Back,
+  no View image. Audit FAIL (findings 34–49, api A-1..A-7) → web-parity fixed 34–36, 39, 41–45, 47–49 on
+  fix/admin-verification-inbox (272 admin tests) → re-audit PASS (scoped) → reviewed READY.
+  api-contract fixed A-1/A-2/A-3/A-6 on fix/api-verification-review (runner-scoped PATCH, 409
+  verification_already_decided, full item returned, one phone query); reviewed READY (786 unit, e2e 128/128).
+- Deferred: findings 37 (mockup card per runner, blocker for matches-design), 38, 40, 46 and api A-4, A-5, A-7,
+  pending owner rows 260–262 (AQ-35 card flow, AQ-36 Level 2 on one ID side, AQ-37 reject reason).
+- Merge order: fix/api-verification-review → docs/admin-verification-audit → fix/admin-verification-inbox →
+  docs/admin-verification-reaudit → docs/board-admin-verification (includes docs/board-runner-compilesdk-merged).
