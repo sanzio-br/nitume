@@ -353,6 +353,7 @@ describe('VerificationsPanelComponent', () => {
     expect(button(front, 'View image').getAttribute('aria-label')).toBe(
       'View National ID · Front image for Mercy W., opens in a new tab',
     );
+    expect(button(front, 'View image').className).toBe('btn btn-text btn-sm');
     expect(detail(el, 'M-Pesa identity match').textContent).not.toContain('Image');
     expect(button(front, 'Approve').getAttribute('aria-label')).toBe(
       'Approve National ID · Front for Mercy W.',
@@ -522,7 +523,7 @@ describe('VerificationsPanelComponent', () => {
     const back = detail(el, 'National ID · Back');
     expect(back.textContent).toContain('Admin note');
     expect(back.textContent).toContain('Blurry photo · internal');
-    expect(back.textContent).toContain('Re-review evidence');
+    expect(button(back, 'Re-review evidence').className).toBe('btn btn-outline btn-sm');
   });
 
   it('sends a blank reject note as no note', async () => {
@@ -813,6 +814,9 @@ describe('VerificationsPanelComponent', () => {
     button(el, '↻ Refresh').click();
     http.expectOne(queue).flush(page([], { awaitingReviewCount: 0 }));
     await settle(fixture);
+    // The load-error notice belongs to the failed load, not the empty state after it.
+    expect(el.textContent).not.toContain("Couldn't load verifications. Try again.");
+    expect(el.querySelector('.panel-notice')).toBeNull();
     expect(el.textContent).toContain('No applications match');
     expect(el.textContent).toContain('Clear the filter, or wait for runner submissions.');
     expect(el.querySelector('.ops-topbar .sub')?.textContent).toBe(
@@ -827,6 +831,48 @@ describe('VerificationsPanelComponent', () => {
     await settle(fixture);
     expect(el.querySelectorAll('.verif-card').length).toBe(0);
     expect(el.textContent).not.toContain('No applications match');
+  });
+
+  it('drops the load-error notice when the next load starts (refresh, then filter change)', async () => {
+    const { fixture, el } = await render();
+    button(el, '↻ Refresh').click();
+    http.expectOne(queue).flush(null, httpError(500));
+    await settle(fixture);
+    expect(el.textContent).toContain("Couldn't load verifications. Try again.");
+
+    button(el, '↻ Refresh').click();
+    fixture.detectChanges();
+    expect(el.textContent).not.toContain("Couldn't load verifications. Try again.");
+    http.expectOne(queue).flush(page([runner(ownersChecks())]));
+    await settle(fixture);
+    expect(el.querySelectorAll('.verif-card').length).toBe(1);
+    expect(el.querySelector('.panel-notice')).toBeNull();
+
+    // Fail again, then a filter change that succeeds.
+    button(el, '↻ Refresh').click();
+    http.expectOne(queue).flush(null, httpError(500));
+    await settle(fixture);
+    expect(el.textContent).toContain("Couldn't load verifications. Try again.");
+    const select = el.querySelector('select') as HTMLSelectElement;
+    select.value = 'all';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    http.expectOne(queue).flush(page([runner(ownersChecks())]));
+    await settle(fixture);
+    expect(el.querySelectorAll('.verif-card').length).toBe(1);
+    expect(el.querySelector('.panel-notice')).toBeNull();
+  });
+
+  it('keeps a save-error notice across a reload', async () => {
+    const { fixture, el } = await render();
+    button(detail(el, 'Selfie / liveness check'), 'Approve').click();
+    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie`).flush(null, httpError(500));
+    await settle(fixture);
+    expect(el.textContent).toContain("Couldn't save the review. Try again.");
+    button(el, '↻ Refresh').click();
+    http.expectOne(queue).flush(page([runner(ownersChecks())]));
+    await settle(fixture);
+    expect(el.textContent).toContain("Couldn't save the review. Try again.");
   });
 
   it('loads more by runner, merging a runner already on screen into its card', async () => {
@@ -862,5 +908,11 @@ describe('VerificationsPanelComponent', () => {
     expect(el.querySelectorAll('.verif-card').length).toBe(2);
     expect(el.textContent).toContain("Couldn't load verifications. Try again.");
     expect(button(el, 'Load more')).toBeTruthy();
+
+    // Retrying Load more drops the old load-error notice.
+    button(el, 'Load more').click();
+    http.expectOne(queue).flush(page([], { nextCursor: null }));
+    await settle(fixture);
+    expect(el.textContent).not.toContain("Couldn't load verifications. Try again.");
   });
 });

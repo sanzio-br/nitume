@@ -311,7 +311,7 @@ interface RejectTarget {
                         <span>Image</span>
                         <button
                           type="button"
-                          class="btn btn-text"
+                          class="btn btn-text btn-sm"
                           [disabled]="isOpening(v.id)"
                           [attr.aria-label]="
                             'View ' +
@@ -403,7 +403,7 @@ interface RejectTarget {
                     <div class="verif-actions">
                       <button
                         type="button"
-                        class="btn btn-outline"
+                        class="btn btn-outline btn-sm"
                         [attr.aria-label]="
                           'Re-review evidence: ' + row.label + ' for ' + runnerLabel(item)
                         "
@@ -526,7 +526,7 @@ export class VerificationsPanelComponent implements OnInit {
   /** Per check: the decision being saved, so only the clicked button changes. */
   readonly busy = signal<Record<string, 'approved' | 'rejected'>>({});
   readonly opening = signal<Record<string, boolean>>({});
-  readonly notice = signal<{ tone: NoticeTone; text: string } | null>(null);
+  readonly notice = signal<{ tone: NoticeTone; text: string; fromLoad?: true } | null>(null);
 
   readonly rejectTarget = signal<RejectTarget | null>(null);
   readonly rejectNote = signal('');
@@ -549,6 +549,7 @@ export class VerificationsPanelComponent implements OnInit {
 
   /** First page under the current filter. Any failure clears the cards and the cursor. */
   async load(): Promise<void> {
+    this.clearLoadNotice();
     this.loading.set(true);
     this.loadingMore.set(false);
     this.loadError.set(false);
@@ -562,7 +563,11 @@ export class VerificationsPanelComponent implements OnInit {
       this.cursor.set(null);
       this.loading.set(false);
       this.loadError.set(true);
-      this.notify('danger', failureCopy(e, "Couldn't load verifications. Try again."));
+      this.notice.set({
+        tone: 'danger',
+        text: failureCopy(e, "Couldn't load verifications. Try again."),
+        fromLoad: true,
+      });
     }
   }
 
@@ -570,12 +575,17 @@ export class VerificationsPanelComponent implements OnInit {
   protected async loadMore(): Promise<void> {
     const cursor = this.cursor();
     if (this.loadingMore() || !cursor) return;
+    this.clearLoadNotice();
     this.loadingMore.set(true);
     try {
       const res = await this.s.loadVerificationQueue(this.statusFilter(), cursor);
       if (res) this.cursor.set(res.nextCursor);
     } catch (e) {
-      this.notify('danger', failureCopy(e, "Couldn't load verifications. Try again."));
+      this.notice.set({
+        tone: 'danger',
+        text: failureCopy(e, "Couldn't load verifications. Try again."),
+        fromLoad: true,
+      });
     } finally {
       this.loadingMore.set(false);
     }
@@ -833,6 +843,11 @@ export class VerificationsPanelComponent implements OnInit {
 
   private notify(tone: NoticeTone, text: string): void {
     this.notice.set({ tone, text });
+  }
+
+  /** The load-error notice belongs to the failed load; a new load starts without it. */
+  private clearLoadNotice(): void {
+    if (this.notice()?.fromLoad) this.notice.set(null);
   }
 
   protected readonly typeLabel = verificationTypeLabel;
