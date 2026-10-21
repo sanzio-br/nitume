@@ -80,7 +80,7 @@ States (proposed):
 - `GET /api/v1/payments/:errandId` (exists): fee total and item payment. The client shows only the fee total (row 34 clarification).
 - Refund status: `GET /api/v1/errands/:errandId/refunds` (customer view, on `main`) → `[{ status, refundAmount, paidAt, trigger, … }]`. It never carries the decision note (row 69). needs: api-contract (minor) — drop `payoutReference` from the customer view too (`refunds.service.ts` `toCustomerView`); the client never shows it either way. Schema approved (rows 62, 94). Hidden while the API returns none.
 - `GET /api/v1/errands/:errandId/rating` to decide whether to show `Rate this task`.
-- "Verified" = `verificationLevel` ≥ `2_id_verified` (Q4 default).
+- "Verified" = `verificationLevel` ≥ `2_id_verified` (Q4 default). **Row 274 (owner, 2026-10-21)**: the badge follows the runner's **live** `verificationLevel` on every read, also mid-task: a runner who drops to Level 1 during the task (rows 263, 266: the job continues) loses `Verified` and the meta reads the rating alone (`4.9`). No level at assignment is kept; no change to the build (`display.dart` `isVerified`). Levels 3 / 4 are never lowered by a rejected ID or selfie (row 269), so such a runner keeps `Verified`.
 
 ## Accessibility and mobile
 - Report row 48dp; red text on white (`#C1433C` ≈ 4.4:1) is just under AA for 13.5px (row 33 covers chip text only; noted, no change).

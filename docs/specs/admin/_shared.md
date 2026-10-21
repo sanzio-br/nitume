@@ -134,6 +134,19 @@
 | 260 | (2026-10-21, AQ-35) Runner verification: one card per runner (mockup), `Approve` / `Reject` on each pending check row, no card-level bulk action | p-runners-verification-documents |
 | 261 | (2026-10-21, AQ-36) A runner reaches `Level 2 · ID verified` only when both National ID sides (front and back) and the selfie are approved; phone / payment-identity approvals never change the level | p-runners-verification-documents, N-23 (g), runner `_shared.md` §7 |
 | 262 | (2026-10-21, AQ-37) The reject reason is an optional internal note, at most 500 characters, never shown to the runner | p-runners-verification-documents, N-23 (g), runner `v-onboard-id`, `v-onboard-pending` |
+| 263 | (2026-10-21, AQ-38 (a), (b)) Level 2 is two-way (drops to Level 1 while the newest ID front, ID back or selfie is not approved); approved legacy `side = null` IDs count toward Level 2 | p-runners-verification-documents, runner `_shared.md` §7 |
+| 264 | (2026-10-21) Verification queue filters and order as built; pending counted on the newest record per (type, side) (A-9) | p-runners-verification-documents |
+| 265 | (2026-10-21) One-time hand-run re-check of existing Level-2 runners at deploy (`npm run runners:recheck-level2`) | p-runners-verification-documents |
+| 266 | (2026-10-21) A drop below Level 2 withdraws the runner's open offers through the offer-expiry path; accepted jobs continue | p-runners-verification-documents, drawer-task-offer |
+| 267 | (2026-10-21) Panel note on the drop; wording confirmed as built: `A runner reaches Level 2 when both ID sides and the selfie are approved, and drops back to Level 1 while any of them is rejected or replaced.` | p-runners-verification-documents |
+| 268 | (2026-10-21) Legacy-ID rule confirmed: an approved unlabelled ID fills a missing side (one side per record, front first) | p-runners-verification-documents |
+| 269 | (2026-10-21) Levels 3 / 4 stay untouched when an ID side or the selfie is rejected or replaced | p-runners-verification-documents (no change) |
+| 270 | (2026-10-21) Admin feed item kind `runner_level_dropped`: `{runner} dropped to Level 1 — open offer on {task} withdrawn` | drawer-task-offer (Live updates) |
+| 271 | (2026-10-21) Superseded `pending` records stay in the history; the admin hides their Approve / Reject (only the newest record per check is decidable; client pending counts use the newest record per check) | p-runners-verification-documents |
+| 272 | (2026-10-21) The re-check script not pushing `job:offer_withdrawn` over sockets is acceptable for the one-time run | none |
+| 273 | (2026-10-21) A drop below Level 2 sets the runner's availability `offline` | runner `v-jobs` (no admin change) |
+| 274 | (2026-10-21) The customer-facing `Verified` badge follows the runner's live level, also mid-task | customer `v-task-detail`, `v-track` (no change) |
+| 275 | (2026-10-21) Runner `v-onboard-id`: `Verified` caption and no Retake on a server-approved ID side | runner `v-onboard-id` (no admin change) |
 | 142 | (2026-10-16) "Ordinary approval is capped at min(verified item amount paid to Nitume, runner max_purchase_advance) and must not silently override the runner's limit. Paying above max_purchase_advance needs an explicit exceptional override with an auditable reason and actor." Not the earlier "raise the runner's limit first" | drawer-runner-payout (§5 2b), drawer-runner-purchase-limit, N-21 |
 | 143 | (2026-10-16) No payout-time promise/SLA anywhere; status only | p-payout-requests (and the runner copy it triggers) |
 | 144 | (2026-10-16) Runner ID/selfie images kept only as long as needed for verification, fraud prevention, audit and legal/compliance, then securely deleted; never indefinitely; retention configurable; access restricted and logged throughout | p-runners-verification-documents |

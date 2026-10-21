@@ -82,7 +82,7 @@ Rows read as `National ID, verified`; chips are not colour-only (text label). CT
 
 ## RN-L1 addendum (2026-10-21): sides approved via an unlabelled photo, Level drops
 
-Applies to this screen in both entries (onboarding and Profile → `Verification documents`). Rows 263, 266, 268 answered 2026-10-21; rows 269–274 open. Core: `fix/core-runner-level2-missing` (`2c391fc`, `cd8b598`).
+Applies to this screen in both entries (onboarding and Profile → `Verification documents`). Rows 263, 266, 268 answered 2026-10-21; rows 269–275 answered 2026-10-21 (none changes this screen). Core: `fix/core-runner-level2-missing` (`2c391fc`, `cd8b598`).
 
 ### Data
 - Load `GET /runners/me/verifications` and `GET /runners/me` in parallel. `VerificationRows` builds its documents with `RunnerVerificationDocuments.fromRecords(records, summary: me.verification)`; the `National ID` row reads `docs.nationalIdStatus`, the caption reads `docs.idRejectedSides` (both now use `idStatusFor`, row 268).
@@ -103,7 +103,7 @@ A verified Level-2 runner becomes not verified **and** Level 1 in the same momen
 | Ops reject the ID side or selfie (push `verification decided`, RA-6, or next open / resume) | `Not approved` (+ side caption for the ID) + `Upload again` / `Retake selfie` | `Some checks weren't approved. Fix them below and we'll review again.` | `Back to app` (C-03) |
 | The runner re-uploads (new `pending` record) | `In review` | mockup body (`Verification usually takes under 24 hours. …`) | `Back to app` |
 | Row-265 re-check at deploy (no action of the runner) | whatever the API says (such runners are not verified already) | unchanged | unchanged |
-No level label, no downgrade notice and no reason are shown (the level is on `v-profile` only when verified). Withdrawn offers: `v-jobs` (row 266). Whether the runner is also set offline is row 273 (open): no copy until it is answered.
+No level label, no downgrade notice and no reason are shown (the level is on `v-profile` only when verified). Withdrawn offers: `v-jobs` (row 266). Row 273 (owner, 2026-10-21): the drop also sets availability `offline` server side; nothing on this screen (the switch lives on `v-jobs`, existing copy, `v-jobs.md` RN-L1).
 
 ### Current vs design (2026-10-21, `onboard_pending_screen.dart`)
 1. (blocker) `VerificationRows(records)` calls `fromRecords(records)` without the summary and the screen loads only `verifications()`. It already gets the row-268 rule through the core fallback once the branch is merged, but the API summary is the source of truth. Fix: also load `account.me()` and pass `summary: me.verification` (constructor parameter on `VerificationRows`); keep rendering when `me()` fails.
