@@ -213,6 +213,60 @@ describe('Verification inbox owner answers (e2e)', () => {
     });
   });
 
+  describe('Row 263 (AQ-38): Level 2 follows the newest records both ways', () => {
+    /** A runner at 2_id_verified with front, back and selfie approved. */
+    const levelTwo = async (admin: Actor) => {
+      const runner = await makeUser(UserRole.RUNNER);
+      const ids = await application(runner);
+      for (const id of [ids.front, ids.back, ids.selfie]) {
+        await decide(admin, runner, id, { decision: 'approved' }).expect(200);
+      }
+      expect(await levelOf(runner)).toBe('2_id_verified');
+      return { runner, ids };
+    };
+
+    it('a re-upload drops to 1_basic at once; approving it restores 2_id_verified', async () => {
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const { runner } = await levelTwo(admin);
+      const selfie = await upload(runner, 'selfie');
+      expect(await levelOf(runner)).toBe('1_basic');
+      const back = await decide(admin, runner, selfie.id, { decision: 'approved' }).expect(200);
+      expect(back.body.runnerProfile.verificationLevel).toBe('2_id_verified');
+    });
+
+    it('rejecting the newest record drops to 1_basic; a newer approved re-upload restores it', async () => {
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const { runner } = await levelTwo(admin);
+      const front = await upload(runner, 'government_id', 'front');
+      const rejected = await decide(admin, runner, front.id, { decision: 'rejected' }).expect(200);
+      expect(rejected.body.runnerProfile.verificationLevel).toBe('1_basic');
+      const again = await upload(runner, 'government_id', 'front');
+      await decide(admin, runner, again.id, { decision: 'approved' }).expect(200);
+      expect(await levelOf(runner)).toBe('2_id_verified');
+    });
+
+    it('two uploads at once (front and back) both land and leave 1_basic (no deadlock)', async () => {
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const { runner } = await levelTwo(admin);
+      const [f, b] = await Promise.all([upload(runner, 'government_id', 'front'), upload(runner, 'government_id', 'back')]);
+      expect([f.status, b.status]).toEqual(['pending', 'pending']);
+      expect(await levelOf(runner)).toBe('1_basic');
+    });
+
+    it('levels 3 and 4 are never changed by an upload or a rejection', async () => {
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const ds = app.get(DataSource);
+      for (const level of ['3_trusted', '4_professional']) {
+        const { runner } = await levelTwo(admin);
+        await ds.query(`UPDATE "runner_profiles" SET "verificationLevel" = $1 WHERE id = $2`, [level, runner.profileId]);
+        const selfie = await upload(runner, 'selfie');
+        expect(await levelOf(runner)).toBe(level);
+        await decide(admin, runner, selfie.id, { decision: 'rejected' }).expect(200);
+        expect(await levelOf(runner)).toBe(level);
+      }
+    });
+  });
+
   describe('A-7, A-8 / row 262: reviewerNote', () => {
     it('trimmed, blank -> null, over 500 is 400 reviewer_note_invalid (check stays pending)', async () => {
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
