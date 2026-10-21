@@ -368,6 +368,45 @@ describe('Verification inbox owner answers (e2e)', () => {
       );
     });
 
+    it('A-9 / row 264: a double upload of one side counts once, on the newest record', async () => {
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const runner = await makeUser(UserRole.RUNNER, 'Double Upload');
+      const ids = await application(runner);
+      await decide(admin, runner, ids.back, { decision: 'approved' }).expect(200);
+      await decide(admin, runner, ids.selfie, { decision: 'approved' }).expect(200);
+      // Same front uploaded again before review: two pending fronts, the newest supersedes the older.
+      const again = await upload(runner, 'government_id', 'front');
+      const awaiting = async (): Promise<number> =>
+        (await http().get('/api/v1/runners/verifications/queue').set(bearer(admin.token)).expect(200)).body
+          .awaitingReviewCount as number;
+      const find = async (status: string) =>
+        (await walkQueue(admin, status, 50)).items.find((i) => i.runnerProfile.id === runner.profileId);
+
+      const pending = await find('pending');
+      expect(pending).toBeDefined();
+      expect(pending!.checks.filter((c) => c.status === 'pending').map((c) => c.id)).toEqual([again.id, ids.front]);
+      expect(pending!.pendingCount).toBe(1);
+      expect(Date.parse(pending!.oldestPendingAt!)).toBe(Date.parse(again.createdAt as string));
+      const before = await awaiting();
+
+      // Deciding the newest front leaves nothing to decide: out of Pending and of the count.
+      await decide(admin, runner, again.id, { decision: 'approved' }).expect(200);
+      expect(await levelOf(runner)).toBe('2_id_verified');
+      expect(await find('pending')).toBeUndefined();
+      expect(await awaiting()).toBe(before - 1);
+      const approved = await find('approved');
+      expect(approved).toMatchObject({ pendingCount: 0, oldestPendingAt: null });
+      // The superseded record is still in the history, still pending.
+      expect(approved!.checks.find((c) => c.id === ids.front)?.status).toBe('pending');
+
+      // The superseded record can still be decided; the level and the filters follow the newest record only.
+      const old = await decide(admin, runner, ids.front, { decision: 'rejected' }).expect(200);
+      expect(old.body).toMatchObject({ id: ids.front, status: 'rejected' });
+      expect(await levelOf(runner)).toBe('2_id_verified');
+      expect(await find('rejected')).toBeUndefined();
+      expect(await find('approved')).toBeDefined();
+    });
+
     it('400 for an unknown status, a bad limit or cursor; 403 for a runner', async () => {
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
       const runner = await makeUser(UserRole.RUNNER);
