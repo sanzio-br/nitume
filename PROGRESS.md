@@ -454,3 +454,19 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   pending owner rows 260–262 (AQ-35 card flow, AQ-36 Level 2 on one ID side, AQ-37 reject reason).
 - Merge order: fix/api-verification-review → docs/admin-verification-audit → fix/admin-verification-inbox →
   docs/admin-verification-reaudit → docs/board-admin-verification (includes docs/board-runner-compilesdk-merged).
+
+## 2026-10-21 (later) — admin verification round 2 (owner rows 260–268)
+- Owner answers: one card per runner (260); Level 2 = ID front + back + selfie approved (261); internal reject
+  note ≤ 500, never shown to runners (262); drop back to Level 1 when one of those is rejected or replaced, and
+  old unlabelled ID photos count (263, 268); queue filters + newest-upload pending count (264, A-9); one-time
+  deploy re-check with dry run (265); open offers withdrawn on a drop, jobs continue (266); panel note (267).
+- API feat/api-verification-answers (17 commits c21bce5 … 1bd8baa): shared Level 2 rule, upgrade/downgrade in
+  the decision/upload transaction, runner-grouped queue, level2Missing, reviewerNote/reviewedBy removed from
+  runner responses, offer withdrawal on drop, `npm run runners:recheck-level2` (dry run; `-- --apply
+  --database=<name>`). Reviewed READY (unit 828, e2e 148/148 on nitume_test). Dev DB: 0 runners change.
+- Admin feat/admin-verification-cards: one card per runner on the queue, reject dialog, level line from
+  level2Missing, lazy-loaded panel. Re-audits PASS (matches-design), reviewed READY (293 tests).
+- Runner RN-L1: core-ui fix/core-runner-level2-missing (2c391fc, cd8b598) built; spec addendum and
+  flutter-runner still to do — until then a runner with only old unlabelled ID photos may be asked to re-upload.
+- Before production deploy: run the re-check dry run against production and show the owner the count.
+- Open owner rows: 267 wording, 269–274.
