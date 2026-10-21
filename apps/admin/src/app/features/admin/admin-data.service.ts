@@ -1,5 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { firstValueFrom, Observable } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { apiError, FORBIDDEN_COPY } from '../../core/api-error';
 import { eatDayKey, eatWeekday } from './shared-format';
@@ -23,6 +23,9 @@ import type {
   RunnerListItem,
   RunnerVerification,
   UserMe,
+  VerificationQueueItem,
+  VerificationQueueResult,
+  VerificationQueueStatus,
   VerificationView,
 } from '../../core/api-types';
 
@@ -131,7 +134,11 @@ export class AdminDataService {
 
   readonly errands = signal<ErrandListItem[]>([]);
   readonly runners = signal<RunnerListItem[]>([]);
-  readonly verifications = signal<RunnerVerification[]>([]);
+  /** Runner verification queue (row 260): one item per runner. */
+  readonly verificationQueue = signal<QueueRunner[]>([]);
+  /** Runners with a pending check over the whole queue; null before the first answer. */
+  readonly awaitingReviewCount = signal<number | null>(null);
+  private queueSeq = 0;
   readonly me = signal<UserMe | null>(null);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
@@ -560,93 +567,160 @@ export class AdminDataService {
   }
 
   /**
-   * Decides a pending check. On `main` the PATCH answers with the bare
-   * verification; the api-contract fix returns the full list item. Either
-   * way the answer is merged over the list item, so the runner, user and
-   * re-reviews are never dropped.
+   * Loads one page of the runner-grouped verification queue (row 260). The
+   * first page replaces the cards; a cursor appends, merging any runner
+   * already on screen into its card. A failed first page clears the cards
+   * (no stale cards under a new filter). Returns null when a newer load has
+   * started since (its answer wins).
+   */
+  async loadVerificationQueue(
+    status: VerificationQueueStatus,
+    cursor?: string | null,
+  ): Promise<VerificationQueueResult | null> {
+    const seq = cursor ? this.queueSeq : ++this.queueSeq;
+    let res: VerificationQueueResult;
+    try {
+      res = await firstValueFrom(this.api.verificationQueue(status, cursor));
+    } catch (e) {
+      if (seq !== this.queueSeq) return null;
+      if (!cursor) this.verificationQueue.set([]);
+      throw e;
+    }
+    if (seq !== this.queueSeq) return null;
+    this.awaitingReviewCount.set(res.awaitingReviewCount);
+    if (cursor) {
+      this.verificationQueue.update((items) => mergeQueuePage(items, res.items));
+    } else {
+      this.verificationQueue.set(mergeQueuePage([], res.items));
+    }
+    return res;
+  }
+
+  /** Drops the cards (filter change); any load still in flight is ignored. */
+  clearVerificationQueue(): void {
+    this.queueSeq++;
+    this.verificationQueue.set([]);
+  }
+
+  /**
+   * Decides one pending check, `{ decision, reviewerNote? }` (blank note →
+   * none). The answer is merged over the check (the full item and the bare
+   * verification both work); a returned `runnerProfile.verificationLevel`
+   * updates the card. The awaiting count drops when the runner has no
+   * pending check left.
    */
   async reviewVerification(
-    item: Pick<RunnerVerification, 'id' | 'runnerProfileId'>,
+    check: Pick<RunnerVerification, 'id' | 'runnerProfileId'>,
     decision: 'approved' | 'rejected',
-  ): Promise<RunnerVerification | null> {
-    const dto: ReviewVerificationDto = { decision };
-    const res: Partial<RunnerVerification> & VerificationView = await firstValueFrom(
-      this.api.reviewVerification(item.runnerProfileId, item.id, dto),
+    reviewerNote?: string,
+  ): Promise<void> {
+    const dto: ReviewVerificationDto = reviewerNote ? { decision, reviewerNote } : { decision };
+    const res = await firstValueFrom(
+      this.api.reviewVerification(check.runnerProfileId, check.id, dto),
     );
-    let merged: RunnerVerification | null = null;
-    this.verifications.update((items) =>
-      items.map((v) => {
-        if (v.id !== item.id) return v;
-        merged = {
-          ...v,
-          status: res.status,
-          reviewedBy: res.reviewedBy,
-          reviewedAt: res.reviewedAt,
-          reviewerNote: res.reviewerNote,
-          runnerProfile: res.runnerProfile ?? v.runnerProfile,
-          user: res.user ?? v.user,
-          reReviews: res.reReviews ?? v.reReviews,
-          // The bare answer has no display name; the card falls back to the short id.
-          reviewer:
-            res.reviewer ?? (res.reviewedBy ? { id: res.reviewedBy, displayName: null } : null),
+    let clearedRunner = false;
+    this.verificationQueue.update((items) =>
+      items.map((item) => {
+        if (!item.checks.some((c) => c.id === check.id)) return item;
+        const hadPending = item.checks.some((c) => c.status === 'pending');
+        const checks = item.checks.map((c) => (c.id === check.id ? mergeReviewAnswer(c, res) : c));
+        const pendingCount = checks.filter((c) => c.status === 'pending').length;
+        if (hadPending && pendingCount === 0) clearedRunner = true;
+        const level = res.runnerProfile?.verificationLevel;
+        return {
+          ...item,
+          checks,
+          pendingCount,
+          runnerProfile: level
+            ? { ...item.runnerProfile, verificationLevel: level }
+            : item.runnerProfile,
         };
-        return merged;
       }),
     );
-    return merged;
+    if (clearedRunner) {
+      this.awaitingReviewCount.update((n) => (n === null ? n : Math.max(0, n - 1)));
+    }
   }
 
-  /** Records an audited re-review (row 171) and appends it to the list item. */
+  /** Records an audited re-review (row 171) and appends it to the check. */
   async reReviewVerification(id: string, note?: string): Promise<void> {
     const res = await firstValueFrom(this.api.reReviewVerification(id, note));
-    this.verifications.update((items) =>
-      items.map((v) => (v.id === id ? { ...v, reReviews: [...v.reReviews, res.reReview] } : v)),
-    );
+    this.updateQueueCheck(id, (v) => ({ ...v, reReviews: [...v.reReviews, res.reReview] }));
   }
 
-  /** Marks a check's image as deleted (a 410 from the API), keeping the record. */
+  /**
+   * Marks a check's image as deleted (a 410 from the API), keeping the
+   * record. The date comes from the API only (`purgedAt` extra); without it
+   * the row reads `Deleted` with no date, never today's date.
+   */
   markVerificationPurged(id: string, purgedAt: string | null): void {
-    this.verifications.update((items) =>
-      items.map((v) =>
-        v.id === id
-          ? {
-              ...v,
-              purgedAt: purgedAt ?? v.purgedAt ?? new Date().toISOString(),
-              reviewerNote: null,
-              reReviews: v.reReviews.map((r) => ({ ...r, note: null })),
-            }
-          : v,
-      ),
-    );
+    this.updateQueueCheck(id, (v) => ({
+      ...v,
+      purgedAt: purgedAt ?? v.purgedAt,
+      purgedLocally: true,
+      reviewerNote: null,
+      reReviews: v.reReviews.map((r) => ({ ...r, note: null })),
+    }));
   }
 
   /** Marks a check as having no stored image (a 404 `verification_document_missing`). */
   markVerificationMissing(id: string): void {
-    this.verifications.update((items) =>
-      items.map((v) => (v.id === id ? { ...v, hasDocument: false } : v)),
-    );
+    this.updateQueueCheck(id, (v) => ({ ...v, hasDocument: false }));
   }
 
-  listVerifications(
-    status?: string,
-    cursor?: string | null,
-    limit = 50,
-  ): Observable<{ items: RunnerVerification[]; nextCursor: string | null }> {
-    return new Observable((subscriber) => {
-      this.api.listVerifications(status, cursor, limit).subscribe({
-        next: (res) => {
-          if (!cursor) {
-            this.verifications.set(res.items);
-          } else {
-            this.verifications.update((v) => [...v, ...res.items]);
-          }
-          subscriber.next(res);
-          subscriber.complete();
-        },
-        error: (err) => subscriber.error(err),
-      });
-    });
+  private updateQueueCheck(id: string, fn: (v: QueueCheck) => QueueCheck): void {
+    this.verificationQueue.update((items) =>
+      items.map((item) =>
+        item.checks.some((c) => c.id === id)
+          ? { ...item, checks: item.checks.map((c) => (c.id === id ? fn(c) : c)) }
+          : item,
+      ),
+    );
   }
+}
+
+/** A queue check, plus a client mark for a 410 that carried no `purgedAt`. */
+export type QueueCheck = RunnerVerification & { purgedLocally?: boolean };
+
+/** A queue item whose checks may carry the client purge mark. */
+export type QueueRunner = Omit<VerificationQueueItem, 'checks'> & { checks: QueueCheck[] };
+
+/**
+ * Merges a PATCH answer over the check: every field the answer carries
+ * (status, reviewer, note, side, hasDocument, purgedAt, runner, user,
+ * re-reviews); fields the bare answer lacks are kept from the check.
+ */
+function mergeReviewAnswer(
+  v: QueueCheck,
+  res: VerificationView & Partial<RunnerVerification>,
+): QueueCheck {
+  return {
+    ...v,
+    ...res,
+    runnerProfile: res.runnerProfile ?? v.runnerProfile,
+    user: res.user ?? v.user,
+    reReviews: res.reReviews ?? v.reReviews,
+    // The bare answer has no display name; the card falls back to the short id.
+    reviewer: res.reviewer ?? (res.reviewedBy ? { id: res.reviewedBy, displayName: null } : null),
+  };
+}
+
+/** Appends runners, merging one already on screen into its card (never a second card). */
+function mergeQueuePage(current: QueueRunner[], page: VerificationQueueItem[]): QueueRunner[] {
+  const out = [...current];
+  for (const item of page) {
+    const i = out.findIndex((r) => r.runnerProfile.id === item.runnerProfile.id);
+    if (i < 0) {
+      out.push(item);
+      continue;
+    }
+    const ids = new Set(item.checks.map((c) => c.id));
+    const checks = [...item.checks, ...out[i].checks.filter((c) => !ids.has(c.id))].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+    out[i] = { ...item, checks, pendingCount: checks.filter((c) => c.status === 'pending').length };
+  }
+  return out;
 }
 
 /** User copy for a failed dashboard sync (never the raw HTTP message). */
