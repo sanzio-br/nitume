@@ -1053,3 +1053,119 @@ Applied on `docs/admin-verification-answers` to `docs/specs/admin/p-runners-veri
 - **New question AQ-38** (follows row 261): downgrade when a Level-2 check is re-uploaded or rejected; legacy `side = null` ID images; re-evaluating runners already at Level 2. Recommendations in `_shared.md` §8. Does not block the admin build.
 
 Status: findings 37, 38, 40, 46 stay open (now buildable by web-parity; 38 completes with A-5). `SCREEN_MAP.md` stays `built`.
+
+## Re-audit 2026-10-21: verification cards (`feat/admin-verification-cards` @ `13cac96`, `5e0dfdf`, `49e054b`)
+
+Audited: web-parity `13cac96` (`feat(angular-admin): one verification card per runner from the queue endpoint`), `5e0dfdf` (`perf(angular-admin): lazy-load the runner verification panel`), `49e054b` (`style(angular-admin): verification card states, Fira Sans initials and 40px actions`), stacked on `docs/admin-verification-answers` (spec `c4f7547`). Files: `apps/admin/src/app/features/admin/panels/verifications.panel.ts`, `verifications.panel.spec.ts`, `features/admin/admin-data.service.ts:569-724`, `core/services/api.service.ts:282-322`, `core/api-types.ts:735-830`, `features/admin/admin-dashboard.component.ts:214-221`, `styles/_ops.scss:526-685`. Mockup `docs/design/nitume_admin_dashboard.html:331-355`.
+API contract read with `git show feat/api-verification-answers:…` (`c21bce5`, `7a7ad1a`, `cf414e5`): `runners.controller.ts` (`GET verifications/queue`), `runners.service.ts` (`verificationQueueForAdmin`, `QUEUE_BASE_SQL`, `QUEUE_FILTERS`, `adminRunnerRefs`, `reviewVerification`, `reviewerNoteOf`, `toRunnerVerificationView`), `verification-summary.ts`, `dto/runner-actions.dto.ts`, `users.service.ts` (`contacts`).
+Build health (worktree, `node_modules` linked from the main tree and removed afterwards): `tsc -p tsconfig.app.json --noEmit` and `tsconfig.spec.json` clean; `ng test --watch=false` 28 files, **288 tests pass** (was 272); `ng build` OK, initial total **492.07 kB**, no budget warning. Token scan of the diff: no hex, no inline `font-family` / `style=`, new rules use `--nitume-*` tokens only (`--nitume-red` for `.doc-status.rejected`, text only); no wallet / escrow wording.
+
+### Client against the contract
+| Contract | Client | Verdict |
+|---|---|---|
+| `GET /runners/verifications/queue?status=pending\|approved\|rejected\|all&cursor&limit` → `{ items, nextCursor, total, awaitingReviewCount }` | `api.service.ts:287-295` sends `status` and `limit=20`, `cursor` when paging; `api-types.ts:764-823` mirrors `AdminRunnerRef`, `AdminRunnerUser`, `VerificationQueueItem` (incl. `pendingCount`, `oldestPendingAt`, `verification { verified, checks }`), `VerificationQueueResult` | match |
+| item `checks` = every record, newest first | `checkRows` (`:105-128`) picks the newest per (type, side) and adds `Not submitted` rows from `verification.checks` (`missing`) | match |
+| `awaitingReviewCount` whole queue, filter-independent | topbar `sub()` (`:828-832`) from the signal set on every page (`admin-data.service.ts:590`); decremented locally when a decision leaves the runner with no pending record (`:640-642`) | match |
+| PATCH answer = full admin item with `runnerProfile.verificationLevel` | `mergeReviewAnswer` spreads the whole answer, keeps runner / user / re-reviews from the check when absent (bare answer), level line updated (`admin-data.service.ts:612-643, 693-708`) | match (reviewer M3 closed) |
+| 400 `reviewer_note_invalid` `{ maxLength: 500 }` | reject dialog keeps the note and shows `Notes can be up to 500 characters.` (`:645-646`); client cap 500 on the trimmed value | match |
+| A-8 runner views without `reviewerNote` / `reviewedBy` | admin only reads the admin item; nothing to do client-side | n/a |
+| 400 `cursor_invalid` | a failed `Load more` shows the load notice and keeps `Load more`; a filter change drops the cursor before loading (`:584-588`) | match |
+
+### Findings claimed built
+| # | Verdict | Evidence |
+|---|---|---|
+| 37 | PASS | One `section.verif-card` per runner (`:253-419`), `aria-labelledby` the `.verif-name`; header `button.verif-top` (`:258-284`, reset in `_ops.scss:549-558`) opens the runner drawer; `.verif-avatar` / `.verif-name` / `.verif-sub` / `.verif-level`; one `.doc-row` per check with `.doc-status` text only (`Verified`, `Pending review`, `Rejected`, `Not submitted`; `.pending`, `.rejected`, `.missing` tones), no `app-status-chip`, no `vc-*`, no `.runner-avatar`; per-row `.verif-actions` with `.btn-reject` / `.btn-approve` (40 px, disabled state) only on pending rows; no card-level or bulk action. Mockup order with `· Front` / `· Back`, legacy ID after `· Back`. |
+| 38 | PASS | `nameInitials(user.displayName)` (`:138-144`): first letters of first and last word, `R` without a name; never an id. `.verif-avatar` now `--nitume-font-ui` (`_ops.scss:577-578`); `aria-hidden`. Name = API `shortName`, else short id in `.num`. |
+| 40 | PASS | Title `Runner verification` (`:214`); sub `awaitingCopy` (`:185-188`): `{n} applications awaiting review`, `1 application awaiting review`, `No applications awaiting review`; `Loading…` before the first answer. Counts runners (API), not checks; the phone check never counts. |
+| 46 | PASS | Approved phone record → compact `.doc-row` `Phone number` · `Verified` + `Verified at sign-in` (`:297-300`), no Submitted, image, Reviews or actions; phone-only runners are excluded by the API. |
+| M4 | PASS with item 1 below | Any failed first page clears the cards (`admin-data.service.ts:583-588`; filter change clears before loading, `:584-588`); empty state hidden while `loadError` (`:422`); a failed `Load more` keeps the cards. Residual: the notice itself outlives the failed load (finding 50). |
+| Reviewer M1 | PASS (ruling 2 below) | `viewImage` (`:674-703`) opens the tab on the click, `opener = null`, `location.replace(url)`; closes it on `url: null` or error; fallback `noopener,noreferrer` when blocked. |
+| Reviewer M2 | PASS | `markVerificationPurged` (`admin-data.service.ts:656-664`) keeps the API's `purgedAt` or none, with a `purgedLocally` mark; the row reads `Deleted` without a date, never today's date. |
+| Reviewer M3 | PASS | See contract table. |
+| Row 262 dialog | PASS | Title `Reject {check label}?`, exact body, `Note (optional)`, hint `Internal. Never shown to the runner.`, counter `{trimmed}/500` (Fira Code `.field-counter`), `maxlength` 500, `Back` / `Reject check` / `Rejecting…`; initial focus `Back` (form mode without `data-autofocus`, `confirm-dialog.component.ts:151-155`); cannot close while busy; trimmed, blank → no note; 403 / 404 / 409 close and reload, 400 note → in-dialog copy, other → `Couldn't save the review. Try again.`; polite announcement from 450. |
+| Row 261 copy | PASS | Panel note second sentence exact (`:244-247`); level line from the API level only, `Level 2 needs: …` in ID front, ID back, selfie order; level digits in Fira Code via `app-num-text`. No level wording in `Check approved.` |
+| Header sub | PASS | `Applied {timeAgo} · {first area} +{n}` (Fira Code `.verif-sub`); `{short id} · {phone}` second line (phone only when the name line already shows the id). |
+
+### Rulings on the builder's notes
+1. **`appliedAt` = runner profile `createdAt`**: **accepted, spec aligned.** The API owns the field (`AdminRunnerRef.appliedAt`), the client never computes it, and the profile is created when the runner starts the application, which is what the mockup's `Applied 2 days ago` reads as. Spec card header updated.
+2. **M1 blank tab, then `location.replace(url)`**: **accepted, not a security finding.** What must stay private is the signed URL; it is never sent as a `Referer` (the image tab is the last hop and links nowhere). The navigation sends the storage host the admin **origin** only (browser default `strict-origin-when-cross-origin`; the admin sets no referrer override; checked `index.html` and the app for `referrer`). Reverse tabnabbing is prevented by `opener = null` before the navigation. Popup-blocked fallback keeps `noopener,noreferrer`. Flag for reviewer (information, not a blocker): if the owner wants the storage host to see no admin origin at all, add `<meta name="referrer" content="no-referrer">` to the admin `index.html` (app-wide, web-parity). Spec `View image` behaviour updated.
+3. **Only the newest record per check listed**: **accepted** (spec rule, now confirmed against the API, which sends the whole history). New API item **A-9** (minor, api-contract): uploads never supersede an older pending record of the same (type, side), and the queue counts every pending record for `Pending` / `pendingCount` / `awaitingReviewCount`, while the card shows the newest only, so a runner who uploaded the same side twice before review stays in `Pending` and in the topbar count with nothing to decide. Recommended: read pending on the newest record per (type, side) as `rejected` / `approved` already do. Goes with owner row 264; not counted against this build.
+4. **`Applied yesterday` lowercase**: **accepted** (mid-sentence; shared `timeAgo` unchanged). Spec notes it.
+5. **`Load more` error copy `Couldn't load verifications. Try again.`**: **accepted**; spec now says so.
+6. **Panel deferred in `admin-dashboard.component.ts`**: **accepted.** Same pattern and copy shape as the runner payouts panel (`Loading runner payouts…`); the placeholder shows only while the chunk loads, then the panel's own `Loading…`. Bundle 492 kB, under budget.
+
+### Findings (new)
+50. **minor**: `apps/admin/src/app/features/admin/panels/verifications.panel.ts:551-567` (M4 residual).
+    - Design (spec `Paging, loading, empty, error`, clarified this round): the load-error notice belongs to the failed load; no cards and no empty state of a later successful load sit under it.
+    - Code: `load()` never clears `notice`. A failed load, then `↻ Refresh` or a filter change that succeeds, shows the cards (or `No applications match`) under `Couldn't load verifications. Try again.` until the admin dismisses it, which is the "empty state under the load-error notice" case M4 asked to remove.
+    - Fix: at the start of `load()` (and `loadMore()`) clear the notice when it is a load-error notice (keep a flag, or clear any `danger` notice there). Clearing at the start, not on success, keeps the `This check was already decided. The list is updated.` info that `reviewFailed` sets right after calling `load()`. Add a test: fail, refresh succeeds, no danger notice.
+51. **minor**: `verifications.panel.ts:314` (`View image`), `:406` (`Re-review evidence`); `styles/_ops.scss` (`.doc-detail`).
+    - Design (spec, as passed in the previous re-audit): `View image` is a text button sized to the 12 px detail row; `Re-review evidence` is the small outline button (`.btn .btn-outline .btn-sm`), 40 px target, not more prominent than `Approve` / `Reject`.
+    - Code: both lost `.btn-sm` in the rebuild (`342e5e9` had `btn btn-text btn-sm` and `btn btn-outline btn-sm`): `View image` renders at 14.5 px with 12 px vertical padding inside a 12 px `.drawer-row`; `Re-review evidence` is a full-size 14.5 px pill, larger than the 12.5 px `Approve` / `Reject` beside other rows.
+    - Fix: restore `btn-sm` on both; give the re-review button its 40 px target with `.doc-detail .verif-actions .btn { min-height: 40px; }` (tokens only). Spec updated to name `.btn-sm` explicitly.
+
+### Owner rows (not counted)
+- Row 263 (AQ-38: downgrade, legacy `side = null`, backfill): open; the card shows the API's level either way.
+- Row 264 (filter semantics and order as built): open. Spec now records the built behaviour (`Pending` oldest pending first; `Rejected` / `Approved` most recently decided first; `All statuses` most recent submission first) as pending owner confirmation, plus A-9 above.
+
+### Spec aligned in this round
+`p-runners-verification-documents.md`: Implementation / Status lines; topbar source `awaitingReviewCount` (the `{n}+` fallback dropped); filter values incl. `all`, default `Pending`, built semantics pending row 264; `appliedAt` = profile `createdAt`; newest-record rule confirmed + A-9 edge; order per filter; `Load more` error copy; load-error notice lifetime; `View image` tab pattern (M1) and referrer note; `.btn-sm` on `View image` and `Re-review evidence`; reject 400 `reviewer_note_invalid` `{ maxLength: 500 }`; Data section rewritten to the built contract (queue shape, `total`, `awaitingReviewCount`, `verification.checks`, A-4 / A-7 / A-8 as built, A-9 new); new `Current vs design` section; open rows 263 / 264. `_shared.md` N-23 (g) points at the built contract.
+
+### Verdict
+**FAIL** (minor only): findings 50 and 51. Findings 37, 38, 40, 46, M4 (apart from 50) and reviewer M1–M3 are closed; build health clean (tsc, 288 tests, build 492 kB). Both fixes are small and local to `verifications.panel.ts` (+ one `_ops.scss` rule and one test). `SCREEN_MAP.md` stays `built`. The screen also needs `feat/api-verification-answers` merged first (the queue is 404 on `main`).
+
+## Re-audit 2026-10-21: verification cards fixes (`feat/admin-verification-cards` @ `7c6bb3a`, `2f579c0`)
+
+Audited: web-parity `7c6bb3a` (`fix(angular-admin): drop the verification load-error notice when the next load starts`) and `2f579c0` (`style(angular-admin): 40px target for small actions in verification detail rows`), merged into `docs/admin-verification-cards-audit`. Files: `apps/admin/src/app/features/admin/panels/verifications.panel.ts`, `verifications.panel.spec.ts`, `apps/admin/src/styles/_ops.scss`. Against the spec `docs/specs/admin/p-runners-verification-documents.md` and the "Re-audit 2026-10-21: verification cards" section above.
+Build health (worktree, `node_modules` linked from the main tree and removed afterwards): `tsc -p tsconfig.app.json --noEmit` and `tsconfig.spec.json` clean; `ng test --watch=false` 28 files, **290 tests pass** (was 288). Builder reports `ng build` 492.12 kB, under budget (not re-run; the diff adds one CSS rule and a few lines of TS). Token scan of the diff: no hex, no `font-family`, no inline `style=`; the new rule sets only `min-height`. No wallet / escrow wording.
+
+### Findings re-checked
+| # | Verdict | Evidence |
+|---|---|---|
+| 50 | PASS | `notice` now carries an optional `fromLoad` mark (`verifications.panel.ts:529`); `load()` (`:552`) and `loadMore()` (`:578`) call `clearLoadNotice()` (`:849-851`) before the request, which clears only a load-error notice; both catch blocks set the load notice with `fromLoad: true` (`:566-570`, `:584-588`). Save, forbidden, image and info notices go through `notify()` without the mark and survive a reload: the 409 / 404 path (`reviewFailed`, `:670-672`) calls `load()` first and then sets `This check was already decided. The list is updated.`, so the info shows; the 403 path never reloads. A reload that fails again sets a fresh load notice. Tests: refresh after a failure drops the notice before the answer and shows the card (`spec :836-864`, also via a filter change), the empty state after a failure shows `No applications match` with no `.panel-notice` (`:817-819`), a save error survives a refresh (`:866-876`), retrying `Load more` drops the old notice (`:912-916`). |
+| 51 | PASS | `View image` is `btn btn-text btn-sm` (`:314`; 12.5 px, `.btn.btn-text.btn-sm` padding 4 px 2 px, `_ops.scss:1148-1155`), sized to the detail row; `Re-review evidence` is `btn btn-outline btn-sm` (`:406`) and gets its 40 px target from `.doc-detail .verif-actions .btn { min-height: 40px; }` (`_ops.scss:638-640`), same height and font size as `Approve` / `Reject`, so it is not more prominent. Tests assert both class lists (`spec :356`, `:526`). |
+
+### Owner answers recorded in the specs (2026-10-21; API side on `feat/api-verification-answers`, not counted against this build)
+- Row 263 (a) downgrade both ways and (b) legacy `side = null` IDs count toward Level 2 (exact legacy rule pending confirmation): spec Level line, Data A-4, Owner decisions, Open questions; runner `_shared.md` §0 (rows 263, 264) and §7. (c) backfill was not in the answer as relayed: left open.
+- Row 264 with A-9: filters and orders confirmed; pending counted on the newest record per (type, side). Spec Status filter, Check rows edge, Paging order, Data A-9.
+- Admin copy check for a downgrade: the level line needs no change. A runner who drops back reads `Level 1 — Basic · Level 2 needs: {list}` from the API level, and `{list}` names the pending or rejected side / selfie because it is built from the newest records. The panel note `A runner reaches Level 2 when both ID sides and the selfie are approved.` stays true; an optional wording that mentions the drop is offered as AQ-39 (owner, not required).
+- Follow-up N-L1 (minor, api-contract then web-parity; not a finding): with (b), `levelLine` (`verifications.panel.ts:152-181`) does not know that an approved legacy ID fills a side, so a Level-1 runner with an approved legacy ID is told `ID front` / `ID back` are needed when the API already counts it. Recommended: the API sends the Level-2 gaps (`verification.level2Missing`) on the queue item and decision answer, and the client reads them. Harmless while no runner has an approved legacy ID image.
+- Runner app: no screen change needed for a downgrade (the app shows the API level, the §9 gate already blocks going online while a required check is not approved, and a runner can only re-upload after a rejection). Two items recorded in runner `_shared.md` §7: RN-L1 (the row-209 `National ID` status and the R-19 helper ignore legacy IDs while the API now counts them for Level 2; one rule needed in both places) and RQ-L1 (owner: does a drop to Level 1 affect an accepted job or open offers?).
+
+### Verdict
+**PASS.** Findings 50 and 51 closed; together with the previous re-audit, findings 37, 38, 40, 46, M4 and reviewer M1–M3 are closed. `SCREEN_MAP.md` set to `matches-design`. The screen reads `GET /runners/verifications/queue`, which exists only on `feat/api-verification-answers`; that branch must merge before (or with) `feat/admin-verification-cards`.
+
+## Re-audit 2026-10-21: verification level follow-up (`feat/admin-verification-cards` @ `e2530c4`, `f1255f4`)
+
+Audited: web-parity `e2530c4` (`feat(angular-admin): note that a runner drops back to Level 1 while a Level 2 check is rejected or replaced`, owner row 267) and `f1255f4` (`fix(angular-admin): read Level 2 needs from the API level2Missing`, N-L1), merged into `docs/admin-verification-cards-audit` (`24cba9f`). Files: `apps/admin/src/app/core/api-types.ts`, `features/admin/admin-data.service.ts`, `features/admin/panels/verifications.panel.ts`, `verifications.panel.spec.ts`. Contract checked against api-contract's `feat/api-verification-answers` (`b17b7eb` … `df1659a`).
+
+Build health (auditor rerun in a scratch copy of the worktree's `apps/admin` with the main tree's `node_modules` linked): `tsc -p tsconfig.app.json --noEmit` and `tsconfig.spec.json` clean; `ng test --watch=false` 28 files, **293 tests pass** (was 290). Builder reports `ng build` OK (not re-run; no template structure or style change). Token scan of the diff: no hex, no `font-family`, no inline styles.
+
+### Checked
+| Area | Verdict | Evidence |
+|---|---|---|
+| Panel note (row 267) | PASS | `verifications.panel.ts:247-251` reads `Opening an image is logged. Images are deleted at the end of the retention period. A runner reaches Level 2 when both ID sides and the selfie are approved, and drops back to Level 1 while any of them is rejected or replaced.`; the spec test asserts the full text. One sentence, as the owner approved; the wording is proposed (spec Copy flags it). No `Approve → runner level upgrades`. |
+| Level line from `level2Missing` (N-L1) | PASS | `levelLine(level, level2Missing)` (`:165-186`) maps `government_id_front`, `government_id_back`, `selfie` to `ID front`, `ID back`, `selfie` (`LEVEL_2_NAMES`, `:154-158`) in the API's order; the row lookup (`LEVEL_2_CHECKS` over `checkRows`) is gone. `levelParts` (`:818-823`) reads `runnerProfile.level2Missing`, then `verification.level2Missing`; empty or absent → level only; level ≥ 2 → label only; level number still Fira Code through `app-num-text`. |
+| Decision answer, incl. 2 → 1 | PASS | `levelFromAnswer` (`admin-data.service.ts:701-722`) takes `verificationLevel` and `level2Missing` from the PATCH answer's `runnerProfile` and copies the gaps onto `verification`; a bare answer leaves the card unchanged. The API answer carries both (`fa9adf8`, e2e `6bb5323`). |
+| Types | PASS | `Level2Check` and optional `level2Missing` on `AdminRunnerRef` and the queue item's `verification` (`api-types.ts:772-777, 820-821`) match `verification-summary.ts` on the API branch. |
+| Tests | PASS | New: legacy ID counted by the API (`Level 2 needs: selfie` with no `· Back` record), in-place update after Approve, line back to `Level 1 — Basic · Level 2 needs: selfie` after a Reject that drops the level; the `levelLine` unit test covers all / one / empty / absent / Level 2 / no level. |
+| Domain | PASS | No new state, no wallet wording; the drop is the API's (row 263), the client never infers the level. |
+
+### Contract alignment (spec Data and runner `_shared.md` updated this round)
+- A-9 (`b17b7eb`, `5e6e369`): pending, `oldestPendingAt`, the `Pending` filter and `awaitingReviewCount` on the newest record per (type, side). No client change.
+- Row 263 (`713cdc1`, `3bf75e7`): `2_id_verified` ↔ `1_basic` in the decision's or upload's transaction under the profile lock; deciding a superseded record changes nothing; levels 3 / 4 untouched.
+- Row 268 (`050d2fb`, `fb4e90c`): approved unlabelled IDs fill a missing side (labelled records win; one side per record, front first); pending / rejected unlabelled records fill nothing. Applies to `verification.checks` and `level2Missing`.
+- N-L1 / RN-L1 (`fa9adf8`, `6bb5323`): `level2Missing` on queue item `runnerProfile` and `verification`, PATCH answer `runnerProfile`, per-check list items' `runnerProfile`, `GET /runners/me` `verification`.
+- Row 266 (`fa2f649`, `3efcfcb`): open offers withdrawn on any drop through the expiry path (`job:offer_withdrawn` reason `expired`, task stays RUNNER_ASSIGNED, no admin feed item); accepted and in-progress jobs continue.
+- Row 265 (`d7e79ed`, `df1659a`): `npm run runners:recheck-level2` dry run (READ ONLY) / `-- --apply`, hand-run at deploy.
+
+### Owner rows (open, not counted)
+Row 269 (levels 3 / 4), 270 (admin feed item on a drop), 271 (superseded pending records), 272 (script sockets with queue workers off), 273 (availability offline at a drop). None changes this screen as built; spec Open questions records them.
+
+### Runner-app impact (needs, not findings against this build)
+- RN-L1 (core-ui, then flutter-runner): core `RunnerVerificationDocuments.nationalIdStatus` (`packages/nitume_core/lib/src/models/runner_account.dart`, R-19) ignores unlabelled ID records while the API summary now counts an approved one as a side; `v-onboard-pending` could show `National ID · Not started` and an upload prompt to a runner the API treats as having that side (and an upload would drop them to Level 1). Parse `level2Missing` in `RunnerVerificationSummary` and take the ID side statuses from the API summary (or mirror the row-268 rule).
+- Level can drop (rows 263, 265): no runner copy; screens re-read on open, resume and the verification push.
+- Offers withdrawn (row 266): `job:offer_withdrawn` reason `expired` is already handled by v-jobs (card removed, unavailable snackbar); no change unless row 273 says the runner goes offline.
+
+### Verdict
+**PASS.** No findings. N-L1 closed; AQ-39 closed by row 267. `SCREEN_MAP.md` stays `matches-design`. `feat/api-verification-answers` must merge before (or with) `feat/admin-verification-cards`: the queue and `level2Missing` do not exist on `main`.
