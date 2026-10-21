@@ -769,7 +769,12 @@ export interface AdminRunnerRef {
   serviceAreas: { id: string; name: string }[];
   /** When the runner applied (runner profile `createdAt`). */
   appliedAt: string;
+  /** N-L1: Level 2 checks not met, in ID front, ID back, selfie order; `[]` when met. */
+  level2Missing?: Level2Check[];
 }
+
+/** A Level 2 check (row 261) as named in the API's `level2Missing`. */
+export type Level2Check = 'government_id_front' | 'government_id_back' | 'selfie';
 
 /** The runner's user on admin verification items (row 260). */
 export interface AdminRunnerUser {
@@ -809,7 +814,12 @@ export interface VerificationQueueItem {
   pendingCount: number;
   oldestPendingAt: string | null;
   /** The required checks (phone, ID front, ID back, selfie, payment identity), newest record each. */
-  verification: { verified: boolean; checks: VerificationSummaryCheck[] };
+  verification: {
+    verified: boolean;
+    checks: VerificationSummaryCheck[];
+    /** N-L1: Level 2 checks not met (same as `runnerProfile.level2Missing`); `[]` when met. */
+    level2Missing?: Level2Check[];
+  };
 }
 
 export interface VerificationQueueResult {

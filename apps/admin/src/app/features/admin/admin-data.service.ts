@@ -606,7 +606,8 @@ export class AdminDataService {
    * Decides one pending check, `{ decision, reviewerNote? }` (blank note →
    * none). The answer is merged over the check (the full item and the bare
    * verification both work); a returned `runnerProfile.verificationLevel`
-   * updates the card. The awaiting count drops when the runner has no
+   * and `level2Missing` update the card (the level can drop 2 → 1 after a
+   * rejection, row 263). The awaiting count drops when the runner has no
    * pending check left.
    */
   async reviewVerification(
@@ -626,15 +627,7 @@ export class AdminDataService {
         const checks = item.checks.map((c) => (c.id === check.id ? mergeReviewAnswer(c, res) : c));
         const pendingCount = checks.filter((c) => c.status === 'pending').length;
         if (hadPending && pendingCount === 0) clearedRunner = true;
-        const level = res.runnerProfile?.verificationLevel;
-        return {
-          ...item,
-          checks,
-          pendingCount,
-          runnerProfile: level
-            ? { ...item.runnerProfile, verificationLevel: level }
-            : item.runnerProfile,
-        };
+        return { ...item, checks, pendingCount, ...levelFromAnswer(item, res) };
       }),
     );
     if (clearedRunner) {
@@ -702,6 +695,29 @@ function mergeReviewAnswer(
     reReviews: res.reReviews ?? v.reReviews,
     // The bare answer has no display name; the card falls back to the short id.
     reviewer: res.reviewer ?? (res.reviewedBy ? { id: res.reviewedBy, displayName: null } : null),
+  };
+}
+
+/**
+ * The card's level and Level 2 gaps from a PATCH answer (N-L1): both come
+ * from the API only. A bare answer (no `runnerProfile`) leaves the card as is.
+ */
+function levelFromAnswer(
+  item: QueueRunner,
+  res: VerificationView & Partial<RunnerVerification>,
+): Pick<QueueRunner, 'runnerProfile' | 'verification'> {
+  const level = res.runnerProfile?.verificationLevel;
+  const missing = res.runnerProfile?.level2Missing;
+  return {
+    runnerProfile: {
+      ...item.runnerProfile,
+      ...(level ? { verificationLevel: level } : {}),
+      ...(missing ? { level2Missing: missing } : {}),
+    },
+    verification:
+      missing && item.verification
+        ? { ...item.verification, level2Missing: missing }
+        : item.verification,
   };
 }
 
