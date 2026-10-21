@@ -153,6 +153,25 @@ class RunnerVerificationCheck {
       );
 }
 
+/// A Level 2 check (row 261) as named in
+/// [RunnerVerificationSummary.level2Missing].
+enum Level2Check {
+  governmentIdFront('government_id_front'),
+  governmentIdBack('government_id_back'),
+  selfie('selfie');
+
+  const Level2Check(this.wire);
+  final String wire;
+
+  /// `null` for an absent or unknown value.
+  static Level2Check? tryFromWire(Object? v) {
+    for (final e in values) {
+      if (e.wire == v) return e;
+    }
+    return null;
+  }
+}
+
 /// `RunnerMe.verification` and the `verification` detail of a 403
 /// `runner_not_verified` (RA-8, row 126): the runner is [verified] only
 /// when every required check is approved. [checks] keeps the API's order
@@ -161,6 +180,7 @@ class RunnerVerificationSummary {
   const RunnerVerificationSummary({
     required this.verified,
     this.checks = const [],
+    this.level2Missing,
   });
 
   /// Not verified, no checks known (the API sent no summary).
@@ -169,6 +189,19 @@ class RunnerVerificationSummary {
   /// As the API computed it; never derived on the client.
   final bool verified;
   final List<RunnerVerificationCheck> checks;
+
+  /// The Level 2 checks (row 261: ID front, ID back, selfie) whose newest
+  /// record is not approved, in the API's order; empty when the runner
+  /// meets the Level 2 rule (RN-L1). Computed by the API, unlabelled ID
+  /// records included (row 268); never derive it on the client.
+  ///
+  /// `null` when the API did not send it (older API, 403 detail); unknown
+  /// values are skipped.
+  final List<Level2Check>? level2Missing;
+
+  /// True when the API says the Level 2 rule is met, false when it lists a
+  /// missing check, `null` when [level2Missing] is unknown.
+  bool? get meetsLevel2 => level2Missing?.isEmpty;
 
   /// The check for [type] (and [side] for an ID image); `null` when absent.
   RunnerVerificationCheck? checkFor(
@@ -183,6 +216,7 @@ class RunnerVerificationSummary {
 
   factory RunnerVerificationSummary.fromJson(Map<String, dynamic> json) {
     final raw = json['checks'];
+    final missing = json['level2Missing'];
     return RunnerVerificationSummary(
       verified: json['verified'] == true,
       checks: [
@@ -191,6 +225,9 @@ class RunnerVerificationSummary {
             if (c is Map)
               RunnerVerificationCheck.fromJson(c.cast<String, dynamic>()),
       ],
+      level2Missing: missing is List
+          ? [for (final m in missing) ?Level2Check.tryFromWire(m)]
+          : null,
     );
   }
 

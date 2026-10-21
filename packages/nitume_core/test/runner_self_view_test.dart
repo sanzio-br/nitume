@@ -107,6 +107,58 @@ void main() {
       expect(v.checkFor(RunnerVerificationType.reference), isNull);
     });
 
+    test('level2Missing: parsed in order, unknown values skipped', () {
+      final v = RunnerVerificationSummary.fromJson({
+        'verified': false,
+        'checks': <Object>[],
+        'level2Missing': ['government_id_back', 'passport', 7, 'selfie'],
+      });
+      expect(v.level2Missing, [
+        Level2Check.governmentIdBack,
+        Level2Check.selfie,
+      ]);
+      expect(v.meetsLevel2, isFalse);
+
+      final met = RunnerVerificationSummary.fromJson({
+        'verified': false,
+        'level2Missing': <Object>[],
+      });
+      expect(met.level2Missing, isEmpty);
+      expect(met.meetsLevel2, isTrue);
+    });
+
+    test('level2Missing absent or malformed reads as unknown', () {
+      expect(
+        RunnerVerificationSummary.fromJson({'verified': true}).level2Missing,
+        isNull,
+      );
+      final odd = RunnerVerificationSummary.fromJson({
+        'verified': false,
+        'level2Missing': 'selfie',
+      });
+      expect(odd.level2Missing, isNull);
+      expect(odd.meetsLevel2, isNull);
+      expect(RunnerVerificationSummary.unknown.level2Missing, isNull);
+      expect(Level2Check.values.map((e) => e.wire), [
+        'government_id_front',
+        'government_id_back',
+        'selfie',
+      ]);
+    });
+
+    test('level2Missing on GET /runners/me', () {
+      final me = RunnerMe.fromJson(
+        _self({
+          'verification': {
+            'verified': false,
+            'checks': <Object>[],
+            'level2Missing': ['government_id_front'],
+          },
+        }),
+      );
+      expect(me.verification.level2Missing, [Level2Check.governmentIdFront]);
+    });
+
     test('verified comes from the API', () {
       final me = RunnerMe.fromJson(
         _self({
