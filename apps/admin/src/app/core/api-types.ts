@@ -820,6 +820,31 @@ export interface VerificationQueueItem {
     /** N-L1: Level 2 checks not met (same as `runnerProfile.level2Missing`); `[]` when met. */
     level2Missing?: Level2Check[];
   };
+  /**
+   * AV-5 (row 278): pending > rejected > approved over the newest records,
+   * the same rule as the `status` filter; null when the runner is not in the
+   * queue (`GET /runners/:id/verifications` only). Absent on older builds.
+   */
+  applicationStatus?: VerificationStatus | null;
+}
+
+/** Runner verification levels (the API `level` filter values, row 278). */
+export type VerificationLevel = '1_basic' | '2_id_verified' | '3_trusted' | '4_professional';
+
+/** Queue filters (row 278, AV-2), AND-combined; the cursor is bound to the whole set. */
+export interface VerificationQueueFilters {
+  status: VerificationQueueStatus;
+  /** A config id from `GET /runners/service-areas`. */
+  serviceAreaId?: string | null;
+  level?: VerificationLevel | null;
+  /** Trimmed, 2–64 characters; omitted otherwise. */
+  q?: string | null;
+}
+
+/** `GET /runners/service-areas` (admin allowed): areas by name. */
+export interface ServiceAreaOption {
+  id: string;
+  name: string;
 }
 
 export interface VerificationQueueResult {

@@ -24,8 +24,8 @@ import type {
   RunnerVerification,
   UserMe,
   VerificationQueueItem,
+  VerificationQueueFilters,
   VerificationQueueResult,
-  VerificationQueueStatus,
   VerificationView,
 } from '../../core/api-types';
 
@@ -139,6 +139,14 @@ export class AdminDataService {
   /** Runners with a pending check over the whole queue; null before the first answer. */
   readonly awaitingReviewCount = signal<number | null>(null);
   private queueSeq = 0;
+  /**
+   * The runner open in the documents drawer when `GET /runners/:id/verifications`
+   * answered (row 278, AV-1); decisions update it as they update the queue.
+   * Never holds an image link. Cleared when the drawer closes.
+   */
+  readonly verificationDetail = signal<QueueRunner | null>(null);
+  /** Bumped after a saved decision or re-review (the table reloads when the drawer closes). */
+  readonly verificationSaves = signal(0);
   readonly me = signal<UserMe | null>(null);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
@@ -574,13 +582,13 @@ export class AdminDataService {
    * started since (its answer wins).
    */
   async loadVerificationQueue(
-    status: VerificationQueueStatus,
+    filters: VerificationQueueFilters,
     cursor?: string | null,
   ): Promise<VerificationQueueResult | null> {
     const seq = cursor ? this.queueSeq : ++this.queueSeq;
     let res: VerificationQueueResult;
     try {
-      res = await firstValueFrom(this.api.verificationQueue(status, cursor));
+      res = await firstValueFrom(this.api.verificationQueue(filters, cursor));
     } catch (e) {
       if (seq !== this.queueSeq) return null;
       if (!cursor) this.verificationQueue.set([]);
@@ -603,6 +611,20 @@ export class AdminDataService {
   }
 
   /**
+   * One runner for the documents drawer (AV-1): kept as the detail and
+   * replaced in place in the queue, so the table row agrees. Throws on error
+   * (404 runner_not_found included).
+   */
+  async loadVerificationRunner(runnerProfileId: string): Promise<QueueRunner> {
+    const item: QueueRunner = await firstValueFrom(this.api.runnerVerifications(runnerProfileId));
+    this.verificationDetail.set(item);
+    this.verificationQueue.update((items) =>
+      items.map((r) => (r.runnerProfile.id === runnerProfileId ? item : r)),
+    );
+    return item;
+  }
+
+  /**
    * Decides one pending check, `{ decision, reviewerNote? }` (blank note →
    * none). The answer is merged over the check (the full item and the bare
    * verification both work); a returned `runnerProfile.verificationLevel`
@@ -620,25 +642,29 @@ export class AdminDataService {
       this.api.reviewVerification(check.runnerProfileId, check.id, dto),
     );
     let clearedRunner = false;
-    this.verificationQueue.update((items) =>
-      items.map((item) => {
-        if (!item.checks.some((c) => c.id === check.id)) return item;
-        const hadPending = pendingCheckCount(item.checks) > 0;
-        const checks = item.checks.map((c) => (c.id === check.id ? mergeReviewAnswer(c, res) : c));
-        const pendingCount = pendingCheckCount(checks);
-        if (hadPending && pendingCount === 0) clearedRunner = true;
-        return { ...item, checks, pendingCount, ...levelFromAnswer(item, res) };
-      }),
-    );
+    const decide = (item: QueueRunner): QueueRunner => {
+      if (!item.checks.some((c) => c.id === check.id)) return item;
+      const hadPending = pendingCheckCount(item.checks) > 0;
+      const checks = item.checks.map((c) => (c.id === check.id ? mergeReviewAnswer(c, res) : c));
+      const pendingCount = pendingCheckCount(checks);
+      if (hadPending && pendingCount === 0) clearedRunner = true;
+      // The API's status (AV-5) is re-derived by the table from the new records.
+      const { applicationStatus: _stale, ...rest } = item;
+      return { ...rest, checks, pendingCount, ...levelFromAnswer(item, res) };
+    };
+    this.verificationQueue.update((items) => items.map(decide));
+    this.verificationDetail.update((d) => (d ? decide(d) : d));
     if (clearedRunner) {
       this.awaitingReviewCount.update((n) => (n === null ? n : Math.max(0, n - 1)));
     }
+    this.verificationSaves.update((n) => n + 1);
   }
 
   /** Records an audited re-review (row 171) and appends it to the check. */
   async reReviewVerification(id: string, note?: string): Promise<void> {
     const res = await firstValueFrom(this.api.reReviewVerification(id, note));
     this.updateQueueCheck(id, (v) => ({ ...v, reReviews: [...v.reReviews, res.reReview] }));
+    this.verificationSaves.update((n) => n + 1);
   }
 
   /**
@@ -662,13 +688,12 @@ export class AdminDataService {
   }
 
   private updateQueueCheck(id: string, fn: (v: QueueCheck) => QueueCheck): void {
-    this.verificationQueue.update((items) =>
-      items.map((item) =>
-        item.checks.some((c) => c.id === id)
-          ? { ...item, checks: item.checks.map((c) => (c.id === id ? fn(c) : c)) }
-          : item,
-      ),
-    );
+    const apply = (item: QueueRunner): QueueRunner =>
+      item.checks.some((c) => c.id === id)
+        ? { ...item, checks: item.checks.map((c) => (c.id === id ? fn(c) : c)) }
+        : item;
+    this.verificationQueue.update((items) => items.map(apply));
+    this.verificationDetail.update((d) => (d ? apply(d) : d));
   }
 }
 

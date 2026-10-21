@@ -13,6 +13,7 @@ import { RunnerDrawerComponent } from './drawers/runner-drawer';
 import { DisputeDrawerComponent } from './drawers/dispute-drawer';
 import { RefundDrawerComponent } from './drawers/refund-drawer';
 import { RunnerPayoutDrawerComponent } from './drawers/runner-payout-drawer';
+import { RunnerVerificationDrawerComponent } from './drawers/runner-verification-drawer';
 import { RefundsPanelComponent } from './panels/refunds.panel';
 import { RunnerPayoutsPanelComponent } from './panels/runner-payouts.panel';
 import { OpsDrawerComponent } from '../../shared/ops-drawer.component';
@@ -48,6 +49,7 @@ type Panel =
     DisputeDrawerComponent,
     RefundDrawerComponent,
     RunnerPayoutDrawerComponent,
+    RunnerVerificationDrawerComponent,
     RefundsPanelComponent,
     RunnerPayoutsPanelComponent,
     OpsDrawerComponent,
@@ -273,6 +275,13 @@ type Panel =
               <div class="ops-loading">Loading runner payout…</div>
             }
           }
+          @case ('runner_verification') {
+            @defer (on immediate) {
+              <app-runner-verification-drawer [runnerProfileId]="t.id" />
+            } @loading {
+              <div class="ops-loading">Loading documents…</div>
+            }
+          }
         }
       }
     </app-ops-drawer>
@@ -337,6 +346,8 @@ export class AdminDashboardComponent implements OnInit {
         return 'Refund review';
       case 'runner_payout':
         return 'Runner payout';
+      case 'runner_verification':
+        return 'Verification documents';
       default:
         return '';
     }

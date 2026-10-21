@@ -30,8 +30,10 @@ import {
   ListErrandsResult,
   ListRunnersResult,
   RunnerVerification,
+  VerificationQueueFilters,
+  VerificationQueueItem,
   VerificationQueueResult,
-  VerificationQueueStatus,
+  ServiceAreaOption,
   OtpRequestResult,
   OtpVerifyResult,
   QuoteErrandDto,
@@ -281,15 +283,31 @@ export class ApiService {
 
   /**
    * GET /runners/verifications/queue — admin verification queue, one item
-   * per runner (row 260), paged by runner. `status` defaults to `pending`
-   * on the API; `limit` 1–100. 400 `cursor_invalid` for a stale cursor.
+   * per runner (row 260), paged by runner; `limit` 1–100. Row 278 (AV-2):
+   * optional `serviceAreaId`, `level`, `q`, sent only when set. 400
+   * `cursor_invalid` for a cursor from another filter set.
    */
-  verificationQueue(status: VerificationQueueStatus, cursor?: string | null, limit = 20) {
-    let params = new HttpParams().set('status', status).set('limit', String(limit));
+  verificationQueue(filters: VerificationQueueFilters, cursor?: string | null, limit = 20) {
+    let params = new HttpParams().set('status', filters.status).set('limit', String(limit));
+    if (filters.serviceAreaId) params = params.set('serviceAreaId', filters.serviceAreaId);
+    if (filters.level) params = params.set('level', filters.level);
+    if (filters.q) params = params.set('q', filters.q);
     if (cursor) params = params.set('cursor', cursor);
     return this.http.get<VerificationQueueResult>(`${this.base}/runners/verifications/queue`, {
       params,
     });
+  }
+
+  /** GET /runners/:runnerProfileId/verifications (row 278, AV-1): one queue item; 404 runner_not_found. */
+  runnerVerifications(runnerProfileId: string) {
+    return this.http.get<VerificationQueueItem>(
+      `${this.base}/runners/${runnerProfileId}/verifications`,
+    );
+  }
+
+  /** GET /runners/service-areas — configured areas `{ items: [{ id, name }] }`. */
+  serviceAreas() {
+    return this.http.get<{ items: ServiceAreaOption[] }>(`${this.base}/runners/service-areas`);
   }
 
   /**
@@ -307,7 +325,8 @@ export class ApiService {
 
   /**
    * GET /runners/verifications/:id/document — a short-lived signed link to a
-   * verification image. Every call is logged as a view: call only on click.
+   * verification image. Every call is logged as a view: only the documents
+   * drawer calls it, once per shown image on open (row 279).
    */
   verificationDocument(id: string) {
     return this.http.get<VerificationDocumentLink>(

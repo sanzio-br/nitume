@@ -54,7 +54,7 @@ const VERIFICATION_VARIANTS: Record<string, ChipVariant> = {
   rejected: 'danger',
 };
 
-const LEVEL_LABELS: Record<string, string> = {
+export const LEVEL_LABELS: Record<string, string> = {
   '1_basic': 'Level 1 · Basic',
   '2_id_verified': 'Level 2 · ID verified',
   '3_trusted': 'Level 3 · Trusted',

@@ -2,313 +2,79 @@ import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, TestRequest } from '@angular/common/http/testing';
 import { API, flushAsync, httpError, setupHttp } from '../../../testing/admin-test-utils';
 import {
-  VERIFICATION_STATUS_FILTERS,
-  VerificationsPanelComponent,
-  awaitingCopy,
-  appliedLine,
-  checkRows,
-  levelLine,
-  nameInitials,
-  verificationTypeLabel,
-} from './verifications.panel';
+  AREAS_URL,
+  PROFILE,
+  PROFILE_2,
+  RUNNER,
+  USER,
+  check,
+  isDocument,
+  isQueue,
+  ownersChecks,
+  page,
+  runner,
+} from '../../../testing/verification-fixtures';
 import {
-  AdminDataService,
-  newestPerCheck,
-  pendingCheckCount,
-  timeAgo,
-} from '../admin-data.service';
+  SEARCH_DEBOUNCE_MS,
+  VerificationsPanelComponent,
+  searchQuery,
+} from './verifications.panel';
+import { AdminDataService } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
-import type {
-  AdminRunnerRef,
-  RunnerVerification,
-  VerificationQueueItem,
-  VerificationQueueResult,
-} from '../../../core/api-types';
+import type { VerificationQueueItem, VerificationQueueResult } from '../../../core/api-types';
 
-const PROFILE = 'aad1988f-1111-2222-3333-75662a9c0ca7';
-const USER = 'bbbbbbbb-1111-2222-3333-000000000001';
-const ADMIN = 'adadadad-1111-2222-3333-0000000a0001';
-const PROFILE_2 = 'ccccdddd-1111-2222-3333-00000000beef';
+const AREAS = [
+  { id: 'kilimani', name: 'Kilimani' },
+  { id: 'westlands', name: 'Westlands' },
+];
 
-const RUNNER: AdminRunnerRef = {
-  id: PROFILE,
-  userId: USER,
-  verificationLevel: '1_basic',
-  serviceAreas: [
-    { id: 'a2', name: 'Westlands' },
-    { id: 'a1', name: 'Kilimani' },
-  ],
-  appliedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-  level2Missing: ['government_id_front', 'government_id_back', 'selfie'],
-};
-const USER_ROW = {
-  id: USER,
-  phone: '+254712345678',
-  displayName: 'Mercy Wanjiru',
-  shortName: 'Mercy W.',
-};
-
-function check(id: string, patch: Partial<RunnerVerification> = {}): RunnerVerification {
-  return {
-    id,
-    runnerProfileId: PROFILE,
-    verificationType: 'government_id',
-    side: null,
-    status: 'pending',
-    reviewerNote: null,
-    reviewedBy: null,
-    reviewedAt: null,
-    createdAt: '2026-10-20T07:30:00Z',
-    purgedAt: null,
-    hasDocument: true,
-    runnerProfile: RUNNER,
-    user: USER_ROW,
-    reviewer: null,
-    reReviews: [],
-    ...patch,
-  };
-}
-
-/** The API summary: the five required checks, newest record each, `missing` when none. */
-function summaryOf(checks: RunnerVerification[]): VerificationQueueItem['verification'] {
-  const req = [
-    { type: 'phone', side: null },
-    { type: 'government_id', side: 'front' },
-    { type: 'government_id', side: 'back' },
-    { type: 'selfie', side: null },
-    { type: 'payment_identity', side: null },
-  ] as const;
-  const rows = req.map(({ type, side }) => ({
-    type,
-    side,
-    status:
-      checks.find((c) => c.verificationType === type && (side === null || c.side === side))
-        ?.status ?? ('missing' as const),
-  }));
-  return { verified: rows.every((r) => r.status === 'approved'), checks: rows };
-}
-
-function runner(
-  checks: RunnerVerification[],
-  patch: Partial<VerificationQueueItem> = {},
-): VerificationQueueItem {
-  const pending = checks.filter((c) => c.status === 'pending');
-  const runnerProfile = patch.runnerProfile ?? RUNNER;
-  return {
-    runnerProfile: RUNNER,
-    user: USER_ROW,
-    checks,
-    pendingCount: pending.length,
-    oldestPendingAt: pending.length ? pending[pending.length - 1].createdAt : null,
-    // The API sends the same Level 2 gaps on the summary and on the runner.
-    verification: { ...summaryOf(checks), level2Missing: runnerProfile.level2Missing },
-    ...patch,
-  };
-}
-
-/** The owner's runner (local DB, 2026-10-21): ID front, back, selfie, payment pending + auto-approved phone. */
-function ownersChecks(): RunnerVerification[] {
-  return [
-    check('v-pay', { verificationType: 'payment_identity', hasDocument: false }),
-    check('v-selfie', { verificationType: 'selfie' }),
-    check('v-back', { side: 'back' }),
-    check('v-front', { side: 'front' }),
-    check('v-phone', {
-      verificationType: 'phone',
-      status: 'approved',
-      hasDocument: false,
-      createdAt: '2026-10-19T07:00:00Z',
-    }),
-  ];
-}
-
-function page(
-  items: VerificationQueueItem[],
-  patch: Partial<VerificationQueueResult> = {},
-): VerificationQueueResult {
-  return {
-    items,
-    nextCursor: null,
-    total: items.length,
-    awaitingReviewCount: items.filter((i) => i.checks.some((c) => c.status === 'pending')).length,
-    ...patch,
-  };
-}
-
-const queue = (r: { url: string }) => r.url === `${API}/runners/verifications/queue`;
-
-describe('verification labels, rows and copy', () => {
-  it('labels every API type, with Front / Back from side', () => {
-    expect(verificationTypeLabel({ verificationType: 'government_id', side: 'front' })).toBe(
-      'National ID · Front',
-    );
-    expect(verificationTypeLabel({ verificationType: 'government_id', side: 'back' })).toBe(
-      'National ID · Back',
-    );
-    expect(verificationTypeLabel({ verificationType: 'government_id', side: null })).toBe(
-      'National ID',
-    );
-    expect(verificationTypeLabel({ verificationType: 'selfie' })).toBe('Selfie / liveness check');
-    expect(verificationTypeLabel({ verificationType: 'phone' })).toBe('Phone number');
-    expect(verificationTypeLabel({ verificationType: 'payment_identity' })).toBe(
-      'M-Pesa identity match',
-    );
-    expect(verificationTypeLabel({ verificationType: 'reference' })).toBe('Reference check');
-    expect(verificationTypeLabel({ verificationType: 'business' })).toBe('Business check');
-  });
-
-  it('offers All statuses and the API status values', () => {
-    expect(VERIFICATION_STATUS_FILTERS.map((f) => f.value)).toEqual([
-      'all',
-      'pending',
-      'approved',
-      'rejected',
-    ]);
-    expect(VERIFICATION_STATUS_FILTERS[0].label).toBe('All statuses');
-  });
-
-  it('timeAgo never reads NaN', () => {
-    expect(timeAgo(undefined)).toBe('—');
-    expect(timeAgo('not a date')).toBe('—');
-  });
-
-  it('takes initials from the display name, never an id', () => {
-    expect(nameInitials('Mercy Wanjiru')).toBe('MW');
-    expect(nameInitials('  mercy  akinyi wanjiru ')).toBe('MW');
-    expect(nameInitials('Mercy')).toBe('M');
-    expect(nameInitials(null)).toBe('R');
-    expect(nameInitials('   ')).toBe('R');
-  });
-
-  it('splits the Applied line: only the relative time and +{n} are numeric (W-2)', () => {
-    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
-    expect(appliedLine(yesterday, [{ name: 'Westlands' }, { name: 'Kilimani' }])).toEqual([
-      { text: 'Applied ', num: false },
-      { text: 'yesterday', num: true },
-      { text: ' · Kilimani', num: false },
-      { text: ' ', num: false },
-      { text: '+1', num: true },
-    ]);
-    expect(appliedLine(null, [{ name: 'Kilimani' }])).toEqual([
-      { text: 'Applied', num: false },
-      { text: ' · Kilimani', num: false },
-    ]);
-  });
-
-  it('picks the newest record per (type, side) and counts pending on it only (W-1)', () => {
-    const checks = [
-      check('old', { side: 'front', createdAt: '2026-10-18T07:00:00Z' }),
-      check('new', { side: 'front', status: 'approved', createdAt: '2026-10-21T07:00:00Z' }),
-      check('back', { side: 'back', status: 'approved' }),
-    ];
-    expect(newestPerCheck(checks).map((c) => c.id)).toEqual(['new', 'back']);
-    expect(pendingCheckCount(checks)).toBe(0);
-    expect(pendingCheckCount([...checks, check('selfie', { verificationType: 'selfie' })])).toBe(1);
-  });
-
-  it('counts applications, not checks', () => {
-    expect(awaitingCopy(0)).toBe('No applications awaiting review');
-    expect(awaitingCopy(1)).toBe('1 application awaiting review');
-    expect(awaitingCopy(14)).toBe('14 applications awaiting review');
-  });
-
-  it('builds the rows in mockup order from the newest record of each check', () => {
-    const rows = checkRows(
-      runner([
-        check('v-front-new', { side: 'front', createdAt: '2026-10-21T07:00:00Z' }),
-        ...ownersChecks().map((c) =>
-          c.id === 'v-front' ? { ...c, status: 'rejected' as const } : c,
-        ),
-        check('v-legacy', { side: null, status: 'rejected', createdAt: '2026-09-01T07:00:00Z' }),
-      ]),
-    );
-    expect(rows.map((r) => r.label)).toEqual([
-      'National ID · Front',
-      'National ID · Back',
-      'National ID',
-      'Phone number',
-      'Selfie / liveness check',
-      'M-Pesa identity match',
-    ]);
-    expect(rows[0].record?.id).toBe('v-front-new');
-    expect(rows[0].status).toBe('pending');
-    expect(rows.find((r) => r.label === 'Phone number')?.compact).toBe(true);
-  });
-
-  it('shows a required check with no record as Not submitted', () => {
-    const rows = checkRows(runner([check('v-front', { side: 'front' })]));
-    expect(rows.find((r) => r.label === 'National ID · Back')).toMatchObject({
-      status: 'missing',
-      record: null,
-    });
-  });
-
-  it('writes the level line from the API level and the API Level 2 gaps only', () => {
-    const text = (parts: ReturnType<typeof levelLine>) => parts?.map((p) => p.text).join('');
-    const all = ['government_id_front', 'government_id_back', 'selfie'] as const;
-    expect(text(levelLine('1_basic', all))).toBe(
-      'Level 1 — Basic · Level 2 needs: ID front, ID back, selfie',
-    );
-    expect(
-      levelLine('1_basic', all)
-        ?.filter((p) => p.num)
-        .map((p) => p.text),
-    ).toEqual(['1', '2']);
-    expect(text(levelLine('1_basic', ['government_id_back']))).toBe(
-      'Level 1 — Basic · Level 2 needs: ID back',
-    );
-    // No gaps (or none sent) while the API still says Level 1: the level only, never inferred.
-    expect(text(levelLine('1_basic', []))).toBe('Level 1 — Basic');
-    expect(text(levelLine('1_basic', undefined))).toBe('Level 1 — Basic');
-    expect(text(levelLine('2_id_verified', all))).toBe('Level 2 — ID verified');
-    expect(levelLine(undefined, all)).toBeNull();
+describe('searchQuery', () => {
+  it('sends 2–64 trimmed characters, else nothing', () => {
+    expect(searchQuery('')).toBe('');
+    expect(searchQuery('  m ')).toBe('');
+    expect(searchQuery('  me ')).toBe('me');
+    expect(searchQuery('x'.repeat(70))).toBe('x'.repeat(64));
   });
 });
 
-describe('VerificationsPanelComponent', () => {
+describe('VerificationsPanelComponent (table)', () => {
   let http: HttpTestingController;
   beforeEach(() => {
     http = setupHttp();
   });
-  afterEach(() => http.verify());
+  afterEach(() => {
+    // The table never asks for an image link (row 278 security rule).
+    http.expectNone(isDocument);
+    http.verify();
+  });
 
   async function render(
     items: VerificationQueueItem[] = [runner(ownersChecks())],
     patch: Partial<VerificationQueueResult> = {},
+    areas: 'ok' | 'fail' = 'ok',
   ) {
     const fixture = TestBed.createComponent(VerificationsPanelComponent);
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).toContain('Loading…');
-    expect(el.textContent).not.toContain('No applications match');
-    const req = http.expectOne(queue);
+    expect(el.textContent).not.toContain('No applications');
+    const req = http.expectOne(isQueue);
     expect(req.request.params.get('status')).toBe('pending');
     expect(req.request.params.get('limit')).toBe('20');
+    for (const k of ['serviceAreaId', 'level', 'q', 'cursor']) {
+      expect(req.request.params.has(k)).toBe(false);
+    }
     req.flush(page(items, patch));
-    await flushAsync();
-    fixture.detectChanges();
+    const a = http.expectOne(AREAS_URL);
+    if (areas === 'ok') a.flush({ items: AREAS });
+    else a.flush(null, httpError(500));
+    await settle(fixture);
     return { fixture, el };
   }
 
   async function settle(fixture: { detectChanges(): void }) {
     await flushAsync();
     fixture.detectChanges();
-  }
-
-  /** The doc-row of a check and the detail block under it. */
-  function row(el: HTMLElement, label: string): { head: HTMLElement; detail: HTMLElement | null } {
-    const head = Array.from(el.querySelectorAll<HTMLElement>('.doc-row')).find(
-      (r) => r.firstElementChild?.textContent?.trim() === label,
-    );
-    if (!head) throw new Error(`no row ${label}`);
-    const next = head.nextElementSibling as HTMLElement | null;
-    return { head, detail: next?.classList.contains('doc-detail') ? next : null };
-  }
-
-  function detail(el: HTMLElement, label: string): HTMLElement {
-    const d = row(el, label).detail;
-    if (!d) throw new Error(`no detail under ${label}`);
-    return d;
   }
 
   function button(root: HTMLElement, text: string): HTMLButtonElement {
@@ -319,725 +85,336 @@ describe('VerificationsPanelComponent', () => {
     return found;
   }
 
-  function dialog(el: HTMLElement): HTMLElement {
-    const d = el.querySelector<HTMLElement>('[role="dialog"]');
-    if (!d) throw new Error('no dialog');
-    return d;
+  function select(el: HTMLElement, label: string): HTMLSelectElement {
+    const s = el.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`);
+    if (!s) throw new Error(`no select ${label}`);
+    return s;
   }
 
-  function type(fixture: { detectChanges(): void }, area: HTMLTextAreaElement, value: string) {
-    area.value = value;
-    area.dispatchEvent(new Event('input'));
+  function choose(fixture: { detectChanges(): void }, s: HTMLSelectElement, value: string) {
+    s.value = value;
+    s.dispatchEvent(new Event('change'));
     fixture.detectChanges();
   }
 
-  it("renders the owner's runner as one card with four actionable rows and a compact phone row", async () => {
+  const rows = (el: HTMLElement) => Array.from(el.querySelectorAll<HTMLElement>('tbody tr'));
+  const cells = (tr: HTMLElement) =>
+    Array.from(tr.querySelectorAll<HTMLElement>('td')).map((td) =>
+      td.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+  const caption = (el: HTMLElement) =>
+    el.querySelector('.panel-caption')?.textContent?.replace(/\s+/g, ' ').trim();
+
+  it('renders one row per runner with the specced columns and fonts', async () => {
     const { el } = await render();
-    const text = el.textContent ?? '';
     expect(el.querySelector('h1')?.textContent).toBe('Runner verification');
     expect(el.querySelector('.ops-topbar .sub')?.textContent).toBe('1 application awaiting review');
-    expect(el.querySelectorAll('.verif-card').length).toBe(1);
-    expect(el.querySelectorAll('.doc-row').length).toBe(5);
-    expect(el.querySelectorAll('.btn-approve').length).toBe(4);
-    expect(el.querySelectorAll('.btn-reject').length).toBe(4);
-    // Mockup classes only: no unstyled vc-* markup, no runner-avatar, no primary on the card.
-    expect(el.querySelector('[class*="vc-"]')).toBeNull();
-    expect(el.querySelector('.runner-avatar')).toBeNull();
-    expect(el.querySelector('.verif-card .btn-primary')).toBeNull();
-    expect(el.querySelector('app-status-chip')).toBeNull();
-
-    // Header.
-    const avatar = el.querySelector('.verif-avatar')!;
-    expect(avatar.textContent?.trim()).toBe('MW');
-    expect(avatar.getAttribute('aria-hidden')).toBe('true');
-    expect(el.querySelector('.verif-name')?.textContent).toBe('Mercy W.');
-    const subs = Array.from(el.querySelectorAll('.verif-sub')).map((s) => s.textContent);
-    expect(subs).toEqual(['Applied 2d ago · Kilimani +1', '#NT-C0CA7 · +254 712 345 678']);
-    // W-2: Fira Code only for the relative time and +{n}; the id/phone line is all numeric.
-    const [applied, idPhone] = Array.from(el.querySelectorAll<HTMLElement>('.verif-sub'));
-    expect(applied.classList.contains('num')).toBe(false);
-    expect(Array.from(applied.querySelectorAll('.num')).map((n) => n.textContent)).toEqual([
-      '2d ago',
-      '+1',
+    expect(el.querySelector('.verif-card')).toBeNull();
+    expect(el.querySelector('.table-card.verif-table')).toBeTruthy();
+    expect(Array.from(el.querySelectorAll('th')).map((t) => t.textContent?.trim())).toEqual([
+      'Runner',
+      'Phone',
+      'Service area',
+      'Level',
+      'Checks',
+      'Waiting since',
+      'Applied',
+      'Status',
+      'Action',
     ]);
-    const outside = Array.from(applied.querySelectorAll('app-num-text')[0].childNodes)
-      .filter((n) => n.nodeType === Node.TEXT_NODE)
-      .map((n) => n.textContent)
-      .join('');
-    expect(outside).toContain('Applied');
-    expect(outside).toContain('Kilimani');
-    expect(idPhone.classList.contains('num')).toBe(true);
-    expect(el.querySelector('.verif-level')?.textContent).toBe(
-      'Level 1 — Basic · Level 2 needs: ID front, ID back, selfie',
-    );
-    expect(el.querySelector('.verif-level .num')?.textContent).toBe('1');
-    const section = el.querySelector('section.verif-card')!;
-    expect(el.querySelector(`#${section.getAttribute('aria-labelledby')}`)?.textContent).toBe(
-      'Mercy W.',
-    );
+    expect(el.querySelectorAll('th[scope="col"]').length).toBe(9);
+    expect(el.querySelector('th .sr-only')?.textContent).toBe('Action');
+    expect(rows(el).length).toBe(1);
 
-    // Rows.
-    for (const label of [
-      'National ID · Front',
-      'National ID · Back',
-      'Selfie / liveness check',
-      'M-Pesa identity match',
-    ]) {
-      expect(row(el, label).head.querySelector('.doc-status.pending')?.textContent).toBe(
-        'Pending review',
-      );
-      expect(detail(el, label).querySelector('.btn-approve')).toBeTruthy();
-    }
-    const phone = row(el, 'Phone number');
-    expect(phone.head.querySelector('.doc-status')?.textContent).toBe('Verified');
-    expect(phone.detail?.textContent?.trim()).toBe('Verified at sign-in');
-    expect(phone.detail?.querySelector('button')).toBeNull();
+    const tr = rows(el)[0];
+    const [name, phone, area, level, checks, waiting, applied, status, action] = cells(tr);
+    expect(name).toBe('Mercy W. #NT-C0CA7');
+    expect(tr.querySelector('.task-cat')?.classList.contains('num')).toBe(false);
+    expect(tr.querySelector('.task-id')?.textContent).toBe('#NT-C0CA7');
+    expect(phone).toBe('+254 712 345 678');
+    expect(area).toBe('Kilimani +1');
+    expect(level).toBe('Level 1 · Basic');
+    // Owner's runner: four pending, nothing rejected, nothing missing.
+    expect(checks).toBe('4 pending');
+    expect(waiting).toContain('10:30 AM');
+    expect(applied).toMatch(/\d{1,2}:\d{2} [AP]M/);
+    expect(status).toBe('Pending');
+    expect(action).toBe('View documents');
 
-    // Details: Submitted in Fira Code, image button never a link, M-Pesa has no image line.
-    const front = detail(el, 'National ID · Front');
-    expect(front.querySelector('.drawer-row b')?.textContent).toContain('10:30 AM');
-    expect(front.querySelector('a[href]')).toBeNull();
-    expect(button(front, 'View image').getAttribute('aria-label')).toBe(
-      'View National ID · Front image for Mercy W., opens in a new tab',
+    const td = tr.querySelectorAll('td');
+    expect(td[1].classList.contains('num')).toBe(true);
+    expect(Array.from(td[2].querySelectorAll('.num')).map((n) => n.textContent)).toEqual(['+1']);
+    expect(Array.from(td[4].querySelectorAll('.num')).map((n) => n.textContent)).toEqual(['4']);
+    expect(td[5].classList.contains('num')).toBe(true);
+    expect(td[6].classList.contains('num')).toBe(true);
+    expect(td[2].classList.contains('col-area')).toBe(true);
+    expect(td[6].classList.contains('col-applied')).toBe(true);
+    expect(td[3].querySelector('app-status-chip')).toBeTruthy();
+    expect(td[7].querySelector('.chip-pending')).toBeTruthy();
+    expect(button(tr, 'View documents').getAttribute('aria-label')).toBe(
+      'View documents for Mercy W.',
     );
-    expect(button(front, 'View image').className).toBe('btn btn-text btn-sm');
-    expect(detail(el, 'M-Pesa identity match').textContent).not.toContain('Image');
-    expect(button(front, 'Approve').getAttribute('aria-label')).toBe(
-      'Approve National ID · Front for Mercy W.',
-    );
-    expect(button(front, 'Reject').getAttribute('aria-label')).toBe(
-      'Reject National ID · Front for Mercy W.',
-    );
+    expect(button(tr, 'View documents').className).toBe('row-assign');
 
-    expect(text).not.toContain('NaN');
-    expect(text).not.toContain('runner level upgrades');
-    expect(text).toContain(
-      'Opening an image is logged. Images are deleted at the end of the retention period. A runner reaches Level 2 when both ID sides and the selfie are approved, and drops back to Level 1 while any of them is rejected or replaced.',
+    // No image, thumbnail or link in the table.
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.querySelector('a[href]')).toBeNull();
+    expect(el.textContent?.replace(/\s+/g, ' ')).toContain(
+      "Opening a runner's documents shows their ID and selfie images; each image shown is logged. Images are deleted at the end of the retention period. A runner reaches Level 2 when both ID sides and the selfie are approved, and drops back to Level 1 while any of them is rejected or replaced.",
     );
+    expect(caption(el)).toBe('Showing 1 of 1');
+    expect(
+      Array.from(el.querySelectorAll('.panel-caption .num')).map((n) => n.textContent),
+    ).toEqual(['1', '1']);
+    expect(el.textContent).not.toContain('NaN');
   });
 
-  it('falls back to R and the short id when the runner has no name', async () => {
+  it('shows the short id in Fira Code and dashes when name, phone, area, level or waiting are missing', async () => {
+    const approved = ownersChecks().map((c) => ({ ...c, status: 'approved' as const }));
     const { el } = await render([
-      runner(ownersChecks(), {
-        user: { id: USER, phone: '+254712345678', displayName: null, shortName: null },
-        runnerProfile: { ...RUNNER, serviceAreas: [] },
+      runner(approved, {
+        user: { id: USER, phone: null, displayName: null, shortName: null },
+        runnerProfile: { ...RUNNER, serviceAreas: [], verificationLevel: '' },
       }),
     ]);
-    expect(el.querySelector('.verif-avatar')?.textContent?.trim()).toBe('R');
-    const name = el.querySelector('.verif-name')!;
-    expect(name.textContent).toBe('#NT-C0CA7');
-    expect(name.classList.contains('num')).toBe(true);
-    const subs = Array.from(el.querySelectorAll('.verif-sub')).map((s) => s.textContent);
-    expect(subs).toEqual(['Applied 2d ago', '+254 712 345 678']);
+    const tr = rows(el)[0];
+    expect(tr.querySelector('.task-cat')?.textContent?.trim()).toBe('#NT-C0CA7');
+    expect(tr.querySelector('.task-cat')?.classList.contains('num')).toBe(true);
+    expect(tr.querySelector('.task-id')).toBeNull();
+    const [, phone, area, level, checks, waiting, , status] = cells(tr);
+    expect([phone, area, level, waiting]).toEqual(['—', '—', '—', '—']);
+    expect(checks).toBe('All verified');
+    expect(status).toBe('Approved');
+    expect(button(tr, 'View documents').getAttribute('aria-label')).toBe(
+      'View documents for #NT-C0CA7',
+    );
   });
 
-  it('opens the runner drawer from the card header', async () => {
+  it('summarises checks on the newest record per (type, side) and derives the status chip', async () => {
+    const mixed = runner([
+      // Superseded pending front (row 271) never counts.
+      check('front-old', { side: 'front', createdAt: '2026-10-18T07:00:00Z' }),
+      check('front-new', { side: 'front', status: 'rejected', createdAt: '2026-10-21T07:00:00Z' }),
+      check('selfie', { verificationType: 'selfie', status: 'approved' }),
+    ]);
+    const second = runner(
+      [check('w-front', { runnerProfileId: PROFILE_2, side: 'front', status: 'pending' })],
+      { runnerProfile: { ...RUNNER, id: PROFILE_2 } },
+    );
+    const { el } = await render([mixed, second]);
+    const [a, b] = rows(el).map(cells);
+    // Missing: phone, ID back, payment identity.
+    expect(a[4]).toBe('1 rejected · 3 not submitted');
+    expect(a[7]).toBe('Rejected');
+    expect(rows(el)[0].querySelector('td:nth-child(8) .chip-danger')).toBeTruthy();
+    expect(b[4]).toBe('1 pending · 4 not submitted');
+    expect(b[7]).toBe('Pending');
+  });
+
+  it('prefers the API applicationStatus (AV-5) for the chip', async () => {
+    const { el } = await render([runner(ownersChecks(), { applicationStatus: 'rejected' })]);
+    expect(cells(rows(el)[0])[7]).toBe('Rejected');
+  });
+
+  it('opens the documents drawer from View documents and from the row', async () => {
     const { el } = await render();
-    const header = el.querySelector<HTMLButtonElement>('button.verif-top')!;
-    expect(header.getAttribute('aria-label')).toBe('Open runner Mercy W.');
-    header.click();
-    expect(TestBed.inject(DrawerNavService).current()).toEqual({ kind: 'runner', id: PROFILE });
+    const nav = TestBed.inject(DrawerNavService);
+    button(rows(el)[0], 'View documents').click();
+    expect(nav.current()).toEqual({ kind: 'runner_verification', id: PROFILE });
+    nav.current.set(null);
+    rows(el)[0].querySelector<HTMLElement>('td')!.click();
+    expect(nav.current()).toEqual({ kind: 'runner_verification', id: PROFILE });
   });
 
-  it('approves one row through the three-segment path and reflects the new level', async () => {
+  it('updates the row in place on a drawer decision, and reloads once when the drawer closes', async () => {
     const { fixture, el } = await render();
-    button(detail(el, 'Selfie / liveness check'), 'Approve').click();
+    const s = TestBed.inject(AdminDataService);
+    const nav = TestBed.inject(DrawerNavService);
+    nav.open('runner_verification', PROFILE);
     fixture.detectChanges();
-    // Only that row is busy; the others stay usable.
-    expect(button(detail(el, 'Selfie / liveness check'), 'Approving…').disabled).toBe(true);
-    expect(button(detail(el, 'Selfie / liveness check'), 'Reject').disabled).toBe(true);
-    expect(button(detail(el, 'National ID · Front'), 'Approve').disabled).toBe(false);
-    const req = http.expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie`);
-    expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ decision: 'approved' });
-    req.flush(
-      check('v-selfie', {
-        verificationType: 'selfie',
-        status: 'approved',
-        reviewedBy: ADMIN,
-        reviewedAt: '2026-10-21T08:00:00Z',
-        reviewer: { id: ADMIN, displayName: 'Grace A.' },
-        runnerProfile: { ...RUNNER, verificationLevel: '2_id_verified', level2Missing: [] },
-      }),
-    );
-    await settle(fixture);
-    expect(el.textContent).toContain('Check approved.');
-    expect(row(el, 'Selfie / liveness check').head.textContent).toContain('Verified');
-    expect(detail(el, 'Selfie / liveness check').textContent).toContain(
-      'Decided · Approved · Grace A.',
-    );
-    expect(el.querySelector('.verif-level')?.textContent).toBe('Level 2 — ID verified');
-    // Other pending rows remain, so the runner still awaits review.
-    expect(el.querySelector('.ops-topbar .sub')?.textContent).toBe('1 application awaiting review');
-  });
-
-  it('merges side, hasDocument and purgedAt from a full answer and keeps the runner on a bare one', async () => {
-    const { fixture, el } = await render();
-    button(detail(el, 'National ID · Front'), 'Approve').click();
-    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-front`).flush(
-      check('v-front', {
-        side: 'front',
-        status: 'approved',
-        reviewedBy: ADMIN,
-        reviewedAt: '2026-10-21T08:00:00Z',
-        hasDocument: false,
-      }),
-    );
-    await settle(fixture);
-    expect(detail(el, 'National ID · Front').textContent).toContain('No image on file');
-
-    button(detail(el, 'National ID · Back'), 'Approve').click();
-    const {
-      runnerProfile: _p,
-      user: _u,
-      reviewer: _r,
-      reReviews: _rr,
-      ...bare
-    } = check('v-back', { side: 'back' });
-    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-back`).flush({
-      ...bare,
-      status: 'approved',
-      reviewedBy: ADMIN,
-      reviewedAt: '2026-10-21T08:00:00Z',
-    });
-    await settle(fixture);
-    const card = TestBed.inject(AdminDataService).verificationQueue()[0];
-    const back = card.checks.find((c) => c.id === 'v-back')!;
-    expect(back.status).toBe('approved');
-    expect(back.user?.phone).toBe('+254712345678');
-    expect(back.reviewer).toEqual({ id: ADMIN, displayName: null });
-    expect(el.querySelector('.verif-name')?.textContent).toBe('Mercy W.');
-    expect(detail(el, 'National ID · Back').textContent).toContain('Decided · Approved · #NT-');
-  });
-
-  it('drops the topbar count when the runner has no pending check left, and keeps the card', async () => {
-    const checks = ownersChecks().map((c) =>
-      c.id === 'v-pay' ? c : { ...c, status: 'approved' as const },
-    );
-    const { fixture, el } = await render([runner(checks)], { awaitingReviewCount: 3 });
-    expect(el.querySelector('.ops-topbar .sub')?.textContent).toBe(
-      '3 applications awaiting review',
-    );
-    button(detail(el, 'M-Pesa identity match'), 'Approve').click();
-    http
-      .expectOne(`${API}/runners/${PROFILE}/verifications/v-pay`)
-      .flush(check('v-pay', { verificationType: 'payment_identity', status: 'approved' }));
-    await settle(fixture);
-    expect(el.querySelector('.ops-topbar .sub')?.textContent).toBe(
-      '2 applications awaiting review',
-    );
-    expect(el.querySelectorAll('.verif-card').length).toBe(1);
-  });
-
-  it('counts only the newest record per check as pending (superseded pending ID front, W-1)', async () => {
-    const checks = [
-      check('v-front-new', { side: 'front', createdAt: '2026-10-21T07:00:00Z' }),
-      ...ownersChecks().map((c) =>
-        c.id === 'v-phone' ? c : { ...c, status: 'approved' as const },
-      ),
-      // The superseded upload: older, still `pending` in the history (row 271).
-      check('v-front-old', { side: 'front', createdAt: '2026-10-18T07:00:00Z' }),
-    ].filter((c) => c.id !== 'v-front');
-    const { fixture, el } = await render([runner(checks, { pendingCount: 1 })], {
-      awaitingReviewCount: 3,
-    });
-    // Only the newest front is on the card and decidable.
-    expect(el.querySelectorAll('.btn-approve').length).toBe(1);
-    button(detail(el, 'National ID · Front'), 'Approve').click();
-    http
-      .expectOne(`${API}/runners/${PROFILE}/verifications/v-front-new`)
-      .flush(check('v-front-new', { side: 'front', status: 'approved' }));
-    await settle(fixture);
-    expect(el.querySelector('.ops-topbar .sub')?.textContent).toBe(
-      '2 applications awaiting review',
-    );
-    const item = TestBed.inject(AdminDataService).verificationQueue()[0];
-    expect(item.pendingCount).toBe(0);
-    expect(item.checks.find((c) => c.id === 'v-front-old')?.status).toBe('pending');
-  });
-
-  it('takes the Level 2 gaps from the API, not from the rows (legacy ID counted by the API)', async () => {
-    const legacy = [
-      check('v-legacy', { status: 'approved' }),
-      check('v-front', { side: 'front', status: 'approved' }),
-      check('v-selfie', { verificationType: 'selfie' }),
-    ];
-    const { el } = await render([
-      runner(legacy, { runnerProfile: { ...RUNNER, level2Missing: ['selfie'] } }),
-    ]);
-    // No `· Back` record on the card, yet the API counts the legacy ID: only the selfie is needed.
-    expect(el.querySelector('.verif-level')?.textContent).toBe(
-      'Level 1 — Basic · Level 2 needs: selfie',
-    );
-  });
-
-  it('updates the level line from the answer after each decision', async () => {
-    const { fixture, el } = await render();
-    button(detail(el, 'National ID · Front'), 'Approve').click();
-    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-front`).flush(
-      check('v-front', {
-        side: 'front',
-        status: 'approved',
-        reviewedBy: ADMIN,
-        reviewedAt: '2026-10-21T08:00:00Z',
-        runnerProfile: { ...RUNNER, level2Missing: ['government_id_back', 'selfie'] },
-      }),
-    );
-    await settle(fixture);
-    expect(el.querySelector('.verif-level')?.textContent).toBe(
-      'Level 1 — Basic · Level 2 needs: ID back, selfie',
-    );
-    const card = TestBed.inject(AdminDataService).verificationQueue()[0];
-    expect(card.verification.level2Missing).toEqual(['government_id_back', 'selfie']);
-  });
-
-  it('drops the line back to Level 1 after a Level 2 check is rejected', async () => {
-    const approved = ownersChecks().map((c) =>
-      c.verificationType === 'payment_identity' ? c : { ...c, status: 'approved' as const },
-    );
-    // A card still showing Level 2 with a pending selfie: whatever it showed, the answer decides.
-    const reupload = check('v-selfie-2', {
-      verificationType: 'selfie',
-      createdAt: '2026-10-21T09:00:00Z',
-    });
-    const level2 = { ...RUNNER, verificationLevel: '2_id_verified', level2Missing: [] };
-    const { fixture, el } = await render([
-      runner([reupload, ...approved], { runnerProfile: level2 }),
-    ]);
-    expect(el.querySelector('.verif-level')?.textContent).toBe('Level 2 — ID verified');
-
-    button(detail(el, 'Selfie / liveness check'), 'Reject').click();
-    fixture.detectChanges();
-    button(dialog(el), 'Reject check').click();
-    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie-2`).flush(
-      check('v-selfie-2', {
-        verificationType: 'selfie',
-        status: 'rejected',
-        reviewedBy: ADMIN,
-        reviewedAt: '2026-10-21T09:30:00Z',
-        createdAt: '2026-10-21T09:00:00Z',
-        runnerProfile: { ...RUNNER, verificationLevel: '1_basic', level2Missing: ['selfie'] },
-      }),
-    );
-    await settle(fixture);
-    expect(el.querySelector('.verif-level')?.textContent).toBe(
-      'Level 1 — Basic · Level 2 needs: selfie',
-    );
-    expect(
-      TestBed.inject(AdminDataService).verificationQueue()[0].runnerProfile.verificationLevel,
-    ).toBe('1_basic');
-  });
-
-  it('rejects through the dialog with a trimmed internal note', async () => {
-    const { fixture, el } = await render();
-    button(detail(el, 'National ID · Back'), 'Reject').click();
-    fixture.detectChanges();
-    const d = dialog(el);
-    expect(d.querySelector('h3')?.textContent).toBe('Reject National ID · Back?');
-    expect(d.textContent?.replace(/\s+/g, ' ')).toContain(
-      "Mercy W. will see that this check wasn't approved and can submit it again. Your note stays internal and is never shown to the runner.",
-    );
-    expect(d.textContent).toContain('Note (optional)');
-    expect(d.textContent).toContain('Internal. Never shown to the runner.');
-    expect(d.querySelector('.field-counter')?.textContent).toBe('0/500');
-    const area = d.querySelector('textarea') as HTMLTextAreaElement;
-    expect(area.getAttribute('maxlength')).toBe('500');
-    type(fixture, area, '  Blurry photo  ');
-    expect(d.querySelector('.field-counter')?.textContent).toBe('12/500');
-    button(d, 'Reject check').click();
-    fixture.detectChanges();
-    expect(button(dialog(el), 'Rejecting…').disabled).toBe(true);
-    expect(button(dialog(el), 'Back').disabled).toBe(true);
-    const req = http.expectOne(`${API}/runners/${PROFILE}/verifications/v-back`);
-    expect(req.request.body).toEqual({ decision: 'rejected', reviewerNote: 'Blurry photo' });
-    req.flush(
-      check('v-back', {
-        side: 'back',
-        status: 'rejected',
-        reviewerNote: 'Blurry photo',
-        reviewedBy: ADMIN,
-        reviewedAt: '2026-10-21T08:00:00Z',
-        reviewer: { id: ADMIN, displayName: 'Grace A.' },
-      }),
-    );
-    await settle(fixture);
-    expect(el.querySelector('[role="dialog"]')).toBeNull();
-    expect(el.textContent).toContain('Check rejected.');
-    expect(
-      row(el, 'National ID · Back').head.querySelector('.doc-status.rejected')?.textContent,
-    ).toBe('Rejected');
-    const back = detail(el, 'National ID · Back');
-    expect(back.textContent).toContain('Admin note');
-    expect(back.textContent).toContain('Blurry photo · internal');
-    expect(button(back, 'Re-review evidence').className).toBe('btn btn-outline btn-sm');
-  });
-
-  it('sends a blank reject note as no note', async () => {
-    const { fixture, el } = await render();
-    button(detail(el, 'Selfie / liveness check'), 'Reject').click();
-    fixture.detectChanges();
-    type(fixture, dialog(el).querySelector('textarea') as HTMLTextAreaElement, '    ');
-    button(dialog(el), 'Reject check').click();
-    const req = http.expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie`);
-    expect(req.request.body).toEqual({ decision: 'rejected' });
-    req.flush(check('v-selfie', { verificationType: 'selfie', status: 'rejected' }));
-    await settle(fixture);
-    expect(el.textContent).not.toContain('Admin note');
-  });
-
-  it('keeps the dialog and the note on a note error or a failed save', async () => {
-    const { fixture, el } = await render();
-    button(detail(el, 'Selfie / liveness check'), 'Reject').click();
-    fixture.detectChanges();
-    type(fixture, dialog(el).querySelector('textarea') as HTMLTextAreaElement, 'Too long?');
-    button(dialog(el), 'Reject check').click();
+    // The drawer's approve goes through the store.
+    void s.reviewVerification(check('v-selfie', { verificationType: 'selfie' }), 'approved');
     http
       .expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie`)
-      .flush({ code: 'reviewer_note_invalid', maxLength: 500 }, httpError(400));
+      .flush(check('v-selfie', { verificationType: 'selfie', status: 'approved' }));
     await settle(fixture);
-    expect(dialog(el).textContent).toContain('Notes can be up to 500 characters.');
-    expect((dialog(el).querySelector('textarea') as HTMLTextAreaElement).value).toBe('Too long?');
+    expect(cells(rows(el)[0])[4]).toBe('3 pending');
+    http.expectNone(isQueue);
 
-    button(dialog(el), 'Reject check').click();
-    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie`).flush(null, httpError(500));
+    nav.requestClose();
     await settle(fixture);
-    expect(dialog(el).textContent).toContain("Couldn't save the review. Try again.");
+    const req = http.expectOne(isQueue);
+    expect(req.request.params.get('status')).toBe('pending');
+    req.flush(page([runner(ownersChecks())]));
+    await settle(fixture);
+
+    // Closing again without a save does not reload.
+    nav.open('runner_verification', PROFILE);
+    await settle(fixture);
+    nav.requestClose();
+    await settle(fixture);
+    http.expectNone(isQueue);
   });
 
-  it('reloads with a notice when the check was already decided (404 or 409)', async () => {
-    for (const status of [404, 409]) {
-      const { fixture, el } = await render();
-      button(detail(el, 'Selfie / liveness check'), 'Approve').click();
-      http
-        .expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie`)
-        .flush(
-          status === 409 ? { code: 'verification_already_decided', status: 'approved' } : null,
-          httpError(status),
-        );
-      await flushAsync();
-      http.expectOne(queue).flush(page([runner(ownersChecks())]));
-      await settle(fixture);
-      expect(el.textContent).toContain('This check was already decided. The list is updated.');
-      fixture.destroy();
-      TestBed.inject(AdminDataService).verificationQueue.set([]);
-    }
-  });
-
-  it('closes the reject dialog and reloads on a 409', async () => {
-    const { fixture, el } = await render();
-    button(detail(el, 'National ID · Front'), 'Reject').click();
-    fixture.detectChanges();
-    button(dialog(el), 'Reject check').click();
-    http
-      .expectOne(`${API}/runners/${PROFILE}/verifications/v-front`)
-      .flush({ code: 'verification_already_decided', status: 'rejected' }, httpError(409));
-    await flushAsync();
-    http.expectOne(queue).flush(page([runner(ownersChecks())]));
-    await settle(fixture);
-    expect(el.querySelector('[role="dialog"]')).toBeNull();
-    expect(el.textContent).toContain('This check was already decided. The list is updated.');
-  });
-
-  describe('View image', () => {
-    function fakeTab() {
-      return {
-        opener: {} as unknown,
-        location: { replace: vi.fn() },
-        close: vi.fn(),
-      };
-    }
-
-    it('opens a tab on the click, then points it at a fresh signed link', async () => {
-      const tab = fakeTab();
-      const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
-      const { fixture, el } = await render();
-      http.expectNone(`${API}/runners/verifications/v-front/document`);
-      button(detail(el, 'National ID · Front'), 'View image').click();
-      // Synchronously on the click, before any await (no popup blocker).
-      expect(open).toHaveBeenCalledWith('', '_blank');
-      expect(tab.opener).toBeNull();
-      fixture.detectChanges();
-      expect(button(detail(el, 'National ID · Front'), 'Opening…').disabled).toBe(true);
-      http.expectOne(`${API}/runners/verifications/v-front/document`).flush({
-        verificationId: 'v-front',
-        url: 'https://signed.example/img',
-        expiresAt: '2026-10-21T08:05:00Z',
-      });
-      await flushAsync();
-      expect(tab.location.replace).toHaveBeenCalledWith('https://signed.example/img');
-      expect(tab.close).not.toHaveBeenCalled();
-      expect(open).toHaveBeenCalledTimes(1);
-      open.mockRestore();
-    });
-
-    it('closes the tab when there is nothing to show', async () => {
-      const tab = fakeTab();
-      const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
-      const { fixture, el } = await render();
-      button(detail(el, 'National ID · Front'), 'View image').click();
-      http
-        .expectOne(`${API}/runners/verifications/v-front/document`)
-        .flush({ verificationId: 'v-front', url: null, expiresAt: null });
-      await settle(fixture);
-      expect(tab.close).toHaveBeenCalledTimes(1);
-      expect(el.textContent).toContain("Image preview isn't available in this environment.");
-
-      const tab2 = fakeTab();
-      open.mockReturnValue(tab2 as unknown as Window);
-      button(detail(el, 'National ID · Front'), 'View image').click();
-      http.expectOne(`${API}/runners/verifications/v-front/document`).flush(null, httpError(500));
-      await settle(fixture);
-      expect(tab2.close).toHaveBeenCalledTimes(1);
-      expect(tab2.location.replace).not.toHaveBeenCalled();
-      expect(el.textContent).toContain("Couldn't open the image. Try again.");
-      open.mockRestore();
-    });
-
-    it('falls back to a direct open when the blank tab was blocked', async () => {
-      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+  describe('filters', () => {
+    it('lists areas from the API, levels with chip labels, and statuses as built', async () => {
       const { el } = await render();
-      button(detail(el, 'National ID · Front'), 'View image').click();
-      http.expectOne(`${API}/runners/verifications/v-front/document`).flush({
-        verificationId: 'v-front',
-        url: 'https://signed.example/img',
-        expiresAt: '2026-10-21T08:05:00Z',
-      });
-      await flushAsync();
-      expect(open).toHaveBeenLastCalledWith(
-        'https://signed.example/img',
-        '_blank',
-        'noopener,noreferrer',
-      );
-      open.mockRestore();
+      const area = select(el, 'Filter by service area');
+      expect(Array.from(area.options).map((o) => [o.value, o.textContent?.trim()])).toEqual([
+        ['', 'All areas'],
+        ['kilimani', 'Kilimani'],
+        ['westlands', 'Westlands'],
+      ]);
+      expect(area.disabled).toBe(false);
+      const level = select(el, 'Filter by level');
+      expect(Array.from(level.options).map((o) => o.textContent?.trim())).toEqual([
+        'All levels',
+        'Level 1 · Basic',
+        'Level 2 · ID verified',
+        'Level 3 · Trusted',
+        'Level 4 · Professional',
+      ]);
+      expect(Array.from(select(el, 'Filter by status').options).map((o) => o.value)).toEqual([
+        'all',
+        'pending',
+        'approved',
+        'rejected',
+      ]);
+      const search = el.querySelector<HTMLInputElement>('input[type="search"]')!;
+      expect(search.placeholder).toBe('Search name, phone or ID');
+      expect(search.getAttribute('aria-label')).toBe('Search runners');
+      expect(search.getAttribute('maxlength')).toBe('64');
     });
 
-    it('switches to Deleted on a 410 (date from the API only) and to No image when missing', async () => {
-      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    it('keeps only All areas, disabled, when the area list fails', async () => {
+      const { el } = await render(undefined, {}, 'fail');
+      const area = select(el, 'Filter by service area');
+      expect(area.options.length).toBe(1);
+      expect(area.disabled).toBe(true);
+      expect(el.querySelector('.panel-notice')).toBeNull();
+      expect(rows(el).length).toBe(1);
+    });
+
+    it('sends each filter, combined, and clears the rows and cursor on every change', async () => {
+      const { fixture, el } = await render([runner(ownersChecks())], { nextCursor: 'c1' });
+
+      choose(fixture, select(el, 'Filter by service area'), 'westlands');
+      expect(rows(el).length).toBe(0);
+      expect(el.querySelector('app-load-more')).toBeNull();
+      let req: TestRequest = http.expectOne(isQueue);
+      expect(req.request.params.get('serviceAreaId')).toBe('westlands');
+      expect(req.request.params.has('cursor')).toBe(false);
+      req.flush(page([runner(ownersChecks())], { nextCursor: 'c2' }));
+      await settle(fixture);
+
+      choose(fixture, select(el, 'Filter by level'), '2_id_verified');
+      expect(rows(el).length).toBe(0);
+      req = http.expectOne(isQueue);
+      expect(req.request.params.get('level')).toBe('2_id_verified');
+      expect(req.request.params.get('serviceAreaId')).toBe('westlands');
+      expect(req.request.params.has('cursor')).toBe(false);
+      req.flush(page([]));
+      await settle(fixture);
+
+      choose(fixture, select(el, 'Filter by status'), 'rejected');
+      req = http.expectOne(isQueue);
+      expect(req.request.params.get('status')).toBe('rejected');
+      expect(req.request.params.get('level')).toBe('2_id_verified');
+      req.flush(page([]));
+      await settle(fixture);
+      expect(el.textContent).toContain('No applications match');
+      expect(el.textContent).toContain('Clear the filters, or wait for runner submissions.');
+
+      choose(fixture, select(el, 'Filter by level'), '');
+      req = http.expectOne(isQueue);
+      expect(req.request.params.has('level')).toBe(false);
+      req.flush(page([]));
+      await settle(fixture);
+    });
+
+    it('debounces the search 300 ms and sends only 2–64 trimmed characters', async () => {
       const { fixture, el } = await render();
-      button(detail(el, 'National ID · Back'), 'View image').click();
-      http
-        .expectOne(`${API}/runners/verifications/v-back/document`)
-        .flush(
-          { code: 'verification_document_purged', purgedAt: '2026-10-21T05:00:00Z' },
-          httpError(410),
-        );
-      await settle(fixture);
-      const back = detail(el, 'National ID · Back');
-      expect(back.textContent).toContain('Deleted');
-      expect(back.querySelector('.val-muted .num')?.textContent).toContain('8:00 AM');
-      expect(el.textContent).toContain(
-        'This image was deleted at the end of the retention period.',
-      );
+      const input = el.querySelector<HTMLInputElement>('input[type="search"]')!;
+      const type = (v: string) => {
+        input.value = v;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+      };
+      const wait = () => new Promise((r) => setTimeout(r, SEARCH_DEBOUNCE_MS + 20));
 
-      // 410 without `purgedAt`: `Deleted`, no date (never today's).
-      button(detail(el, 'National ID · Front'), 'View image').click();
-      http
-        .expectOne(`${API}/runners/verifications/v-front/document`)
-        .flush({ code: 'verification_document_purged' }, httpError(410));
-      await settle(fixture);
-      const front = detail(el, 'National ID · Front');
-      expect(front.textContent).toContain('Deleted at the end of the retention period.');
-      expect(front.querySelector('.val-muted')?.textContent?.trim()).toBe('Deleted');
-      expect(front.textContent).not.toContain('View image');
+      type('m');
+      await wait();
+      http.expectNone(isQueue);
 
-      button(detail(el, 'Selfie / liveness check'), 'View image').click();
-      http
-        .expectOne(`${API}/runners/verifications/v-selfie/document`)
-        .flush({ code: 'verification_document_missing' }, httpError(404));
+      type('me');
+      type(' mercy ');
+      await new Promise((r) => setTimeout(r, 100));
+      http.expectNone(isQueue);
+      await wait();
+      const req = http.expectOne(isQueue);
+      expect(req.request.params.get('q')).toBe('mercy');
+      expect(req.request.params.has('cursor')).toBe(false);
+      req.flush(page([]));
       await settle(fixture);
-      expect(detail(el, 'Selfie / liveness check').textContent).toContain('No image on file');
-      expect(el.textContent).toContain('No image is stored for this check.');
-      open.mockRestore();
+      expect(el.textContent).toContain('No applications match');
+
+      // Clearing the search sends no `q` and is the default view again.
+      type('');
+      await wait();
+      const back = http.expectOne(isQueue);
+      expect(back.request.params.has('q')).toBe(false);
+      back.flush(page([]));
+      await settle(fixture);
+      expect(el.textContent).toContain('No applications awaiting review');
+      expect(el.textContent).toContain('New runner submissions land here.');
+    });
+
+    it('reloads page 1 silently when Load more answers cursor_invalid', async () => {
+      const { fixture, el } = await render([runner(ownersChecks())], { nextCursor: 'c1' });
+      button(el, 'Load more').click();
+      http.expectOne(isQueue).flush({ code: 'cursor_invalid' }, httpError(400));
+      await flushAsync();
+      const req = http.expectOne(isQueue);
+      expect(req.request.params.has('cursor')).toBe(false);
+      req.flush(page([runner(ownersChecks())]));
+      await settle(fixture);
+      expect(el.querySelector('.panel-notice')).toBeNull();
+      expect(rows(el).length).toBe(1);
     });
   });
 
-  it('hides the admin note on a purged check', async () => {
-    const { el } = await render([
-      runner([
-        check('v1', {
-          side: 'front',
-          status: 'approved',
-          reviewerNote: 'Matches',
-          reviewedAt: '2026-10-20T08:00:00Z',
-          reviewedBy: ADMIN,
-          purgedAt: '2026-10-21T05:00:00Z',
-        }),
-      ]),
-    ]);
-    expect(el.textContent).not.toContain('Admin note');
-    expect(el.textContent).not.toContain('Re-review evidence');
+  it('shows the default empty state with no caption', async () => {
+    const { el } = await render([], { awaitingReviewCount: 0 });
+    expect(el.textContent).toContain('No applications awaiting review');
+    expect(el.textContent).toContain('New runner submissions land here.');
+    expect(el.querySelector('.panel-caption')).toBeNull();
+    expect(el.querySelector('table')).toBeNull();
   });
 
-  it('records a re-review with a trimmed optional note and lists it', async () => {
-    const { fixture, el } = await render([
-      runner([
-        check('v1', {
-          side: 'front',
-          status: 'approved',
-          reviewedAt: '2026-10-20T08:00:00Z',
-          reviewedBy: ADMIN,
-          reviewer: { id: ADMIN, displayName: 'Grace A.' },
-        }),
-      ]),
-    ]);
-    expect(el.textContent).toContain('Decided · Approved · Grace A.');
-    button(el, 'Re-review evidence').click();
-    fixture.detectChanges();
-    expect(el.textContent).toContain('Re-review this evidence?');
-    expect(dialog(el).textContent?.replace(/\s+/g, ' ')).toContain(
-      'the stored National ID · Front for Mercy W. again',
-    );
-    expect(dialog(el).querySelector('.field-counter')?.textContent).toBe('0/500');
-    type(fixture, dialog(el).querySelector('textarea') as HTMLTextAreaElement, '  Second look  ');
-    button(el, 'Record re-review').click();
-    fixture.detectChanges();
-    const req = http.expectOne(`${API}/runners/verifications/v1/re-review`);
-    expect(req.request.body).toEqual({ note: 'Second look' });
-    req.flush({
-      verificationId: 'v1',
-      reReview: {
-        id: 'rr1',
-        reviewedBy: { id: ADMIN, displayName: 'Grace A.' },
-        createdAt: '2026-10-21T09:00:00Z',
-        note: 'Second look',
-      },
-    });
-    await settle(fixture);
-    expect(el.textContent).toContain('Re-review recorded.');
-    expect(el.textContent).toContain('Re-reviewed · Grace A.');
-    expect(el.textContent).toContain('Second look');
-    expect(el.textContent).not.toContain('Re-review this evidence?');
-  });
-
-  it('sends a blank re-review note as no note and handles 409', async () => {
-    const { fixture, el } = await render([
-      runner([
-        check('v1', {
-          side: 'back',
-          status: 'rejected',
-          reviewedAt: '2026-10-20T08:00:00Z',
-          reviewedBy: ADMIN,
-        }),
-      ]),
-    ]);
-    button(el, 'Re-review evidence').click();
-    fixture.detectChanges();
-    type(fixture, dialog(el).querySelector('textarea') as HTMLTextAreaElement, '   ');
-    button(el, 'Record re-review').click();
-    const req = http.expectOne(`${API}/runners/verifications/v1/re-review`);
-    expect(req.request.body).toEqual({});
-    req.flush({ code: 'verification_not_decided' }, httpError(409));
-    await flushAsync();
-    http.expectOne(queue).flush(page([]));
-    await settle(fixture);
-    expect(el.textContent).toContain('Decide this check first.');
-  });
-
-  it('filters by runner status and clears the cards when a load fails', async () => {
+  it('clears the rows when a load fails, without an empty state, and recovers on refresh', async () => {
     const { fixture, el } = await render();
-    const select = el.querySelector('select') as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.value)).toEqual([
-      'all',
-      'pending',
-      'approved',
-      'rejected',
-    ]);
-    expect(select.value).toBe('pending');
-    select.value = 'approved';
-    select.dispatchEvent(new Event('change'));
-    fixture.detectChanges();
-    // No cards from the previous filter under the new one.
-    expect(el.querySelectorAll('.verif-card').length).toBe(0);
-    const req: TestRequest = http.expectOne(queue);
-    expect(req.request.params.get('status')).toBe('approved');
-    req.flush(null, httpError(500));
+    choose(fixture, select(el, 'Filter by status'), 'approved');
+    expect(rows(el).length).toBe(0);
+    http.expectOne(isQueue).flush(null, httpError(500));
     await settle(fixture);
     expect(el.textContent).toContain("Couldn't load verifications. Try again.");
-    expect(el.querySelectorAll('.verif-card').length).toBe(0);
-    expect(el.textContent).not.toContain('No applications match');
+    expect(rows(el).length).toBe(0);
+    expect(el.textContent).not.toContain('No applications');
     expect(el.querySelector('app-load-more')).toBeNull();
 
     button(el, '↻ Refresh').click();
-    http.expectOne(queue).flush(page([], { awaitingReviewCount: 0 }));
-    await settle(fixture);
-    // The load-error notice belongs to the failed load, not the empty state after it.
+    fixture.detectChanges();
     expect(el.textContent).not.toContain("Couldn't load verifications. Try again.");
+    http.expectOne(isQueue).flush(page([], { awaitingReviewCount: 0 }));
+    await settle(fixture);
     expect(el.querySelector('.panel-notice')).toBeNull();
     expect(el.textContent).toContain('No applications match');
-    expect(el.textContent).toContain('Clear the filter, or wait for runner submissions.');
     expect(el.querySelector('.ops-topbar .sub')?.textContent).toBe(
       'No applications awaiting review',
     );
   });
 
-  it('clears the cards when a refresh fails', async () => {
-    const { fixture, el } = await render();
-    button(el, '↻ Refresh').click();
-    http.expectOne(queue).flush(null, httpError(500));
-    await settle(fixture);
-    expect(el.querySelectorAll('.verif-card').length).toBe(0);
-    expect(el.textContent).not.toContain('No applications match');
-  });
-
-  it('drops the load-error notice when the next load starts (refresh, then filter change)', async () => {
-    const { fixture, el } = await render();
-    button(el, '↻ Refresh').click();
-    http.expectOne(queue).flush(null, httpError(500));
-    await settle(fixture);
-    expect(el.textContent).toContain("Couldn't load verifications. Try again.");
-
-    button(el, '↻ Refresh').click();
-    fixture.detectChanges();
-    expect(el.textContent).not.toContain("Couldn't load verifications. Try again.");
-    http.expectOne(queue).flush(page([runner(ownersChecks())]));
-    await settle(fixture);
-    expect(el.querySelectorAll('.verif-card').length).toBe(1);
-    expect(el.querySelector('.panel-notice')).toBeNull();
-
-    // Fail again, then a filter change that succeeds.
-    button(el, '↻ Refresh').click();
-    http.expectOne(queue).flush(null, httpError(500));
-    await settle(fixture);
-    expect(el.textContent).toContain("Couldn't load verifications. Try again.");
-    const select = el.querySelector('select') as HTMLSelectElement;
-    select.value = 'all';
-    select.dispatchEvent(new Event('change'));
-    fixture.detectChanges();
-    http.expectOne(queue).flush(page([runner(ownersChecks())]));
-    await settle(fixture);
-    expect(el.querySelectorAll('.verif-card').length).toBe(1);
-    expect(el.querySelector('.panel-notice')).toBeNull();
-  });
-
-  it('keeps a save-error notice across a reload', async () => {
-    const { fixture, el } = await render();
-    button(detail(el, 'Selfie / liveness check'), 'Approve').click();
-    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie`).flush(null, httpError(500));
-    await settle(fixture);
-    expect(el.textContent).toContain("Couldn't save the review. Try again.");
-    button(el, '↻ Refresh').click();
-    http.expectOne(queue).flush(page([runner(ownersChecks())]));
-    await settle(fixture);
-    expect(el.textContent).toContain("Couldn't save the review. Try again.");
-  });
-
-  it('merges a page into a card counting pending on the newest record per check (W-1)', async () => {
-    const old = check('v-front-old', { side: 'front', createdAt: '2026-10-18T07:00:00Z' });
-    const { fixture } = await render([runner([old])], { nextCursor: 'c1' });
-    button(fixture.nativeElement, 'Load more').click();
-    const newer = check('v-front-new', {
-      side: 'front',
-      status: 'approved',
-      createdAt: '2026-10-21T07:00:00Z',
-    });
-    http.expectOne(queue).flush(page([runner([newer])]));
-    await settle(fixture);
-    const item = TestBed.inject(AdminDataService).verificationQueue()[0];
-    expect(item.checks.map((c) => c.id)).toEqual(['v-front-new', 'v-front-old']);
-    expect(item.pendingCount).toBe(0);
-  });
-
-  it('loads more by runner, merging a runner already on screen into its card', async () => {
+  it('merges a runner returning on a later page into its row, and keeps rows when Load more fails', async () => {
     const other = runner(
       [
         check('w-front', {
@@ -1053,27 +430,31 @@ describe('VerificationsPanelComponent', () => {
     );
     const { fixture, el } = await render([runner(ownersChecks().slice(0, 2))], {
       nextCursor: 'c1',
+      total: 2,
     });
-    expect(el.querySelectorAll('.verif-card').length).toBe(1);
+    expect(caption(el)).toBe('Showing 1 of 2');
     button(el, 'Load more').click();
-    const req = http.expectOne(queue);
+    const req = http.expectOne(isQueue);
     expect(req.request.params.get('cursor')).toBe('c1');
-    req.flush(page([runner(ownersChecks().slice(2)), other], { nextCursor: 'c2' }));
+    // The API's summary always covers every record of the runner.
+    const rest = runner(ownersChecks().slice(2), {
+      verification: runner(ownersChecks()).verification,
+    });
+    req.flush(page([rest, other], { nextCursor: 'c2', total: 2 }));
     await settle(fixture);
-    expect(el.querySelectorAll('.verif-card').length).toBe(2);
-    expect(el.querySelectorAll('.verif-card')[0].querySelectorAll('.btn-approve').length).toBe(4);
+    expect(rows(el).length).toBe(2);
+    expect(cells(rows(el)[0])[4]).toBe('4 pending');
+    expect(caption(el)).toBe('Showing 2 of 2');
 
-    // A failed Load more keeps the cards and the button.
     button(el, 'Load more').click();
-    http.expectOne(queue).flush(null, httpError(500));
+    http.expectOne(isQueue).flush(null, httpError(500));
     await settle(fixture);
-    expect(el.querySelectorAll('.verif-card').length).toBe(2);
+    expect(rows(el).length).toBe(2);
     expect(el.textContent).toContain("Couldn't load verifications. Try again.");
     expect(button(el, 'Load more')).toBeTruthy();
 
-    // Retrying Load more drops the old load-error notice.
     button(el, 'Load more').click();
-    http.expectOne(queue).flush(page([], { nextCursor: null }));
+    http.expectOne(isQueue).flush(page([], { nextCursor: null, total: 2 }));
     await settle(fixture);
     expect(el.textContent).not.toContain("Couldn't load verifications. Try again.");
   });
