@@ -317,6 +317,29 @@ describe('A-4 / row 261: Level 2 needs ID front, ID back and selfie approved', (
     expect(b.profileRepo.update).not.toHaveBeenCalled();
   });
 
+  it('A-9: approving an older pending upload superseded by a newer pending one decides it but never upgrades', async () => {
+    // Double upload of the front before review: v-front (older) and v-front-2 (newer), both pending.
+    const b = build({
+      extra: [
+        ...rest(VerificationStatus.APPROVED, VerificationStatus.APPROVED),
+        {
+          id: 'v-front-2',
+          runnerProfileId: 'rp-1',
+          verificationType: RunnerVerificationType.GOVERNMENT_ID,
+          side: RunnerVerificationSide.FRONT,
+          createdAt: new Date('2026-10-21T08:00:00Z'),
+        },
+      ],
+    });
+    const view = await b.service.reviewVerification('rp-1', 'v-front', { decision: 'approved' }, 'admin-1');
+    expect(view.status).toBe('approved');
+    expect(b.profileRepo.update).not.toHaveBeenCalled();
+    expect(b.profiles[0].verificationLevel).toBe(VerificationLevel.ONE_BASIC);
+    // Approving the newest front completes the rule.
+    await b.service.reviewVerification('rp-1', 'v-front-2', { decision: 'approved' }, 'admin-1');
+    expect(b.profiles[0].verificationLevel).toBe(VerificationLevel.TWO_ID_VERIFIED);
+  });
+
   it('an ID row without a side (older rows, row 195) counts for neither side', async () => {
     const b = build({
       extra: [
@@ -449,5 +472,26 @@ describe('GET /runners/verifications/queue (row 260)', () => {
       const err = await errorOf(b.service.verificationQueueForAdmin({ status: VerificationStatus.PENDING, cursor }));
       expect((err as ApiError).getResponse()).toMatchObject({ statusCode: 400, code: 'cursor_invalid' });
     }
+  });
+
+  it('A-9: pendingCount, oldestPendingAt and the pending filter read the newest record per (type, side)', async () => {
+    const b = build();
+    const sql: string[] = [];
+    (b.verificationRepo as unknown as { query: unknown }).query = vi.fn((q: string) => {
+      sql.push(q);
+      return Promise.resolve(sql.length === 1 ? [] : [{ total: 0, awaiting: 0 }]);
+    });
+    await b.service.verificationQueueForAdmin({ status: VerificationStatus.PENDING });
+    expect(sql).toHaveLength(2);
+    for (const q of sql) {
+      const flat = q.replace(/\s+/g, ' ');
+      // Counted inside the DISTINCT ON (runner, type, side) "latest" set, never over every record.
+      expect(flat).toContain(`SELECT g.id, l."pendingCount", l."oldestPendingAt"`);
+      expect(flat).toMatch(/COUNT\(\*\) FILTER \(WHERE latest\.status = 'pending'\)\)::int AS "pendingCount"/);
+      expect(flat).toMatch(/MIN\(latest\."createdAt"\) FILTER \(WHERE latest\.status = 'pending'\) AS "oldestPendingAt"/);
+      expect(flat).not.toMatch(/FILTER \(WHERE v\.status::text = 'pending'\)/);
+    }
+    expect(sql[0].replace(/\s+/g, ' ')).toContain('WHERE q."pendingCount" > 0');
+    expect(sql[1].replace(/\s+/g, ' ')).toContain(`FILTER (WHERE q."pendingCount" > 0))::int AS awaiting`);
   });
 });

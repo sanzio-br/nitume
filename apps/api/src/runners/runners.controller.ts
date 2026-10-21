@@ -118,11 +118,13 @@ export class RunnersController {
    * same shape as GET /runners/verifications items), pendingCount,
    * oldestPendingAt, verification { verified, checks[{ type, side, status }] } }`.
    * Runners with only phone records are left out. "Latest" = newest record
-   * of each (type, side). `pending`: any pending record, oldest pending
-   * first; `rejected`: any latest record rejected; `approved`: every latest
+   * of each (type, side). `pending`: any latest record pending, oldest
+   * pending first (A-9: a pending record superseded by a newer upload of
+   * the same check is not counted); `rejected`: any latest record rejected; `approved`: every latest
    * record approved (both most recently decided first); `all`: most recent
    * submission first. `total`: runners matching the filter;
-   * `awaitingReviewCount`: runners with a pending record, whole queue.
+   * `pendingCount` / `oldestPendingAt` over latest records only;
+   * `awaitingReviewCount`: runners with a latest record pending, whole queue.
    * Errors: 400 cursor_invalid (unreadable, or from another filter); 400 for
    * an unknown status or a limit outside 1-100.
    */

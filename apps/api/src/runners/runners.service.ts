@@ -150,7 +150,8 @@ export type VerificationQueueStatus = VerificationStatus | 'all';
  * One runner in the admin verification queue (row 260): the runner (level,
  * areas, `appliedAt`), the user (phone, displayName, shortName), every
  * record they have (history included, newest first, admin item shape), how
- * many are pending and since when, and the required-check summary (newest
+ * many checks are pending on their newest record and since when (A-9), and
+ * the required-check summary (newest
  * record of each check, `missing` when never submitted).
  */
 export interface AdminVerificationQueueItem {
@@ -1127,14 +1128,17 @@ export class RunnersService {
    * queue paginated by runner. Runners whose only records are phone checks
    * (approved at sign-in) are not in the queue. "Latest" below is the newest
    * record of each (type, side).
-   *  - `pending` (default): at least one pending record; oldest pending first.
+   *  - `pending` (default): at least one latest record pending; oldest
+   *    pending (among latest records) first. An older pending record
+   *    superseded by a newer upload of the same check does not count (A-9).
    *  - `rejected`: at least one latest record rejected; most recently decided first.
    *  - `approved`: every latest record approved; most recently decided first.
    *  - `all`: every queued runner; most recent submission first.
    * Each item carries all of the runner's records whatever the filter
    * (history included, newest first) plus the required-check summary.
+   * `pendingCount` / `oldestPendingAt` are over the latest records too.
    * `total` counts the runners matching the filter; `awaitingReviewCount`
-   * counts the runners with a pending record across the whole queue.
+   * counts the runners with a latest record pending across the whole queue.
    * Keyset cursor (opaque, bound to the filter): 400 cursor_invalid
    * otherwise. A fixed number of queries per page (no N+1).
    */
@@ -1438,17 +1442,17 @@ const decodeCursor = (cursor: string | null | undefined): [string, string] | nul
 };
 
 /**
- * Per runner with at least one non-phone record (row 260): pending count and
- * oldest pending, last submission, last decision, and over the latest record
- * of each (type, side) whether all are approved / any is rejected.
+ * Per runner with at least one non-phone record (row 260): last submission
+ * and last decision over every record; over the latest record of each
+ * (type, side) the pending count, the oldest pending submission, and whether
+ * all are approved / any is rejected (A-9, row 264: an older pending record
+ * superseded by a newer upload of the same check is not counted).
  */
 const QUEUE_BASE_SQL = `
-  SELECT g.id, g."pendingCount", g."oldestPendingAt", g."lastSubmittedAt", g."lastDecidedAt",
+  SELECT g.id, l."pendingCount", l."oldestPendingAt", g."lastSubmittedAt", g."lastDecidedAt",
          l."allApproved", l."anyRejected"
     FROM (
       SELECT v."runnerProfileId" AS id,
-             (COUNT(*) FILTER (WHERE v.status::text = 'pending'))::int AS "pendingCount",
-             MIN(v."createdAt") FILTER (WHERE v.status::text = 'pending') AS "oldestPendingAt",
              MAX(v."createdAt") AS "lastSubmittedAt",
              MAX(COALESCE(v."reviewedAt", v."createdAt")) FILTER (WHERE v.status::text <> 'pending') AS "lastDecidedAt",
              bool_or(v."verificationType"::text <> 'phone') AS "hasReviewable"
@@ -1457,11 +1461,13 @@ const QUEUE_BASE_SQL = `
     ) g
     JOIN (
       SELECT latest."runnerProfileId" AS id,
+             (COUNT(*) FILTER (WHERE latest.status = 'pending'))::int AS "pendingCount",
+             MIN(latest."createdAt") FILTER (WHERE latest.status = 'pending') AS "oldestPendingAt",
              bool_and(latest.status = 'approved') AS "allApproved",
              bool_or(latest.status = 'rejected') AS "anyRejected"
         FROM (
           SELECT DISTINCT ON (v."runnerProfileId", v."verificationType", v.side)
-                 v."runnerProfileId", v.status::text AS status
+                 v."runnerProfileId", v.status::text AS status, v."createdAt"
             FROM "runner_verifications" v
            ORDER BY v."runnerProfileId", v."verificationType", v.side, v."createdAt" DESC, v.id DESC
         ) latest
