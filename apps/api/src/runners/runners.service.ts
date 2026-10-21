@@ -525,11 +525,20 @@ export class RunnersService {
     await manager.getRepository(RunnerProfile).update(profile.id, { availability: RunnerAvailability.BUSY });
   }
 
-  /** RA-20, inside the caller's transaction: the job ended, `busy` -> `online`. */
+  /**
+   * RA-20, inside the caller's transaction: the job ended, `busy` ->
+   * `online`, or `offline` when the runner is no longer verified (row 273:
+   * a runner who dropped below Level 2 mid-job, row 266, finishes the job
+   * and then stays offline; going online again needs the same gate as
+   * `setAvailability`). Never refuses: the job's transition always goes on.
+   */
   async endJob(runnerProfileId: string, manager: EntityManager): Promise<void> {
     const profile = await this.lockProfile(manager, runnerProfileId);
     if (profile.availability === RunnerAvailability.BUSY) {
-      await manager.getRepository(RunnerProfile).update(profile.id, { availability: RunnerAvailability.ONLINE });
+      const { verified } = await this.verificationSummary(profile.id, manager);
+      await manager
+        .getRepository(RunnerProfile)
+        .update(profile.id, { availability: verified ? RunnerAvailability.ONLINE : RunnerAvailability.OFFLINE });
     }
   }
 
@@ -1428,7 +1437,13 @@ export class RunnersService {
    * an upload insert) and the checks read after the lock, so of two
    * concurrent writes the second one sees the first: `1_basic` <->
    * `2_id_verified` following `meetsIdVerifiedRule`. Levels 3 and 4 are
-   * never changed here (owner question open).
+   * never changed here (row 269).
+   *
+   * Row 273 (owner, 2026-10-21): on a drop to `1_basic`, an `online` runner
+   * is set `offline` in the same write, so the app shows the true state
+   * (going online again needs every check approved, 403 runner_not_verified).
+   * A `busy` runner keeps `busy` while the accepted job continues (row 266);
+   * `endJob` then sets `offline` instead of `online`.
    */
   private async syncIdVerifiedLevel(manager: EntityManager, profile: RunnerProfile): Promise<boolean> {
     const level = profile.verificationLevel;
@@ -1440,11 +1455,19 @@ export class RunnersService {
       select: { id: true, verificationType: true, side: true, status: true, createdAt: true },
     });
     const target = meetsIdVerifiedRule(rows) ? VerificationLevel.TWO_ID_VERIFIED : VerificationLevel.ONE_BASIC;
-    if (target !== level) {
-      await manager.getRepository(RunnerProfile).update(profile.id, { verificationLevel: target });
-      profile.verificationLevel = target;
+    if (target === level) {
+      return false;
     }
-    return target === VerificationLevel.ONE_BASIC && level === VerificationLevel.TWO_ID_VERIFIED;
+    const dropped = target === VerificationLevel.ONE_BASIC;
+    const goesOffline = dropped && profile.availability === RunnerAvailability.ONLINE;
+    await manager
+      .getRepository(RunnerProfile)
+      .update(profile.id, goesOffline ? { verificationLevel: target, availability: RunnerAvailability.OFFLINE } : { verificationLevel: target });
+    profile.verificationLevel = target;
+    if (goesOffline) {
+      profile.availability = RunnerAvailability.OFFLINE;
+    }
+    return dropped;
   }
 
   /**
@@ -1455,7 +1478,9 @@ export class RunnersService {
    * transaction (each profile row locked and re-checked under the lock, so a
    * decision landing meanwhile is respected), logs each change, then emits
    * `runner.level_dropped` per runner after the commit (open offers
-   * withdrawn, row 266). Never raises a level and never touches 3 or 4.
+   * withdrawn, row 266; admin feed item per withdrawn offer, row 270). An
+   * online runner goes offline in the same write (row 273, as on every
+   * drop). Never raises a level and never touches 3 or 4.
    */
   async recheckIdVerifiedLevels(opts: { apply?: boolean } = {}): Promise<{ applied: boolean; runnerProfileIds: string[] }> {
     const candidates = await this.profiles.find({
