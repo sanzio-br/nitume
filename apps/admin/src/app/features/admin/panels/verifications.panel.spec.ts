@@ -5,6 +5,7 @@ import {
   VERIFICATION_STATUS_FILTERS,
   VerificationsPanelComponent,
   awaitingCopy,
+  appliedLine,
   checkRows,
   levelLine,
   nameInitials,
@@ -179,6 +180,21 @@ describe('verification labels, rows and copy', () => {
     expect(nameInitials('   ')).toBe('R');
   });
 
+  it('splits the Applied line: only the relative time and +{n} are numeric (W-2)', () => {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    expect(appliedLine(yesterday, [{ name: 'Westlands' }, { name: 'Kilimani' }])).toEqual([
+      { text: 'Applied ', num: false },
+      { text: 'yesterday', num: true },
+      { text: ' · Kilimani', num: false },
+      { text: ' ', num: false },
+      { text: '+1', num: true },
+    ]);
+    expect(appliedLine(null, [{ name: 'Kilimani' }])).toEqual([
+      { text: 'Applied', num: false },
+      { text: ' · Kilimani', num: false },
+    ]);
+  });
+
   it('picks the newest record per (type, side) and counts pending on it only (W-1)', () => {
     const checks = [
       check('old', { side: 'front', createdAt: '2026-10-18T07:00:00Z' }),
@@ -337,6 +353,20 @@ describe('VerificationsPanelComponent', () => {
     expect(el.querySelector('.verif-name')?.textContent).toBe('Mercy W.');
     const subs = Array.from(el.querySelectorAll('.verif-sub')).map((s) => s.textContent);
     expect(subs).toEqual(['Applied 2d ago · Kilimani +1', '#NT-C0CA7 · +254 712 345 678']);
+    // W-2: Fira Code only for the relative time and +{n}; the id/phone line is all numeric.
+    const [applied, idPhone] = Array.from(el.querySelectorAll<HTMLElement>('.verif-sub'));
+    expect(applied.classList.contains('num')).toBe(false);
+    expect(Array.from(applied.querySelectorAll('.num')).map((n) => n.textContent)).toEqual([
+      '2d ago',
+      '+1',
+    ]);
+    const outside = Array.from(applied.querySelectorAll('app-num-text')[0].childNodes)
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent)
+      .join('');
+    expect(outside).toContain('Applied');
+    expect(outside).toContain('Kilimani');
+    expect(idPhone.classList.contains('num')).toBe(true);
     expect(el.querySelector('.verif-level')?.textContent).toBe(
       'Level 1 — Basic · Level 2 needs: ID front, ID back, selfie',
     );
