@@ -75,3 +75,38 @@ describe('UsersService display name', () => {
     expect(repo.find).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('UsersService.idsMatching (row 278, AV-2)', () => {
+  const harness = () => {
+    const calls: { sql: string; params: Record<string, unknown> }[] = [];
+    const qb = {
+      select: vi.fn(() => qb),
+      where: vi.fn((sql: string, params: Record<string, unknown>) => {
+        calls.push({ sql, params });
+        return qb;
+      }),
+      orWhere: vi.fn((sql: string, params: Record<string, unknown>) => {
+        calls.push({ sql, params });
+        return qb;
+      }),
+      getRawMany: vi.fn(() => Promise.resolve([{ id: 'u-1' }, { id: 'u-2' }])),
+    };
+    const repo = { createQueryBuilder: vi.fn(() => qb) };
+    return { service: new UsersService(repo as never), calls };
+  };
+
+  it('binds the name as an escaped, case-insensitive contains pattern (never interpolated)', async () => {
+    const h = harness();
+    expect(await h.service.idsMatching({ nameContains: "50%_o'\\" })).toEqual(['u-1', 'u-2']);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0].sql).toBe(`u."displayName" ILIKE :name ESCAPE '\\'`);
+    expect(h.calls[0].sql).not.toContain('50');
+    expect(h.calls[0].params).toEqual({ name: "%50\\%\\_o'\\\\%" });
+  });
+
+  it('adds the phone digits as a bound OR condition only when given', async () => {
+    const h = harness();
+    await h.service.idsMatching({ nameContains: '0712', phoneDigits: '712' });
+    expect(h.calls[1]).toEqual({ sql: 'strpos(u.phone, :digits) > 0', params: { digits: '712' } });
+  });
+});

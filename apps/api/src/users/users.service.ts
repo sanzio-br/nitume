@@ -118,6 +118,26 @@ export class UsersService {
     return new Map(rows.map((u) => [u.id, { phone: u.phone ?? null, displayName: u.displayName || null }]));
   }
 
+  /**
+   * Row 278 (AV-2, admin verification search): ids of the users whose
+   * display name contains `nameContains` (case-insensitive; LIKE wildcards
+   * in it are matched literally) or, when `phoneDigits` is given, whose
+   * sign-in phone contains those digits. Parameterised; one query.
+   */
+  async idsMatching(search: { nameContains: string; phoneDigits?: string | null }): Promise<string[]> {
+    const name = `%${search.nameContains.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const qb = this.users
+      .createQueryBuilder('u')
+      .select('u.id', 'id')
+      .where(`u."displayName" ILIKE :name ESCAPE '\\'`, { name });
+    const digits = search.phoneDigits?.replace(/\D/g, '') ?? '';
+    if (digits) {
+      qb.orWhere('strpos(u.phone, :digits) > 0', { digits });
+    }
+    const rows = await qb.getRawMany<{ id: string }>();
+    return rows.map((r) => r.id);
+  }
+
   async getPublicProfile(userId: string): Promise<PublicUser> {
     const user = await this.findById(userId);
     if (!user) {
