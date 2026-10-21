@@ -109,6 +109,12 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
   Timer? _downTimer;
   bool _reconnecting = false;
 
+  /// One silent reload after offers are withdrawn (RN-L1 F-5), coalesced.
+  Timer? _withdrawReload;
+
+  /// How long withdrawals are gathered before the single reload.
+  static const _withdrawReloadDelay = Duration(milliseconds: 500);
+
   /// How long the socket may be down before `Reconnecting…` shows.
   static const _reconnectGrace = Duration(seconds: 5);
   final _subs = <StreamSubscription<Object?>>[];
@@ -145,6 +151,7 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
     _poll?.cancel();
     _offerEnd?.cancel();
     _downTimer?.cancel();
+    _withdrawReload?.cancel();
     super.dispose();
   }
 
@@ -212,6 +219,14 @@ class _JobsTabState extends State<JobsTab> with WidgetsBindingObserver {
     if (!mounted || !_offers.any((o) => o.id == e.errandId)) return;
     _remove(e.errandId);
     showSnack(context, OfferCopy.unavailable);
+    // A runner who dropped out of verification (row 263 (a), 266) loses
+    // every offer at once: reload once so the verification card and the
+    // disabled switch show without a resume.
+    _withdrawReload?.cancel();
+    _withdrawReload = Timer(_withdrawReloadDelay, () {
+      _withdrawReload = null;
+      if (mounted) _load(silent: true);
+    });
   }
 
   void _syncPolling() {
