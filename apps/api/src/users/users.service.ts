@@ -102,6 +102,19 @@ export class UsersService {
     );
   }
 
+  /** Sign-in phones keyed by user id, in one query (missing users are omitted). */
+  async phones(userIds: string[]): Promise<Map<string, string | null>> {
+    const unique = [...new Set(userIds)].filter(Boolean);
+    if (unique.length === 0) {
+      return new Map();
+    }
+    const rows = await this.users.find({
+      where: { id: In(unique) },
+      select: { id: true, phone: true },
+    });
+    return new Map(rows.map((u) => [u.id, u.phone ?? null]));
+  }
+
   async getPublicProfile(userId: string): Promise<PublicUser> {
     const user = await this.findById(userId);
     if (!user) {
