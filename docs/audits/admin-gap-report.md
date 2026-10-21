@@ -897,3 +897,107 @@ Build health:
 
 ### Verdict
 **PASS**, no findings. Finding 33 is closed. The Runner-section `Deadline` row and its sub-states stay with finding 24 (open). `drawer-task-requote` goes back to `matches-design`. `drawer-task-offer` stays `partial` (findings 16, 17, 21, 24, 25, 29, 32 and m-14 are open).
+
+## Audit 2026-10-21: verification inbox (`p-runners` verification part, `p-runners-verification-documents`)
+
+Trigger: the owner ran the admin against the current API and saw `Couldn't save the review. Try again.`, `NaNd ago`, `payment identity`, `AA`, no `Front` / `Back`, no `View image`, and `5 items · 4 pending` over 4 visible cards.
+Audited: `main` @ `1f4524f`, `apps/admin/src/app/features/admin/panels/verifications.panel.ts`, `core/services/api.service.ts`, `features/admin/admin-data.service.ts`, `core/api-types.ts`, `styles/_ops.scss`. API read only: `apps/api/src/runners/runners.controller.ts`, `runners.service.ts`, `dto/runner-actions.dto.ts`, `runner-verification.entity.ts`, `verification-summary.ts`, `main.ts`. Local DB read (one `SELECT` on `runner_verifications`) to confirm the owner's data.
+Spec: `docs/specs/admin/p-runners-verification-documents.md` (respecced in this round: new `Verification card` section, Data checked against the code, AQ-35 … AQ-37).
+
+### Real API shape (on `main`)
+- `GET /runners/verifications?status=&cursor=&limit=` (`runners.controller.ts:76-85`, `runners.service.ts:976-1023`) → `{ items, nextCursor }`, each item `{ id, runnerProfileId, verificationType, side, status, reviewerNote, reviewedBy, reviewedAt, createdAt, purgedAt, hasDocument, runnerProfile { id, userId } | null, user { id, phone } | null, reviewer { id, displayName } | null, reReviews[{ id, reviewedBy { id, displayName }, createdAt, note }] }`. No `submittedAt`, no `documentKey`, no runner name or area. `status` must be `pending | approved | rejected` (`ListVerificationsQueryDto`, global ValidationPipe `forbidNonWhitelisted`, `main.ts:22-25`).
+- `PATCH /runners/:runnerId/verifications/:verificationId` (`runners.controller.ts:60-74`) body `{ decision: 'approved' | 'rejected', reviewerNote?: string ≤ 1000 }` (`runner-actions.dto.ts:68-76`) → bare `VerificationView` (`runners.service.ts:1128-1164`). Already decided → 404 `Verification already resolved (…)`. `:runnerId` unused.
+- `GET /runners/verifications/:verificationId/document` (`:93-103`, service `:710-735`) → `{ verificationId, url, expiresAt }`, logged; 404 / 404 `verification_document_missing` / 410 `verification_document_purged`.
+- `POST /runners/verifications/:verificationId/re-review` (`:113-125`, service `:860-907`) `{ note? }` (≤ 500 after trim, else 400 `re_review_note_invalid`) → 201 `{ verificationId, reReview { id, reviewedBy { id, displayName }, createdAt, note } }`; 409 `verification_not_decided`, 410, 404 `verification_document_missing`. On `main` (the spec said "not on main yet"; corrected).
+
+Owner's data (local DB): runner profile `aad1988f-…-75662a9c0ca7` has 5 rows: `payment_identity` pending (no image), `selfie` pending (image), `government_id` `back` pending (image), `government_id` `front` pending (image), `phone` approved (auto at OTP sign-in, no reviewer).
+
+### Symptoms: root cause and class
+
+| # | Symptom | Root cause | Class |
+|---|---|---|---|
+| S1 | `Submitted NaNd ago` | `verifications.panel.ts:61` calls `timeAgo(v.submittedAt)`; `core/api-types.ts:741` declares `submittedAt`, the API sends `createdAt`. `timeAgo` (`admin-data.service.ts:68-77`) has no guard: `new Date(undefined)` → `NaN` → `Math.max(1, NaN)` = `NaN` falls through to `${NaN}d ago`. | admin client bug |
+| S2 | `Couldn't save the review. Try again.` | `core/services/api.service.ts:287-290` sends `PATCH {base}/runners/verifications/{id}`; the only route is `PATCH /runners/:runnerId/verifications/:verificationId` (`runners.controller.ts:61`), so Nest answers 404 and `verifications.panel.ts:170-171` shows the fallback. Latent second bug: on success `admin-data.service.ts:565` replaces the item with the bare response, dropping `runnerProfile` and `user`. | admin client bug |
+| S3 | No `Front` / `Back` | The API sends `side` (`toVerificationView` spreads the entity, `runners.service.ts:129-132`; DB has `front` and `back`). The client type has no `side` (`api-types.ts:735-754`) and `typeLabel` (`verifications.panel.ts:194-201`) ignores it. | admin client bug (finding 28, open) |
+| S4 | No `View image` | `verifications.panel.ts:63-69` renders the row only when `v.documentKey` is set; the API never sends a key (row 154) and sends `hasDocument: true` for 3 of the 5 rows. `docUrl` (`:203-206`) builds `/api/v1/files/{key}`, a route that does not exist and would bypass the logged endpoint. | admin client bug (finding 18, open) |
+| S5 | `5 items · 4 pending` over 4 cards | `sub()` (`:212-216`) counts every item returned: 5 checks, one of them the auto-approved `phone` check. The grid loops the same array (`visible()`, `:177-179`), so the code renders a 5th card (Type `phone`, `Approved` badge); it sits alone on the third row of the two-column grid and its `.vc-badge` has no style, so it does not read as a review card. (Not seen in the DOM by the auditor; web-parity confirms in the panel test.) The real gap: the header counts checks while the mockup counts applications (`14 applications awaiting review`, one card per runner). | spec gap (AQ-35) + admin client bug (count wording, unstyled card) |
+| S6 | `payment identity` lowercase | `typeLabel` fallback `type.replace(/_/g, ' ')` (`:200`); only `government_id`, `driving_license`, `vehicle_registration` are mapped. `selfie` and `phone` show raw too. Mockup: `M-Pesa identity match`, `Selfie / liveness check`, `Phone number`. | admin client bug (finding 20, open) |
+| S7 | `Approve → runner level upgrades` | Hard-coded at `verifications.panel.ts:40-42`; not in the mockup. False for 4 of 5 checks: only a `government_id` approval changes the level, and only `1_basic` → `2_id_verified` (`runners.service.ts:1153-1161`). That API rule itself upgrades on one ID side alone, which sits badly with row 126. | admin client bug (copy) + spec gap / owner decision (AQ-36) |
+| S8 | Initials `AA` | `verifications.panel.ts:48` passes `v.runnerProfile?.id` to `initials()` (`:185-192`), which takes the first two characters of the UUID `aad1988f-…`. The mockup shows the runner's name initials (`MW`). The list item has no name. | admin client bug + API gap (name on the item) |
+
+### Findings against `main` (new)
+34. **blocker**: `apps/admin/src/app/core/services/api.service.ts:287-290`, `features/admin/admin-data.service.ts:559-567`, `verifications.panel.ts:80-92`.
+    - Design: `PATCH /runners/{runnerProfileId}/verifications/{verificationId}` `{ decision }`; merge the result into the list item; only the clicked button shows `Approving…` / `Rejecting…`; success `Check approved.` / `Check rejected.`; 404 → reload + `This check was already decided. The list is updated.`
+    - Code: wrong path (404 every time); the bare response replaces the item; `Approving…` shows on Approve when Reject is clicked; no success notice.
+    - Fix: pass `runnerProfileId` and use the three-segment path (fix the doc comment too); merge `status`, `reviewedBy`, `reviewedAt`, `reviewerNote` (or reload); per-button busy label; notices per the spec.
+35. **blocker**: `verifications.panel.ts:61`, `core/api-types.ts:735-754`, `admin-data.service.ts:68-77`.
+    - Design: `Submitted {date}` from `createdAt` (12-hour EAT, Fira Code, `formatDateTime` in `features/admin/shared-format.ts:103`); `Applied {relative}` in the card sub.
+    - Code: `submittedAt` (never sent) → `NaNd ago`; the type also declares `documentKey`, `user.email` (not sent) and lacks `side`, `reviewedAt`, `createdAt`, `purgedAt`, `hasDocument`, `reviewer`, `reReviews`.
+    - Fix: make `RunnerVerification` the real item shape (Data section of the spec); make `timeAgo` return `—` for an invalid date instead of `NaN…`.
+36. **blocker**: `verifications.panel.ts:63-69, 203-206` (restates finding 18 with the API now known).
+    - Design: Stored / Opening / Deleted / No image states; `GET /runners/verifications/:id/document` only on click, `window.open(url, '_blank', 'noopener,noreferrer')`; errors 410 / 404 / `url: null` / 403 per the spec.
+    - Code: gated on `documentKey`; raw `/api/v1/files/{key}` link.
+    - Fix: delete `docUrl`; build the states from `hasDocument` and `purgedAt`; add `verificationDocument(id)` to `api.service.ts`.
+37. **blocker**: `verifications.panel.ts` (whole card, `:44-108`), `styles/_ops.scss:526-631, 1166-1182`.
+    - Design (mockup `#p-runners`, spec `Verification card`): `.verif-top` with `.verif-avatar` (name initials), `.verif-name`, `.verif-sub` (`Applied {time} · {area}`, Fira Code), `.doc-row` per check with `.doc-status` text (`Verified`, `Pending review`, `Rejected`, `Not submitted`), `.verif-actions` with `.btn-reject` / `.btn-approve`; one card per runner if AQ-35 (a) or (b).
+    - Code: one card per check; classes `vc-header`, `vc-sub`, `vc-row`, `vc-actions`, `vc-badge`, `doc-link` have no CSS anywhere, so the header is not laid out and the decided badge is plain text; a status chip and a badge show the same status twice; the existing mockup classes are unused; `.btn btn-primary` / `.btn btn-outline` instead of `.btn-approve` / `.btn-reject`.
+    - Fix: rebuild the card from the mockup classes; group per runner after AQ-35 (until then, per check, but with the mockup markup).
+38. **minor**: `verifications.panel.ts:48, 185-192`.
+    - Design: initials from the display name (`MW`), `R` when there is no name; never from an id.
+    - Code: first two characters of the profile UUID (`AA`).
+    - Fix: after the API item carries the name (API item A-5); `R` until then. Also `.runner-avatar` sets `font-family: var(--nitume-font-num)` (`_ops.scss:1178`): initials are not numeric; `.verif-avatar` (Fira Sans) is the mockup class.
+39. **minor**: `verifications.panel.ts:194-201`, `core/api-types.ts` (restates findings 20 and 28).
+    - Design: `National ID · Front` / `National ID · Back` from `side`, `National ID` when `side` is null, `Selfie / liveness check`, `Phone number`, `M-Pesa identity match`.
+    - Code: `Government ID` for both sides, `Driving License`, `Vehicle Registration` (types the API does not have), raw fallbacks `payment identity`, `selfie`, `phone`.
+    - Fix: map the API enum (`phone`, `government_id`, `selfie`, `payment_identity`, plus `reference`, `business` → `Reference check`, `Business check`, proposed) and add `side`.
+40. **minor**: `verifications.panel.ts:20-21, 212-216`.
+    - Design: title `Runner verification`; sub `{n} applications awaiting review` (runners with a pending check) or, under AQ-35 (c), `{n} checks awaiting review`; `Loading…` before the first answer.
+    - Code: `Verification inbox`; `{total} items · {pending} pending` (checks, including the auto-approved phone check, so 5 vs 4 pending cards); `No verifications synced yet` before the first load.
+    - Fix: per the spec.
+41. **minor**: `verifications.panel.ts:40-42`.
+    - Design: panel note `Opening an image is logged. Images are deleted at the end of the retention period.`; no level claim (AQ-36).
+    - Code: `Runner-submitted documents awaiting admin review. Approve → runner level upgrades.`
+    - Fix: replace the copy.
+42. **minor**: `verifications.panel.ts:24-29, 126-131`, `core/api-types.ts:695`, `shared/status-chip.component.ts:45-57`.
+    - Design: filter `All statuses`, `Pending`, `Approved`, `Rejected` (API enum).
+    - Code: also `In review` (`in_review`), which the API rejects with 400, so the panel shows `Couldn't load verifications. Try again.`
+    - Fix: drop `in_review` from the type, the filter and the panel's `@else if` (`:99-101`). The chip vocabulary can keep its entry harmlessly, or drop it (web-parity's call; no other caller sends it).
+43. **minor**: `verifications.panel.ts:51`.
+    - Design: phone in Fira Code (Numeric fields).
+    - Code: `.vc-sub`, unstyled, Fira Sans.
+    - Fix: `.verif-sub` or `app-num-text`.
+44. **minor**: `verifications.panel.ts:71-75` (restates finding 23): `Admin note` must not render on purged cards.
+45. **blocker**: `verifications.panel.ts` (card actions) (restates finding 22, now unblocked).
+    - Design (row 171): `Re-review evidence`, A-08 confirm with optional note ≤ 500 and `{n}/500`, `Reviews` list (`Decided · {outcome} · {admin} · {time}` from `reviewer` + `reviewedAt`, `Re-reviewed · …` from `reReviews[]`), errors 409 / 410 / 404 / 403.
+    - Code: none. The endpoint, `reviewer` and `reReviews[]` are on `main`.
+    - Fix: build per the spec with `shared/confirm-dialog.component.ts` and `shared/form-field.component.ts`.
+46. **minor**: phone check display.
+    - Design: `Phone number` · `Verified`, caption `Verified at sign-in`; no actions, no image line.
+    - Code: a full card `phone` with `Approved` and `NaNd ago`.
+    - Fix: per the spec.
+47. **minor**: accessibility (spec Accessibility): Approve / Reject accessible names name the check and runner; avatar `aria-hidden`; `View image` name `View {type} image for {runner}, opens in a new tab`. Code: generic `Approve` / `Reject` for every check of the same runner.
+48. **blocker** (build health): no `verifications.panel.spec.ts`. `tsc -p tsconfig.app.json` is clean; `ng test` 27 files, 259 tests pass, none cover this panel. Fix: tests for the PATCH path, `createdAt`, labels with `side`, the document states and errors, the re-review flow, the filter values and the count.
+49. **minor**: `verifications.panel.ts:133` uses `ngOnInit` without `implements OnInit` and keeps `loadingMore` / cursor state when a load fails; no first-load state (see 40). Fix with the rebuild.
+
+Tokens: no hex colours, inline `font-family` or `GoogleFonts` in the panel (checked). Domain: no wallet / escrow wording; no category or task-state text on this panel.
+
+### API items (api-contract; not admin bugs)
+- A-1 **minor**: `runners.controller.ts:61-73` ignores `:runnerId`. Return 404 when the verification does not belong to that runner.
+- A-2 **minor**: `runners.service.ts:1139-1143` answers 404 `Verification already resolved` for a decided check. Make it 409 `verification_already_decided` `{ status }` so a second admin's click is not read as a wrong id.
+- A-3 **minor**: `runners.service.ts:1163` returns the bare view. Optional: return the admin item shape (`runnerProfile`, `user`, `reviewer`, `reReviews`) so the client does not have to merge.
+- A-4 **owner decision first (AQ-36)**: `runners.service.ts:1153-1161` upgrades to `2_id_verified` on the approval of either ID side alone.
+- A-5 **needed for the mockup card (after AQ-35)**: runner display name (short form) and service area on each list item, or a runner-grouped queue paginated by runner (one runner's checks are split across `nextCursor` pages today).
+- A-6 **minor, not design**: `runners.service.ts:1006-1009` looks up users one by one inside a loop (N+1 per page).
+- A-7 **after AQ-37**: `reviewerNote` is not trimmed and allows 1000 characters; align with the answer.
+
+### Spec gaps closed in this round
+- `p-runners` verification card (layout, counts, filter values, actions, phone check, loading) specced in `p-runners-verification-documents.md` `Verification card`.
+- Data section checked against the code: re-review endpoint, `reviewer`, `reReviews[]`, `side` are on `main`; PATCH path, response and error codes written out.
+
+### Questions for the owner (new)
+- **AQ-35** (flow): one card per runner (mockup) vs per check (API); where `Approve` / `Reject` sit. Recommended: per runner, per-check buttons on each pending row, no card-level bulk action.
+- **AQ-36** (verification rule, security): approving one ID side moves the runner to Level 2 today. Recommended: Level 2 only when both ID sides (and the selfie?) are approved.
+- **AQ-37** (copy, runner-facing): reject reason required? visible to the runner? Recommended: optional internal note, never shown to the runner.
+
+### Verdict
+**FAIL** (`p-runners-verification-documents` and the `p-runners` verification part). Blockers: 34, 35, 36, 37, 45, 48. Minors: 38–44, 46, 47, 49. Earlier findings 18, 19, 20, 22, 23, 28 are superseded by 36, 35/36, 39, 45, 44, 39 respectively. Builder order: 34, 35, 36, 39, 41, 42 (no owner input needed) first; 37, 38, 40, 46 after AQ-35 and API item A-5; 45 now.
