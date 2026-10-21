@@ -608,7 +608,7 @@ export class AdminDataService {
    * verification both work); a returned `runnerProfile.verificationLevel`
    * and `level2Missing` update the card (the level can drop 2 → 1 after a
    * rejection, row 263). The awaiting count drops when the runner has no
-   * pending check left.
+   * pending check left (newest record per check only, A-9 / row 271).
    */
   async reviewVerification(
     check: Pick<RunnerVerification, 'id' | 'runnerProfileId'>,
@@ -623,9 +623,9 @@ export class AdminDataService {
     this.verificationQueue.update((items) =>
       items.map((item) => {
         if (!item.checks.some((c) => c.id === check.id)) return item;
-        const hadPending = item.checks.some((c) => c.status === 'pending');
+        const hadPending = pendingCheckCount(item.checks) > 0;
         const checks = item.checks.map((c) => (c.id === check.id ? mergeReviewAnswer(c, res) : c));
-        const pendingCount = checks.filter((c) => c.status === 'pending').length;
+        const pendingCount = pendingCheckCount(checks);
         if (hadPending && pendingCount === 0) clearedRunner = true;
         return { ...item, checks, pendingCount, ...levelFromAnswer(item, res) };
       }),
@@ -674,6 +674,36 @@ export class AdminDataService {
 
 /** A queue check, plus a client mark for a 410 that carried no `purgedAt`. */
 export type QueueCheck = RunnerVerification & { purgedLocally?: boolean };
+
+type CheckRecord = Pick<RunnerVerification, 'verificationType' | 'side' | 'createdAt'>;
+
+/** Key of one check: its type, and the side for the ID (`government_id:front`). */
+export function checkKey(c: Pick<RunnerVerification, 'verificationType' | 'side'>): string {
+  return `${c.verificationType}:${c.side ?? ''}`;
+}
+
+/**
+ * The newest record of each check (per type, per side for the ID), newest
+ * first. Older records of the same check are superseded (rows 209, 271):
+ * they stay in the history but never show on the card or count as pending.
+ */
+export function newestPerCheck<T extends CheckRecord>(checks: readonly T[]): T[] {
+  const newestFirst = [...checks].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  const seen = new Set<string>();
+  return newestFirst.filter((c) => {
+    const key = checkKey(c);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Checks whose newest record is `pending` (A-9); superseded `pending` records never count. */
+export function pendingCheckCount(checks: readonly (CheckRecord & { status: string })[]): number {
+  return newestPerCheck(checks).filter((c) => c.status === 'pending').length;
+}
 
 /** A queue item whose checks may carry the client purge mark. */
 export type QueueRunner = Omit<VerificationQueueItem, 'checks'> & { checks: QueueCheck[] };
@@ -734,7 +764,7 @@ function mergeQueuePage(current: QueueRunner[], page: VerificationQueueItem[]): 
     const checks = [...item.checks, ...out[i].checks.filter((c) => !ids.has(c.id))].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
-    out[i] = { ...item, checks, pendingCount: checks.filter((c) => c.status === 'pending').length };
+    out[i] = { ...item, checks, pendingCount: pendingCheckCount(checks) };
   }
   return out;
 }

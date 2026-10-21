@@ -1,6 +1,14 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { AdminDataService, QueueCheck, QueueRunner, shortId, timeAgo } from '../admin-data.service';
+import {
+  AdminDataService,
+  QueueCheck,
+  QueueRunner,
+  checkKey,
+  newestPerCheck,
+  shortId,
+  timeAgo,
+} from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
 import { formatDateTime, formatPhone } from '../shared-format';
 import { LoadMoreComponent } from '../../../shared/load-more.component';
@@ -104,14 +112,11 @@ const ROW_ORDER: { type: VerificationType; side: VerificationSide | null }[] = [
  * shown by its newest record (per type, per side for the ID).
  */
 export function checkRows(item: QueueRunner): CheckRow[] {
-  const newestFirst = [...item.checks].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+  const newest = new Map(newestPerCheck(item.checks).map((c) => [checkKey(c), c]));
   const required = item.verification?.checks ?? [];
   const rows: CheckRow[] = [];
   for (const { type, side } of ROW_ORDER) {
-    const record =
-      newestFirst.find((c) => c.verificationType === type && (c.side ?? null) === side) ?? null;
+    const record = newest.get(checkKey({ verificationType: type, side })) ?? null;
     const summary: VerificationSummaryCheck | undefined = required.find(
       (c) => c.type === type && (c.side ?? null) === side,
     );
