@@ -414,22 +414,32 @@ class RunnerVerification {
 /// without a side never fills the Front or Back tile; the newest one is kept
 /// in [idUnknownSide] so a screen can still show it as "side unknown".
 ///
-/// The single `National ID` status row reads [nationalIdStatus] and
-/// [idRejectedSides] (row 209).
+/// The status of each side ([idStatusFor]) can differ from the tile: an
+/// approved unlabelled record counts for a side with no labelled record
+/// (row 268). The single `National ID` status row reads [nationalIdStatus]
+/// and [idRejectedSides] (row 209).
 class RunnerVerificationDocuments {
   const RunnerVerificationDocuments({
     this.idFront,
     this.idBack,
     this.idUnknownSide,
     this.selfie,
+    this._idFrontStatus,
+    this._idBackStatus,
   });
 
   /// Groups [records] (any order): for each slot the record with the latest
   /// `createdAt` wins; on a tie, or with no dates, the earlier record in
   /// [records] wins (the API lists newest first). Other types are ignored.
+  ///
+  /// The ID side statuses ([idStatusFor]) come from [summary] (the
+  /// `GET /runners/me` `verification`, the source of truth) when it carries
+  /// the ID front/back checks; otherwise they are computed from [records]
+  /// with the API's row-268 rule, see [idSideStatusesOf].
   factory RunnerVerificationDocuments.fromRecords(
-    Iterable<RunnerVerification> records,
-  ) {
+    Iterable<RunnerVerification> records, {
+    RunnerVerificationSummary? summary,
+  }) {
     RunnerVerification? front, back, unknown, selfie;
     RunnerVerification? newer(RunnerVerification? kept, RunnerVerification r) {
       if (kept == null) return r;
@@ -455,13 +465,69 @@ class RunnerVerificationDocuments {
           break;
       }
     }
+    final local = idSideStatusesOf(records);
+    VerificationCheckStatus statusOf(VerificationDocumentSide side) =>
+        summary
+            ?.checkFor(RunnerVerificationType.governmentId, side: side)
+            ?.status ??
+        local[side]!;
     return RunnerVerificationDocuments(
       idFront: front,
       idBack: back,
       idUnknownSide: unknown,
       selfie: selfie,
+      idFrontStatus: statusOf(VerificationDocumentSide.front),
+      idBackStatus: statusOf(VerificationDocumentSide.back),
     );
   }
+
+  /// The status of ID front and back from [records], exactly as the API
+  /// computes its `verification.checks` (row 268, owner 2026-10-21):
+  /// - a side with a labelled record takes its newest labelled record
+  ///   (labelled records always win over unlabelled ones);
+  /// - a side with no labelled record is filled, as approved, by an
+  ///   approved unlabelled [RunnerVerificationType.governmentId] record,
+  ///   one side per record, front first;
+  /// - pending or rejected unlabelled records fill nothing (the side stays
+  ///   [VerificationCheckStatus.missing]).
+  ///
+  /// Only a fallback: prefer the API summary (see [fromRecords]).
+  static Map<VerificationDocumentSide, VerificationCheckStatus>
+  idSideStatusesOf(Iterable<RunnerVerification> records) {
+    final ids = records
+        .where((r) => r.type == RunnerVerificationType.governmentId)
+        .toList();
+    var spare = ids
+        .where((r) => r.side == null && r.status == VerificationStatus.approved)
+        .length;
+    final out = <VerificationDocumentSide, VerificationCheckStatus>{};
+    for (final side in VerificationDocumentSide.values) {
+      RunnerVerification? labelled;
+      for (final r in ids) {
+        if (r.side != side) continue;
+        final a = labelled?.createdAt ?? DateTime(0);
+        if (labelled == null || (r.createdAt ?? DateTime(0)).isAfter(a)) {
+          labelled = r;
+        }
+      }
+      if (labelled != null) {
+        out[side] = _checkStatusOf(labelled.status);
+      } else if (spare > 0) {
+        spare -= 1;
+        out[side] = VerificationCheckStatus.approved;
+      } else {
+        out[side] = VerificationCheckStatus.missing;
+      }
+    }
+    return out;
+  }
+
+  static VerificationCheckStatus _checkStatusOf(VerificationStatus s) =>
+      switch (s) {
+        VerificationStatus.approved => VerificationCheckStatus.approved,
+        VerificationStatus.pending => VerificationCheckStatus.pending,
+        VerificationStatus.rejected => VerificationCheckStatus.rejected,
+      };
 
   /// Newest ID record with side `front`; `null` when none.
   final RunnerVerification? idFront;
@@ -475,14 +541,33 @@ class RunnerVerificationDocuments {
   /// Newest selfie record; `null` when none.
   final RunnerVerification? selfie;
 
+  final VerificationCheckStatus? _idFrontStatus;
+  final VerificationCheckStatus? _idBackStatus;
+
   /// The ID record for [side] (the Front or Back tile).
   RunnerVerification? idFor(VerificationDocumentSide side) => switch (side) {
     VerificationDocumentSide.front => idFront,
     VerificationDocumentSide.back => idBack,
   };
 
+  /// The status of ID [side] as the API counts it (row 268): from the API
+  /// summary when given to [fromRecords], else [idSideStatusesOf]. Can be
+  /// [VerificationCheckStatus.approved] with no [idFor] record (an approved
+  /// unlabelled record fills it): such a side is done, never ask for it
+  /// again. With the plain constructor and no status, the [idFor] record's
+  /// status.
+  VerificationCheckStatus idStatusFor(VerificationDocumentSide side) =>
+      switch (side) {
+        VerificationDocumentSide.front => _idFrontStatus,
+        VerificationDocumentSide.back => _idBackStatus,
+      } ??
+      switch (idFor(side)?.status) {
+        final s? => _checkStatusOf(s),
+        null => VerificationCheckStatus.missing,
+      };
+
   /// The combined `National ID` status (row 209, owner 2026-10-19), from
-  /// the newest record of each side ([idFront], [idBack]):
+  /// the status of each side ([idStatusFor], row 268):
   /// - [VerificationCheckStatus.approved] only if both sides are approved;
   /// - [VerificationCheckStatus.rejected] if either side is rejected (see
   ///   [idRejectedSides]);
@@ -491,33 +576,32 @@ class RunnerVerificationDocuments {
   /// - otherwise [VerificationCheckStatus.missing] (a side not uploaded yet;
   ///   the screens' proposed `Not started`).
   ///
-  /// A legacy record without a side ([idUnknownSide]) does not count
-  /// (proposed). The newest ID record across both sides never decides it.
+  /// The newest ID record across both sides never decides it.
   VerificationCheckStatus get nationalIdStatus {
-    final front = idFront?.status;
-    final back = idBack?.status;
-    if (front == VerificationStatus.approved &&
-        back == VerificationStatus.approved) {
+    final front = idStatusFor(VerificationDocumentSide.front);
+    final back = idStatusFor(VerificationDocumentSide.back);
+    if (front == VerificationCheckStatus.approved &&
+        back == VerificationCheckStatus.approved) {
       return VerificationCheckStatus.approved;
     }
-    if (front == VerificationStatus.rejected ||
-        back == VerificationStatus.rejected) {
+    if (front == VerificationCheckStatus.rejected ||
+        back == VerificationCheckStatus.rejected) {
       return VerificationCheckStatus.rejected;
     }
-    if (front == VerificationStatus.pending ||
-        back == VerificationStatus.pending) {
+    if (front == VerificationCheckStatus.pending ||
+        back == VerificationCheckStatus.pending) {
       return VerificationCheckStatus.pending;
     }
     return VerificationCheckStatus.missing;
   }
 
-  /// The ID sides whose newest record is rejected, front first; empty when
-  /// none. Drives the `Front photo not approved` / `Back photo not approved`
-  /// / `Both photos not approved` caption and which side `Upload again`
-  /// selects.
+  /// The ID sides whose status ([idStatusFor]) is rejected, front first;
+  /// empty when none. Drives the `Front photo not approved` / `Back photo
+  /// not approved` / `Both photos not approved` caption and which side
+  /// `Upload again` selects.
   List<VerificationDocumentSide> get idRejectedSides => [
     for (final side in VerificationDocumentSide.values)
-      if (idFor(side)?.status == VerificationStatus.rejected) side,
+      if (idStatusFor(side) == VerificationCheckStatus.rejected) side,
   ];
 }
 

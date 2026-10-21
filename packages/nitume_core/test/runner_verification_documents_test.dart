@@ -290,17 +290,190 @@ void main() {
       expect(d.idRejectedSides, isEmpty);
     });
 
-    test('a legacy record without a side is ignored', () {
+    test(
+      'a pending or rejected legacy record without a side fills nothing',
+      () {
+        final d = RunnerVerificationDocuments.fromRecords([
+          rec('old', null, 'rejected', '2026-10-19T08:00:00Z'),
+          rec('f1', 'front', 'approved', '2026-10-15T08:00:00Z'),
+          rec('b1', 'back', 'approved', '2026-10-16T08:00:00Z'),
+        ]);
+        expect(d.nationalIdStatus, VerificationCheckStatus.approved);
+        expect(
+          RunnerVerificationDocuments.fromRecords([
+            rec('old', null, 'pending', '2026-10-19T08:00:00Z'),
+          ]).nationalIdStatus,
+          VerificationCheckStatus.missing,
+        );
+      },
+    );
+  });
+
+  group('ID side status with unlabelled records (row 268)', () {
+    RunnerVerification rec(String id, String? side, String status, String at) =>
+        RunnerVerification.fromJson({
+          'id': id,
+          'verificationType': 'government_id',
+          'side': side,
+          'status': status,
+          'createdAt': at,
+        });
+
+    const approved = VerificationCheckStatus.approved;
+    const rejected = VerificationCheckStatus.rejected;
+    const pending = VerificationCheckStatus.pending;
+    const missing = VerificationCheckStatus.missing;
+    const front = VerificationDocumentSide.front;
+    const back = VerificationDocumentSide.back;
+
+    (VerificationCheckStatus, VerificationCheckStatus) sides(
+      List<RunnerVerification> records,
+    ) {
+      final d = RunnerVerificationDocuments.fromRecords(records);
+      return (d.idStatusFor(front), d.idStatusFor(back));
+    }
+
+    test('one approved unlabelled record fills front first', () {
+      final r = [rec('u1', null, 'approved', '2026-01-01T00:00:00Z')];
+      expect(sides(r), (approved, missing));
+      final d = RunnerVerificationDocuments.fromRecords(r);
+      expect(d.idFront, isNull, reason: 'the tile stays empty');
+      expect(d.nationalIdStatus, missing);
+    });
+
+    test('two approved unlabelled records fill both sides', () {
       final d = RunnerVerificationDocuments.fromRecords([
-        rec('old', null, 'rejected', '2026-10-19T08:00:00Z'),
-        rec('f1', 'front', 'approved', '2026-10-15T08:00:00Z'),
-        rec('b1', 'back', 'approved', '2026-10-16T08:00:00Z'),
+        rec('u1', null, 'approved', '2026-01-01T00:00:00Z'),
+        rec('u2', null, 'approved', '2026-01-02T00:00:00Z'),
       ]);
-      expect(d.nationalIdStatus, VerificationCheckStatus.approved);
+      expect(d.idStatusFor(front), approved);
+      expect(d.idStatusFor(back), approved);
+      expect(d.nationalIdStatus, approved);
+      expect(d.idRejectedSides, isEmpty);
+    });
+
+    test('an approved unlabelled record fills the side with no label', () {
       expect(
-        RunnerVerificationDocuments.fromRecords([
-          rec('old', null, 'pending', '2026-10-19T08:00:00Z'),
-        ]).nationalIdStatus,
+        sides([
+          rec('u1', null, 'approved', '2026-01-01T00:00:00Z'),
+          rec('f1', 'front', 'pending', '2026-10-01T00:00:00Z'),
+        ]),
+        (pending, approved),
+      );
+      expect(
+        sides([
+          rec('u1', null, 'approved', '2026-01-01T00:00:00Z'),
+          rec('b1', 'back', 'approved', '2026-10-01T00:00:00Z'),
+        ]),
+        (approved, approved),
+      );
+    });
+
+    test('labelled records win, even over a newer unlabelled one', () {
+      final d = RunnerVerificationDocuments.fromRecords([
+        rec('u1', null, 'approved', '2026-10-20T00:00:00Z'),
+        rec('f1', 'front', 'rejected', '2026-10-01T00:00:00Z'),
+      ]);
+      expect(d.idStatusFor(front), rejected);
+      expect(d.idStatusFor(back), approved);
+      expect(d.nationalIdStatus, rejected);
+      expect(d.idRejectedSides, [front]);
+    });
+
+    test('pending and rejected unlabelled records fill nothing', () {
+      expect(
+        sides([
+          rec('u1', null, 'pending', '2026-01-01T00:00:00Z'),
+          rec('u2', null, 'rejected', '2026-01-02T00:00:00Z'),
+        ]),
+        (missing, missing),
+      );
+      expect(
+        sides([
+          rec('u1', null, 'pending', '2026-01-01T00:00:00Z'),
+          rec('u2', null, 'approved', '2026-01-02T00:00:00Z'),
+        ]),
+        (approved, missing),
+      );
+    });
+
+    test('labelled sides use the newest labelled record', () {
+      expect(
+        sides([
+          rec('f1', 'front', 'rejected', '2026-10-01T00:00:00Z'),
+          rec('f2', 'front', 'approved', '2026-10-05T00:00:00Z'),
+          rec('b1', 'back', 'pending', '2026-10-02T00:00:00Z'),
+        ]),
+        (approved, pending),
+      );
+    });
+  });
+
+  group('ID side status from the API summary (RN-L1)', () {
+    RunnerVerificationSummary summary(String front, String back) =>
+        RunnerVerificationSummary.fromJson({
+          'verified': false,
+          'checks': [
+            {'type': 'phone', 'side': null, 'status': 'approved'},
+            {'type': 'government_id', 'side': 'front', 'status': front},
+            {'type': 'government_id', 'side': 'back', 'status': back},
+          ],
+        });
+
+    test('the summary decides over the records', () {
+      // The runner holds approved unlabelled records the API counts.
+      final d = RunnerVerificationDocuments.fromRecords(
+        const [],
+        summary: summary('approved', 'approved'),
+      );
+      expect(d.nationalIdStatus, VerificationCheckStatus.approved);
+      expect(d.idFront, isNull);
+
+      final r = RunnerVerificationDocuments.fromRecords([
+        RunnerVerification.fromJson({
+          'id': 'f1',
+          'verificationType': 'government_id',
+          'side': 'front',
+          'status': 'approved',
+        }),
+      ], summary: summary('approved', 'rejected'));
+      expect(r.nationalIdStatus, VerificationCheckStatus.rejected);
+      expect(r.idRejectedSides, [VerificationDocumentSide.back]);
+    });
+
+    test('falls back to the records when the summary has no ID checks', () {
+      final d = RunnerVerificationDocuments.fromRecords([
+        RunnerVerification.fromJson({
+          'id': 'u1',
+          'verificationType': 'government_id',
+          'side': null,
+          'status': 'approved',
+        }),
+        RunnerVerification.fromJson({
+          'id': 'u2',
+          'verificationType': 'government_id',
+          'side': null,
+          'status': 'approved',
+        }),
+      ], summary: RunnerVerificationSummary.unknown);
+      expect(d.nationalIdStatus, VerificationCheckStatus.approved);
+    });
+
+    test('the plain constructor reads the side records', () {
+      final d = RunnerVerificationDocuments(
+        idFront: RunnerVerification.fromJson({
+          'id': 'f1',
+          'verificationType': 'government_id',
+          'side': 'front',
+          'status': 'rejected',
+        }),
+      );
+      expect(
+        d.idStatusFor(VerificationDocumentSide.front),
+        VerificationCheckStatus.rejected,
+      );
+      expect(
+        d.idStatusFor(VerificationDocumentSide.back),
         VerificationCheckStatus.missing,
       );
     });
