@@ -365,7 +365,7 @@ describe('VerificationsPanelComponent', () => {
     expect(text).not.toContain('NaN');
     expect(text).not.toContain('runner level upgrades');
     expect(text).toContain(
-      'Opening an image is logged. Images are deleted at the end of the retention period. A runner reaches Level 2 when both ID sides and the selfie are approved.',
+      'Opening an image is logged. Images are deleted at the end of the retention period. A runner reaches Level 2 when both ID sides and the selfie are approved, and drops back to Level 1 while any of them is rejected or replaced.',
     );
   });
 

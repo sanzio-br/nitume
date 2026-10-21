@@ -243,7 +243,8 @@ interface RejectTarget {
 
     <p class="kpi-note">
       Opening an image is logged. Images are deleted at the end of the retention period. A runner
-      reaches Level 2 when both ID sides and the selfie are approved.
+      reaches Level 2 when both ID sides and the selfie are approved, and drops back to Level 1
+      while any of them is rejected or replaced.
     </p>
 
     @if (loading() && cards().length === 0) {
