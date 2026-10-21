@@ -57,16 +57,25 @@ export class RunnersController {
     });
   }
 
+  /**
+   * Admin decision on one pending check, `{ decision, reviewerNote? }`.
+   * `:runnerId` is the runner profile id. 200 with the same item shape as
+   * `GET /runners/verifications` (user, runnerProfile, side, hasDocument,
+   * purgedAt, reviewer, reReviews), so the client can replace its item.
+   * Errors: 400 for a malformed id; 404 when the verification is unknown or
+   * belongs to another runner; 409 verification_already_decided (`status`).
+   */
   @UseGuards(JwtAuthGuard)
   @Patch(':runnerId/verifications/:verificationId')
   @Roles(UserRole.ADMIN)
   reviewVerification(
-    @Param('runnerId') _runnerId: string,
-    @Param('verificationId') verificationId: string,
+    @Param('runnerId', ParseUUIDPipe) runnerId: string,
+    @Param('verificationId', ParseUUIDPipe) verificationId: string,
     @CurrentUser() user: AuthContext,
     @Body() dto: ReviewVerificationDto,
   ) {
     return this.runners.reviewVerification(
+      runnerId,
       verificationId,
       { decision: dto.decision, reviewerNote: dto.reviewerNote },
       user.userId,

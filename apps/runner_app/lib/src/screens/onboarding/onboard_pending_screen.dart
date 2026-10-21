@@ -67,11 +67,18 @@ VerificationCheckStatus _statusOf(RunnerVerification? r) => switch (r?.status) {
 
 /// The four rows as shown, from `GET /runners/me/verifications`: the
 /// newest record for phone, selfie and payment identity; the National ID
-/// combined from its two sides (row 209).
+/// combined from its two sides (row 209). The side statuses come from
+/// [summary] (`GET /runners/me` `verification`, row 268, RN-L1) when given,
+/// else from the records alone (core fallback).
 class VerificationRows {
-  VerificationRows(List<RunnerVerification> records)
-    : _latest = RunnerVerification.latestByType(records),
-      docs = RunnerVerificationDocuments.fromRecords(records);
+  VerificationRows(
+    List<RunnerVerification> records, {
+    RunnerVerificationSummary? summary,
+  }) : _latest = RunnerVerification.latestByType(records),
+       docs = RunnerVerificationDocuments.fromRecords(
+         records,
+         summary: summary,
+       );
 
   final Map<RunnerVerificationType, RunnerVerification> _latest;
   final RunnerVerificationDocuments docs;
@@ -132,11 +139,15 @@ class _OnboardPendingScreenState extends State<OnboardPendingScreen>
   }
 
   Future<void> _load() async {
+    final account = AppScope.read(context).account;
+    // Both in parallel; the summary is optional (records alone if it fails).
+    final me = account.me().then<RunnerMe?>((m) => m, onError: (_) => null);
     try {
-      final records = await AppScope.read(context).account.verifications();
+      final records = await account.verifications();
+      final summary = (await me)?.verification;
       if (!mounted) return;
       setState(() {
-        _rows = VerificationRows(records);
+        _rows = VerificationRows(records, summary: summary);
         _error = null;
         _loading = false;
       });

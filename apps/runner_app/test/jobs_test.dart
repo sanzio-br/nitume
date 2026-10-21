@@ -394,10 +394,113 @@ void main() {
       expect(_card('e7'), findsNothing);
       expect(find.text(_unavailable), findsOneWidget);
 
-      // Connected: no polling.
+      // Connected: no polling, only the one reload after the withdrawal
+      // (RN-L1 F-5).
       await t.pump(JobsTab.pollInterval);
       await t.pumpAndSettle();
-      expect(b.jobs.offersCalls, calls);
+      expect(b.jobs.offersCalls, calls + 1);
+    });
+
+    testWidgets('RN-L1: withdrawals then one silent reload shows the '
+        'verification card', (t) async {
+      final b = TestBackend();
+      b.jobs.offerList = [offer(id: 'e1'), offer(id: 'e2')];
+      await b.services.live.start();
+      await _pumpJobs(t, b);
+      expect(_card('e1'), findsOneWidget);
+      expect(_card('e2'), findsOneWidget);
+      final meCalls = b.account.meCalls;
+
+      // The runner drops out of verification: the API withdraws every
+      // open offer and the summary turns rejected.
+      b.jobs.offerList = [];
+      b.account.current = runnerMe(
+        availability: RunnerAvailability.offline,
+        verification: summary(status: VerificationCheckStatus.rejected),
+      );
+      b.realtime.withdrawn.add(
+        const JobOfferWithdrawn(errandId: 'e1', assignmentId: 'a-e1'),
+      );
+      await t.pump(const Duration(milliseconds: 100));
+      b.realtime.withdrawn.add(
+        const JobOfferWithdrawn(errandId: 'e2', assignmentId: 'a-e2'),
+      );
+      await t.pump();
+      expect(_card('e1'), findsNothing);
+      expect(_card('e2'), findsNothing);
+      expect(b.account.meCalls, meCalls);
+
+      await t.pump(const Duration(seconds: 1));
+      await t.pumpAndSettle();
+      // Coalesced: one reload for both withdrawals.
+      expect(b.account.meCalls, meCalls + 1);
+      expect(
+        find.text(
+          "Some checks weren't approved. Fix them to start accepting jobs.",
+        ),
+        findsOneWidget,
+      );
+      expect(t.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+    });
+
+    testWidgets('RN-L1: ID front approved via an unlabelled photo, back and '
+        'selfie pending: reviewing, View status', (t) async {
+      final b = TestBackend();
+      b.account.records = [
+        verification(
+          RunnerVerificationType.governmentId,
+          VerificationStatus.approved,
+        ),
+        verification(
+          RunnerVerificationType.governmentId,
+          VerificationStatus.pending,
+          side: VerificationDocumentSide.back,
+        ),
+        verification(RunnerVerificationType.selfie, VerificationStatus.pending),
+      ];
+      b.account.current = runnerMe(
+        verification: RunnerVerificationSummary(
+          verified: false,
+          level2Missing: const [
+            Level2Check.governmentIdBack,
+            Level2Check.selfie,
+          ],
+          checks: [
+            check(
+              RunnerVerificationType.phone,
+              VerificationCheckStatus.approved,
+            ),
+            check(
+              RunnerVerificationType.governmentId,
+              VerificationCheckStatus.approved,
+              side: VerificationDocumentSide.front,
+            ),
+            check(
+              RunnerVerificationType.governmentId,
+              VerificationCheckStatus.pending,
+              side: VerificationDocumentSide.back,
+            ),
+            check(
+              RunnerVerificationType.selfie,
+              VerificationCheckStatus.pending,
+            ),
+            check(
+              RunnerVerificationType.paymentIdentity,
+              VerificationCheckStatus.pending,
+            ),
+          ],
+        ),
+      );
+      await _pumpJobs(t, b);
+      expect(
+        find.text(
+          "We're reviewing your documents. We'll notify you when you're "
+          'approved.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('View status'), findsOneWidget);
+      expect(find.text('Continue verification'), findsNothing);
     });
 
     testWidgets('Reconnecting… after the socket is down 5 s', (t) async {

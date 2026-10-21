@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApiError } from '../common/api-error';
+import { ApiError, conflict } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
 import {
@@ -1001,28 +1001,33 @@ export class RunnersService {
       const last = rows[rows.length - 1];
       nextCursor = Buffer.from(`${last.createdAt.toISOString()}::${last.id}`, 'utf-8').toString('base64');
     }
+    return { items: await this.adminVerificationViews(rows), nextCursor };
+  }
+
+  /**
+   * The admin queue item for each row (same shape for the list and the
+   * PATCH answer, so the client can merge). A fixed number of queries per
+   * page: profiles, phones (one batch, A-6), re-reviews, reviewer names.
+   */
+  private async adminVerificationViews(rows: RunnerVerification[]): Promise<AdminVerificationView[]> {
+    if (rows.length === 0) {
+      return [];
+    }
     const profiles = await this.profiles.find({ where: { id: In([...new Set(rows.map((r) => r.runnerProfileId))]) } });
     const byId = new Map(profiles.map((p) => [p.id, p]));
-    const users = new Map<string, { id: string; phone: string | null }>();
-    for (const p of profiles) {
-      const u = await this.users.findById(p.userId);
-      users.set(p.id, { id: p.userId, phone: u?.phone ?? null });
-    }
+    const phones = await this.users.phones(profiles.map((p) => p.userId));
     const reReviews = await this.reReviewsOf(rows.map((r) => r.id));
     const names = await this.users.displayNames(rows.map((r) => r.reviewedBy).filter((v): v is string => !!v));
-    return {
-      items: rows.map((r) => {
-        const p = byId.get(r.runnerProfileId);
-        return {
-          ...toVerificationView(r),
-          runnerProfile: p ? { id: p.id, userId: p.userId } : null,
-          user: users.get(r.runnerProfileId) ?? null,
-          reviewer: r.reviewedBy ? { id: r.reviewedBy, displayName: names.get(r.reviewedBy) ?? null } : null,
-          reReviews: reReviews.get(r.id) ?? [],
-        };
-      }),
-      nextCursor,
-    };
+    return rows.map((r) => {
+      const p = byId.get(r.runnerProfileId);
+      return {
+        ...toVerificationView(r),
+        runnerProfile: p ? { id: p.id, userId: p.userId } : null,
+        user: p ? { id: p.userId, phone: phones.get(p.userId) ?? null } : null,
+        reviewer: r.reviewedBy ? { id: r.reviewedBy, displayName: names.get(r.reviewedBy) ?? null } : null,
+        reReviews: reReviews.get(r.id) ?? [],
+      };
+    });
   }
 
   /**
@@ -1124,31 +1129,44 @@ export class RunnersService {
     return Object.fromEntries(rows.map((r) => [r.pid, Number(r.cnt)]));
   }
 
-  /** Admin review of a runner verification submission. */
+  /**
+   * Admin review of a runner verification submission. The verification must
+   * belong to `runnerProfileId` (A-1: else 404, as for an unknown id). Only a
+   * pending check can be decided: 409 verification_already_decided
+   * (`status`) otherwise (A-2), also when a second admin's decision lands
+   * between the read and the write. Returns the admin queue item shape (A-3).
+   */
   async reviewVerification(
+    runnerProfileId: string,
     verificationId: string,
     review: { decision: 'approved' | 'rejected'; reviewerNote?: string },
     adminUserId: string,
-  ): Promise<VerificationView> {
+  ): Promise<AdminVerificationView> {
     const verification = await this.verifications.findOne({
-      where: { id: verificationId },
+      where: { id: verificationId, runnerProfileId },
     });
     if (!verification) {
       throw new NotFoundException('Verification not found');
     }
     if (verification.status !== VerificationStatus.PENDING) {
-      throw new NotFoundException(
-        `Verification already resolved (${verification.status})`,
-      );
+      throw alreadyDecided(verification.status);
     }
-    verification.status =
-      review.decision === 'approved'
-        ? VerificationStatus.APPROVED
-        : VerificationStatus.REJECTED;
-    verification.reviewerNote = review.reviewerNote ?? null;
-    verification.reviewedBy = adminUserId;
-    verification.reviewedAt = new Date();
-    await this.verifications.save(verification);
+    const decided = {
+      status: review.decision === 'approved' ? VerificationStatus.APPROVED : VerificationStatus.REJECTED,
+      reviewerNote: review.reviewerNote ?? null,
+      reviewedBy: adminUserId,
+      reviewedAt: new Date(),
+    };
+    // Conditional write: only a still-pending row is decided (two admins clicking at once).
+    const result = await this.verifications.update(
+      { id: verification.id, status: VerificationStatus.PENDING },
+      decided,
+    );
+    if (!result.affected) {
+      const now = await this.verifications.findOne({ where: { id: verification.id } });
+      throw alreadyDecided(now?.status ?? null);
+    }
+    Object.assign(verification, decided);
 
     if (
       review.decision === 'approved' &&
@@ -1160,9 +1178,14 @@ export class RunnersService {
         await this.profiles.save(profile);
       }
     }
-    return toVerificationView(verification);
+    const [view] = await this.adminVerificationViews([verification]);
+    return view;
   }
 }
+
+/** A-2: 409 for a check that is no longer pending, with its current status. */
+const alreadyDecided = (status: VerificationStatus | null): ApiError =>
+  conflict('verification_already_decided', 'This verification was already decided', { status });
 
 /**
  * Per runner: the latest retention event (rows 161, 171). See
