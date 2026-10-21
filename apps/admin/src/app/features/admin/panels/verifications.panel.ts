@@ -11,6 +11,7 @@ import { NumTextComponent, TextPart } from '../../../shared/num-text.component';
 import { apiError, FORBIDDEN_COPY } from '../../../core/api-error';
 import { ApiService } from '../../../core/services/api.service';
 import type {
+  Level2Check,
   VerificationQueueStatus,
   VerificationSide,
   VerificationStatus,
@@ -150,17 +151,21 @@ const LEVELS: Record<string, { n: string; name: string }> = {
   '4_professional': { n: '4', name: 'Professional' },
 };
 
-const LEVEL_2_CHECKS: { key: string; name: string }[] = [
-  { key: 'government_id:front', name: 'ID front' },
-  { key: 'government_id:back', name: 'ID back' },
-  { key: 'selfie:', name: 'selfie' },
-];
+const LEVEL_2_NAMES: Record<Level2Check, string> = {
+  government_id_front: 'ID front',
+  government_id_back: 'ID back',
+  selfie: 'selfie',
+};
 
 /**
  * Level line (proposed): the API's level, never inferred; at Level 1 the
- * Level-2 checks not yet approved (display only). Null without a level.
+ * API's Level 2 gaps (`level2Missing`, N-L1), never computed here. Null
+ * without a level; no `needs` part when the API sends no gaps.
  */
-export function levelLine(level: string | null | undefined, rows: CheckRow[]): TextPart[] | null {
+export function levelLine(
+  level: string | null | undefined,
+  level2Missing: readonly Level2Check[] | null | undefined,
+): TextPart[] | null {
   const l = level ? LEVELS[level] : undefined;
   if (!l) return null;
   const parts: TextPart[] = [
@@ -169,9 +174,7 @@ export function levelLine(level: string | null | undefined, rows: CheckRow[]): T
     { text: ` — ${l.name}`, num: false },
   ];
   if (level !== '1_basic') return parts;
-  const needs = LEVEL_2_CHECKS.filter(
-    (c) => rows.find((r) => r.key === c.key)?.status !== 'approved',
-  ).map((c) => c.name);
+  const needs = (level2Missing ?? []).map((c) => LEVEL_2_NAMES[c]).filter(Boolean);
   if (needs.length === 0) return parts;
   return [
     ...parts,
@@ -813,7 +816,10 @@ export class VerificationsPanelComponent implements OnInit {
   }
 
   protected levelParts(item: QueueRunner): TextPart[] | null {
-    return levelLine(item.runnerProfile.verificationLevel, checkRows(item));
+    return levelLine(
+      item.runnerProfile.verificationLevel,
+      item.runnerProfile.level2Missing ?? item.verification?.level2Missing,
+    );
   }
 
   protected rejectTitle(): string {

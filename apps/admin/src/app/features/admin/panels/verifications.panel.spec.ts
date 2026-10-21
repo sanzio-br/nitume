@@ -13,6 +13,7 @@ import {
 import { AdminDataService, timeAgo } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
 import type {
+  AdminRunnerRef,
   RunnerVerification,
   VerificationQueueItem,
   VerificationQueueResult,
@@ -23,7 +24,7 @@ const USER = 'bbbbbbbb-1111-2222-3333-000000000001';
 const ADMIN = 'adadadad-1111-2222-3333-0000000a0001';
 const PROFILE_2 = 'ccccdddd-1111-2222-3333-00000000beef';
 
-const RUNNER = {
+const RUNNER: AdminRunnerRef = {
   id: PROFILE,
   userId: USER,
   verificationLevel: '1_basic',
@@ -32,6 +33,7 @@ const RUNNER = {
     { id: 'a1', name: 'Kilimani' },
   ],
   appliedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+  level2Missing: ['government_id_front', 'government_id_back', 'selfie'],
 };
 const USER_ROW = {
   id: USER,
@@ -85,13 +87,15 @@ function runner(
   patch: Partial<VerificationQueueItem> = {},
 ): VerificationQueueItem {
   const pending = checks.filter((c) => c.status === 'pending');
+  const runnerProfile = patch.runnerProfile ?? RUNNER;
   return {
     runnerProfile: RUNNER,
     user: USER_ROW,
     checks,
     pendingCount: pending.length,
     oldestPendingAt: pending.length ? pending[pending.length - 1].createdAt : null,
-    verification: summaryOf(checks),
+    // The API sends the same Level 2 gaps on the summary and on the runner.
+    verification: { ...summaryOf(checks), level2Missing: runnerProfile.level2Missing },
     ...patch,
   };
 }
@@ -207,28 +211,25 @@ describe('verification labels, rows and copy', () => {
     });
   });
 
-  it('writes the level line from the API level only', () => {
+  it('writes the level line from the API level and the API Level 2 gaps only', () => {
     const text = (parts: ReturnType<typeof levelLine>) => parts?.map((p) => p.text).join('');
-    const rows = checkRows(runner(ownersChecks()));
-    expect(text(levelLine('1_basic', rows))).toBe(
+    const all = ['government_id_front', 'government_id_back', 'selfie'] as const;
+    expect(text(levelLine('1_basic', all))).toBe(
       'Level 1 — Basic · Level 2 needs: ID front, ID back, selfie',
     );
     expect(
-      levelLine('1_basic', rows)
+      levelLine('1_basic', all)
         ?.filter((p) => p.num)
         .map((p) => p.text),
     ).toEqual(['1', '2']);
-    const approved = checkRows(
-      runner(
-        ownersChecks().map((c) =>
-          c.verificationType === 'payment_identity' ? c : { ...c, status: 'approved' as const },
-        ),
-      ),
+    expect(text(levelLine('1_basic', ['government_id_back']))).toBe(
+      'Level 1 — Basic · Level 2 needs: ID back',
     );
-    // All three approved but the API still says Level 1: the level only, never inferred.
-    expect(text(levelLine('1_basic', approved))).toBe('Level 1 — Basic');
-    expect(text(levelLine('2_id_verified', rows))).toBe('Level 2 — ID verified');
-    expect(levelLine(undefined, rows)).toBeNull();
+    // No gaps (or none sent) while the API still says Level 1: the level only, never inferred.
+    expect(text(levelLine('1_basic', []))).toBe('Level 1 — Basic');
+    expect(text(levelLine('1_basic', undefined))).toBe('Level 1 — Basic');
+    expect(text(levelLine('2_id_verified', all))).toBe('Level 2 — ID verified');
+    expect(levelLine(undefined, all)).toBeNull();
   });
 });
 
@@ -410,7 +411,7 @@ describe('VerificationsPanelComponent', () => {
         reviewedBy: ADMIN,
         reviewedAt: '2026-10-21T08:00:00Z',
         reviewer: { id: ADMIN, displayName: 'Grace A.' },
-        runnerProfile: { ...RUNNER, verificationLevel: '2_id_verified' },
+        runnerProfile: { ...RUNNER, verificationLevel: '2_id_verified', level2Missing: [] },
       }),
     );
     await settle(fixture);
@@ -480,6 +481,78 @@ describe('VerificationsPanelComponent', () => {
       '2 applications awaiting review',
     );
     expect(el.querySelectorAll('.verif-card').length).toBe(1);
+  });
+
+  it('takes the Level 2 gaps from the API, not from the rows (legacy ID counted by the API)', async () => {
+    const legacy = [
+      check('v-legacy', { status: 'approved' }),
+      check('v-front', { side: 'front', status: 'approved' }),
+      check('v-selfie', { verificationType: 'selfie' }),
+    ];
+    const { el } = await render([
+      runner(legacy, { runnerProfile: { ...RUNNER, level2Missing: ['selfie'] } }),
+    ]);
+    // No `· Back` record on the card, yet the API counts the legacy ID: only the selfie is needed.
+    expect(el.querySelector('.verif-level')?.textContent).toBe(
+      'Level 1 — Basic · Level 2 needs: selfie',
+    );
+  });
+
+  it('updates the level line from the answer after each decision', async () => {
+    const { fixture, el } = await render();
+    button(detail(el, 'National ID · Front'), 'Approve').click();
+    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-front`).flush(
+      check('v-front', {
+        side: 'front',
+        status: 'approved',
+        reviewedBy: ADMIN,
+        reviewedAt: '2026-10-21T08:00:00Z',
+        runnerProfile: { ...RUNNER, level2Missing: ['government_id_back', 'selfie'] },
+      }),
+    );
+    await settle(fixture);
+    expect(el.querySelector('.verif-level')?.textContent).toBe(
+      'Level 1 — Basic · Level 2 needs: ID back, selfie',
+    );
+    const card = TestBed.inject(AdminDataService).verificationQueue()[0];
+    expect(card.verification.level2Missing).toEqual(['government_id_back', 'selfie']);
+  });
+
+  it('drops the line back to Level 1 after a Level 2 check is rejected', async () => {
+    const approved = ownersChecks().map((c) =>
+      c.verificationType === 'payment_identity' ? c : { ...c, status: 'approved' as const },
+    );
+    // A card still showing Level 2 with a pending selfie: whatever it showed, the answer decides.
+    const reupload = check('v-selfie-2', {
+      verificationType: 'selfie',
+      createdAt: '2026-10-21T09:00:00Z',
+    });
+    const level2 = { ...RUNNER, verificationLevel: '2_id_verified', level2Missing: [] };
+    const { fixture, el } = await render([
+      runner([reupload, ...approved], { runnerProfile: level2 }),
+    ]);
+    expect(el.querySelector('.verif-level')?.textContent).toBe('Level 2 — ID verified');
+
+    button(detail(el, 'Selfie / liveness check'), 'Reject').click();
+    fixture.detectChanges();
+    button(dialog(el), 'Reject check').click();
+    http.expectOne(`${API}/runners/${PROFILE}/verifications/v-selfie-2`).flush(
+      check('v-selfie-2', {
+        verificationType: 'selfie',
+        status: 'rejected',
+        reviewedBy: ADMIN,
+        reviewedAt: '2026-10-21T09:30:00Z',
+        createdAt: '2026-10-21T09:00:00Z',
+        runnerProfile: { ...RUNNER, verificationLevel: '1_basic', level2Missing: ['selfie'] },
+      }),
+    );
+    await settle(fixture);
+    expect(el.querySelector('.verif-level')?.textContent).toBe(
+      'Level 1 — Basic · Level 2 needs: selfie',
+    );
+    expect(
+      TestBed.inject(AdminDataService).verificationQueue()[0].runnerProfile.verificationLevel,
+    ).toBe('1_basic');
   });
 
   it('rejects through the dialog with a trimmed internal note', async () => {
