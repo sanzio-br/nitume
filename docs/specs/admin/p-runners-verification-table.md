@@ -20,9 +20,9 @@ Panel padding from `.ops-main` (26 / 34 / 50). No new layout primitives.
 ### 1. Topbar: A-03 `app-panel-topbar` (exists; replaces the inline `.ops-topbar` copy in `verifications.panel.ts:246-276`)
 - Title `Runner verification` (mockup).
 - Sub (12.5, slate-600): `{n} applications awaiting review` / `1 application awaiting review` / `No applications awaiting review` (as built, `awaitingCopy`; `n` = API `awaitingReviewCount`, whole queue, independent of every filter; Fira Code value per the existing A-03 sub). `Loading…` before the first answer.
-- Search box (A-03 `searchPlaceholder`, 220 px, mockup `🔍 Search runners…`): placeholder `Search name, phone or ID` (proposed). **Needs API AV-2** (below); hidden until the API supports it (no client-side search over a paged list: it would miss runners on later pages).
+- Search box (A-03 `searchPlaceholder`, 220 px, mockup `🔍 Search runners…`): placeholder `Search name, phone or ID` (proposed). Built against AV-2 (`feat/api-verification-queue-filters`) with A-03 `searchLabel` and `searchMaxLength` 64 (it was to stay hidden until the API supported it: no client-side search over a paged list, it would miss runners on later pages).
 - `[topbar-actions]` (each a `select.btn-city`, the pattern of `runner-payouts.panel.ts:132-160`), left to right:
-  1. Status (as built): `Pending` (default), `Rejected`, `Approved`, `All statuses`. `aria-label="Filter by status"`. No API change.
+  1. Status (as built, order confirmed 2026-10-21): `All statuses`, `Pending` (default), `Approved`, `Rejected`. `aria-label="Filter by status"`. No API change.
   2. Service area (proposed): `All areas` + one option per area from `GET /runners/service-areas` (exists, admin allowed; `{ items: [{ id, name }] }` by name). `aria-label="Filter by service area"`. **Needs API AV-2.** If the area list fails to load: the select shows only `All areas` and is disabled (no notice; the table still works).
   3. Level (proposed): `All levels`, `Level 1 · Basic`, `Level 2 · ID verified`, `Level 3 · Trusted`, `Level 4 · Professional` (the A-02 `kind="level"` labels, `status-chip.component.ts` `LEVEL_LABELS`). `aria-label="Filter by level"`. **Needs API AV-2.**
   4. `↻ Refresh` (as built).
@@ -34,7 +34,7 @@ Two sentences (proposed change to the first one; the second is owner-approved, r
 (The built first sentence `Opening an image is logged.` no longer describes the flow once images render inline; final wording depends on AQ-40.)
 
 ### 3. Panel notice (A-11, `.panel-notice`, as built)
-Load errors and the `This check was already decided. The list is updated.` info stay at panel level. Decision notices (`Check approved.` …) now show inside the drawer.
+Load errors stay at panel level. Decision notices (`Check approved.` …) and the `This check was already decided. The list is updated.` info show inside the drawer (amended 2026-10-21, as built). A 404 / 409 conflict in the drawer counts as a change: the table reloads when the drawer closes.
 
 ### 4. Table: A-04 `.table-card` (exists; `refunds.panel.ts:105-145` is the model)
 One `tr.clickable` per runner (a queue item). `th` 10.5/700 uppercase slate-600 on slate fill, `td` 13 px, padding 14 × 18, hairline rows (A-04 as built). Columns (all **proposed**):
@@ -112,5 +112,8 @@ Topbar `{n}`; short id `#NT-XXXXX`; phone; `+{n}` area count; the counts in `Che
 - AQ-43: applied-date range filter and sortable columns now, or later (recommended later).
 - (AQ-40, AQ-41, AQ-44 concern the drawer's image loading: `drawer-runner-verification.md`.)
 
-## Current vs design (spec 2026-10-21 against `docs/verification-owner-answers-269` @ `cfbfa69`)
+## Current vs design (audit 2026-10-21)
+**PASS** on `feat/admin-verification-table` @ `784a4db`, `f96da02` (gap report "Re-audit 2026-10-21: verification table and documents drawer (row 278 build)"). Owner rows 279–284 applied: AQ-42 drawer (281), AQ-43 no date filter or sorting (282). Row 284: the API reads a short id in `q` only with a `#NT-` / `NT-` / `NT` prefix or as exactly 5 hex characters (API-side, no client change). Open minor m-1: focus return to `View documents` on close (proposed, not built).
+
+### Before the build (spec 2026-10-21 against `docs/verification-owner-answers-269` @ `cfbfa69`)
 `verifications.panel.ts` renders the card grid (`:287-456`) with the documents inline and `View image` opening a new tab (`:345-360`, `viewImage :719-748`); topbar re-implemented inline (`:246-276`) instead of A-03; status filter only. Built and reusable as is: the queue store and paging (`admin-data.service.ts` `verificationQueue`, `mergeQueuePage`, `awaitingReviewCount`), the status filter values, the load-error rules, the newest-per-check helpers, `awaitingCopy`, `levelLine`. Findings T-1 … T-9 in `docs/audits/admin-gap-report.md` "Spec 2026-10-21: verification table and documents drawer (row 278)".

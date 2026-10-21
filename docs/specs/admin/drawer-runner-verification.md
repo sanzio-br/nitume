@@ -4,7 +4,7 @@
 - Mockup: not drawn as a separate view. Content = the mockup's `.verif-card` (`#p-runners`, lines 331–355) as specced and built for the card grid; container = the mockup's right-hand `.drawer` (CSS line 170, `openDrawer(...)`), the admin's one pattern for list → detail. **EXTENDS MOCKUP**; copy not already in `p-runners-verification-documents.md` is **(proposed)**.
 - Opened from: `docs/specs/admin/p-runners-verification-table.md` (`View documents` / row click).
 - Content rules (unchanged, not repeated here): `docs/specs/admin/p-runners-verification-documents.md` sections `Card header`, `Check rows`, `Approve`, `Reject`, `Answers and errors`, `Re-review evidence`, `Purged verification`, type labels, Accessibility, Data (A-3 … A-9). This file specs only what changes: the container, the image rendering, the image security rules and the drawer states.
-- Implementation: **missing** (the content is built inside the card grid, `apps/admin/src/app/features/admin/panels/verifications.panel.ts:287-456`).
+- Implementation: `apps/admin/src/app/features/admin/drawers/runner-verification-drawer.ts` + `verification-document-preview.ts`, `shared/image-viewer.component.ts` (on `feat/admin-verification-table`; **audited PASS 2026-10-21**).
 
 ## Why a drawer, not a routed page (AQ-42, recommended)
 - The admin has no routed detail pages: `app.routes.ts` has `/login` and `''` only; panels are a `signal` in `admin-dashboard.component.ts`; every list → detail in the admin (task queue → task, refunds → refund, runner payouts → payout line, disputes → dispute, map → runner) opens the single A-01 drawer through `DrawerNavService.open(kind, id)`. A routed page would add a second navigation model (URL state, back button, deep links, guards) for one screen.
@@ -37,7 +37,7 @@ Placed under `Submitted {date}` of each ID-side / selfie block whose newest reco
 | Not in this environment | answer `url: null` (console storage driver) | text 12 slate-600 `Image preview isn't available in this environment.` (built copy) |
 | Deleted | `purgedAt` set, or the call answers 410 | as built: `Image` · `Deleted {date}` (Fira Code) + caption `Deleted at the end of the retention period. The record of this check is kept.`; no frame |
 | No image | `hasDocument: false`, or the call answers 404 `verification_document_missing` | as built: `Image` · `No image on file`; no frame |
-| Couldn't load | the call fails otherwise, or the image fails to load (see refetch rule) | text 12 slate-600 `Couldn't load the image.` + `.btn .btn-text .btn-sm` `Try again` (40 px target; one logged call per click). 403 → `FORBIDDEN_COPY` instead, no `Try again` |
+| Couldn't load | the call fails otherwise, or the image fails to load (see refetch rule) | text 12 slate-600 `Couldn't load the image.` + `.btn .btn-text .btn-sm` `Try again` (40 px target; one logged call per click; accessible name `Try again: {check label} image for {runner}`, as built). 403 → `FORBIDDEN_COPY` instead, no `Try again` |
 | Format not shown | the image fails to load in the browser before its link expired (e.g. a HEIC upload in Chrome; see AV-3) | same as Couldn't load until AV-3 ships (proposed copy for after AV-3: none needed) |
 
 Frame (A-18, NEW style `.doc-preview`): width 100 % of the check block, `aspect-ratio: 3 / 2` while loading (no layout jump), `max-height: 280px` once shown, background `var(--nitume-slate)`, 1 px `var(--nitume-slate-line)`, radius 10, image centred with `object-fit: contain`. The existing `.receipt-thumb` is not reused as is: it crops (`object-fit: cover`), which can hide the ID number.
@@ -111,4 +111,7 @@ As in `p-runners-verification-documents.md` (`Submitted`, `Decided`, `Deleted`, 
 - **AQ-44** (security / third-party): allow a JPEG rendition of HEIC / HEIF uploads at the provider so they render (AV-3), purged with the original. Recommended: yes.
 
 ## Current vs design
+**Audit 2026-10-21: PASS** on `feat/admin-verification-table` @ `784a4db`, `f96da02` (gap report "Re-audit 2026-10-21 … (row 278 build)"). Owner answers: AQ-40 approved as specced (row 279: images load and are logged when the drawer opens, never in the table, dropped on close, refetched only on expiry or `Try again`); AQ-41 closed, browser cache accepted (row 280); AQ-42 drawer (row 281); AQ-44 / AV-3 and the short-id search rule API-side (rows 283, 284). As built and accepted: the viewer re-parents to `<body>`; scrim token `--nitume-viewer-scrim`; A-01 ✕ initial focus applies to every drawer (refund / payout drawers still move focus to their first field after load). Open minor m-2: no ✕ focus when switching drawers while open.
+
+### Before the build
 Not built as a separate view. Today the same content renders in each card of the grid (`verifications.panel.ts:287-456`) and images open in a new tab on click (`viewImage`, `:719-748`). Everything inside a check row except the image line is built and audited (PASS 2026-10-21) and moves into this drawer unchanged.
