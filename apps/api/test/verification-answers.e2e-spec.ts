@@ -318,6 +318,32 @@ describe('Verification inbox owner answers (e2e)', () => {
     });
   });
 
+  describe('N-L1 / RN-L1: level2Missing from the shared rule', () => {
+    it('on GET /runners/me, the queue item (verification and runnerProfile) and the PATCH answer', async () => {
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const runner = await makeUser(UserRole.RUNNER);
+      const me = async () =>
+        (await http().get('/api/v1/runners/me').set(bearer(runner.token)).expect(200)).body.verification.level2Missing;
+      expect(await me()).toEqual(['government_id_front', 'government_id_back', 'selfie']);
+      const ids = await application(runner);
+      const front = await decide(admin, runner, ids.front, { decision: 'approved' }).expect(200);
+      expect(front.body.runnerProfile.level2Missing).toEqual(['government_id_back', 'selfie']);
+      const item = (await walkQueue(admin, 'pending', 50)).items.find((i) => i.runnerProfile.id === runner.profileId);
+      expect((item!.verification as unknown as { level2Missing: string[] }).level2Missing).toEqual([
+        'government_id_back',
+        'selfie',
+      ]);
+      expect((item!.runnerProfile as unknown as { level2Missing: string[] }).level2Missing).toEqual([
+        'government_id_back',
+        'selfie',
+      ]);
+      await decide(admin, runner, ids.back, { decision: 'approved' }).expect(200);
+      const last = await decide(admin, runner, ids.selfie, { decision: 'approved' }).expect(200);
+      expect(last.body.runnerProfile).toMatchObject({ verificationLevel: '2_id_verified', level2Missing: [] });
+      expect(await me()).toEqual([]);
+    });
+  });
+
   describe('A-7, A-8 / row 262: reviewerNote', () => {
     it('trimmed, blank -> null, over 500 is 400 reviewer_note_invalid (check stays pending)', async () => {
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
