@@ -424,6 +424,19 @@ void main() {
           findsOneWidget,
         );
         expect(inTile(_front, find.text('Verified')), findsOneWidget);
+        // A word caption: Fira Sans 11.5 slate-600, never Fira Code.
+        final caption = t.widget<Text>(inTile(_front, find.text('Verified')));
+        expect(caption.style, NitumeTextStyles.mutedSmall);
+        expect(
+          caption.style?.fontFamily,
+          NitumeTextStyles.mutedSmall.fontFamily,
+        );
+        expect(
+          caption.style?.fontFamily,
+          isNot(NitumeTextStyles.meta.fontFamily),
+        );
+        expect(caption.style?.fontSize, 11.5);
+        expect(caption.style?.color, NitumeColors.slate600);
         expect(inTile(_front, find.byType(IconButton)), findsNothing);
         expect(inTile(_front, find.byType(Image)), findsNothing);
         expect(

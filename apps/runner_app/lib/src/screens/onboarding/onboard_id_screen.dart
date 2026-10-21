@@ -297,6 +297,7 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
         showLabelOnPhoto: true,
         semanticLabel: 'ID ${side.wire}',
         caption: OnboardIdCopy.verified,
+        captionStyle: CaptureCaptionStyle.text,
       );
     }
     final captured = st.state != CaptureState.empty;
