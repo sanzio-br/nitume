@@ -23,6 +23,7 @@ import type {
   RunnerListItem,
   RunnerVerification,
   UserMe,
+  VerificationView,
 } from '../../core/api-types';
 
 /**
@@ -65,8 +66,10 @@ export function maskedId(id: string): string {
   return `…${id.replace(/[^a-zA-Z0-9]/g, '').slice(-4)}`;
 }
 
-export function timeAgo(iso: string): string {
-  const then = new Date(iso).getTime();
+/** Relative time (`5m ago`); `—` for a missing or invalid date, never `NaN…`. */
+export function timeAgo(iso: string | null | undefined): string {
+  const then = iso ? new Date(iso).getTime() : Number.NaN;
+  if (Number.isNaN(then)) return '—';
   const now = Date.now();
   const mins = Math.max(1, Math.round((now - then) / 60000));
   if (mins < 60) return `${mins}m ago`;
@@ -556,14 +559,72 @@ export class AdminDataService {
     void this.refreshRunnerPayoutBadge();
   }
 
+  /**
+   * Decides a pending check. On `main` the PATCH answers with the bare
+   * verification; the api-contract fix returns the full list item. Either
+   * way the answer is merged over the list item, so the runner, user and
+   * re-reviews are never dropped.
+   */
   async reviewVerification(
-    id: string,
+    item: Pick<RunnerVerification, 'id' | 'runnerProfileId'>,
     decision: 'approved' | 'rejected',
-  ): Promise<RunnerVerification> {
+  ): Promise<RunnerVerification | null> {
     const dto: ReviewVerificationDto = { decision };
-    const res = await firstValueFrom(this.api.reviewVerification(id, dto));
-    this.verifications.update((items) => items.map((v) => (v.id === id ? res : v)));
-    return res;
+    const res: Partial<RunnerVerification> & VerificationView = await firstValueFrom(
+      this.api.reviewVerification(item.runnerProfileId, item.id, dto),
+    );
+    let merged: RunnerVerification | null = null;
+    this.verifications.update((items) =>
+      items.map((v) => {
+        if (v.id !== item.id) return v;
+        merged = {
+          ...v,
+          status: res.status,
+          reviewedBy: res.reviewedBy,
+          reviewedAt: res.reviewedAt,
+          reviewerNote: res.reviewerNote,
+          runnerProfile: res.runnerProfile ?? v.runnerProfile,
+          user: res.user ?? v.user,
+          reReviews: res.reReviews ?? v.reReviews,
+          // The bare answer has no display name; the card falls back to the short id.
+          reviewer:
+            res.reviewer ?? (res.reviewedBy ? { id: res.reviewedBy, displayName: null } : null),
+        };
+        return merged;
+      }),
+    );
+    return merged;
+  }
+
+  /** Records an audited re-review (row 171) and appends it to the list item. */
+  async reReviewVerification(id: string, note?: string): Promise<void> {
+    const res = await firstValueFrom(this.api.reReviewVerification(id, note));
+    this.verifications.update((items) =>
+      items.map((v) => (v.id === id ? { ...v, reReviews: [...v.reReviews, res.reReview] } : v)),
+    );
+  }
+
+  /** Marks a check's image as deleted (a 410 from the API), keeping the record. */
+  markVerificationPurged(id: string, purgedAt: string | null): void {
+    this.verifications.update((items) =>
+      items.map((v) =>
+        v.id === id
+          ? {
+              ...v,
+              purgedAt: purgedAt ?? v.purgedAt ?? new Date().toISOString(),
+              reviewerNote: null,
+              reReviews: v.reReviews.map((r) => ({ ...r, note: null })),
+            }
+          : v,
+      ),
+    );
+  }
+
+  /** Marks a check as having no stored image (a 404 `verification_document_missing`). */
+  markVerificationMissing(id: string): void {
+    this.verifications.update((items) =>
+      items.map((v) => (v.id === id ? { ...v, hasDocument: false } : v)),
+    );
   }
 
   listVerifications(

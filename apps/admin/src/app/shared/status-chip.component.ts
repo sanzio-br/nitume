@@ -44,14 +44,12 @@ const ERRAND_VARIANTS: Record<string, ChipVariant> = {
 
 const VERIFICATION_LABELS: Record<string, string> = {
   pending: 'Pending',
-  in_review: 'In review',
   approved: 'Approved',
   rejected: 'Rejected',
 };
 
 const VERIFICATION_VARIANTS: Record<string, ChipVariant> = {
   pending: 'pending',
-  in_review: 'pending',
   approved: 'success',
   rejected: 'danger',
 };
