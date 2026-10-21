@@ -9,6 +9,7 @@ import {
   RunnerAvailability,
   RunnerSkill,
   RunnerVerificationType,
+  UserRole,
   VerificationLevel,
   VerificationStatus,
 } from '../common/enums';
@@ -1243,7 +1244,7 @@ export class RunnersService {
     const fingerprint = queueFilterFingerprint({ status, serviceAreaId, level, search: search?.text ?? null });
     const after = decodeQueueCursor(opts.cursor, status, fingerprint);
     const userIds = search
-      ? await this.users.idsMatching({ nameContains: search.text, phoneDigits: search.phoneDigits })
+      ? await this.users.idsMatching({ nameContains: search.text, phoneDigits: search.phoneDigits, role: UserRole.RUNNER })
       : [];
     const extra = [serviceAreaId, level, !!search, userIds, search?.shortId ?? null];
     const { filter, sortAt, dir } = QUEUE_FILTERS[status];
@@ -1747,7 +1748,7 @@ const queueExtraFilterSql = (first: number): string => {
              WHERE a."runnerProfileId" = q.id AND a.area::text = ${$(0)}::text))
       AND (${$(1)}::text IS NULL OR p."verificationLevel"::text = ${$(1)}::text)
       AND (NOT ${$(2)}::boolean
-           OR p."userId"::text = ANY(${$(3)}::text[])
+           OR p."userId" = ANY(${$(3)}::uuid[])
            OR (${$(4)}::text IS NOT NULL AND strpos(right(replace(q.id::text, '-', ''), 5), ${$(4)}::text) > 0))`;
 };
 

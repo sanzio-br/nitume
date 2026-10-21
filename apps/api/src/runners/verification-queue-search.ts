@@ -14,7 +14,7 @@ import { VerificationLevel } from '../common/enums';
  *    `shortId` rule, the last 5 alphanumerics of the runner profile id
  *    (hex, so only 1-5 hex characters can match; contains).
  * The values are only ever bound as SQL parameters (never interpolated);
- * LIKE wildcards in the name are escaped.
+ * LIKE wildcards in the name are escaped (`common/like.ts`).
  */
 export const QUEUE_SEARCH_MIN = 2;
 export const QUEUE_SEARCH_MAX = 64;
@@ -61,9 +61,6 @@ const phoneDigitsOf = (text: string): string | null => {
   }
   return local.length > 0 ? local : digits.length > 0 ? digits : null;
 };
-
-/** Escapes `\`, `%` and `_` for a LIKE pattern with `ESCAPE '\'`. */
-export const escapeLike = (value: string): string => value.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 /** 400 level_invalid unless one of the four level values. */
 export const queueLevelOf = (level: string | null | undefined): VerificationLevel | null => {

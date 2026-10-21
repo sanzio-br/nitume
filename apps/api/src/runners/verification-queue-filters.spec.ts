@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../common/api-error';
-import { RunnerVerificationType, VerificationLevel, VerificationStatus } from '../common/enums';
+import { RunnerVerificationType, UserRole, VerificationLevel, VerificationStatus } from '../common/enums';
 import { RunnerVerification } from './runner-verification.entity';
 import { RunnersService } from './runners.service';
-import { escapeLike, queueFilterFingerprint, queueLevelOf, queueSearchOf } from './verification-queue-search';
+import { queueFilterFingerprint, queueLevelOf, queueSearchOf } from './verification-queue-search';
 
 /**
  * Row 278 (owner, 2026-10-21): the verification table. AV-1 one runner in
@@ -61,10 +61,6 @@ describe('queueSearchOf (AV-2)', () => {
   it('has no short id part for text that cannot be one (non-hex, or more than 5)', () => {
     expect(queueSearchOf('Mary')?.shortId).toBeNull();
     expect(queueSearchOf('#NT-AB12F9')?.shortId).toBeNull();
-  });
-
-  it('escapes LIKE wildcards', () => {
-    expect(escapeLike('5%_\\')).toBe('5\\%\\_\\\\');
   });
 
   it('level must be one of the four values (400 level_invalid)', () => {
@@ -164,7 +160,11 @@ describe('GET /runners/verifications/queue filters (AV-2)', () => {
       level: '2_id_verified',
       q: "  #NT-ab12f'; DROP TABLE users; --  ",
     });
-    expect(h.users.idsMatching).toHaveBeenCalledWith({ nameContains: "#nt-ab12f'; drop table users; --", phoneDigits: null });
+    expect(h.users.idsMatching).toHaveBeenCalledWith({
+      nameContains: "#nt-ab12f'; drop table users; --",
+      phoneDigits: null,
+      role: UserRole.RUNNER,
+    });
     expect(h.calls[0].params.slice(3)).toEqual(['westlands', '2_id_verified', true, ['u-1', 'u-9'], null]);
     for (const c of h.calls) {
       expect(c.sql).not.toContain('DROP');
@@ -181,7 +181,11 @@ describe('GET /runners/verifications/queue filters (AV-2)', () => {
     await h.service.verificationQueueForAdmin({ q: '#NT-AB12F' });
     expect(h.calls[0].params[7]).toBe('ab12f');
     await h.service.verificationQueueForAdmin({ q: '0712 345' });
-    expect(h.users.idsMatching).toHaveBeenLastCalledWith({ nameContains: '0712 345', phoneDigits: '712345' });
+    expect(h.users.idsMatching).toHaveBeenLastCalledWith({
+      nameContains: '0712 345',
+      phoneDigits: '712345',
+      role: UserRole.RUNNER,
+    });
   });
 
   it('400 service_area_invalid for an id that is not configured', async () => {

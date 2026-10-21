@@ -1,3 +1,4 @@
+import { Brackets } from 'typeorm';
 import { describe, expect, it, vi } from 'vitest';
 import { UserRole, UserStatus } from '../common/enums';
 import { User } from './user.entity';
@@ -78,15 +79,25 @@ describe('UsersService display name', () => {
 
 describe('UsersService.idsMatching (row 278, AV-2)', () => {
   const harness = () => {
-    const calls: { sql: string; params: Record<string, unknown> }[] = [];
+    const calls: { kind: string; sql: string; params?: Record<string, unknown> }[] = [];
+    const inner = {
+      where: vi.fn((sql: string, params: Record<string, unknown>) => {
+        calls.push({ kind: 'match', sql, params });
+        return inner;
+      }),
+      orWhere: vi.fn((sql: string, params: Record<string, unknown>) => {
+        calls.push({ kind: 'or', sql, params });
+        return inner;
+      }),
+    };
     const qb = {
       select: vi.fn(() => qb),
       where: vi.fn((sql: string, params: Record<string, unknown>) => {
-        calls.push({ sql, params });
+        calls.push({ kind: 'where', sql, params });
         return qb;
       }),
-      orWhere: vi.fn((sql: string, params: Record<string, unknown>) => {
-        calls.push({ sql, params });
+      andWhere: vi.fn((brackets: Brackets) => {
+        brackets.whereFactory(inner as never);
         return qb;
       }),
       getRawMany: vi.fn(() => Promise.resolve([{ id: 'u-1' }, { id: 'u-2' }])),
@@ -95,18 +106,19 @@ describe('UsersService.idsMatching (row 278, AV-2)', () => {
     return { service: new UsersService(repo as never), calls };
   };
 
-  it('binds the name as an escaped, case-insensitive contains pattern (never interpolated)', async () => {
+  it('only the given role; the name is bound as an escaped, case-insensitive contains pattern', async () => {
     const h = harness();
-    expect(await h.service.idsMatching({ nameContains: "50%_o'\\" })).toEqual(['u-1', 'u-2']);
-    expect(h.calls).toHaveLength(1);
-    expect(h.calls[0].sql).toBe(`u."displayName" ILIKE :name ESCAPE '\\'`);
-    expect(h.calls[0].sql).not.toContain('50');
-    expect(h.calls[0].params).toEqual({ name: "%50\\%\\_o'\\\\%" });
+    expect(await h.service.idsMatching({ nameContains: "50%_o'\\", role: UserRole.RUNNER })).toEqual(['u-1', 'u-2']);
+    expect(h.calls[0]).toEqual({ kind: 'where', sql: 'u.role = :role', params: { role: UserRole.RUNNER } });
+    expect(h.calls[1].sql).toBe(`u."displayName" ILIKE :name ESCAPE '\\'`);
+    expect(h.calls[1].sql).not.toContain('50');
+    expect(h.calls[1].params).toEqual({ name: "%50\\%\\_o'\\\\%" });
+    expect(h.calls).toHaveLength(2);
   });
 
-  it('adds the phone digits as a bound OR condition only when given', async () => {
+  it('adds the phone digits as a bound OR inside the role condition only when given', async () => {
     const h = harness();
-    await h.service.idsMatching({ nameContains: '0712', phoneDigits: '712' });
-    expect(h.calls[1]).toEqual({ sql: 'strpos(u.phone, :digits) > 0', params: { digits: '712' } });
+    await h.service.idsMatching({ nameContains: '0712', phoneDigits: '712', role: UserRole.RUNNER });
+    expect(h.calls[2]).toEqual({ kind: 'or', sql: 'strpos(u.phone, :digits) > 0', params: { digits: '712' } });
   });
 });
