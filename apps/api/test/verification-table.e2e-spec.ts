@@ -238,12 +238,26 @@ describe('Verification table (row 278, e2e)', () => {
       }
     });
 
-    it('q matches the short id #NT-XXXXX (prefix optional, any case)', async () => {
+    it('q matches the short id #NT-XXXXX (prefixed, or the bare 5 characters; any case)', async () => {
       const { admin, d } = await world();
       const short = d.profileId.replace(/-/g, '').slice(-5).toUpperCase();
       for (const q of [`#NT-${short}`, `nt-${short.toLowerCase()}`, short]) {
         const res = await walk(admin, { status: 'all', serviceAreaId: AREA, q });
         expect(res.ids).toContain(d.profileId);
+      }
+    });
+
+    it('row 284: a short id needs the #NT-/NT-/NT prefix or exactly 5 bare hex characters', async () => {
+      const { admin, d } = await world();
+      const short = d.profileId.replace(/-/g, '').slice(-5).toUpperCase();
+      for (const q of [`NT${short.slice(-3)}`, `#nt-${short.slice(-2)}`]) {
+        const res = await walk(admin, { status: 'all', serviceAreaId: AREA, q });
+        expect(res.ids).toContain(d.profileId);
+      }
+      // '#' keeps these out of the phone and name matches, so only the short-id rule could match.
+      for (const q of [`#${short}`, `#${short.slice(-3)}`]) {
+        const res = await walk(admin, { status: 'all', serviceAreaId: AREA, q });
+        expect(res.ids).not.toContain(d.profileId);
       }
     });
 
