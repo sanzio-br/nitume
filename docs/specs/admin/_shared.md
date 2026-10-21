@@ -343,6 +343,9 @@ Open:
 | AQ | Question | Default |
 |---|---|---|
 | — | none open for these specs (AQ-33 = row 236, AQ-34 = row 237 and row 238 answered 2026-10-19) | — |
+| AQ-35 | (2026-10-21, `p-runners-verification-documents`) Mockup: one card per runner with `Reject` / `Approve` once; API: one decision per check (row 209). Where do the buttons sit? | Recommended: one card per runner, `Reject` / `Approve` on each pending check row, no card-level bulk action. Until answered: per check (as the API works) |
+| AQ-36 | (2026-10-21, security/verification rule) Approving one National ID side moves the runner to `Level 2 · ID verified` (`apps/api/src/runners/runners.service.ts:1153-1161`), even with the other side or the selfie pending/rejected. Intended? | Recommended: Level 2 only when both ID sides (and the selfie?) are approved. UI makes no level claim either way |
+| AQ-37 | (2026-10-21, runner-facing) Does `Reject` need a reason, and may the runner see it? | Recommended: optional internal note ≤ 500, never shown to the runner (runner gets the generic copy). Until answered: no note field |
 
 Answered 2026-10-16 (round 11, §1): row 185 (deadline path), 186 (purchase limit in the pool), 187 (empty online pool, no PAYMENT_CONFIRMED → EXPIRED, busy runners ineligible, admin expire action), 188–200.
 
