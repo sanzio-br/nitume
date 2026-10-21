@@ -67,8 +67,10 @@ export class RunnersController {
    * purgedAt, reviewer, reReviews), so the client can replace its item.
    * Approving an ID side or the selfie moves a `1_basic` runner to
    * `2_id_verified` once the newest ID front, ID back and selfie are all
-   * approved (row 261), in the same transaction; a rejection never changes
-   * the level. Errors: 400 for a malformed id; 400 reviewer_note_invalid
+   * approved (row 261), in the same transaction. Rejecting the newest ID
+   * front, ID back or selfie drops a `2_id_verified` runner to `1_basic`
+   * (row 263(a)), in the same transaction; other rejections, and runners at
+   * Level 3 or 4, keep their level. Errors: 400 for a malformed id; 400 reviewer_note_invalid
    * (`maxLength`); 404 when the verification is unknown or belongs to
    * another runner; 409 verification_already_decided (`status`).
    */
