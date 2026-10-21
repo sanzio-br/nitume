@@ -452,8 +452,7 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   verification_already_decided, full item returned, one phone query); reviewed READY (786 unit, e2e 128/128).
 - Deferred: findings 37 (mockup card per runner, blocker for matches-design), 38, 40, 46 and api A-4, A-5, A-7,
   pending owner rows 260–262 (AQ-35 card flow, AQ-36 Level 2 on one ID side, AQ-37 reject reason).
-- Merge order: fix/api-verification-review → docs/admin-verification-audit → fix/admin-verification-inbox →
-  docs/admin-verification-reaudit → docs/board-admin-verification (includes docs/board-runner-compilesdk-merged).
+- Merge order: superseded by the final order in the last 2026-10-21 section.
 
 ## 2026-10-21 (later) — admin verification round 2 (owner rows 260–268)
 - Owner answers: one card per runner (260); Level 2 = ID front + back + selfie approved (261); internal reject
@@ -472,4 +471,23 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   re-audit PASS (four runner screens matches-design), reviewed READY (core 680, runner 152, customer 157).
   F-6 waits on row 273; F-7 waits on the v-profile build.
 - Before production deploy: run the re-check dry run against production and show the owner the count.
-- Open owner rows: 267 wording, 269–275.
+- Owner rows 267 and 269–275 answered later the same day (see next section).
+
+## 2026-10-21 (close) — owner rows 267, 269–277
+- Owner approved all recommendations: 267 panel wording as built; 269 Levels 3/4 untouched; 270 admin feed item
+  on a drop; 271 superseded uploads stay, no actions; 272 script without sockets OK; 273 offline at the drop;
+  274 customer badge follows the live level; 275 "Verified" caption, no Retake. Specs on
+  docs/verification-owner-answers-269 (cc188d7, cdbcd6d, cfbfa69).
+- Admin W-1 (8ab666a, pending counts on newest record per check) and W-2 (90fa140, Fira Code only for numbers on
+  card sub lines): re-audit PASS (matches-design), reviewed READY (297 tests, build 492.57 kB).
+- API feat/api-level-drop-followups: 309121c drop sets an online runner offline; a busy runner ends the job
+  offline (row 273); c7fef15 admin feed item runner_level_dropped per withdrawn offer (row 270); cf879bb e2e.
+  Reviewed READY (unit 834, e2e 151/151).
+- Open owner rows: 276 (feed title "Runner dropped to Level 1"), 277 ({runner} = display name, "A runner"
+  fallback; {task} = reference). Orchestrator note: topbar .sub is all Fira Code on every admin panel (separate task).
+- Final merge order (main at 6b27d3a): fix/admin-verification-inbox → docs/admin-verification-reaudit →
+  docs/admin-verification-answers → feat/admin-verification-cards → docs/admin-verification-cards-audit →
+  fix/core-runner-level2-missing → fix/runner-level2-legacy-ids → docs/runner-level2-legacy-spec →
+  feat/api-level-drop-followups → docs/verification-owner-answers-269 → docs/board-admin-verification.
+- Before production deploy: `npm run runners:recheck-level2` dry run against production, show the owner the count,
+  then `-- --apply --database=<name>`.
