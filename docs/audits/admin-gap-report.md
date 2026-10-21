@@ -1134,3 +1134,38 @@ Build health (worktree, `node_modules` linked from the main tree and removed aft
 
 ### Verdict
 **PASS.** Findings 50 and 51 closed; together with the previous re-audit, findings 37, 38, 40, 46, M4 and reviewer M1–M3 are closed. `SCREEN_MAP.md` set to `matches-design`. The screen reads `GET /runners/verifications/queue`, which exists only on `feat/api-verification-answers`; that branch must merge before (or with) `feat/admin-verification-cards`.
+
+## Re-audit 2026-10-21: verification level follow-up (`feat/admin-verification-cards` @ `e2530c4`, `f1255f4`)
+
+Audited: web-parity `e2530c4` (`feat(angular-admin): note that a runner drops back to Level 1 while a Level 2 check is rejected or replaced`, owner row 267) and `f1255f4` (`fix(angular-admin): read Level 2 needs from the API level2Missing`, N-L1), merged into `docs/admin-verification-cards-audit` (`24cba9f`). Files: `apps/admin/src/app/core/api-types.ts`, `features/admin/admin-data.service.ts`, `features/admin/panels/verifications.panel.ts`, `verifications.panel.spec.ts`. Contract checked against api-contract's `feat/api-verification-answers` (`b17b7eb` … `df1659a`).
+
+Build health (auditor rerun in a scratch copy of the worktree's `apps/admin` with the main tree's `node_modules` linked): `tsc -p tsconfig.app.json --noEmit` and `tsconfig.spec.json` clean; `ng test --watch=false` 28 files, **293 tests pass** (was 290). Builder reports `ng build` OK (not re-run; no template structure or style change). Token scan of the diff: no hex, no `font-family`, no inline styles.
+
+### Checked
+| Area | Verdict | Evidence |
+|---|---|---|
+| Panel note (row 267) | PASS | `verifications.panel.ts:247-251` reads `Opening an image is logged. Images are deleted at the end of the retention period. A runner reaches Level 2 when both ID sides and the selfie are approved, and drops back to Level 1 while any of them is rejected or replaced.`; the spec test asserts the full text. One sentence, as the owner approved; the wording is proposed (spec Copy flags it). No `Approve → runner level upgrades`. |
+| Level line from `level2Missing` (N-L1) | PASS | `levelLine(level, level2Missing)` (`:165-186`) maps `government_id_front`, `government_id_back`, `selfie` to `ID front`, `ID back`, `selfie` (`LEVEL_2_NAMES`, `:154-158`) in the API's order; the row lookup (`LEVEL_2_CHECKS` over `checkRows`) is gone. `levelParts` (`:818-823`) reads `runnerProfile.level2Missing`, then `verification.level2Missing`; empty or absent → level only; level ≥ 2 → label only; level number still Fira Code through `app-num-text`. |
+| Decision answer, incl. 2 → 1 | PASS | `levelFromAnswer` (`admin-data.service.ts:701-722`) takes `verificationLevel` and `level2Missing` from the PATCH answer's `runnerProfile` and copies the gaps onto `verification`; a bare answer leaves the card unchanged. The API answer carries both (`fa9adf8`, e2e `6bb5323`). |
+| Types | PASS | `Level2Check` and optional `level2Missing` on `AdminRunnerRef` and the queue item's `verification` (`api-types.ts:772-777, 820-821`) match `verification-summary.ts` on the API branch. |
+| Tests | PASS | New: legacy ID counted by the API (`Level 2 needs: selfie` with no `· Back` record), in-place update after Approve, line back to `Level 1 — Basic · Level 2 needs: selfie` after a Reject that drops the level; the `levelLine` unit test covers all / one / empty / absent / Level 2 / no level. |
+| Domain | PASS | No new state, no wallet wording; the drop is the API's (row 263), the client never infers the level. |
+
+### Contract alignment (spec Data and runner `_shared.md` updated this round)
+- A-9 (`b17b7eb`, `5e6e369`): pending, `oldestPendingAt`, the `Pending` filter and `awaitingReviewCount` on the newest record per (type, side). No client change.
+- Row 263 (`713cdc1`, `3bf75e7`): `2_id_verified` ↔ `1_basic` in the decision's or upload's transaction under the profile lock; deciding a superseded record changes nothing; levels 3 / 4 untouched.
+- Row 268 (`050d2fb`, `fb4e90c`): approved unlabelled IDs fill a missing side (labelled records win; one side per record, front first); pending / rejected unlabelled records fill nothing. Applies to `verification.checks` and `level2Missing`.
+- N-L1 / RN-L1 (`fa9adf8`, `6bb5323`): `level2Missing` on queue item `runnerProfile` and `verification`, PATCH answer `runnerProfile`, per-check list items' `runnerProfile`, `GET /runners/me` `verification`.
+- Row 266 (`fa2f649`, `3efcfcb`): open offers withdrawn on any drop through the expiry path (`job:offer_withdrawn` reason `expired`, task stays RUNNER_ASSIGNED, no admin feed item); accepted and in-progress jobs continue.
+- Row 265 (`d7e79ed`, `df1659a`): `npm run runners:recheck-level2` dry run (READ ONLY) / `-- --apply`, hand-run at deploy.
+
+### Owner rows (open, not counted)
+Row 269 (levels 3 / 4), 270 (admin feed item on a drop), 271 (superseded pending records), 272 (script sockets with queue workers off), 273 (availability offline at a drop). None changes this screen as built; spec Open questions records them.
+
+### Runner-app impact (needs, not findings against this build)
+- RN-L1 (core-ui, then flutter-runner): core `RunnerVerificationDocuments.nationalIdStatus` (`packages/nitume_core/lib/src/models/runner_account.dart`, R-19) ignores unlabelled ID records while the API summary now counts an approved one as a side; `v-onboard-pending` could show `National ID · Not started` and an upload prompt to a runner the API treats as having that side (and an upload would drop them to Level 1). Parse `level2Missing` in `RunnerVerificationSummary` and take the ID side statuses from the API summary (or mirror the row-268 rule).
+- Level can drop (rows 263, 265): no runner copy; screens re-read on open, resume and the verification push.
+- Offers withdrawn (row 266): `job:offer_withdrawn` reason `expired` is already handled by v-jobs (card removed, unavailable snackbar); no change unless row 273 says the runner goes offline.
+
+### Verdict
+**PASS.** No findings. N-L1 closed; AQ-39 closed by row 267. `SCREEN_MAP.md` stays `matches-design`. `feat/api-verification-answers` must merge before (or with) `feat/admin-verification-cards`: the queue and `level2Missing` do not exist on `main`.
