@@ -26,7 +26,8 @@ import { Component, input, output } from '@angular/core';
               [placeholder]="searchPlaceholder()"
               [value]="search()"
               (input)="onInput($event)"
-              aria-label="Search"
+              [attr.aria-label]="searchLabel()"
+              [attr.maxlength]="searchMaxLength()"
             />
           </label>
         }
@@ -41,6 +42,8 @@ export class PanelTopbarComponent {
   readonly sub = input<string>('');
   readonly searchPlaceholder = input<string>('');
   readonly search = input<string>('');
+  readonly searchLabel = input<string>('Search');
+  readonly searchMaxLength = input<number | null>(null);
 
   readonly searchChange = output<string>();
 

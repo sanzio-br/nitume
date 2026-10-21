@@ -522,7 +522,7 @@ tr.clickable:hover {
   border-color: var(--nitume-blue);
 }
 
-// --- Runners / verification cards ---
+// --- Runners directory cards ---
 .verif-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -539,22 +539,28 @@ tr.clickable:hover {
   border-radius: 14px;
   padding: 18px;
 }
+
+// --- Verification table (p-runners-verification-table, row 278) ---
+@media (max-width: 1100px) {
+  .verif-table .col-applied {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .verif-table .col-area {
+    display: none;
+  }
+}
+
+// --- Verification documents drawer: runner header and checks ---
 .verif-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  cursor: pointer;
 }
-/* The header opens the runner drawer: a real button, laid out as the mockup's div. */
-button.verif-top {
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
+.verif-profile {
+  min-height: 40px;
+  margin-top: 6px;
 }
 .verif-top .who {
   display: flex;
@@ -609,7 +615,7 @@ button.verif-top {
   padding: 8px 0;
   border-top: 1px solid var(--nitume-slate-line);
 }
-.doc-row:first-of-type {
+.doc-check:first-of-type > .doc-row {
   border-top: none;
 }
 .doc-status {
@@ -1758,6 +1764,82 @@ button.verif-top {
   .runner-payouts-table .col-type {
     display: none;
   }
+}
+
+// --- A-18 verification image frame (never cropped: an ID must be read whole) ---
+.doc-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-height: 280px;
+  margin: 6px 0 4px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--nitume-slate);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: 10px;
+  font-family: var(--nitume-font-ui);
+}
+button.doc-preview {
+  cursor: zoom-in;
+}
+.doc-preview.is-loading {
+  aspect-ratio: 3 / 2;
+}
+.doc-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 278px;
+  object-fit: contain;
+}
+.doc-preview-wait {
+  font-size: 12px;
+  color: var(--nitume-slate-600);
+}
+.doc-preview-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.doc-preview-error .btn {
+  min-height: 40px;
+}
+
+// --- A-17 full-size image viewer ---
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: var(--nitume-viewer-scrim);
+}
+.image-viewer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(92vw, 100%);
+  color: var(--nitume-white);
+  font-family: var(--nitume-font-ui);
+  font-size: 13px;
+  font-weight: 600;
+}
+.image-viewer-img {
+  max-width: 92vw;
+  max-height: 88vh;
+  object-fit: contain;
+  border: 2px solid var(--nitume-white);
+  border-radius: 10px;
+}
+.image-viewer-wait {
+  color: var(--nitume-white);
+  font-size: 13px;
 }
 
 // --- drawer-runner-payout receipt ---

@@ -1,6 +1,13 @@
 import { Injectable, signal } from '@angular/core';
 
-export type DrawerKind = 'task' | 'runner' | 'dispute' | 'refund' | 'runner_payout';
+export type DrawerKind =
+  | 'task'
+  | 'runner'
+  | 'dispute'
+  | 'refund'
+  | 'runner_payout'
+  /** Verification documents (row 278); id = runner profile id. */
+  | 'runner_verification';
 
 export interface DrawerTarget {
   kind: DrawerKind;
