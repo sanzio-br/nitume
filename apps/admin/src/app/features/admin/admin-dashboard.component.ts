@@ -212,7 +212,12 @@ type Panel =
               <app-runners-panel (open)="openRunner($event)" />
             }
             @case ('verifications') {
-              <app-verifications-panel />
+              <!-- Lazy chunk: keeps the initial bundle within budget. -->
+              @defer (on immediate) {
+                <app-verifications-panel />
+              } @loading {
+                <div class="ops-loading">Loading runner verification…</div>
+              }
             }
             @case ('disputes') {
               <app-disputes-panel (open)="openDispute($event)" />

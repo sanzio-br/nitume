@@ -732,11 +732,6 @@ export interface ListRunnersResult {
   nextCursor: string | null;
 }
 
-export interface ListVerificationsResult {
-  items: RunnerVerification[];
-  nextCursor: string | null;
-}
-
 /**
  * One verification check as the API sends it (`toVerificationView`): no
  * storage key (row 154), `hasDocument` instead. This is also the bare
@@ -765,13 +760,75 @@ export interface VerificationReReview {
   note: string | null;
 }
 
-/** `GET /runners/verifications` item (admin queue). */
+/** The runner on admin verification items (rows 260, 261). */
+export interface AdminRunnerRef {
+  id: string;
+  userId: string;
+  verificationLevel: string;
+  /** Listed service areas by name (row 116). */
+  serviceAreas: { id: string; name: string }[];
+  /** When the runner applied (runner profile `createdAt`). */
+  appliedAt: string;
+  /** N-L1: Level 2 checks not met, in ID front, ID back, selfie order; `[]` when met. */
+  level2Missing?: Level2Check[];
+}
+
+/** A Level 2 check (row 261) as named in the API's `level2Missing`. */
+export type Level2Check = 'government_id_front' | 'government_id_back' | 'selfie';
+
+/** The runner's user on admin verification items (row 260). */
+export interface AdminRunnerUser {
+  id: string;
+  phone: string | null;
+  /** Full display name; null until set. */
+  displayName: string | null;
+  /** `Mary W.` (row 40); null until a name is set. Never shortened in the client. */
+  shortName: string | null;
+}
+
+/** Admin verification item (`GET /runners/verifications`, queue `checks[]`, full PATCH answer). */
 export interface RunnerVerification extends VerificationView {
-  runnerProfile: { id: string; userId: string } | null;
-  user: { id: string; phone: string | null } | null;
+  runnerProfile: AdminRunnerRef | null;
+  user: AdminRunnerUser | null;
   reviewer: { id: string; displayName: string | null } | null;
   /** Oldest first. */
   reReviews: VerificationReReview[];
+}
+
+/** `status` of the runner-grouped queue (default `pending`). */
+export type VerificationQueueStatus = VerificationStatus | 'all';
+
+/** One required check's state in the queue summary; `missing` = never submitted. */
+export interface VerificationSummaryCheck {
+  type: VerificationType;
+  side: VerificationSide | null;
+  status: VerificationStatus | 'missing';
+}
+
+/** `GET /runners/verifications/queue` item: one runner (row 260). */
+export interface VerificationQueueItem {
+  runnerProfile: AdminRunnerRef;
+  user: AdminRunnerUser | null;
+  /** Every record of the runner, history included, newest first. */
+  checks: RunnerVerification[];
+  pendingCount: number;
+  oldestPendingAt: string | null;
+  /** The required checks (phone, ID front, ID back, selfie, payment identity), newest record each. */
+  verification: {
+    verified: boolean;
+    checks: VerificationSummaryCheck[];
+    /** N-L1: Level 2 checks not met (same as `runnerProfile.level2Missing`); `[]` when met. */
+    level2Missing?: Level2Check[];
+  };
+}
+
+export interface VerificationQueueResult {
+  items: VerificationQueueItem[];
+  nextCursor: string | null;
+  /** Runners matching the filter. */
+  total: number;
+  /** Runners with a pending check, whole queue, independent of the filter. */
+  awaitingReviewCount: number;
 }
 
 /** `GET /runners/verifications/:id/document`: signed, logged, valid ≤ 5 min; `url` null on the console driver. */

@@ -29,7 +29,9 @@ import {
   ErrandStatusHistoryEntry,
   ListErrandsResult,
   ListRunnersResult,
-  ListVerificationsResult,
+  RunnerVerification,
+  VerificationQueueResult,
+  VerificationQueueStatus,
   OtpRequestResult,
   OtpVerifyResult,
   QuoteErrandDto,
@@ -277,22 +279,27 @@ export class ApiService {
     return this.http.get<EvidenceView[]>(`${this.base}/errands/${errandId}/evidence`);
   }
 
-  /** GET /runners/verifications — admin verification inbox. */
-  listVerifications(status?: string, cursor?: string | null, limit = 50) {
-    let params = new HttpParams();
-    if (status) params = params.set('status', status);
+  /**
+   * GET /runners/verifications/queue — admin verification queue, one item
+   * per runner (row 260), paged by runner. `status` defaults to `pending`
+   * on the API; `limit` 1–100. 400 `cursor_invalid` for a stale cursor.
+   */
+  verificationQueue(status: VerificationQueueStatus, cursor?: string | null, limit = 20) {
+    let params = new HttpParams().set('status', status).set('limit', String(limit));
     if (cursor) params = params.set('cursor', cursor);
-    params = params.set('limit', String(limit));
-    return this.http.get<ListVerificationsResult>(`${this.base}/runners/verifications`, { params });
+    return this.http.get<VerificationQueueResult>(`${this.base}/runners/verifications/queue`, {
+      params,
+    });
   }
 
   /**
    * PATCH /runners/:runnerProfileId/verifications/:id — admin decides a
-   * pending check. `main` returns the bare verification (no runner, user,
-   * reviewer or re-reviews); merge it into the list item, never replace it.
+   * pending check, `{ decision, reviewerNote? }`. The contract answers with
+   * the full admin item (incl. `runnerProfile.verificationLevel`); older
+   * builds answer with the bare verification. Merge, never replace.
    */
   reviewVerification(runnerProfileId: string, id: string, dto: ReviewVerificationDto) {
-    return this.http.patch<VerificationView>(
+    return this.http.patch<VerificationView & Partial<RunnerVerification>>(
       `${this.base}/runners/${runnerProfileId}/verifications/${id}`,
       dto,
     );

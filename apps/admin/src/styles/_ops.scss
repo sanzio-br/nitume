@@ -546,6 +546,16 @@ tr.clickable:hover {
   margin-bottom: 12px;
   cursor: pointer;
 }
+/* The header opens the runner drawer: a real button, laid out as the mockup's div. */
+button.verif-top {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
 .verif-top .who {
   display: flex;
   gap: 10px;
@@ -564,16 +574,32 @@ tr.clickable:hover {
   font-weight: 700;
   font-size: 13px;
   flex: 0 0 auto;
-  font-family: var(--nitume-font-num);
+  /* Initials are not numeric data: Fira Sans (finding 38). */
+  font-family: var(--nitume-font-ui);
 }
 .verif-name {
+  display: block;
   font-size: 13.5px;
   font-weight: 600;
 }
+/* Fira Sans; only numeric parts (`.num`) are Fira Code (W-2). The
+   `{short id} · {phone}` line holds numeric data only: `.verif-sub.num`. */
 .verif-sub {
+  display: block;
   font-size: 11px;
   color: var(--nitume-slate-600);
+  font-family: var(--nitume-font-ui);
+}
+.verif-sub.num {
   font-family: var(--nitume-font-num);
+}
+/* Level line under the sub lines: Fira Sans, the level number in `.num`. */
+.verif-level {
+  display: block;
+  font-size: 11px;
+  color: var(--nitume-slate-600);
+  font-family: var(--nitume-font-ui);
+  margin-top: 2px;
 }
 .doc-row {
   display: flex;
@@ -594,6 +620,29 @@ tr.clickable:hover {
 .doc-status.pending {
   color: var(--nitume-amber);
 }
+.doc-status.rejected {
+  color: var(--nitume-red);
+}
+.doc-status.missing {
+  color: var(--nitume-slate-600);
+}
+/* Detail lines under a check row (A-05 rows at 12 slate-600). */
+.doc-detail {
+  padding-bottom: 8px;
+}
+.doc-detail .drawer-row {
+  font-size: 12px;
+  color: var(--nitume-slate-600);
+}
+.doc-detail .drawer-label {
+  margin: 6px 0 0;
+}
+.doc-detail .verif-actions {
+  margin-top: 8px;
+}
+.doc-detail .verif-actions .btn {
+  min-height: 40px;
+}
 .verif-actions {
   display: flex;
   gap: 8px;
@@ -612,8 +661,17 @@ tr.clickable:hover {
   cursor: pointer;
   font-family: var(--nitume-font-ui);
 }
-.btn-approve:hover {
+.btn-approve,
+.btn-reject {
+  min-height: 40px;
+}
+.btn-approve:hover:not(:disabled) {
   background: var(--nitume-green-700);
+}
+.btn-approve:disabled,
+.btn-reject:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .btn-reject {
   flex: 1;
@@ -628,7 +686,7 @@ tr.clickable:hover {
   cursor: pointer;
   font-family: var(--nitume-font-ui);
 }
-.btn-reject:hover {
+.btn-reject:hover:not(:disabled) {
   border-color: var(--nitume-blue);
   color: var(--nitume-blue);
 }
