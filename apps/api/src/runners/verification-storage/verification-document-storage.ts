@@ -169,17 +169,25 @@ export class CloudinaryVerificationDocumentStorage extends VerificationDocumentS
    * HEIC/HEIF original, or any other conversion) and invalidates their CDN
    * copies, keeping the original for the `destroy` that follows. `destroy`
    * also removes derived copies; this explicit step makes the purge not
-   * depend on that. Throws on failure, so the purge keeps the row and
-   * retries the next day.
+   * depend on that. Throws on failure, and unless the reply says the asset
+   * is `deleted` or `not_found` and is not `partial`, so the original is not
+   * destroyed, the purge keeps the row and retries the next day.
    */
   private async deleteDerived(publicId: string, credentials: CloudinaryCredentials): Promise<void> {
-    await cloudinary.api.delete_resources([publicId], {
+    const reply = (await cloudinary.api.delete_resources([publicId], {
       ...credentials,
       resource_type: 'image',
       type: 'authenticated',
       keep_original: true,
       invalidate: true,
-    });
+    })) as { deleted?: Record<string, string>; partial?: boolean } | undefined;
+    // Only a clear answer lets the original go: anything else keeps the row for tomorrow's retry.
+    const status = reply?.deleted?.[publicId];
+    if (reply?.partial === true || (status !== 'deleted' && status !== 'not_found')) {
+      throw new Error(
+        `Cloudinary derived delete incomplete (status ${String(status)}${reply?.partial === true ? ', partial' : ''})`,
+      );
+    }
   }
 
   private folder(): string {

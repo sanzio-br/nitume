@@ -71,7 +71,10 @@ describe('restricted credential and backups (row 162)', () => {
     } as never);
     const api = cloudinary.api as unknown as { delete_backed_up_assets: (...a: unknown[]) => Promise<unknown> };
     const backups = vi.spyOn(api, 'delete_backed_up_assets').mockResolvedValue({} as never);
-    vi.spyOn(cloudinary.api, 'delete_resources').mockResolvedValue({} as never);
+    vi.spyOn(cloudinary.api, 'delete_resources').mockResolvedValue({
+      deleted: { 'nitume/runner-verification/rp1/k1': 'deleted' },
+      partial: false,
+    } as never);
     const destroy = vi.spyOn(cloudinary.uploader, 'destroy').mockResolvedValue({ result: 'ok' } as never);
     await new CloudinaryVerificationDocumentStorage(config as never).destroy(key);
     expect(backups).toHaveBeenCalledWith('asset-1', ['v1', 'v2'], expect.objectContaining({ api_key: 'id-key-1234' }));
@@ -121,7 +124,10 @@ describe('HEIC/HEIF shown as JPEG, derived copies purged (row 283, AV-3)', () =>
     vi.spyOn(cloudinary.api, 'resource').mockResolvedValue({ asset_id: 'asset-9', versions: [{ version_id: 'v1' }] } as never);
     const api = cloudinary.api as unknown as { delete_backed_up_assets: (...a: unknown[]) => Promise<unknown> };
     const backups = vi.spyOn(api, 'delete_backed_up_assets').mockResolvedValue({} as never);
-    const derived = vi.spyOn(cloudinary.api, 'delete_resources').mockResolvedValue({} as never);
+    const derived = vi.spyOn(cloudinary.api, 'delete_resources').mockResolvedValue({
+      deleted: { 'nitume/runner-verification/rp1/k3': 'deleted' },
+      partial: false,
+    } as never);
     const destroy = vi.spyOn(cloudinary.uploader, 'destroy').mockResolvedValue({ result: 'ok' } as never);
     await storage().destroy(encodeDocumentKey('heic', 'nitume/runner-verification/rp1/k3'));
     expect(derived).toHaveBeenCalledWith(
@@ -144,6 +150,47 @@ describe('HEIC/HEIF shown as JPEG, derived copies purged (row 283, AV-3)', () =>
     const destroy = vi.spyOn(cloudinary.uploader, 'destroy').mockResolvedValue({ result: 'ok' } as never);
     await expect(storage().destroy(encodeDocumentKey('heic', 'nitume/runner-verification/rp1/k3'))).rejects.toThrow(/rate limited/);
     expect(destroy).not.toHaveBeenCalled();
+  });
+
+  const purgeWith = async (reply: unknown) => {
+    vi.spyOn(cloudinary.api, 'resource').mockResolvedValue({ asset_id: 'asset-9', versions: [] } as never);
+    vi.spyOn(cloudinary.api, 'delete_resources').mockResolvedValue(reply as never);
+    const destroy = vi.spyOn(cloudinary.uploader, 'destroy').mockResolvedValue({ result: 'ok' } as never);
+    const outcome = await storage()
+      .destroy(encodeDocumentKey('heic', 'nitume/runner-verification/rp1/k3'))
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    return { outcome, destroy };
+  };
+
+  it('M1: a partial derived delete throws and the original is not destroyed', async () => {
+    const { outcome, destroy } = await purgeWith({
+      deleted: { 'nitume/runner-verification/rp1/k3': 'deleted' },
+      partial: true,
+    });
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toMatch(/partial/);
+    expect(destroy).not.toHaveBeenCalled();
+  });
+
+  it.each([[{ deleted: { 'nitume/runner-verification/rp1/k3': 'rate_limited' } }], [{ deleted: {} }], [{}], [undefined]])(
+    'M1: an unexpected derived delete reply %j throws and the original is not destroyed',
+    async (reply) => {
+      const { outcome, destroy } = await purgeWith(reply);
+      expect(outcome).toBeInstanceOf(Error);
+      expect(destroy).not.toHaveBeenCalled();
+    },
+  );
+
+  it('M1: not_found (no derived copy, or already gone) lets the purge destroy the original', async () => {
+    const { outcome, destroy } = await purgeWith({
+      deleted: { 'nitume/runner-verification/rp1/k3': 'not_found' },
+      partial: false,
+    });
+    expect(outcome).toBeNull();
+    expect(destroy).toHaveBeenCalledTimes(1);
   });
 
   it('the console driver still serves no URL', () => {
