@@ -692,7 +692,12 @@ export interface EvidenceView {
 
 // --- Runners ---
 export type RunnerAvailability = 'online' | 'offline' | 'busy';
-export type VerificationStatus = 'pending' | 'approved' | 'rejected' | 'in_review';
+/** API enum (`ListVerificationsQueryDto`): anything else is a 400. */
+export type VerificationStatus = 'pending' | 'approved' | 'rejected';
+export type VerificationType =
+  'phone' | 'government_id' | 'selfie' | 'payment_identity' | 'reference' | 'business';
+/** Row 195: which ID side an image shows; null on legacy rows and non-ID checks. */
+export type VerificationSide = 'front' | 'back';
 
 export interface RunnerSkill {
   id: string;
@@ -732,25 +737,54 @@ export interface ListVerificationsResult {
   nextCursor: string | null;
 }
 
-export interface RunnerVerification {
+/**
+ * One verification check as the API sends it (`toVerificationView`): no
+ * storage key (row 154), `hasDocument` instead. This is also the bare
+ * `PATCH /runners/:runnerId/verifications/:id` response.
+ */
+export interface VerificationView {
   id: string;
   runnerProfileId: string;
-  verificationType: string;
-  documentKey?: string | null;
+  verificationType: VerificationType;
+  side: VerificationSide | null;
   status: VerificationStatus;
-  submittedAt: string;
-  reviewedBy?: string | null;
-  reviewerNote?: string | null;
-  runnerProfile?: {
-    id: string;
-    userId: string;
-    availability?: string;
-  };
-  user?: {
-    id: string;
-    phone: string;
-    email: string | null;
-  };
+  reviewerNote: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  /** Set when the image was deleted at the end of the retention period (row 161). */
+  purgedAt: string | null;
+  hasDocument: boolean;
+}
+
+/** One audited "Re-review evidence" (row 171); `note` is null after the purge (row 170). */
+export interface VerificationReReview {
+  id: string;
+  reviewedBy: { id: string; displayName: string | null };
+  createdAt: string;
+  note: string | null;
+}
+
+/** `GET /runners/verifications` item (admin queue). */
+export interface RunnerVerification extends VerificationView {
+  runnerProfile: { id: string; userId: string } | null;
+  user: { id: string; phone: string | null } | null;
+  reviewer: { id: string; displayName: string | null } | null;
+  /** Oldest first. */
+  reReviews: VerificationReReview[];
+}
+
+/** `GET /runners/verifications/:id/document`: signed, logged, valid ≤ 5 min; `url` null on the console driver. */
+export interface VerificationDocumentLink {
+  verificationId: string;
+  url: string | null;
+  expiresAt: string | null;
+}
+
+/** `POST /runners/verifications/:id/re-review` (201). */
+export interface ReReviewResult {
+  verificationId: string;
+  reReview: VerificationReReview;
 }
 
 export interface RunnerDetail {
@@ -762,7 +796,7 @@ export interface RunnerDetail {
   errandsCompleted: number;
   skills: RunnerSkill[];
   serviceAreas: string[];
-  verifications: RunnerVerification[];
+  verifications: VerificationView[];
 }
 
 // --- Payments ---

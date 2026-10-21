@@ -36,9 +36,11 @@ import {
   RefreshResult,
   ResolveDisputeResult,
   ResolveDisputeVerdict,
+  ReReviewResult,
   ReviewVerificationDto,
-  RunnerVerification,
   UserMe,
+  VerificationDocumentLink,
+  VerificationView,
 } from '../api-types';
 
 /**
@@ -284,9 +286,34 @@ export class ApiService {
     return this.http.get<ListVerificationsResult>(`${this.base}/runners/verifications`, { params });
   }
 
-  /** PATCH /runners/verifications/:id — admin reviews a verification. */
-  reviewVerification(id: string, dto: ReviewVerificationDto) {
-    return this.http.patch<RunnerVerification>(`${this.base}/runners/verifications/${id}`, dto);
+  /**
+   * PATCH /runners/:runnerProfileId/verifications/:id — admin decides a
+   * pending check. `main` returns the bare verification (no runner, user,
+   * reviewer or re-reviews); merge it into the list item, never replace it.
+   */
+  reviewVerification(runnerProfileId: string, id: string, dto: ReviewVerificationDto) {
+    return this.http.patch<VerificationView>(
+      `${this.base}/runners/${runnerProfileId}/verifications/${id}`,
+      dto,
+    );
+  }
+
+  /**
+   * GET /runners/verifications/:id/document — a short-lived signed link to a
+   * verification image. Every call is logged as a view: call only on click.
+   */
+  verificationDocument(id: string) {
+    return this.http.get<VerificationDocumentLink>(
+      `${this.base}/runners/verifications/${id}/document`,
+    );
+  }
+
+  /** POST /runners/verifications/:id/re-review — audited re-review of stored evidence (row 171). */
+  reReviewVerification(id: string, note?: string) {
+    return this.http.post<ReReviewResult>(
+      `${this.base}/runners/verifications/${id}/re-review`,
+      note ? { note } : {},
+    );
   }
 
   /** GET /runners — admin runner directory (cursor-paginated). */
