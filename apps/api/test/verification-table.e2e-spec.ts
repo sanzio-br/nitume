@@ -259,7 +259,7 @@ describe('Verification table (row 278, e2e)', () => {
         { status: 'all', serviceAreaId: AREA, q: 'Amani' },
         { status: 'all' },
         { status: 'pending', serviceAreaId: AREA },
-      ]) {
+      ] as Record<string, string>[]) {
         const res = await queue(admin, { ...changed, limit: 1, cursor }).expect(400);
         expect(res.body.code).toBe('cursor_invalid');
       }
