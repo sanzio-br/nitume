@@ -54,7 +54,7 @@ Exact, from the mockup:
 - Button: `Back to app`
 - Privacy paragraph (owner wording, row 158, word for word): `Your ID and selfie are securely stored in private storage and are only accessible to authorised Nitume personnel for verification, security, and compliance purposes. Access is logged and the files are deleted according to Nitume's retention policy.` Link label `Privacy Policy` (from the sign-in legal line).
 
-Never shown: the reviewer's internal note (unless RA-7 adds a runner-safe reason), the reviewer's name, the ID images.
+Never shown: the reviewer's internal note (row 262, decided 2026-10-21: the reject note is internal, never shown to the runner; the app never reads `reviewerNote`), the reviewer's name, the ID images.
 
 ## Numeric fields (Fira Code)
 - `24` in the body copy (`under 24 hours`) as a Fira Code span.

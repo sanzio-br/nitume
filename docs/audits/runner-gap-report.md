@@ -1395,3 +1395,8 @@ No FAIL findings.
 ### Questions for the owner (new, non-blocking)
 - Row 245 reading: "a refusal never blocks a job" is taken to mean that once a job is held nothing waits on location; going online and accepting still need while-in-use permission (`x-location-disclosure`, rows 123 / 124). Confirm.
 - Row 248: should the notice also say what the runner may spend now (e.g. `You can spend up to KSh 40,000 for now.`)? The approved sentence does not state the old amount, and `v-active` shows no amount outside the price section. Today: approved sentence only.
+
+## 24. Owner answers 2026-10-21 (rows 261, 262; admin AQ-36, AQ-37), spec-only
+
+- Row 261: `Level 2 — ID verified` only when both National ID sides and the selfie are approved. Written in `_shared.md` §0 and §7. No runner spec said otherwise; the app shows the API's `verificationLevel` and never infers it (no code change). Edge cases (downgrade on re-upload or rejection, legacy `side = null` images, backfill) are admin AQ-38.
+- Row 262: the admin's reject note is internal, never shown to the runner. `v-onboard-id.md` (Rejected state) and `v-onboard-pending.md` (Never shown) no longer allow a "runner-safe reason": generic copy only. The runner app reads no `reviewerNote` today (checked). API need (admin A-8): runner-facing verification responses still carry `reviewerNote` and `reviewedBy`.
