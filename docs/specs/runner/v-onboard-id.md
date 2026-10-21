@@ -2,8 +2,8 @@
 
 - Mockup: `docs/design/nitume_runner_app.html` lines 315–326 (`#v-onboard-id`, overlay)
 - Shared conventions: `_shared.md` (§9 verification gate)
-- Implementation: none
-- Status: missing
+- Implementation: `apps/runner_app/lib/src/screens/onboarding/onboard_id_screen.dart` (see `SCREEN_MAP.md`)
+- Status: partial (RN-L1 addendum 2026-10-21 not built; otherwise matches-design)
 
 ## Purpose
 Capture clear photos of the front and back of the runner's Kenyan National ID and submit them for manual review.
@@ -53,7 +53,7 @@ Proposed:
 - `Step 1 of 2`; `10 MB` in the size notice.
 
 ## Data
-- Upload each side to **restricted ID storage** (system design §10: separate from general evidence, access logged, never shown to customers or other runners). **Built on `main`** (RA-7): `POST /runners/me/verifications/documents`, multipart `file` (JPEG, PNG, WebP, HEIC/HEIF) + `verificationType: 'government_id'`; each upload creates one `pending` verification (front and back are two records; the storage key is never returned: the response is the verification view with `hasDocument`, `purgedAt`). Errors: 400 `verification_type_not_uploadable`, `verification_document_type_invalid` (→ `Use a JPEG, PNG or HEIC photo.`, proposed), `verification_document_empty`; 413 above 10 MB (no code today; api-contract to add `verification_document_too_large` with `maxBytes`). Multipart field `side` (`front | back`, lowercase; the API accepts any case and stores lowercase) is **required** for `government_id` and refused for a selfie (rows 195, 200, decided; built on `main`, 400 `verification_document_side_invalid` with `allowed`). 413 now carries `verification_document_too_large` with `maxBytes` (built on `main`). The verification view returns `side`, so the screen rebuilds its tiles from `GET /runners/me/verifications`: for each side, the newest `government_id` record with that `side`; records with `side = null` (legacy) fill no tile. Storage: rows 125, 154, 162 (restricted, private, separate restricted credential, signed admin-only URLs, access logged).
+- Upload each side to **restricted ID storage** (system design §10: separate from general evidence, access logged, never shown to customers or other runners). **Built on `main`** (RA-7): `POST /runners/me/verifications/documents`, multipart `file` (JPEG, PNG, WebP, HEIC/HEIF) + `verificationType: 'government_id'`; each upload creates one `pending` verification (front and back are two records; the storage key is never returned: the response is the verification view with `hasDocument`, `purgedAt`). Errors: 400 `verification_type_not_uploadable`, `verification_document_type_invalid` (→ `Use a JPEG, PNG or HEIC photo.`, proposed), `verification_document_empty`; 413 above 10 MB (no code today; api-contract to add `verification_document_too_large` with `maxBytes`). Multipart field `side` (`front | back`, lowercase; the API accepts any case and stores lowercase) is **required** for `government_id` and refused for a selfie (rows 195, 200, decided; built on `main`, 400 `verification_document_side_invalid` with `allowed`). 413 now carries `verification_document_too_large` with `maxBytes` (built on `main`). The verification view returns `side`, so the screen rebuilds its tiles from `GET /runners/me/verifications`: for each side, the newest `government_id` record with that `side`; records with `side = null` (legacy) fill no tile **thumbnail**, but an approved one can make a side done (row 268, see the RN-L1 section below). Storage: rows 125, 154, 162 (restricted, private, separate restricted credential, signed admin-only URLs, access logged).
 - Re-submission after rejection creates a new `pending` record (the old one stays for audit, within the retention period, then it is purged like any other ID image). A new or replacement ID restarts the retention clock (row 161).
 - Storage and retention (rows 154, 161, 162): private objects on the existing object-storage provider under a separate restricted credential (no public URLs; access only through short-lived signed URLs from a logged, admin-authorised endpoint); retention config-driven, initially 12 months, restarted only by a new/replacement ID or selfie, a verification or re-verification started, or an admin review that needs the evidence (never by a view); a daily purge deletes the images and keeps only minimum audit metadata; uploads, views and purges are logged (RA-7). No runner screen reads the retention setting.
 - `GET /runners/me/verifications` (exists) to show existing uploads.
@@ -82,3 +82,28 @@ Proposed:
 
 ## Questions
 - None (rows 172, 173 decided 2026-10-16).
+
+## RN-L1 addendum (2026-10-21): sides approved via an unlabelled photo, Level drops
+
+Rows 263 (a), (b), 266, 268 answered 2026-10-21; rows 269–274 open (not decided here). Core helpers on `fix/core-runner-level2-missing` (`2c391fc`, `cd8b598`).
+
+### Side status: from the API, not from the labelled record
+- Load both `GET /runners/me` and `GET /runners/me/verifications` (in parallel). Build `RunnerVerificationDocuments.fromRecords(records, summary: me.verification)` and set each tile from **`docs.idStatusFor(side)`**, not from `docs.idFor(side)?.status`. If `GET /runners/me` fails, call `fromRecords(records)` without a summary: core then applies the same row-268 rule locally (`idSideStatusesOf`), so the screen never needs a third path.
+- `idStatusFor(side)` → tile:
+  | Status | Tile | Retake | Selectable / drop zone targets it |
+  |---|---|---|---|
+  | `approved` (labelled **or** filled by an approved unlabelled photo, row 268) | `uploaded` (green check badge), no thumbnail, caption `Verified` | no | no |
+  | `pending` | `uploaded`, no thumbnail (unchanged) | yes (unchanged) | no |
+  | `rejected` | empty tile + `Not approved` + `Retake` (unchanged) | yes | yes, first |
+  | `missing` | empty tile (unchanged) | n/a | yes |
+- **No thumbnail** for any side loaded from the server, labelled or not: the API never returns the image to the runner (only `hasDocument`), and the runner app never shows a stored ID image (`v-onboard-pending` "Never shown"). A side approved via an unlabelled photo therefore looks exactly like any other approved side: flat blue-050 tile, ID icon, side label `Front` / `Back`, the uploaded badge.
+- **Never prompt that capture**: an approved side (either kind) is done. It is not selected, the drop zone never names it (`Front of your ID` / `Back of your ID` only for a side still to capture), and it has no `Retake` / remove control. Reason (row 263 (a)): any new ID upload creates a new labelled `pending` record that replaces the approved status and drops a Level-2 runner to `Level 1 — Basic`; for a row-268 side it also replaces the legacy photo, which the runner cannot see. (Removing `Retake` from a labelled approved side is **proposed**; the row-268 side is required.)
+- `Continue →` is enabled when every side is `uploaded` (pending) or `approved`, including a row-268 side with no `idFor(side)` record. Both sides approved and the screen open anyway (e.g. through `Upload again` after the selfie was the rejected item): drop zone hidden, `Continue →` enabled.
+- Copy: caption `Verified` (proposed; reuses the `v-onboard-pending` chip word, 11.5 slate-600 meta under the tile, not green text). Tile semantics: `ID front, uploaded, Verified`. No new notice; the rejected notices are unchanged (an unlabelled rejected photo fills nothing, so it never produces a rejected side: that side is `missing` and is captured as usual).
+
+### Level 1 after a drop (row 263 (a))
+The runner reaches this screen after a drop only through `Upload again` on `v-onboard-pending` (a rejected side): the existing rejected copy applies (`Your {front|back} photo couldn't be verified. Upload a clearer photo of that side.` / both-sides variant). After the upload the side is `pending`; the runner is (still) Level 1 until it is approved. No level is shown on this screen and no downgrade copy is added.
+
+### Current vs design (2026-10-21, `onboard_id_screen.dart` `_load`)
+1. (blocker) Tiles are set from `docs.idFor(side)?.status`, so a side approved via an unlabelled photo shows as an empty tile, is selected, and the drop zone asks for it. Fix: `idStatusFor(side)` with `summary: me.verification` as above.
+2. (minor, proposed) Server-loaded approved sides keep the `Retake` (remove) control. Fix: no `onRemove` / `onTap` on an approved side; caption `Verified`.

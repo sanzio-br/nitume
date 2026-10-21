@@ -2,7 +2,7 @@
 
 - Mockup: `docs/design/nitume_runner_app.html` lines 266–283 (`#v-profile`, root view)
 - Shared conventions: `_shared.md` (§7 levels and names)
-- Implementation: none
+- Implementation: `apps/runner_app/lib/src/screens/account/profile_tab.dart` (placeholder only)
 - Status: missing
 
 ## Purpose
@@ -59,3 +59,15 @@ Stats read as `137 errands, rating 4.9, completion 98.7 percent`; tags are plain
 
 ## Questions
 - None new.
+
+## RN-L1 addendum (2026-10-21): verification line, Level drops
+
+Rows 261, 263, 266, 268 answered 2026-10-21; rows 269 (levels 3 / 4 on a rejected or replaced ID / selfie) and 273, 274 open.
+
+- Read the verification line from `GET /runners/me` only (no `GET /runners/me/verifications` needed): `verification.verified` true → `● Verified Runner · {API verificationLevel label}` (green-700, level digit Fira Code); else any `verification.checks[].status == rejected` → `Not verified yet`; else any `pending` → `Verification in review`; else `Not verified yet` (slate-600). The API checks already count an approved unlabelled ID photo for a missing side (row 268), so nothing is derived from records here. Supersedes the Data line "Verification overall state: `GET /runners/me/verifications` …".
+- Never infer the level from checks or `level2Missing`; show the API `verificationLevel` (row 261). The level label appears only with the verified line.
+- After a drop to Level 1 (row 263 (a)): the runner is no longer verified, so the line becomes `Not verified yet` (rejected) or `Verification in review` (re-uploaded). No `Level 1 — Basic` label, no downgrade copy. Refresh on open, resume and the `verification decided` push.
+- `Verification documents` → `v-onboard-pending` (unchanged), which shows the per-row detail.
+- Levels 3 / 4 (row 269 open): if the API keeps such a runner's level while a check is not approved, `verified` is false, so the line still reads `Not verified yet` / `Verification in review` and no level shows. No change needed whatever row 269 decides.
+
+Current: `profile_tab.dart` is a placeholder (`RootTabPlaceholder`); build the line as above.
