@@ -267,6 +267,57 @@ describe('Verification inbox owner answers (e2e)', () => {
     });
   });
 
+  describe('Row 263 (AQ-38): unlabelled ID photos from before row 195', () => {
+    /** An approved government_id row without a side, as stored before row 195. */
+    const legacyId = async (runner: Actor, at: string) =>
+      app
+        .get(DataSource)
+        .query(
+          `INSERT INTO "runner_verifications" ("runnerProfileId", "verificationType", status, "createdAt", "reviewedAt")
+           VALUES ($1, 'government_id', 'approved', $2, $2)`,
+          [runner.profileId, at],
+        );
+    const idChecks = async (runner: Actor) =>
+      ((await http().get('/api/v1/runners/me').set(bearer(runner.token)).expect(200)).body.verification.checks as {
+        type: string;
+        side: string | null;
+        status: string;
+      }[]).filter((c) => c.type === 'government_id');
+
+    it('two approved unlabelled records count as front and back: Level 2 on the selfie approval', async () => {
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const runner = await makeUser(UserRole.RUNNER);
+      await legacyId(runner, '2026-01-01T08:00:00Z');
+      expect(await idChecks(runner)).toEqual([
+        { type: 'government_id', side: 'front', status: 'approved' },
+        { type: 'government_id', side: 'back', status: 'missing' },
+      ]);
+      await legacyId(runner, '2026-01-02T08:00:00Z');
+      expect((await idChecks(runner)).map((c) => c.status)).toEqual(['approved', 'approved']);
+      const selfie = await upload(runner, 'selfie');
+      await decide(admin, runner, selfie.id, { decision: 'approved' }).expect(200);
+      expect(await levelOf(runner)).toBe('2_id_verified');
+    });
+
+    it('one unlabelled plus one labelled side; a newer labelled pending side takes over and downgrades', async () => {
+      const admin = await makeUser(UserRole.ADMIN, 'Verifier');
+      const runner = await makeUser(UserRole.RUNNER);
+      await legacyId(runner, '2026-01-01T08:00:00Z');
+      const front = await upload(runner, 'government_id', 'front');
+      const selfie = await upload(runner, 'selfie');
+      await decide(admin, runner, front.id, { decision: 'approved' }).expect(200);
+      const last = await decide(admin, runner, selfie.id, { decision: 'approved' }).expect(200);
+      expect(last.body.runnerProfile.verificationLevel).toBe('2_id_verified');
+
+      await upload(runner, 'government_id', 'back');
+      expect(await idChecks(runner)).toEqual([
+        { type: 'government_id', side: 'front', status: 'approved' },
+        { type: 'government_id', side: 'back', status: 'pending' },
+      ]);
+      expect(await levelOf(runner)).toBe('1_basic');
+    });
+  });
+
   describe('A-7, A-8 / row 262: reviewerNote', () => {
     it('trimmed, blank -> null, over 500 is 400 reviewer_note_invalid (check stays pending)', async () => {
       const admin = await makeUser(UserRole.ADMIN, 'Verifier');
