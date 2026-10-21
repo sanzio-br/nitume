@@ -1400,3 +1400,27 @@ No FAIL findings.
 
 - Row 261: `Level 2 — ID verified` only when both National ID sides and the selfie are approved. Written in `_shared.md` §0 and §7. No runner spec said otherwise; the app shows the API's `verificationLevel` and never infers it (no code change). Edge cases (downgrade on re-upload or rejection, legacy `side = null` images, backfill) are admin AQ-38.
 - Row 262: the admin's reject note is internal, never shown to the runner. `v-onboard-id.md` (Rejected state) and `v-onboard-pending.md` (Never shown) no longer allow a "runner-safe reason": generic copy only. The runner app reads no `reviewerNote` today (checked). API need (admin A-8): runner-facing verification responses still carry `reviewerNote` and `reviewedBy`.
+
+## 25. RN-L1 spec addendum 2026-10-21 (rows 263, 266, 268), on `docs/runner-level2-legacy-spec`
+
+Spec-only. Core is built on `fix/core-runner-level2-missing` (`2c391fc`, `cd8b598`); the API (`level2Missing`, row-268 checks) on `feat/api-verification-answers` (not on `main` yet). Rows 269–274 stay open; nothing below depends on their answer except item F-6 (row 273). Addenda: `v-auth-otp.md`, `v-onboard-id.md`, `v-onboard-pending.md`, `v-profile.md`, `v-jobs.md` (each an "RN-L1 addendum" section), `_shared.md` §7 / §9.
+
+### Rulings
+- A side approved via an unlabelled photo is **done**: status `Verified` everywhere, never a thumbnail (the runner app shows no stored ID image at all), never selected or re-captured. Copy reused: chip `Verified`; one proposed caption `Verified` under an approved `v-onboard-id` tile.
+- `level2Missing` lists every Level 2 check whose newest record is not approved (missing, pending **or** rejected), so routing uses it to pick the checks and the per-check status to choose capture vs pending. Absent → records fallback through `fromRecords(…, summary:)`.
+- A drop to Level 1 shows no level and no new copy: the runner becomes not verified at the same moment, so the existing rejected / in-review copy on `v-onboard-pending`, `v-jobs` and `v-profile` applies (table in `v-onboard-pending.md`).
+
+### flutter-runner items (numbered)
+- F-1 (blocker) `services/onboarding_routing.dart`: route on `me.verification.level2Missing` + `checkFor(...).status` as `v-auth-otp.md` RN-L1; fallback when `null`: `fromRecords(records, summary: me.verification)` and `idStatusFor(side) == missing`. Remove the `idFront/idBack == null` test. Tests listed in the addendum.
+- F-2 (blocker) `onboard_pending_screen.dart`: load `account.me()` with `verifications()`; `VerificationRows(records, summary: me.verification)` → `fromRecords(records, summary: …)`; render from records alone if `me()` fails. Same screen serves Profile → `Verification documents`. Test: approved unlabelled record + labelled back approved + selfie approved → `National ID · Verified`, no `Upload again`.
+- F-3 (blocker) `onboard_id_screen.dart` `_load`: tile state from `docs.idStatusFor(side)` (with summary when `me()` succeeds); approved → `uploaded`, no thumbnail, not selectable, never targeted by the drop zone, `Continue →` counts it done. Test: unlabelled approved + no labelled front → front tile uploaded, back selected, drop zone `Back of your ID`.
+- F-4 (minor, proposed) `onboard_id_screen.dart`: no `Retake` / remove on any server-approved side; caption `Verified`.
+- F-5 (minor, proposed) `jobs_tab.dart`: after `_onWithdrawn` removes a card, `_load(silent: true)` (coalesced) so a dropped runner sees the verification card and disabled switch without a resume. Card logic itself re-checked: no change; add the test in `v-jobs.md` RN-L1.
+- F-6 (minor, proposed, depends on open row 273) `jobs_tab.dart`: when not verified the switch may go off, never on; disabled reason only while offline. Drop the item if the owner answers row 273 yes.
+- F-7 (when `v-profile` is built) verification line from `me.verification` only, as `v-profile.md` RN-L1.
+
+### Open owner rows touching runner screens (not decided)
+- 269 (levels 3 / 4): no runner change either way (the line shows no level while not verified).
+- 272: covered by the next load / poll.
+- 273: decides whether F-6 is needed; no runner copy until answered.
+- 274: customer-facing only.
