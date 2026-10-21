@@ -148,6 +148,14 @@ const build = (opts: { raceTo?: VerificationStatus; extra?: Row[]; areas?: strin
         : fallback,
     ),
   };
+  const emitted: { name: string; payload: Record<string, unknown> }[] = [];
+  const emitter = {
+    emitAsync: vi.fn((name: string, payload: Record<string, unknown>) => {
+      events.push(`emit:${name}`);
+      emitted.push({ name, payload });
+      return Promise.resolve([]);
+    }),
+  };
   const service = new RunnersService(
     profileRepo as never,
     verificationRepo as never,
@@ -156,6 +164,7 @@ const build = (opts: { raceTo?: VerificationStatus; extra?: Row[]; areas?: strin
     users as never,
     undefined,
     config as never,
+    emitter as never,
   );
   return {
     service,
@@ -168,6 +177,7 @@ const build = (opts: { raceTo?: VerificationStatus; extra?: Row[]; areas?: strin
     events,
     transaction,
     committed: () => committed,
+    emitted,
   };
 };
 
@@ -372,7 +382,20 @@ describe('A-4 / row 261: Level 2 needs ID front, ID back and selfie approved', (
       b.rows[0].status = id === 'v-front' ? VerificationStatus.PENDING : VerificationStatus.APPROVED;
       b.profiles[0].verificationLevel = VerificationLevel.TWO_ID_VERIFIED;
       await b.service.reviewVerification('rp-1', id, { decision: 'rejected' }, 'admin-1');
-      expect(b.events).toEqual(['verification.update', 'profile.lock', 'profile.update', 'commit']);
+      // Row 266: runner.level_dropped only after the commit (open offers are withdrawn by the errands module).
+      expect(b.events).toEqual([
+        'verification.update',
+        'profile.lock',
+        'profile.update',
+        'commit',
+        'emit:runner.level_dropped',
+      ]);
+      expect(b.emitted[0].payload).toMatchObject({
+        runnerProfileId: 'rp-1',
+        from: '2_id_verified',
+        to: '1_basic',
+        cause: 'decision',
+      });
       expect(b.profiles[0].verificationLevel).toBe(VerificationLevel.ONE_BASIC);
     }
   });
@@ -395,6 +418,7 @@ describe('A-4 / row 261: Level 2 needs ID front, ID back and selfie approved', (
     await b.service.reviewVerification('rp-1', 'v-front', { decision: 'rejected' }, 'admin-1');
     expect(b.profileRepo.update).not.toHaveBeenCalled();
     expect(b.profiles[0].verificationLevel).toBe(VerificationLevel.TWO_ID_VERIFIED);
+    expect(b.emitted).toEqual([]);
   });
 
   it('row 263: a rejection never touches levels 3 and 4', async () => {

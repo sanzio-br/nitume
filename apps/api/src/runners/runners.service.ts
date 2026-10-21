@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ApiError, conflict } from '../common/api-error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
@@ -34,6 +35,22 @@ import {
   meetsIdVerifiedRule,
   verificationSummaryOf,
 } from './verification-summary';
+
+/**
+ * Rows 263, 266 (owner, 2026-10-21): a runner dropped from `2_id_verified`
+ * to `1_basic`. Emitted after the change has committed (awaited, listeners
+ * never throw); the errands module withdraws the runner's open offers.
+ */
+export const RUNNER_LEVEL_DROPPED_EVENT = 'runner.level_dropped';
+
+export interface RunnerLevelDroppedEvent {
+  runnerProfileId: string;
+  from: VerificationLevel;
+  to: VerificationLevel;
+  /** `upload` | `decision`. */
+  cause: 'upload' | 'decision';
+  at: string;
+}
 
 /** Skills a runner may choose in the MVP (OA-18: Business Tasks not offered). */
 export const OFFERED_SKILLS: readonly RunnerSkill[] = [
@@ -258,6 +275,7 @@ export class RunnersService {
     @Inject(VERIFICATION_DOCUMENT_STORAGE)
     private readonly documents: VerificationDocumentStorage = new ConsoleVerificationDocumentStorage(),
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   async createForUser(
@@ -740,6 +758,7 @@ export class RunnersService {
       runnerProfileId: profile.id,
     });
     let saved: RunnerVerification;
+    let dropped = false;
     try {
       saved = await this.verifications.manager.transaction(async (manager) => {
         // Row 263: the profile lock comes before the insert (the insert's FK
@@ -755,7 +774,7 @@ export class RunnersService {
         );
         await this.logAccess(manager, row, VerificationDocumentAction.UPLOAD, userId, ip);
         // A new pending ID side or selfie is the newest record of its check: Level 2 -> 1.
-        await this.syncIdVerifiedLevel(manager, locked);
+        dropped = await this.syncIdVerifiedLevel(manager, locked);
         return row;
       });
     } catch (err) {
@@ -767,6 +786,9 @@ export class RunnersService {
         ),
       );
       throw err;
+    }
+    if (dropped) {
+      await this.levelDropped(profile.id, 'upload');
     }
     return toRunnerVerificationView(saved);
   }
@@ -1365,6 +1387,7 @@ export class RunnersService {
     adminUserId: string,
   ): Promise<AdminVerificationView> {
     const reviewerNote = reviewerNoteOf(review.reviewerNote);
+    let dropped = false;
     const verification = await this.verifications.manager.transaction(async (manager) => {
       const repo = manager.getRepository(RunnerVerification);
       const row = await repo.findOne({ where: { id: verificationId, runnerProfileId } });
@@ -1388,10 +1411,13 @@ export class RunnersService {
       }
       Object.assign(row, decided);
       if (ID_VERIFIED_TYPES.has(row.verificationType)) {
-        await this.syncIdVerifiedLevel(manager, await this.lockProfile(manager, row.runnerProfileId));
+        dropped = await this.syncIdVerifiedLevel(manager, await this.lockProfile(manager, row.runnerProfileId));
       }
       return row;
     });
+    if (dropped) {
+      await this.levelDropped(runnerProfileId, 'decision');
+    }
     const [view] = await this.adminVerificationViews([verification]);
     return view;
   }
@@ -1404,10 +1430,10 @@ export class RunnersService {
    * `2_id_verified` following `meetsIdVerifiedRule`. Levels 3 and 4 are
    * never changed here (owner question open).
    */
-  private async syncIdVerifiedLevel(manager: EntityManager, profile: RunnerProfile): Promise<void> {
+  private async syncIdVerifiedLevel(manager: EntityManager, profile: RunnerProfile): Promise<boolean> {
     const level = profile.verificationLevel;
     if (level !== VerificationLevel.ONE_BASIC && level !== VerificationLevel.TWO_ID_VERIFIED) {
-      return;
+      return false;
     }
     const rows = await manager.getRepository(RunnerVerification).find({
       where: { runnerProfileId: profile.id },
@@ -1418,6 +1444,18 @@ export class RunnersService {
       await manager.getRepository(RunnerProfile).update(profile.id, { verificationLevel: target });
       profile.verificationLevel = target;
     }
+    return target === VerificationLevel.ONE_BASIC && level === VerificationLevel.TWO_ID_VERIFIED;
+  }
+
+  /** After commit: tells the errands module (row 266). Listeners never throw. */
+  private async levelDropped(runnerProfileId: string, cause: RunnerLevelDroppedEvent['cause']): Promise<void> {
+    await this.events?.emitAsync(RUNNER_LEVEL_DROPPED_EVENT, {
+      runnerProfileId,
+      from: VerificationLevel.TWO_ID_VERIFIED,
+      to: VerificationLevel.ONE_BASIC,
+      cause,
+      at: new Date().toISOString(),
+    } satisfies RunnerLevelDroppedEvent);
   }
 }
 
