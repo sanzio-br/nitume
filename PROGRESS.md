@@ -466,7 +466,10 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   --database=<name>`). Reviewed READY (unit 828, e2e 148/148 on nitume_test). Dev DB: 0 runners change.
 - Admin feat/admin-verification-cards: one card per runner on the queue, reject dialog, level line from
   level2Missing, lazy-loaded panel. Re-audits PASS (matches-design), reviewed READY (293 tests).
-- Runner RN-L1: core-ui fix/core-runner-level2-missing (2c391fc, cd8b598) built; spec addendum and
-  flutter-runner still to do — until then a runner with only old unlabelled ID photos may be asked to re-upload.
+- API feat/api-verification-answers merged by the owner (f92c45c) and pushed.
+- Runner RN-L1 (old unlabelled ID photos, level2Missing): core fix/core-runner-level2-missing (2c391fc, cd8b598,
+  09b17f4), runner fix/runner-level2-legacy-ids (ee141be … a490a99), spec docs/runner-level2-legacy-spec;
+  re-audit PASS (four runner screens matches-design), reviewed READY (core 680, runner 152, customer 157).
+  F-6 waits on row 273; F-7 waits on the v-profile build.
 - Before production deploy: run the re-check dry run against production and show the owner the count.
-- Open owner rows: 267 wording, 269–274.
+- Open owner rows: 267 wording, 269–275.
