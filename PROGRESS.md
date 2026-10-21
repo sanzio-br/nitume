@@ -491,3 +491,22 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   feat/api-level-drop-followups → docs/verification-owner-answers-269 → docs/board-admin-verification.
 - Before production deploy: `npm run runners:recheck-level2` dry run against production, show the owner the count,
   then `-- --apply --database=<name>`.
+
+## 2026-10-21 (row 278) — verification table and documents drawer
+- Owner rows 276–284 answered (feed title/format; table redesign; images load and are logged when the drawer
+  opens; browser cache accepted; drawer; no date filter/sorting; HEIC shown as JPEG; short id needs NT or 5 chars).
+  Owner froze scope: no features beyond these.
+- API feat/api-verification-queue-filters: queue filters (area, level, search), applicationStatus, single-runner
+  endpoint, short-id rule, HEIC→JPEG view, purge deletes derived copies and keeps the original unless confirmed.
+  Reviewed READY (unit 900, e2e 168/168).
+- Admin feat/admin-verification-table: table of runners with filters + "View documents" drawer with inline images
+  and full-size viewer. Audit PASS (matches-design), reviewed READY (326 tests, build 498.26/500 kB).
+- Owner checks before/after deploy: row 280 Cache-Control on a live signed link; row 286 HEIC as JPEG in
+  Chrome/Edge/Firefox and the purge removing both copies (watch the first real purge log). Row 285 open.
+- Follow-ups (not started, scope frozen): bundle headroom 1.74 kB; focus return to the row on drawer close;
+  focus when switching drawers.
+- Final merge order (main a72d5ba): docs/admin-verification-reaudit → docs/admin-verification-answers →
+  feat/admin-verification-cards → docs/admin-verification-cards-audit → fix/core-runner-level2-missing →
+  fix/runner-level2-legacy-ids → docs/runner-level2-legacy-spec → feat/api-level-drop-followups →
+  docs/verification-owner-answers-269 → feat/api-verification-queue-filters → docs/admin-verification-table-spec →
+  feat/admin-verification-table → docs/admin-verification-table-audit → docs/board-admin-verification.
