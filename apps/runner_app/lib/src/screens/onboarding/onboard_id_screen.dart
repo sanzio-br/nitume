@@ -20,6 +20,9 @@ abstract final class OnboardIdCopy {
   static const takePhoto = 'Take photo';
   static const fromGallery = 'Choose from gallery';
   static const retake = 'Retake';
+
+  /// Caption under a side the reviewer approved (RN-L1, proposed).
+  static const verified = 'Verified';
   static const rejectedBoth =
       "Your ID photos couldn't be verified. Upload clear photos of both sides.";
   static String rejectedSide(VerificationDocumentSide side) =>
@@ -39,6 +42,10 @@ class _SideState {
 
   /// The newest record for this side was rejected and no new photo is in.
   bool rejected = false;
+
+  /// The server says this side is approved (labelled, or filled by an
+  /// approved unlabelled photo, row 268): done, never re-captured.
+  bool approved = false;
   bool tooLarge = false;
 
   bool get uploaded => state == CaptureState.uploaded;
@@ -80,20 +87,29 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// Tiles from the status of each side (`docs.idStatusFor`, RN-L1): the
+  /// API summary when `GET /runners/me` answers, else the records alone
+  /// (core applies the same row-268 rule). No stored image is ever shown.
   Future<void> _load() async {
+    final account = _s.account;
+    final me = account.me().then<RunnerMe?>((m) => m, onError: (_) => null);
     try {
+      final records = await account.verifications();
       final docs = RunnerVerificationDocuments.fromRecords(
-        await _s.account.verifications(),
+        records,
+        summary: (await me)?.verification,
       );
       for (final side in VerificationDocumentSide.values) {
-        final r = docs.idFor(side);
         final st = _sides[side]!;
-        switch (r?.status) {
-          case VerificationStatus.pending || VerificationStatus.approved:
+        switch (docs.idStatusFor(side)) {
+          case VerificationCheckStatus.approved:
             st.state = CaptureState.uploaded;
-          case VerificationStatus.rejected:
+            st.approved = true;
+          case VerificationCheckStatus.pending:
+            st.state = CaptureState.uploaded;
+          case VerificationCheckStatus.rejected:
             st.rejected = true;
-          case null:
+          case VerificationCheckStatus.missing:
             break;
         }
       }
@@ -151,7 +167,7 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
   );
 
   Future<void> _capture(VerificationDocumentSide side) async {
-    if (_capturing) return;
+    if (_capturing || _sides[side]!.approved) return;
     setState(() => _selected = side);
     final from = await _pickSource();
     if (from == null || !mounted) return;
@@ -270,6 +286,19 @@ class _OnboardIdScreenState extends State<OnboardIdScreen> {
 
   CaptureThumbnail _tile(VerificationDocumentSide side) {
     final st = _sides[side]!;
+    if (st.approved) {
+      // Done (RN-L1): no thumbnail, not selectable, no Retake. A new upload
+      // would replace the approved status (row 263 (a)).
+      return CaptureThumbnail(
+        key: ValueKey('id-tile-${side.wire}'),
+        state: CaptureState.uploaded,
+        label: side.label,
+        aspectRatio: 1.4,
+        showLabelOnPhoto: true,
+        semanticLabel: 'ID ${side.wire}',
+        caption: OnboardIdCopy.verified,
+      );
+    }
     final captured = st.state != CaptureState.empty;
     final CaptureIssue? issue = st.tooLarge
         ? CaptureIssue.tooLarge

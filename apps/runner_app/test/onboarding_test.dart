@@ -405,6 +405,132 @@ void main() {
       );
     });
 
+    group('RN-L1: approved sides are done', () {
+      Finder inTile(VerificationDocumentSide side, Finder f) => find.descendant(
+        of: find.byKey(ValueKey('id-tile-${side.wire}')),
+        matching: f,
+      );
+
+      void expectFrontDoneBackSelected(WidgetTester t) {
+        expect(
+          inTile(
+            _front,
+            find.byKey(const ValueKey('capture-selected-outline')),
+          ),
+          findsNothing,
+        );
+        expect(
+          inTile(_back, find.byKey(const ValueKey('capture-selected-outline'))),
+          findsOneWidget,
+        );
+        expect(inTile(_front, find.text('Verified')), findsOneWidget);
+        expect(inTile(_front, find.byType(IconButton)), findsNothing);
+        expect(inTile(_front, find.byType(Image)), findsNothing);
+        expect(
+          find.bySemanticsLabel('ID front, uploaded, Verified'),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('id-drop-zone')),
+            matching: find.text('Back of your ID'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Front of your ID'), findsNothing);
+      }
+
+      final legacy = verification(
+        RunnerVerificationType.governmentId,
+        VerificationStatus.approved,
+        id: 'legacy',
+        createdAt: DateTime.utc(2026, 1, 2),
+      );
+
+      testWidgets('unlabelled approved, no labelled front (records only): '
+          'front uploaded, back selected', (t) async {
+        final b = _recordsOnly();
+        b.account.records = [legacy];
+        await b.pumpScreen(t, const OnboardIdScreen());
+        expectFrontDoneBackSelected(t);
+        final cta = find.widgetWithText(NitumeButton, 'Continue →');
+        expect(t.widget<NitumeButton>(cta).onPressed, isNull);
+
+        // Only the back is captured; the approved front counts as done.
+        await _pickFromSheet(t, 'Take photo');
+        expect(b.account.uploads.map((u) => u.$2), [_back]);
+        expect(find.byKey(const ValueKey('id-drop-zone')), findsNothing);
+        expect(t.widget<NitumeButton>(cta).onPressed, isNotNull);
+      });
+
+      testWidgets('front approved in the API summary, never prompted even '
+          'when asked for', (t) async {
+        final b = TestBackend();
+        b.account.records = [legacy];
+        b.account.current = runnerMe(
+          verification: RunnerVerificationSummary(
+            verified: false,
+            checks: [
+              check(
+                RunnerVerificationType.governmentId,
+                VerificationCheckStatus.approved,
+                side: _front,
+              ),
+              check(
+                RunnerVerificationType.governmentId,
+                VerificationCheckStatus.missing,
+                side: _back,
+              ),
+            ],
+          ),
+        );
+        await b.pumpScreen(t, const OnboardIdScreen(initialSide: _front));
+        expectFrontDoneBackSelected(t);
+
+        // Tapping the approved tile selects nothing.
+        await t.tap(find.byKey(const ValueKey('id-tile-front')));
+        await t.pump();
+        expect(find.text('Back of your ID'), findsOneWidget);
+      });
+
+      testWidgets('both approved: no drop zone, no Retake, Continue on', (
+        t,
+      ) async {
+        final b = TestBackend();
+        b.account.records = [
+          _id(VerificationStatus.approved, _front),
+          _id(VerificationStatus.approved, _back),
+        ];
+        b.account.current = runnerMe(
+          verification: summary(status: VerificationCheckStatus.approved),
+        );
+        await b.pumpScreen(t, const OnboardIdScreen());
+        expect(find.byKey(const ValueKey('id-drop-zone')), findsNothing);
+        expect(find.byTooltip('Retake'), findsNothing);
+        expect(find.text('Verified'), findsNWidgets(2));
+        expect(
+          t
+              .widget<NitumeButton>(
+                find.widgetWithText(NitumeButton, 'Continue →'),
+              )
+              .onPressed,
+          isNotNull,
+        );
+      });
+
+      testWidgets('a pending side keeps its Retake', (t) async {
+        final b = _recordsOnly();
+        b.account.records = [
+          _id(VerificationStatus.pending, _front),
+          _id(VerificationStatus.approved, _back),
+        ];
+        await b.pumpScreen(t, const OnboardIdScreen());
+        expect(inTile(_front, find.byTooltip('Retake')), findsOneWidget);
+        expect(inTile(_back, find.byTooltip('Retake')), findsNothing);
+        expect(inTile(_front, find.text('Verified')), findsNothing);
+      });
+    });
+
     testWidgets('first run: back asks Leave verification?', (t) async {
       final b = _recordsOnly();
       b.account.records = [];
