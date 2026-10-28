@@ -4,7 +4,6 @@ import { HomeComponent } from './pages/home/home.component';
 import { BusinessComponent } from './pages/business/business.component';
 import { DiasporaComponent } from './pages/diaspora/diaspora.component';
 import { RunnerComponent } from './pages/runner/runner.component';
-import { AuthComponent } from './pages/auth/auth.component';
 
 export const routes: Routes = [
   {
@@ -15,8 +14,13 @@ export const routes: Routes = [
       { path: 'business', component: BusinessComponent },
       { path: 'diaspora', component: DiasporaComponent },
       { path: 'runner', component: RunnerComponent },
-      { path: 'auth', component: AuthComponent },
     ],
+  },
+  // WQ-12: the role chooser replaces the old /auth page; no marketing frame.
+  {
+    path: 'auth',
+    data: { title: 'Sign in' },
+    loadComponent: () => import('./pages/auth-chooser/auth-chooser.page').then((m) => m.AuthChooserPage),
   },
   // Signed-in app: lazy only, so the marketing bundle does not grow.
   { path: 'app', loadChildren: () => import('./app-area/app-area.routes').then((m) => m.APP_AREA_ROUTES) },

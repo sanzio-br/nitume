@@ -13,16 +13,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { NmToastHost } from '../shared/ui/overlay/toast-host.component';
-
-export function focusPageHeading(host: HTMLElement): void {
-  const active = host.ownerDocument.activeElement;
-  if (active && active !== host.ownerDocument.body && host.contains(active)) return;
-  const heading = host.querySelector('h1');
-  if (!heading) return;
-  if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
-  // Programmatic focus: no focus ring.
-  heading.focus({ preventScroll: true, focusVisible: false } as FocusOptions);
-}
+import { focusPageHeading } from './focus-heading';
 
 @Component({
   selector: 'app-area',
