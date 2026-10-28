@@ -76,8 +76,11 @@ export class TokenService {
     };
   }
 
-  /** Verify + rotate a refresh token; returns a fresh token pair. */
-  async rotate(refreshToken: string): Promise<TokenPair> {
+  /**
+   * Checks a refresh token is well-formed, signed and still a live session
+   * (not rotated or revoked) without consuming it. Returns its payload.
+   */
+  async verifyRefresh(refreshToken: string): Promise<JwtPayload> {
     let payload: JwtPayload;
     try {
       payload = this.jwt.verify<JwtPayload>(refreshToken, {
@@ -93,6 +96,12 @@ export class TokenService {
     if (!stored || stored !== this.hashToken(refreshToken)) {
       throw new UnauthorizedException('Refresh token revoked or expired');
     }
+    return payload;
+  }
+
+  /** Verify + rotate a refresh token; returns a fresh token pair. */
+  async rotate(refreshToken: string): Promise<TokenPair> {
+    const payload = await this.verifyRefresh(refreshToken);
     // Rotation: the used refresh token is single-use.
     await this.redis.del(refreshSessionKey(payload.sub, payload.jti));
     return this.issueTokenPair({
