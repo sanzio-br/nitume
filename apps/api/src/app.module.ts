@@ -19,6 +19,7 @@ import { MatchingModule } from './matching/matching.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RunnersModule } from './runners/runners.module';
 import { UsersModule } from './users/users.module';
+import { AdminModule } from './admin/admin.module';
 import { EvidenceModule } from './evidence/evidence.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -52,6 +53,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
     CustomersModule,
     RunnersModule,
     AuthModule,
+    AdminModule,
     ErrandsModule,
     MatchingModule,
     PaymentsModule,

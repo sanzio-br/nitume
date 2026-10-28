@@ -13,6 +13,6 @@ import { UsersService } from './users.service';
   imports: [TypeOrmModule.forFeature([User, Device, UserStatusHistory])],
   controllers: [UsersController],
   providers: [UsersService, DevicesService, UserAccessService, UserStatusStore],
-  exports: [UsersService, DevicesService, UserAccessService],
+  exports: [UsersService, DevicesService, UserAccessService, UserStatusStore],
 })
 export class UsersModule {}
