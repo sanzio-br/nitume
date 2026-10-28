@@ -515,5 +515,7 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 
 - Owner asked for every customer and runner app feature on the website. 14 feature-group issues (#5–#18) were opened on GitHub, each with a statement, a description and PR acceptance criteria, including mandatory Vitest tests with 0 failures. Owner decisions are recorded on BOARD (W-Q0…W-Q4, Q-W1…Q-W3, WQ-1…WQ-11).
 - Completed: API web sign-in with an httpOnly refresh cookie (`/api/v1/auth/web/*`, `WEB_ORIGINS`), PR #20 (part of #6). Unit 923/923, e2e 175/175. No schema change. Deploy must set `WEB_ORIGINS`.
-- In progress: #5 web UI kit (spec, plus gap report G5-1…G5-41, being built), #6 auth and shell spec.
+- Completed: #5 web UI kit (tokens, components, overlays, status maps, formatters and pipes, RealtimeService, LiveMapComponent), PR #26. Website tests 15 files / 164 tests, 0 failures; design-auditor PASS 41/41; reviewer READY. Deferred: the Maps key (WQ-1, placeholder shown), AdvancedMarkerElement follow-up, WQ-2 customer time zones.
+- Completed (API, for #21/#23): refresh rejects suspended accounts (PR #22) and access tokens of suspended accounts are refused on HTTP and Socket.IO (PR #25). Owner opened #24 (admin suspend action, schema approved).
+- In progress: #6 auth and shell (specced), #24 API part.
 - Deferred: #19 CORS/Socket.IO origin allowlist (follow-up); Google Maps browser key (WQ-1) and Firebase web config / VAPID key (WQ-4) to be provided by the owner.
