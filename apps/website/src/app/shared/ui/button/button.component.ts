@@ -2,6 +2,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
+  booleanAttribute,
   Component,
   computed,
   effect,
@@ -45,7 +46,7 @@ export class NmButton {
    * Link inside running text (legal line): no visual box, inherits the line
    * height; the 48×48 hit area stays (small size).
    */
-  readonly inline = input(false);
+  readonly inline = input(false, { transform: booleanAttribute });
 
   /** Activation (click, Enter, Space). Not emitted while disabled or loading. */
   readonly pressed = output<MouseEvent>();

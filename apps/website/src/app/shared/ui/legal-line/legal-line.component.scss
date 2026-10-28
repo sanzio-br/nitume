@@ -1,0 +1,11 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-legal {
+  @include nm-type(resend);
+  margin: 0;
+  text-align: left;
+}

@@ -22,3 +22,6 @@ export * from './pushed-header/pushed-header.component';
 export * from './top-bar/top-bar.component';
 export * from './auth-frame/auth-frame.component';
 export * from './links';
+export * from './otp-field/otp-field.component';
+export * from './otp-resend-line/otp-resend-line.component';
+export * from './legal-line/legal-line.component';
