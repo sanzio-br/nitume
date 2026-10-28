@@ -142,23 +142,4 @@ describe('UsersService access and status (issue #23)', () => {
     const service = new UsersService({ findOne: vi.fn(() => Promise.resolve(null)) } as never);
     expect(await service.accessOf('nope')).toBeNull();
   });
-
-  it('updateStatus writes a changed status and returns the previous one', async () => {
-    const repo = {
-      findOne: vi.fn(() => Promise.resolve(user())),
-      update: vi.fn(() => Promise.resolve({ affected: 1 })),
-    };
-    const service = new UsersService(repo as never);
-    expect(await service.updateStatus('u-1', UserStatus.SUSPENDED)).toBe(UserStatus.ACTIVE);
-    expect(repo.update).toHaveBeenCalledWith({ id: 'u-1' }, { status: UserStatus.SUSPENDED });
-  });
-
-  it('updateStatus skips the write when unchanged and is null for a missing user', async () => {
-    const repo = { findOne: vi.fn(() => Promise.resolve(user())), update: vi.fn() };
-    const service = new UsersService(repo as never);
-    expect(await service.updateStatus('u-1', UserStatus.ACTIVE)).toBe(UserStatus.ACTIVE);
-    expect(repo.update).not.toHaveBeenCalled();
-    repo.findOne.mockResolvedValueOnce(null as never);
-    expect(await service.updateStatus('nope', UserStatus.SUSPENDED)).toBeNull();
-  });
 });

@@ -3,6 +3,18 @@ import Redis from 'ioredis';
 
 export const REDIS_CLIENT = 'REDIS_CLIENT';
 
+const SET_IF_NOT_OLDER_SCRIPT = `
+local cur = redis.call('GET', KEYS[1])
+if cur then
+  local ok, obj = pcall(cjson.decode, cur)
+  if ok and type(obj) == 'table' and type(obj.v) == 'number' and obj.v > tonumber(ARGV[2]) then
+    return 0
+  end
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[3]))
+return 1
+`;
+
 @Injectable()
 export class RedisService {
   constructor(@Inject(REDIS_CLIENT) private readonly client: Redis) {}
@@ -84,6 +96,17 @@ export class RedisService {
       }
     } while (cursor !== '0');
     return deleted;
+  }
+
+  /**
+   * SET with a TTL unless the stored value is a JSON object whose numeric `v`
+   * is greater than `version` (atomic, Lua). Lets writers that commit in
+   * order but reach Redis out of order keep the newest value; a missing,
+   * unversioned or malformed entry is overwritten. True when written.
+   */
+  async setIfNotOlder(key: string, value: string, version: number, ttlSeconds: number): Promise<boolean> {
+    const written = await this.client.eval(SET_IF_NOT_OLDER_SCRIPT, 1, key, value, version, ttlSeconds);
+    return written === 1;
   }
 
   /** Runs a Lua script atomically (EVAL). */

@@ -78,22 +78,6 @@ export class UsersService {
     return row ? { status: row.status, role: row.role, phone: row.phone } : null;
   }
 
-  /**
-   * Writes the account status and returns the previous one (null if no such
-   * user). Call it through `UserAccessService.setStatus`, which also
-   * refreshes the access cache and disconnects live sockets (issue #23).
-   */
-  async updateStatus(id: string, status: UserStatus): Promise<UserStatus | null> {
-    const before = await this.statusOf(id);
-    if (before === null) {
-      return null;
-    }
-    if (before !== status) {
-      await this.users.update({ id }, { status });
-    }
-    return before;
-  }
-
   findByPhone(phone: string): Promise<User | null> {
     return this.users.findOne({ where: { phone } });
   }
