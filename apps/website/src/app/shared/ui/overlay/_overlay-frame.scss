@@ -1,0 +1,27 @@
+// Shared overlay frame: fixed layer, blue 50% scrim (row 38), fade 150ms.
+// Loaded after the component has configured the tokens module.
+@use '../../../../styles/tokens' as *;
+
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  animation: nm-overlay-fade 150ms ease-out;
+
+  @include nm-reduced-motion {
+    animation: none;
+  }
+}
+
+.nm-overlay__scrim {
+  position: absolute;
+  inset: 0;
+  background-color: var(--nitume-scrim);
+}
+
+@keyframes nm-overlay-fade {
+  from {
+    opacity: 0;
+  }
+}
