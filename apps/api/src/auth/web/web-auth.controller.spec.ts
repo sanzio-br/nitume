@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../common/api-error';
 import { WebAuthController } from './web-auth.controller';
@@ -72,6 +72,14 @@ describe('WebAuthController (WQ-8)', () => {
       refresh: vi.fn(() => Promise.reject(new UnauthorizedException('Refresh token revoked or expired'))),
     });
     expect(await codeOf(controller.refresh(req, res))).toBe('401 refresh_invalid');
+    expect(cookie.clear).toHaveBeenCalledWith(res);
+    expect(cookie.set).not.toHaveBeenCalled();
+  });
+
+  it('refresh for a suspended account keeps 401 account_suspended and clears the cookie (issue #21)', async () => {
+    const suspended = new ApiError(HttpStatus.UNAUTHORIZED, 'account_suspended', 'Account is suspended or banned');
+    const { controller, cookie, res, req } = build({ refresh: vi.fn(() => Promise.reject(suspended)) });
+    expect(await codeOf(controller.refresh(req, res))).toBe('401 account_suspended');
     expect(cookie.clear).toHaveBeenCalledWith(res);
     expect(cookie.set).not.toHaveBeenCalled();
   });

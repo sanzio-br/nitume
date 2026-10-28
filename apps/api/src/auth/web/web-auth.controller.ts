@@ -77,7 +77,10 @@ export class WebAuthController {
     return this.startSession(res, result);
   }
 
-  /** Rotates the cookie exactly like `/auth/refresh`; any failure clears it. */
+  /**
+   * Rotates the cookie exactly like `/auth/refresh`; any failure clears it.
+   * A suspended or banned account answers 401 `account_suspended` (issue #21).
+   */
   @Public()
   @Post('refresh')
   async refresh(
@@ -93,7 +96,8 @@ export class WebAuthController {
       pair = await this.auth.refresh(current);
     } catch (err) {
       this.cookie.clear(res);
-      if (err instanceof HttpException && err.getStatus() === 401) {
+      // Coded errors (e.g. `account_suspended`, issue #21) keep their code.
+      if (err instanceof HttpException && !(err instanceof ApiError) && err.getStatus() === 401) {
         throw new ApiError(HttpStatus.UNAUTHORIZED, 'refresh_invalid', err.message);
       }
       throw err;

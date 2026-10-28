@@ -53,6 +53,12 @@ export class UsersService {
     return this.users.findOne({ where: { id } });
   }
 
+  /** Account status only (primary-key lookup, one column); null if no such user. */
+  async statusOf(id: string): Promise<UserStatus | null> {
+    const row = await this.users.findOne({ where: { id }, select: { id: true, status: true } });
+    return row?.status ?? null;
+  }
+
   findByPhone(phone: string): Promise<User | null> {
     return this.users.findOne({ where: { phone } });
   }
