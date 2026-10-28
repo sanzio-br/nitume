@@ -64,7 +64,7 @@ describe('UserAccessService.accessOf (issue #23)', () => {
     expect(users.accessOf).toHaveBeenCalledTimes(1);
   });
 
-  it('documents a short fallback TTL (WQ-21, proposed 60 s)', () => {
+  it('uses the 60 s fallback TTL decided by the owner (WQ-21, 2026-10-28)', () => {
     expect(USER_ACCESS_CACHE_TTL_SECONDS).toBe(60);
   });
 

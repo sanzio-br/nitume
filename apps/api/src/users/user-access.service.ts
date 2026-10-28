@@ -8,7 +8,8 @@ import { UserAccess, UsersService } from './users.service';
  * Issue #23 (WQ-20): fallback lifetime of a cached account status. Every
  * status change made through `UserAccessService.setStatus` overwrites the
  * cache at once, so the TTL only bounds staleness after a change made
- * outside the API (SQL, the seed script). PROPOSED, pending owner (WQ-21).
+ * outside the API (SQL, the seed script). Decided: owner WQ-21, 2026-10-28,
+ * 60 seconds.
  */
 export const USER_ACCESS_CACHE_TTL_SECONDS = 60;
 
