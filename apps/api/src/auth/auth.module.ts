@@ -25,6 +25,9 @@ import { AfricasTalkingOtpSender } from './otp-sender/africas-talking-otp-sender
 import { ConsoleOtpSender } from './otp-sender/console-otp-sender';
 import { otpSenderProvider } from './otp-sender/otp-sender.provider';
 import { TokenService } from './token.service';
+import { RefreshCookieService } from './web/refresh-cookie.service';
+import { WebAuthController } from './web/web-auth.controller';
+import { WebOriginGuard } from './web/web-origin.guard';
 
 @Module({
   imports: [
@@ -61,7 +64,7 @@ import { TokenService } from './token.service';
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, WebAuthController],
   providers: [
     AuthService,
     TokenService,
@@ -71,6 +74,8 @@ import { TokenService } from './token.service';
     AfricasTalkingOtpSender,
     otpSenderProvider,
     OtpThrottlerGuard,
+    RefreshCookieService,
+    WebOriginGuard,
   ],
   exports: [AuthService],
 })
