@@ -16,6 +16,13 @@ export interface PublicUser {
   createdAt: Date;
 }
 
+/** What an authenticated request needs from the account (issue #23). */
+export interface UserAccess {
+  status: UserStatus;
+  role: UserRole;
+  phone: string;
+}
+
 export const toPublicUser = (user: User): PublicUser => ({
   id: user.id,
   phone: user.phone,
@@ -57,6 +64,34 @@ export class UsersService {
   async statusOf(id: string): Promise<UserStatus | null> {
     const row = await this.users.findOne({ where: { id }, select: { id: true, status: true } });
     return row?.status ?? null;
+  }
+
+  /**
+   * Status, role and phone only (primary-key lookup); null if no such user.
+   * Uncached: request auth reads it through `UserAccessService`.
+   */
+  async accessOf(id: string): Promise<UserAccess | null> {
+    const row = await this.users.findOne({
+      where: { id },
+      select: { id: true, status: true, role: true, phone: true },
+    });
+    return row ? { status: row.status, role: row.role, phone: row.phone } : null;
+  }
+
+  /**
+   * Writes the account status and returns the previous one (null if no such
+   * user). Call it through `UserAccessService.setStatus`, which also
+   * refreshes the access cache and disconnects live sockets (issue #23).
+   */
+  async updateStatus(id: string, status: UserStatus): Promise<UserStatus | null> {
+    const before = await this.statusOf(id);
+    if (before === null) {
+      return null;
+    }
+    if (before !== status) {
+      await this.users.update({ id }, { status });
+    }
+    return before;
   }
 
   findByPhone(phone: string): Promise<User | null> {
