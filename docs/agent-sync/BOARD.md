@@ -547,9 +547,9 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | WQ-5 | design-auditor (#5) | Marketing stylesheet drift (22px radius, slate inputs) | OPEN — recommended: fix in a later website audit |
 | WQ-7 | design-auditor (#5) | Fira Code 700 weight | ANSWERED: add it |
 | WQ-8 | design-auditor (#6) | Web token storage | ANSWERED: access token in memory, refresh token in an httpOnly cookie (API change) |
-| WQ-9 | api-contract (#6) | Production domains: SameSite=Strict refresh cookie only works if the website and API share a registrable domain (e.g. nitume.co.ke / api.nitume.co.ke); otherwise SameSite=None is needed | OPEN — recommended: same registrable domain, keep Strict |
-| WQ-10 | api-contract (#6) | Narrow the credential-free CORS for unlisted origins (still reflected) to an allowlist, including the admin origin? | OPEN — recommended: yes, as a follow-up |
-| WQ-11 | api-contract (#6) | Narrow the Socket.IO gateway cors {origin: true, credentials: true} to the WEB_ORIGINS allowlist? | OPEN — recommended: yes, as a follow-up |
+| WQ-9 | api-contract (#6) | Production domains: SameSite=Strict refresh cookie only works if the website and API share a registrable domain (e.g. nitume.co.ke / api.nitume.co.ke); otherwise SameSite=None is needed | ANSWERED 2026-10-28: same registrable domain, keep SameSite=Strict |
+| WQ-10 | api-contract (#6) | Narrow the credential-free CORS for unlisted origins (still reflected) to an allowlist, including the admin origin? | ANSWERED 2026-10-28: yes, follow-up issue |
+| WQ-11 | api-contract (#6) | Narrow the Socket.IO gateway cors {origin: true, credentials: true} to the WEB_ORIGINS allowlist? | ANSWERED 2026-10-28: yes, follow-up issue |
 
 ## Session log
 
