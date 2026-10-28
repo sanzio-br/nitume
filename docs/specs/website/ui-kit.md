@@ -466,7 +466,7 @@ connect(): Promise<void>;
 disconnect(): void;
 joinErrand(errandId: string): Promise<boolean>;   // emits errand:join, resolves ack.ok; false (room kept for re-join) while not connected
 leaveErrand(errandId: string): void;              // forgets the room; emits errand:leave when connected
-showReconnecting(delayMs: number): Signal<boolean>; // true once state has been non-connected for delayMs (runner 5000)
+showReconnecting(delayMs: number): Signal<boolean>; // true once the service has been trying (connecting or reconnecting) for delayMs without reaching connected; false on connected and on disconnected (not started, signed out, stub provider). Runner 5000. Flutter jobs_tab `_syncReconnecting`. Listener removed when the caller is destroyed
 
 // server → client streams (RxJS Observable, hot, no replay)
 locationUpdates$, statusChanges$, evidenceUploads$, priceChangeRequests$, quoteReissues$,
@@ -516,7 +516,7 @@ Rooms: `errand:{errandId}` (joined by the client), `runner:{runnerProfileId}:sta
 ### 6.6 `Reconnecting…` state
 
 - Customer `v-track`: a 12px slate-600 line `Reconnecting…` under the map while not connected (view spec).
-- Runner: `nm-notice` `Reconnecting…` after 5 s disconnected (`showReconnecting(5000)`), under the availability card on `v-jobs`.
+- Runner: `nm-notice` `Reconnecting…` after 5 s of trying to connect (`connecting` or `reconnecting`, `showReconnecting(5000)`), under the availability card on `v-jobs`. A deliberate `disconnected` (before `connect()`, after log out) never shows it (Flutter `jobs_tab.dart` `_syncReconnecting`).
 - The ellipsis is the single character `…` (U+2026).
 
 ---
@@ -551,7 +551,7 @@ Radius r-m, `overflow:hidden`, 1px slate-line border, height from the input. ETA
 - Options: `disableDefaultUI: true` (no map-type, zoom, street-view, fullscreen, compass controls), `clickableIcons: false`, `gestureHandling: 'cooperative'` (web adaptation: page scroll is not captured; Flutter has gestures on), `keyboardShortcuts: true`.
 - Markers: start = blue teardrop pin, end = green teardrop pin (mockup `.pin`: 14px square with three rounded corners turned −45°, tip at bottom centre; anchor bottom-centre), runner = 16px green dot with a 3px white ring (anchor centre, `zIndex` 2). Marker SVGs are built at runtime with colours read from the CSS custom properties (`getComputedStyle(document.documentElement).getPropertyValue('--nitume-green')`), so no hex lives in the component. No marker shadow. Marker clicks do nothing.
 - Route: a straight dashed blue polyline (8px on, 6px off via repeated line symbols) from `start` (or the runner when there is no start) to `end`; in the self variant from `runner` to `routeTo`. Not a road route (Directions API not approved).
-- Camera: on first data, fit bounds of all present points with `fitPadding`; single point → centre at zoom 14. Re-fit (force) when `start` or `end` changes. After each runner move completes, re-fit only if the runner is outside the visible bounds.
+- Camera: on first data, fit bounds of all present points with `fitPadding`; single point → centre at zoom 15 (Flutter `cameraFor`; the map's initial camera, before any fit, is zoom 14 at the first point or Nairobi CBD). Re-fit (force) when `start` or `end` changes. After each runner move completes, re-fit only if the runner is outside the visible bounds.
 - **Animation, not re-render** (System Design §5, §7.1): when `runner` changes from one point to another, the marker glides linearly from its currently shown position to the new one over `moveDurationMs` using `requestAnimationFrame`, updating only the marker's position (`marker.setPosition`, through the `map-marker` `[position]` binding or the `MapMarker` instance). A new point during a glide starts a new glide from the current shown position. First point: placed directly (no glide). `runner → null`: stop the animation and remove the marker at once. The `google.maps.Map` instance and the other markers are untouched by runner moves.
 - Respect `prefers-reduced-motion: reduce`: jump to the new position without gliding (web adaptation).
 
@@ -707,14 +707,14 @@ Every item below is a separate `it(...)`. Component tests use `TestBed` + the re
 55. Events from a stale socket (after a reconnect) are ignored.
 56. `disconnect()` stops retries, clears rooms, state `disconnected`.
 57. Window `online` while reconnecting triggers an immediate retry.
-58. `showReconnecting(5000)` turns true only after 5 s of non-connected state and false again on `connected`.
+58. `showReconnecting(5000)` turns true only after 5 s of `connecting`/`reconnecting` and false again on `connected`; it stays false while `disconnected` (before `connect()`, after `disconnect()`, stub provider returning `null`).
 
 ### 12.11 `LiveMapComponent` (Maps API stubbed: a fake `google.maps` namespace with spy `Map`, `Marker`, `Polyline`, `LatLngBounds`)
 59. **The map is constructed exactly once**; changing `runner` several times does not call the `Map` constructor again or re-create the start/end markers.
 60. **Marker moves**: with `requestAnimationFrame` and timers faked, a new `runner` point produces intermediate `setPosition` calls and ends exactly at the new point after `moveDurationMs`.
 61. First runner point is placed without a glide; `runner → null` removes the marker immediately and keeps no position (a later point is placed, not glided).
 62. A new point mid-glide restarts from the current shown position.
-63. Camera: initial fit with padding 40; single point → zoom 14; refit forced when `start`/`end` change; after a move, refit only when the runner is outside the stubbed bounds.
+63. Camera: initial fit with padding 40; single point → zoom 15 (initial camera zoom 14); refit forced when `start`/`end` change; after a move, refit only when the runner is outside the stubbed bounds.
 64. Self variant: the polyline runs `runner → routeTo`; default runs `start (or runner) → end`.
 65. ETA chip renders `etaLabel` in Fira Code and hides when null; overlay slot renders.
 66. No key (`mapsApiKey: ''`) or loader `unavailable` → blue-050 placeholder with `role="img"` and the aria label; the Maps script is never requested.
