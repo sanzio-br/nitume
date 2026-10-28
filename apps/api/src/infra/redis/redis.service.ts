@@ -65,6 +65,27 @@ export class RedisService {
     return this.client.duplicate();
   }
 
+  /**
+   * Deletes every key matching a glob `pattern` (SCAN, never KEYS, so Redis is
+   * not blocked) and returns how many were removed. The pattern is relative to
+   * the configured key prefix, like every other key here: ioredis does not
+   * prefix SCAN patterns or strip returned names, so both are done here.
+   * Not atomic: a key created during the scan may survive.
+   */
+  async deleteMatching(pattern: string, count = 200): Promise<number> {
+    const prefix = this.client.options.keyPrefix ?? '';
+    let cursor = '0';
+    let deleted = 0;
+    do {
+      const [next, keys] = await this.client.scan(cursor, 'MATCH', `${escapeGlob(prefix)}${pattern}`, 'COUNT', count);
+      cursor = next;
+      if (keys.length > 0) {
+        deleted += await this.client.del(...keys.map((k) => k.slice(prefix.length)));
+      }
+    } while (cursor !== '0');
+    return deleted;
+  }
+
   /** Runs a Lua script atomically (EVAL). */
   async evalScript(script: string, keys: string[], args: (string | number)[]): Promise<unknown> {
     return this.client.eval(script, keys.length, ...keys, ...args);
@@ -79,3 +100,6 @@ export class RedisService {
     return value;
   }
 }
+
+/** Escapes Redis glob metacharacters so `value` matches only itself. */
+export const escapeGlob = (value: string): string => value.replace(/[*?[\]\\]/g, (c) => `\\${c}`);
