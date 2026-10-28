@@ -1,5 +1,5 @@
 // `nm-pushed-header` (auth-foundation §7.2; C-10 NitumePushedHeader): back
-// button, optional `pushed-title` h1, optional Fira Code `Step n of m`, or a
+// button, optional `pushed-title` h1, optional `Step n of m` (`num-meta`), or a
 // trailing slot (`[nmPushedTrailing]`).
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { NmNum } from '../../format/num.directive';

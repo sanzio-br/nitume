@@ -1,6 +1,6 @@
 // Customer and runner shells (customer-shell.md, runner-shell.md): the same
 // `nm-app-shell` configured by route `data.role`; realtime connects once on
-// first render. The shell starts no geolocation.
+// first render. The shell asks for no location permission (#15 decides).
 import { ChangeDetectionStrategy, Component, afterNextRender, inject } from '@angular/core';
 import { ActivatedRoute, RouterOutlet } from '@angular/router';
 import { routeRole } from '../../core/auth/guards';

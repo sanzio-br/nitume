@@ -1,6 +1,6 @@
 // The "other error" line of the sign-in screens (customer-v-auth-phone and
 // customer-v-auth-otp Layout): `error` style, role="alert", N minutes in
-// Fira Code for the rate limits, optional `Contact support` link.
+// N minutes in `nmNum` for the rate limits, optional `Contact support` link.
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { CONTACT_SUPPORT_LABEL, RATE_IN_PREFIX, RATE_LATER_SUFFIX, RATE_MIN_SUFFIX } from '../../core/auth/auth-copy';
 import { NmNum } from '../../shared/format/num.directive';

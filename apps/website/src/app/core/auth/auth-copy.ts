@@ -11,7 +11,7 @@ export const WRONG_ACCOUNT_COPY =
   'This number is registered as a customer account. Use another number, or contact support.';
 export const CONTACT_SUPPORT_LABEL = 'Contact support';
 
-/** `Too many code requests. Try again in N min.` (N in Fira Code) / `… later.` */
+/** `Too many code requests. Try again in N min.` (N in `nmNum`) / `… later.` */
 export const CODE_REQUESTS_PREFIX = 'Too many code requests. Try again';
 /** WQ-17 (owner, 2026-10-28): per-IP verify limit; `later` fallback approved. */
 export const VERIFY_ATTEMPTS_PREFIX = 'Too many attempts. Try again';
