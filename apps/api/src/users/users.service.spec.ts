@@ -122,3 +122,43 @@ describe('UsersService.idsMatching (row 278, AV-2)', () => {
     expect(h.calls[2]).toEqual({ kind: 'or', sql: 'strpos(u.phone, :digits) > 0', params: { digits: '712' } });
   });
 });
+
+describe('UsersService access and status (issue #23)', () => {
+  it('accessOf selects status, role and phone by primary key', async () => {
+    const repo = { findOne: vi.fn(() => Promise.resolve(user({ status: UserStatus.BANNED }))) };
+    const service = new UsersService(repo as never);
+    expect(await service.accessOf('u-1')).toEqual({
+      status: UserStatus.BANNED,
+      role: UserRole.CUSTOMER,
+      phone: '+254712345678',
+    });
+    expect(repo.findOne).toHaveBeenCalledWith({
+      where: { id: 'u-1' },
+      select: { id: true, status: true, role: true, phone: true },
+    });
+  });
+
+  it('accessOf is null for a missing user', async () => {
+    const service = new UsersService({ findOne: vi.fn(() => Promise.resolve(null)) } as never);
+    expect(await service.accessOf('nope')).toBeNull();
+  });
+
+  it('updateStatus writes a changed status and returns the previous one', async () => {
+    const repo = {
+      findOne: vi.fn(() => Promise.resolve(user())),
+      update: vi.fn(() => Promise.resolve({ affected: 1 })),
+    };
+    const service = new UsersService(repo as never);
+    expect(await service.updateStatus('u-1', UserStatus.SUSPENDED)).toBe(UserStatus.ACTIVE);
+    expect(repo.update).toHaveBeenCalledWith({ id: 'u-1' }, { status: UserStatus.SUSPENDED });
+  });
+
+  it('updateStatus skips the write when unchanged and is null for a missing user', async () => {
+    const repo = { findOne: vi.fn(() => Promise.resolve(user())), update: vi.fn() };
+    const service = new UsersService(repo as never);
+    expect(await service.updateStatus('u-1', UserStatus.ACTIVE)).toBe(UserStatus.ACTIVE);
+    expect(repo.update).not.toHaveBeenCalled();
+    repo.findOne.mockResolvedValueOnce(null as never);
+    expect(await service.updateStatus('nope', UserStatus.SUSPENDED)).toBeNull();
+  });
+});

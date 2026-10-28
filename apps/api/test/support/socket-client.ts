@@ -14,6 +14,8 @@ export interface TestSocket {
   waitFor<T = unknown>(event: string, match?: (data: T) => boolean, timeoutMs?: number): Promise<T>;
   /** True once the server closed the Socket.IO session (e.g. auth refused). */
   readonly closed: boolean;
+  /** The CONNECT_ERROR payload when the handshake middleware refused it. */
+  readonly connectError: { message: string; data?: unknown } | null;
   close(): void;
 }
 
@@ -27,11 +29,15 @@ export const connectSocket = (baseUrl: string, token: string | null, settleMs = 
     let nextAck = 1;
     let closed = false;
     let opened = false;
+    let connectError: { message: string; data?: unknown } | null = null;
 
     const api: TestSocket = {
       received,
       get closed() {
         return closed;
+      },
+      get connectError() {
+        return connectError;
       },
       emitWithAck<T>(event: string, data: unknown, timeoutMs = 5000): Promise<T> {
         const id = nextAck++;
@@ -79,6 +85,13 @@ export const connectSocket = (baseUrl: string, token: string | null, settleMs = 
         setTimeout(() => resolve(api), settleMs);
       } else if (msg.startsWith('41') || msg.startsWith('44')) {
         closed = true;
+        if (msg.startsWith('44')) {
+          try {
+            connectError = JSON.parse(msg.slice(2)) as { message: string; data?: unknown };
+          } catch {
+            connectError = { message: msg.slice(2) };
+          }
+        }
         if (!opened) {
           resolve(api);
         }
