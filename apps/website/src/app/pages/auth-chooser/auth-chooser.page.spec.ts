@@ -1,4 +1,6 @@
 // `/auth` role chooser (auth-foundation §6.7, F9.57, F9.58; WQ-12, WQ-24).
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import { Title } from '@angular/platform-browser';
 import { Router } from '@angular/router';
@@ -61,5 +63,14 @@ describe('/auth role chooser (#6)', () => {
     const h = await openApp('/auth', { restore: 'none' });
     expect(h.root().querySelector('app-splash [role="status"]')?.textContent).toBe('Loading');
     expect(h.root().querySelector('h1')).toBeNull();
+  });
+});
+
+describe('old /auth page (#6, WQ-12)', () => {
+  it('F9.57 (removal). the old AuthComponent and pages/auth/ no longer exist', () => {
+    const appDir = resolve(process.cwd(), 'src/app');
+    expect(existsSync(resolve(appDir, 'pages/auth'))).toBe(false);
+    const routesSource = readFileSync(resolve(appDir, 'app.routes.ts'), 'utf8');
+    expect(routesSource).not.toContain('AuthComponent');
   });
 });
