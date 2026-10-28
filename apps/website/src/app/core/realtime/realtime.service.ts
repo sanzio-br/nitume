@@ -46,6 +46,15 @@ import {
 
 type JoinResult = 'ok' | 'refused' | 'timeout';
 
+/** The caller's DestroyRef when called in an injection context, else null. */
+function callerDestroyRef(): DestroyRef | null {
+  try {
+    return inject(DestroyRef);
+  } catch {
+    return null;
+  }
+}
+
 /** Copy for the not-connected state (§6.6): single U+2026 ellipsis. */
 export const RECONNECTING_COPY = 'Reconnecting\u2026';
 
@@ -201,27 +210,42 @@ export class RealtimeService {
   }
 
   /**
-   * True once the state has been non-connected for `delayMs` (runner 5000);
-   * false again on `connected`. Copy: `Reconnecting…` (U+2026).
+   * True once the service has been trying to connect (`connecting` or
+   * `reconnecting`) for `delayMs` (runner 5000). `connected` and
+   * `disconnected` (signed out, never connected, stub provider) clear the
+   * timer and hide it (Flutter jobs_tab `_syncReconnecting`).
+   * Copy: `RECONNECTING_COPY` (U+2026).
+   *
+   * The listener is removed when the caller is destroyed: pass its
+   * `DestroyRef`, or call from an injection context (component field or
+   * constructor), where the caller's `DestroyRef` is used.
    */
-  showReconnecting(delayMs: number): Signal<boolean> {
+  showReconnecting(delayMs: number, destroyRef?: DestroyRef): Signal<boolean> {
     const visible = signal(false);
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const clear = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
     const onState = (state: RealtimeConnectionState) => {
-      if (state === 'connected') {
-        if (timer) clearTimeout(timer);
-        timer = null;
+      const trying = state === 'connecting' || state === 'reconnecting';
+      if (!trying) {
+        clear();
         visible.set(false);
         return;
       }
-      if (timer || visible()) return; // still down: keep counting from the first drop
-      timer = setTimeout(() => {
+      // Still trying: keep counting from the first attempt.
+      timer ??= setTimeout(() => {
         timer = null;
         visible.set(true);
       }, delayMs);
     };
     this.stateListeners.add(onState);
     onState(this.stateSignal());
+    (destroyRef ?? callerDestroyRef())?.onDestroy(() => {
+      this.stateListeners.delete(onState);
+      clear();
+    });
     return visible.asReadonly();
   }
 

@@ -1,3 +1,4 @@
+import { Component, DestroyRef, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { RECONNECTING_COPY, RealtimeService } from './realtime.service';
 import {
@@ -506,21 +507,28 @@ describe('RealtimeService (§12.10)', () => {
     expect(h.backoff).toHaveBeenCalledTimes(1);
   });
 
-  it('58. showReconnecting(5000) turns true only after 5 s non-connected and false again on connected', async () => {
-    const h = setup();
-    await connected(h);
+  it('58. showReconnecting(5000): true only after 5 s of trying (connecting/reconnecting); false on connected and disconnected; removed with the caller', async () => {
+    const h = setup(['t1', 't2', 't3', 't4', 't5', null]);
+
+    // Never connected (disconnected): never shown.
     const visible = h.service.showReconnecting(5000);
+    await vi.advanceTimersByTimeAsync(10000);
     expect(visible()).toBe(false);
 
-    h.last().fire('disconnect', 'transport close');
-    await vi.advanceTimersByTimeAsync(999); // still waiting for the backoff
+    await connected(h);
     expect(visible()).toBe(false);
-    await vi.advanceTimersByTimeAsync(1); // new socket, state reconnecting… connecting
+
+    // Trying for 5 s (reconnecting, then a new socket still connecting).
+    h.last().fire('disconnect', 'transport close');
+    await vi.advanceTimersByTimeAsync(999);
+    expect(visible()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1); // backoff over: new socket opened
     await vi.advanceTimersByTimeAsync(3999);
     expect(visible()).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(visible()).toBe(true);
 
+    // Connected hides it.
     h.last().fire('connect');
     expect(visible()).toBe(false);
 
@@ -530,6 +538,55 @@ describe('RealtimeService (§12.10)', () => {
     h.last().fire('connect');
     await vi.advanceTimersByTimeAsync(10000);
     expect(visible()).toBe(false);
-    expect('Reconnecting…').toHaveLength(13);
+
+    // After disconnect() (log out): hidden at once and stays hidden.
+    h.last().fire('disconnect', 'transport close');
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(visible()).toBe(true);
+    h.service.disconnect();
+    expect(visible()).toBe(false);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(visible()).toBe(false);
+
+    // Removed with the caller: a destroyed component's signal never turns true.
+    @Component({ template: '' })
+    class Caller {
+      readonly shown = inject(RealtimeService).showReconnecting(5000);
+    }
+    const fixture = TestBed.createComponent(Caller);
+    const callerSignal = fixture.componentInstance.shown;
+    await h.service.connect();
+    await vi.advanceTimersByTimeAsync(2000); // trying, timer running
+    fixture.destroy();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(callerSignal()).toBe(false);
+    expect(visible()).toBe(true); // the live listener still works
+
+    // An explicit DestroyRef works the same way.
+    const callbacks: (() => void)[] = [];
+    const ref = { onDestroy: (cb: () => void) => callbacks.push(cb) } as unknown as DestroyRef;
+    const explicit = h.service.showReconnecting(5000, ref);
+    callbacks.forEach((cb) => cb());
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(explicit()).toBe(false);
+
+    // Copy: one U+2026 character.
+    expect(RECONNECTING_COPY).toBe('Reconnecting\u2026');
+    expect(RECONNECTING_COPY).toHaveLength(13);
+    expect(RECONNECTING_COPY).not.toContain('...');
+  });
+
+  it('58 (stub provider). connect() with the #5 stub ends disconnected and never shows Reconnecting', async () => {
+    const opened: unknown[] = [];
+    TestBed.configureTestingModule({
+      providers: [{ provide: SOCKET_IO_FACTORY, useValue: (...args: unknown[]) => opened.push(args) }],
+    });
+    const service = TestBed.inject(RealtimeService);
+    const visible = service.showReconnecting(5000);
+    await service.connect();
+    expect(service.state()).toBe('disconnected');
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(visible()).toBe(false);
+    expect(opened).toHaveLength(0);
   });
 });
