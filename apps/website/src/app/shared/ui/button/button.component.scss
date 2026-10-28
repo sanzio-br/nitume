@@ -50,6 +50,10 @@
   }
 }
 
+:host(.nm-button--inline) {
+  display: inline;
+}
+
 :host(.nm-button--expand) .nm-btn {
   width: 100%;
 }
@@ -146,6 +150,16 @@
   min-width: var(--nitume-tap);
   min-height: var(--nitume-tap);
   padding: 12px 4px;
+}
+
+// --- Inline link in running text (legal line): the box collapses to the
+// text, the ::before hit area (small) keeps 48×48. ---
+.nm-btn--link.nm-btn--inline {
+  display: inline;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  line-height: inherit;
 }
 
 // --- Disabled ---

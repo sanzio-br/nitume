@@ -21,6 +21,7 @@ export type NmButtonSize = 'regular' | 'small';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.nm-button--expand]': 'expand()',
+    '[class.nm-button--inline]': 'inline()',
   },
 })
 export class NmButton {
@@ -34,6 +35,17 @@ export class NmButton {
   readonly type = input<'button' | 'submit'>('button');
   /** Renders an `<a>` with the same look, for navigation. */
   readonly href = input<string | null>(null);
+  /** Link target (e.g. `_blank` for an external page); links only. */
+  readonly target = input<string | null>(null);
+  /** Link `rel`; links only. */
+  readonly rel = input<string | null>(null);
+  /** Accessible name when it differs from the label (e.g. ` (opens in a new tab)`). */
+  readonly ariaLabel = input<string | null>(null);
+  /**
+   * Link inside running text (legal line): no visual box, inherits the line
+   * height; the 48×48 hit area stays (small size).
+   */
+  readonly inline = input(false);
 
   /** Activation (click, Enter, Space). Not emitted while disabled or loading. */
   readonly pressed = output<MouseEvent>();
@@ -50,6 +62,7 @@ export class NmButton {
     }
     if (this.disabled()) out.push('nm-btn--disabled');
     if (this.loading()) out.push('nm-btn--loading');
+    if (this.inline()) out.push('nm-btn--inline');
     return out.join(' ');
   });
 
