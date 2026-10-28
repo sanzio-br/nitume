@@ -510,3 +510,10 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   fix/runner-level2-legacy-ids → docs/runner-level2-legacy-spec → feat/api-level-drop-followups →
   docs/verification-owner-answers-269 → feat/api-verification-queue-filters → docs/admin-verification-table-spec →
   feat/admin-verification-table → docs/admin-verification-table-audit → docs/board-admin-verification.
+
+## 2026-10-28 — Website parity with the customer and runner apps (issues #5–#19)
+
+- Owner asked for every customer and runner app feature on the website. 14 feature-group issues (#5–#18) were opened on GitHub, each with a statement, a description and PR acceptance criteria, including mandatory Vitest tests with 0 failures. Owner decisions are recorded on BOARD (W-Q0…W-Q4, Q-W1…Q-W3, WQ-1…WQ-11).
+- Completed: API web sign-in with an httpOnly refresh cookie (`/api/v1/auth/web/*`, `WEB_ORIGINS`), PR #20 (part of #6). Unit 923/923, e2e 175/175. No schema change. Deploy must set `WEB_ORIGINS`.
+- In progress: #5 web UI kit (spec, plus gap report G5-1…G5-41, being built), #6 auth and shell spec.
+- Deferred: #19 CORS/Socket.IO origin allowlist (follow-up); Google Maps browser key (WQ-1) and Firebase web config / VAPID key (WQ-4) to be provided by the owner.
