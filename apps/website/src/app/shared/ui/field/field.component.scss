@@ -1,0 +1,83 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nm-field__label {
+  @include nm-type(field-label);
+}
+
+.nm-field__control {
+  position: relative;
+}
+
+.nm-field__input {
+  @include nm-type(field-input);
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 11px 14px;
+  background-color: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-s);
+
+  &::placeholder {
+    color: var(--nitume-slate-400);
+    opacity: 1;
+  }
+
+  &:focus {
+    border-color: var(--nitume-green);
+    @include nm-focus-ring(1px);
+  }
+}
+
+.nm-field__input--multiline {
+  resize: none;
+  overflow-y: auto;
+}
+
+// Money and phone: Fira Code input text.
+.nm-field__input--num {
+  @include nm-type(num, $size: 14.5px, $weight: 400);
+}
+
+// Persistent `KSh ` prefix inside the field (Flutter persistentPrefix).
+.nm-field__prefix {
+  @include nm-type(num, $size: 14.5px, $weight: 400, $color: slate-600);
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  transform: translateY(-50%);
+  white-space: pre;
+  pointer-events: none;
+}
+
+.nm-field__input--money {
+  padding-left: calc(15px + 4ch);
+}
+
+.nm-field__input--error {
+  border-color: var(--nitume-red);
+
+  &:focus {
+    border-color: var(--nitume-red);
+    outline: 2px solid var(--nitume-red);
+  }
+}
+
+.nm-field__error {
+  @include nm-type(error);
+}
+
+.nm-field__counter {
+  align-self: flex-end;
+}

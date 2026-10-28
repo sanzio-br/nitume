@@ -1,0 +1,54 @@
+<div class="nm-field">
+  @if (label(); as text) {
+    <label class="nm-field__label" [for]="id">{{ text }}</label>
+  }
+  <div class="nm-field__control">
+    @if (kind() === 'multiline') {
+      <textarea
+        class="nm-field__input nm-field__input--multiline"
+        [class.nm-field__input--error]="!!error()"
+        [id]="id"
+        [rows]="rows()"
+        [value]="value()"
+        [attr.placeholder]="placeholder()"
+        [attr.maxlength]="maxLength()"
+        [attr.autocomplete]="autocomplete()"
+        [disabled]="isDisabled()"
+        [readOnly]="readonly()"
+        [attr.aria-invalid]="error() ? 'true' : null"
+        [attr.aria-describedby]="error() ? errorId : null"
+        (input)="onInput($event)"
+        (blur)="onTouched()"
+      ></textarea>
+    } @else {
+      @if (kind() === 'money') {
+        <span class="nm-field__prefix" nmNum>KSh </span>
+      }
+      <input
+        class="nm-field__input"
+        [class.nm-field__input--num]="isNumeric()"
+        [class.nm-field__input--money]="kind() === 'money'"
+        [class.nm-field__input--error]="!!error()"
+        [id]="id"
+        [attr.type]="kind() === 'phone' ? 'tel' : 'text'"
+        [attr.inputmode]="kind() === 'money' ? 'numeric' : kind() === 'phone' ? 'tel' : null"
+        [attr.autocomplete]="kind() === 'phone' ? 'tel' : autocomplete()"
+        [value]="value()"
+        [attr.placeholder]="placeholder()"
+        [attr.maxlength]="maxLength()"
+        [disabled]="isDisabled()"
+        [readOnly]="readonly()"
+        [attr.aria-invalid]="error() ? 'true' : null"
+        [attr.aria-describedby]="error() ? errorId : null"
+        (input)="onInput($event)"
+        (blur)="onTouched()"
+      />
+    }
+  </div>
+  @if (error(); as message) {
+    <span class="nm-field__error" [id]="errorId" role="alert">{{ message }}</span>
+  }
+  @if (counter() && counterText(); as count) {
+    <span class="nm-field__counter" nmNum="meta-lg">{{ count }}</span>
+  }
+</div>

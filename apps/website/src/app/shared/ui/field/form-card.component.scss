@@ -1,0 +1,10 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-form-card__label {
+  @include nm-type(card-label);
+  margin-bottom: 10px;
+}

@@ -16,6 +16,7 @@ pnpm-debug.log*
 *.js.map
 *.css.map
 web/environments/*.local.ts
+apps/website/src/environments/*.local.ts
 
 # === Flutter / Dart ===
 .flutter-plugins

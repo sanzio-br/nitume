@@ -1,0 +1,34 @@
+<ng-template #body>
+  <span class="nm-li__body" [attr.aria-hidden]="clickable() ? 'true' : null">
+    <span class="nm-li__title" [class.nm-li__title--done]="done()">{{ title() }}</span>
+    @if (meta(); as m) {
+      <span class="nm-li__meta" nmNum="meta-lg">{{ m }}</span>
+    }
+  </span>
+  @if (progressText(); as p) {
+    <span
+      class="nm-li__progress"
+      nmNum="progress"
+      [class.nm-li__progress--complete]="complete()"
+      [attr.aria-hidden]="clickable() ? 'true' : null"
+      >{{ p }}</span
+    >
+  }
+</ng-template>
+
+@if (clickable()) {
+  <button type="button" class="nm-li nm-li--clickable" [attr.aria-label]="accessibleName()" (click)="activated.emit()">
+    <nm-checkbox [checked]="done()" [displayOnly]="true" />
+    <ng-container [ngTemplateOutlet]="body" />
+  </button>
+} @else {
+  <div class="nm-li">
+    <nm-checkbox
+      [checked]="done()"
+      [displayOnly]="!checkable()"
+      [ariaLabel]="title()"
+      (checkedChange)="onChecked($event)"
+    />
+    <ng-container [ngTemplateOutlet]="body" />
+  </div>
+}
