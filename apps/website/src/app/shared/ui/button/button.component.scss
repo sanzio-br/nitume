@@ -1,0 +1,216 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-block;
+  max-width: 100%;
+}
+
+:host(.nm-button--expand) {
+  display: block;
+  width: 100%;
+}
+
+/// Hover never applies to a disabled button.
+@mixin btn-hover {
+  &:not(.nm-btn--disabled) {
+    @include nm-hover {
+      @content;
+    }
+  }
+}
+
+.nm-btn {
+  @include nm-type(button);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--nitume-tap);
+  min-width: 64px;
+  max-width: 100%;
+  margin: 0;
+  padding: 12px 22px;
+  border: 1px solid transparent;
+  border-radius: var(--nitume-r-pill);
+  background-color: transparent;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+
+  @include nm-reduced-motion {
+    transition: none;
+  }
+}
+
+:host(.nm-button--expand) .nm-btn {
+  width: 100%;
+}
+
+.nm-btn__content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nm-btn__icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.nm-btn__label {
+  min-width: 0;
+}
+
+// --- Variants (fill / label / border) ---
+.nm-btn--primary {
+  background-color: var(--nitume-green);
+  color: var(--nitume-white);
+
+  @include btn-hover {
+    background-color: var(--nitume-green-700);
+  }
+}
+
+.nm-btn--secondary {
+  background-color: var(--nitume-blue);
+  color: var(--nitume-white);
+
+  @include btn-hover {
+    background-color: var(--nitume-blue-700);
+  }
+}
+
+.nm-btn--outline {
+  background-color: var(--nitume-white);
+  color: var(--nitume-blue);
+  border-color: var(--nitume-slate-line);
+
+  @include btn-hover {
+    border-color: var(--nitume-blue);
+  }
+
+  &:active:not(.nm-btn--disabled) {
+    background-color: var(--nitume-slate);
+  }
+}
+
+.nm-btn--text {
+  padding: 12px 6px;
+  color: var(--nitume-blue);
+
+  @include btn-hover {
+    background-color: var(--nitume-slate);
+  }
+}
+
+.nm-btn--link {
+  color: var(--nitume-green-700);
+
+  @include btn-hover {
+    background-color: var(--nitume-slate);
+  }
+}
+
+.nm-btn--destructive {
+  color: var(--nitume-red);
+}
+
+// --- Small (visual ~36px, hit area 48×48) ---
+.nm-btn--small {
+  @include nm-type(button-sm);
+  @include nm-hit-area;
+  min-height: 0;
+  padding: 9px 16px;
+
+  .nm-btn__icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.nm-btn--link.nm-btn--small {
+  min-width: var(--nitume-tap);
+  min-height: var(--nitume-tap);
+  padding: 12px 4px;
+}
+
+// --- Disabled ---
+.nm-btn--disabled {
+  cursor: not-allowed;
+  color: var(--nitume-slate-400);
+}
+
+.nm-btn--primary.nm-btn--disabled,
+.nm-btn--secondary.nm-btn--disabled {
+  background-color: var(--nitume-slate-line);
+  color: var(--nitume-slate-400);
+}
+
+.nm-btn--outline.nm-btn--disabled {
+  background-color: var(--nitume-white);
+  border-color: var(--nitume-slate-line);
+}
+
+// --- Loading: label kept in place (width and accessible name unchanged) ---
+.nm-btn--loading {
+  cursor: progress;
+
+  .nm-btn__content {
+    opacity: 0;
+  }
+}
+
+.nm-btn__spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  box-sizing: border-box;
+  border: 2px solid var(--nitume-blue);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: nm-btn-spin 800ms linear infinite;
+
+  @include nm-reduced-motion {
+    animation: none;
+  }
+}
+
+.nm-btn--primary .nm-btn__spinner,
+.nm-btn--secondary .nm-btn__spinner {
+  border-color: var(--nitume-white);
+  border-right-color: transparent;
+}
+
+.nm-btn--destructive .nm-btn__spinner {
+  border-color: var(--nitume-red);
+  border-right-color: transparent;
+}
+
+.nm-btn--small .nm-btn__spinner {
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+}
+
+@keyframes nm-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
