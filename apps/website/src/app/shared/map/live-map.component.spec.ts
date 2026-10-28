@@ -271,12 +271,13 @@ describe('LiveMapComponent (§12.11)', () => {
     expect(marker.positions.at(-1)).toEqual(C);
   });
 
-  it('63. camera: initial fit with padding 40; single point zoom 14; refit forced on start/end change; after a move only when outside the bounds', () => {
+  it('63. camera: initial fit with padding 40; single point zoom 15 (initial camera 14); refit forced on start/end change; after a move only when outside the bounds', () => {
     vi.useFakeTimers({ toFake: [...FAKE] });
     // Single point.
     let t = setup({ init: (h) => h.end.set(END) });
     expect(t.map().setCenter).toHaveBeenCalledWith(END);
-    expect(t.map().setZoom).toHaveBeenCalledWith(14);
+    expect(t.map().setZoom).toHaveBeenCalledWith(15);
+    expect(t.map().options.zoom).toBe(14); // initial camera
     expect(t.map().fitBounds).not.toHaveBeenCalled();
     TestBed.resetTestingModule();
 

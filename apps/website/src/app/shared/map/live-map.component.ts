@@ -31,7 +31,8 @@ const BASE_OPTIONS: google.maps.MapOptions = {
 
 /** Nairobi CBD, until the first point arrives (Flutter default). */
 const DEFAULT_CENTER: GeoPoint = { lat: -1.2864, lng: 36.8172 };
-const SINGLE_POINT_ZOOM = 14;
+/** Flutter `cameraFor`: a single point is centred at zoom 15. */
+const SINGLE_POINT_ZOOM = 15;
 
 function cssToken(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -305,7 +306,7 @@ export class NmLiveMap {
     });
   }
 
-  /** Fit all present points; single point → zoom 14. Not forced: only when the runner left the view. */
+  /** Fit all present points; single point → zoom 15. Not forced: only when the runner left the view. */
   private fit(force: boolean): void {
     const map = this.map;
     if (!map) return;
