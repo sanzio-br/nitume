@@ -1,5 +1,4 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
-import { SkipThrottle } from '@nestjs/throttler';
 import { AuthContext, Public } from '../common/decorators/auth.decorators';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
@@ -13,15 +12,10 @@ import {
 } from './dto/auth.dto';
 import { TokenPair } from './token.service';
 import {
-  OTP_REQUEST_THROTTLER,
-  OTP_VERIFY_THROTTLER,
   OtpThrottlerGuard,
+  ThrottleOtpRequest,
+  ThrottleOtpVerify,
 } from './otp-throttler.guard';
-
-/** Per-IP limit on issuing codes (row 53). */
-const ThrottleOtpRequest = () => SkipThrottle({ [OTP_VERIFY_THROTTLER]: true });
-/** Per-IP limit on verifying codes (row 53). */
-const ThrottleOtpVerify = () => SkipThrottle({ [OTP_REQUEST_THROTTLER]: true });
 
 @Controller('auth')
 export class AuthController {

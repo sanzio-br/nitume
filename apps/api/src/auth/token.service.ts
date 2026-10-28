@@ -120,7 +120,8 @@ export class TokenService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private refreshTtlSeconds(): number {
+  /** Refresh token lifetime (jwt.refreshTtl) in seconds; also the web cookie Max-Age. */
+  refreshTtlSeconds(): number {
     const ttl = this.config.get<string>('jwt.refreshTtl', '30d');
     const match = /^(\d+)([smhd])$/.exec(ttl);
     if (!match) {
