@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { corsOptionsDelegate } from './common/cors';
 import { applyEvidenceBodyLimit } from './evidence/evidence-upload';
 
 async function bootstrap() {
@@ -25,7 +26,8 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-  app.enableCors({ origin: true, credentials: true });
+  // WQ-8: credentials (the web refresh cookie) only for WEB_ORIGINS.
+  app.enableCors(corsOptionsDelegate(config.get<string[]>('web.origins', [])));
   app.enableShutdownHooks();
 
   const port = config.get<number>('port', 3000);

@@ -1,4 +1,5 @@
 import { ServiceArea, parseServiceAreas } from '../runners/service-areas';
+import { parseWebOrigins } from './web-origins';
 
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'staging' | 'production';
@@ -6,6 +7,13 @@ export interface AppConfig {
   apiPrefix: string;
   /** Express `trust proxy` hop count so per-IP limits see the client IP. */
   trustProxyHops: number;
+  /**
+   * WQ-8: website origins allowed to use the refresh cookie and credentialed
+   * CORS (WEB_ORIGINS). The cookie is `Secure` unless nodeEnv is development.
+   */
+  web: {
+    origins: string[];
+  };
   database: {
     host: string;
     port: number;
@@ -218,6 +226,9 @@ export const configuration = (): AppConfig => ({
   port: int(process.env.PORT, 3000),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
   trustProxyHops: int(process.env.TRUST_PROXY_HOPS, 0),
+  web: {
+    origins: parseWebOrigins(process.env.WEB_ORIGINS, process.env.NODE_ENV ?? 'development'),
+  },
   database: {
     host: process.env.DATABASE_HOST ?? 'localhost',
     port: int(process.env.DATABASE_PORT, 5432),
