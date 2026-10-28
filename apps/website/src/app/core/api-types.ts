@@ -53,17 +53,3 @@ export interface RunnerVerificationRecord {
   side?: 'front' | 'back' | null;
   createdAt?: string | null;
 }
-
-export interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
-}
-
-export interface OtpVerifyResult {
-  user: UserMe;
-  tokens: TokenPair;
-}
-
-export interface RegisterResult {
-  user: UserMe;
-}

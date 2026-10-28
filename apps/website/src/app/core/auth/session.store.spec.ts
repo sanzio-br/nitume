@@ -1,4 +1,6 @@
 // SessionStore (auth-foundation §4, §9.2, §9.3, §9.10).
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { NmToastService } from '../../shared/ui/overlay/toast.service';
@@ -390,5 +392,25 @@ describe('SessionStore (#6)', () => {
     await settle();
     httpMock().expectNone(URLS.logout);
     expect(s.rig.win.location.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('legacy auth removed (#6, WQ-8)', () => {
+  it('F9.9 (code). no AuthStore, ApiService or storage writes remain in app code; only session.store.ts touches localStorage', () => {
+    const appDir = resolve(process.cwd(), 'src/app');
+    const offenders: string[] = [];
+    const walk = (dir: string): string[] =>
+      readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : [join(dir, n)]));
+    for (const file of walk(appDir)) {
+      if (!file.endsWith('.ts') || file.endsWith('.spec.ts')) continue;
+      const source = readFileSync(file, 'utf8');
+      if (/\b(AuthStore|ApiService)\b|localStorage\.setItem|sessionStorage|indexedDB|document\.cookie/.test(source)) {
+        offenders.push(file);
+      }
+      if (/localStorage/.test(source) && !file.endsWith('core/auth/session.store.ts')) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+    const types = readFileSync(resolve(appDir, 'core/api-types.ts'), 'utf8');
+    expect(types).not.toMatch(/TokenPair|OtpVerifyResult|RegisterResult|refreshToken/);
   });
 });
