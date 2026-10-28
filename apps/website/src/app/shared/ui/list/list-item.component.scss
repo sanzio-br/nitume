@@ -1,0 +1,60 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+:host:not(:last-child) {
+  border-bottom: 1px solid var(--nitume-slate-line);
+}
+
+.nm-li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 16px 18px;
+  border: 0;
+  background-color: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.nm-li--clickable {
+  cursor: pointer;
+
+  &:focus-visible {
+    @include nm-focus-ring(-2px);
+  }
+}
+
+.nm-li__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nm-li__title {
+  @include nm-type(list-title);
+}
+
+.nm-li__title--done {
+  color: var(--nitume-slate-600);
+  text-decoration-line: line-through;
+  text-decoration-color: var(--nitume-slate-line);
+}
+
+.nm-li__meta {
+  margin-top: 2px;
+}
+
+.nm-li__progress {
+  flex: 0 0 auto;
+}
+
+.nm-li__progress.nm-li__progress--complete {
+  color: var(--nitume-green-700);
+}
