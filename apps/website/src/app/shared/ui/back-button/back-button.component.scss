@@ -1,0 +1,36 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-flex;
+}
+
+.nm-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--nitume-tap);
+  height: var(--nitume-tap);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background-color: transparent;
+  color: var(--nitume-blue);
+  cursor: pointer;
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-back__circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: 50%;
+  background-color: var(--nitume-white);
+}
