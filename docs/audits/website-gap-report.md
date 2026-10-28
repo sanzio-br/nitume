@@ -20,9 +20,143 @@
 - Builder: `web-parity`, branch `feat/website-ui-kit`, commit scope `angular-website`.
 - Every item G5-1 … G5-41 is **approved extension, W-Q0**.
 
-### Verdict: FAIL (not built)
+### Verdict: FAIL (re-audit 1, 2026-10-28; 2 minor findings, both from spec defects)
 
-The website has only marketing code. None of the kit exists: no `src/styles/` folder, no `--nitume-*` tokens, no `nm-` components, no `shared/{ui,status,format,map}/`, no `core/realtime/`, no `socket.io-client` or `@angular/google-maps` dependency, no `mapsApiKey`, no Fira Code 700, and no kit tests.
+Re-audit 1 of `feat/website-ui-kit` at `6e6c053` (18 `web-parity` commits `bb9ace9` … `6e6c053` on top of `3e6c7c9`). 39 of 41 items pass. G5-30 and G5-32 fail on one point each. In both cases the builder followed the spec as written, but the spec contradicted the Flutter source it ports. The spec is corrected in `ebd1325` (`docs(specs): ui-kit single-point zoom 15 and showReconnecting only while trying (Flutter parity)`). Both fixes are small and need no new widget, endpoint or owner decision.
+
+**FAIL list (back to `web-parity`)**
+
+1. **G5-30 `showReconnecting` counts `disconnected` as reconnecting** (minor). File: `apps/website/src/app/core/realtime/realtime.service.ts:186-205`.
+   - Design (spec §6.3 / §6.6 as corrected; Flutter `apps/runner_app/lib/src/screens/jobs/jobs_tab.dart:178-194` `_syncReconnecting`): the signal turns true only after `delayMs` of **trying**, meaning `connecting` or `reconnecting`. `connected` **and** `disconnected` hide it and reset the timer. A deliberate `disconnected` (before `connect()`, after log out, or the #5 stub provider returning `null`) never shows `Reconnecting…`. The customer app shows its line only for `reconnecting` (`live_updates.dart:53-55`).
+   - Code: `onState` treats every state except `connected` as down, and it runs once at once for the current state. So `showReconnecting(5000)` turns true 5 s after creation while the service is `disconnected`. That happens on every page until #6 replaces the stub, and after every log out. It then stays true, because `disconnected` never clears it. The view would show `Reconnecting…` when nothing is reconnecting. The service also adds one listener to the root service on every call and never removes it, so views that call it per instance leak listeners.
+   - Fix: count only `connecting`/`reconnecting`. On `connected` **or** `disconnected`, clear the timer and set false. Remove the listener when the caller's `DestroyRef` fires (`inject(DestroyRef, { optional: true })` inside the call, or take a `DestroyRef` argument). Extend test **58** with: false and no timer while `disconnected` before `connect()`; false again right after `disconnect()` while visible; stub provider (`null`) never shows it. Use `RECONNECTING_COPY` in the test instead of the literal.
+2. **G5-32 single-point camera zoom is 14, Flutter uses 15** (minor). File: `apps/website/src/app/shared/map/live-map.component.ts:34` (`SINGLE_POINT_ZOOM = 14`); test `live-map.component.spec.ts:279`.
+   - Design (spec §7.3 / test 63 as corrected; Flutter `packages/nitume_core/lib/src/widgets/google_tracking_map.dart:276-283` `cameraFor`): one point (or all points equal) → centre at **zoom 15**. The initial camera before any fit stays zoom 14 (`google_tracking_map.dart:216`), which `BASE_OPTIONS.zoom: 14` already matches.
+   - Code: the single-point fit uses 14, because the original spec said 14.
+   - Fix: `SINGLE_POINT_ZOOM = 15`. Test 63 asserts `setZoom(15)` for a single point and keeps `zoom: 14` in the map options.
+
+Everything else is closed. The evidence is under "Re-audit 1 evidence" below.
+
+### Baseline (before the build, 2026-10-28, at `bca50c2`)
+
+The website had only marketing code. None of the kit existed: no `src/styles/` folder, no `--nitume-*` tokens, no `nm-` components, no `shared/{ui,status,format,map}/`, no `core/realtime/`, no `socket.io-client` or `@angular/google-maps` dependency, no `mapsApiKey`, no Fira Code 700, and no kit tests.
+
+### Re-audit 1 evidence (`feat/website-ui-kit` at `6e6c053`, worktree `nitume-feat-website-ui-kit`)
+
+**Build health (run by the auditor)**
+
+```
+$ cd apps/website && npx ng test --watch=false
+ Test Files  14 passed (14)
+      Tests  72 passed (72)
+exit 0
+
+$ npx ng build
+Initial chunk files   | Names         |  Raw size | Estimated transfer size
+main-OU62VUCR.js      | main          | 311.62 kB |                81.83 kB
+polyfills-5CFQRCPP.js | polyfills     |  34.59 kB |                11.33 kB
+styles-3NFIVCKS.css   | styles        |   4.71 kB |                 1.26 kB
+                      | Initial total | 350.92 kB |                94.43 kB
+
+$ npx tsc -p tsconfig.app.json --noEmit   -> clean
+$ npx tsc -p tsconfig.spec.json --noEmit  -> clean
+```
+
+Baseline `main` (`8df4356`) builds to an initial total of 350.09 kB (`main` 311.61 kB, `styles` 3.89 kB). The difference of +0.83 kB is the `:root` token block in `styles` (+0.82 kB) and `mapsApiKey` (+0.01 kB). The kit components, `socket.io-client` and `@angular/google-maps` are tree-shaken until #6 routes use them. The 500 kB warning and 1 MB error budgets are unchanged.
+
+**Test count (69 vs 68).** Both counts are right, and no case is missing. §12 numbers 69 items. Items 1–68 are Vitest cases, and item 69 (§12.12, build health) is the `ng test` + `ng build` run above, not an `it(...)`. The G5-40 text already said "every numbered case 1–68 is its own `it(...)`". Only the heading "69 cases" was loose, and it is corrected below. The auditor's grep finds exactly one `it('N. …')` for each N = 1…68, with no duplicates and no `.skip`/`.only`/`.todo`/`xit`. The 72 tests are those 68, the 2 existing `app.spec.ts` cases, and 2 extras (`field.spec.ts:164` nm-form-card, `overlay.spec.ts:262` overlay content gets ref and data).
+
+**Correction to the G5-3 grep (auditor error).** The G5-3 evidence command searched all of `src/app/shared` and `src/app/core`. That includes the unchanged marketing components (`shared/footer`, `shared/header`, …), which set `font-size`/`font-family` themselves. The kit is not responsible for those hits. The command is now scoped to kit paths, as the G5-4 and G5-6 scans already were:
+`rg -n "font-(size|family)\s*:" apps/website/src/app/shared/{ui,status,format,map} apps/website/src/app/core/realtime` returns **no hits**. All font sizes come through `nm-type(...)` in `_tokens.scss`. A few components pass a size or weight override to the mixin where the Flutter widget sits between two named styles (nm-tag 11/600, compact chip 11/700, step-card title 13/600, timeline title 12.5/400, ETA chip Code 11.5/700, money/phone Code 14.5/400). These match spec §4 and are not literals in component CSS.
+
+**Marketing unchanged.** `git diff --name-only main...HEAD` outside the kit folders lists only `.gitignore`, `angular.json`, `package.json`, `package-lock.json`, `src/environments/{environment.ts, environment.local.example.ts}`, `src/index.html`, `src/styles.scss`, `src/styles/{_tokens.scss, tokens.spec.ts}`, `src/testing/{css.ts, node-shim.d.ts}`, `tsconfig.app.json` and docs. None of `src/app/pages/**`, `src/app/shared/{header,footer,category-card,profile-card,proof-item,ticket}/**` or `app.routes.ts` changed.
+- `styles.scss`: one added first line, `@use 'styles/tokens';`. Test 3 also checks that the marketing `--blue` … `--r-l: 22px` values are unchanged.
+- `index.html:13`: `Fira+Code:wght@400;500;600` → `400;500;600;700`. Nothing else changed.
+- `.gitignore:19`: `apps/website/src/environments/*.local.ts` is added. The old line 18 stays. `git check-ignore -v …/environment.local.ts` reports line 19, and `environment.local.example.ts` is not ignored.
+- `angular.json`: adds only `build.configurations.local` (development options + `fileReplacements` environment.ts → environment.local.ts) and `serve.configurations.local`. Budgets and the other configurations are unchanged.
+- `package.json`: `@angular/google-maps ^22.1.0` and `socket.io-client ^4.8.4` go in dependencies, and `@types/google.maps ^3.66.8` in devDependencies (plus a trailing newline). The lockfile adds only those packages and their transitive deps (`engine.io-client`, `engine.io-parser`, `socket.io-parser`, `@socket.io/component-emitter`, `ws`, `xmlhttprequest-ssl`). `npm ls` resolves all three.
+
+**Scans (kit paths = `apps/website/src/app/shared/{ui,status,format,map}`, `apps/website/src/app/core/realtime`)**
+
+| Check | Result |
+|---|---|
+| G5-6 raw colour / shadow / named colour | no hits |
+| Checklist 2, `Color\(0x\|#[0-9A-Fa-f]{6}` under `src/app` minus marketing | no hits |
+| G5-4 unprefixed marketing variables | no hits |
+| G5-3 font literals (scoped, see correction) | no hits |
+| G5-9 `neutral` / admin labels in `src/app/shared` | no hits |
+| G5-24 `.num` class / `font-family` in kit | no hits |
+| G5-25 `KES` | no hits |
+| G5-27 `AuthStore` / `localStorage` in `core/realtime` | no hits |
+| G5-29 event-name literals outside `realtime.events.ts` and specs | no hits. The 16 names in `realtime.events.ts` equal the set in `apps/api/src/realtime/*.ts` |
+| G5-38 bare `outline: none/0` | no hits |
+| G5-39 `wallet` / `escrow` | no hits |
+| G5-37 `OnPush` | every kit `@Component` (21, including the `nmNum` attribute component) is `OnPush` with signal inputs. Only spec-file test hosts are not |
+| G5-34 key | `git grep -nE "AIza[0-9A-Za-z_-]{20,}" feat/website-ui-kit` and the commit messages return nothing. `git ls-files apps/website/src/environments` = `environment.local.example.ts`, `environment.ts` |
+
+**Builder's declared deviations**
+
+| # | Deviation | Verdict | Reason |
+|---|---|---|---|
+| D1 | `joinErrand` keeps the room on ack timeout | **PASS** | Matches spec §6.3 ("false (room kept for re-join)") and G5-29 ("10s ack timeout → `false`, room kept"). A refused ack forgets the room (test 50) |
+| D2 | Single-point zoom 14 (spec) vs Flutter 15 | **FAIL** (finding 2) | The builder matched the spec. The spec was wrong against `cameraFor` and is corrected to 15 |
+| D3 | `nmNum` as an attribute component (`selector: '[nmNum]'`) | **PASS** | Same selector and API as §5.1 (`<span nmNum>`, `[nmNum]="'meta'"`, `nmNumLabel`). A directive cannot carry the component stylesheet that applies the `nm-type` mixins, and the alternative would be global CSS classes. Limit to note for views: it cannot sit on an element that already hosts a component (use a wrapping `<span nmNum>`) |
+| D4 | Hover only under `(hover: hover)` | **PASS** | Web adaptation within §8. Hover appears only where defined (buttons, clickable card border), and there is no sticky hover on touch |
+| D5 | Pipes render `—` for `null`/`undefined` | **PASS** | §5.2 copy rule "`—` for a missing value" (Flutter `kMissingValue`). `kesSpoken` returns `''` (an aria label, not visible copy) |
+| D6 | `showReconnecting` counts the starting `disconnected` state | **FAIL** (finding 1) | It matched the spec's loose wording "non-connected", but Flutter shows the notice only while trying. The spec is corrected |
+| D7 | Test 18 Space key simulated via `click()` | **PASS** | The control is a focusable native `<input type="checkbox">`, so the browser maps Space to activation (click). jsdom has no keyboard activation. The test asserts the native type, focus and the 48×48 input before clicking |
+| D8 | `src/testing/` excluded from `tsconfig.app.json` | **PASS** | Spec-only helpers (`css.ts`, Node typings shim) stay out of the app compile. The app `tsc` and build are clean |
+| D9 | `@types/google.maps` devDependency | **PASS** | Allowed by G5-36 ("if the build needs it"). It is also a peer of `@angular/google-maps` (deduped) |
+| D10 | `src/styles/tokens.spec.ts` outside `src/app/` | **PASS** | It holds the reference hex table for test 1, which test 2 forbids under `src/app/`. The test runner picks it up (14 files) |
+| D11 | Task refs written `#NT-10482` in specs | **PASS** | That is the real reference format (§2.4, §5.2 copy rule, OA), not a workaround. A bare `#10482` would also be wrong copy |
+
+**Item verdicts**
+
+| Item | Verdict | Evidence |
+|---|---|---|
+| G5-1 tokens file + `@use` | PASS | `src/styles/_tokens.scss`. `styles.scss` line 1. Tests 1, 3 |
+| G5-2 16 colour tokens | PASS | Values verbatim. Test 1 compiles the SCSS and asserts exactly these 16 colour names |
+| G5-3 families + 29 type mixins | PASS | `$nm-type-styles` has all 29 rows with line-height 1.4/1.3. Scoped grep has no hits (see correction) |
+| G5-4 spacing + radius | PASS | `--nitume-r-l: 20px`, `--nitume-tap: 48px`. No unprefixed vars in the kit |
+| G5-5 breakpoints + mixins | PASS | `$nm-bp-*`, `nm-up`, `nm-type`, `nm-hit-area`, `nm-focus-ring` (+ `nm-hover`, `nm-reduced-motion`). Used by button small, checkbox, field. Tests 6, 18, 22 |
+| G5-6 no raw colour / shadow | PASS | Test 2 + scoped scan |
+| G5-7 Fira Code 700 | PASS | One-token change on `index.html:13` |
+| G5-8 `nm-button` | PASS | Five variants, destructive on outline/text only with a dev warning on fills, small with a 48 hit area, disabled, loading (`aria-busy`, label kept at `opacity:0` so width and name stay), `href` → `<a>`, `type="button"`. Tests 4–9 |
+| G5-9 `nm-status-chip` | PASS | Row 33 blue label, tone dot, three sizes, `numericSuffix` in `nmNum`, `customerStatus`/`runnerStatus` inputs. Tests 10, 11, 13–16 |
+| G5-10 `nm-tag` | PASS | Blue on blue-050, 11/600, 6px 11px. Test 17 |
+| G5-11 `ErrandStatus` + customer map | PASS | 17 states in §3.3 order, exhaustive `never` switch, `parseErrandStatus` → `null`. Tests 10, 12, 16 |
+| G5-12 `runnerStatus` | PASS | Every row as §4.2.4. Test 11 |
+| G5-13 `nm-checkbox` | PASS | Test 18 (D7) |
+| G5-14 list group + item | PASS | Tests 19, 20 |
+| G5-15 `nm-step-card` | PASS | Test 21 |
+| G5-16 card + section label | PASS | Tests 22, 23 |
+| G5-17 field + form card | PASS | Real `<label for>`, error a11y, multiline 3→6, money `KSh ` prefix digits-only, phone tel, counter, CVA. Tests 24–28 |
+| G5-18 timeline | PASS | Test 29 |
+| G5-19 states + `friendlyError` | PASS | Tests 30–33 |
+| G5-20 dialog + `confirm()` | PASS | 335px at every width, outline confirm first / primary cancel second, inert, scroll lock, focus in/trap/return. Tests 34–36 |
+| G5-21 panel | PASS | Bottom sheet below 768px, centred max 560px from 768px (WQ-3), handle `aria-hidden`, safe area. Test 37 |
+| G5-22 toast | PASS | Test 38 |
+| G5-23 notice | PASS | Test 39 |
+| G5-24 `nmNum` | PASS | Test 43 (D3) |
+| G5-25 formatters + pipes | PASS | Every §5.2 vector asserted. EAT uses `getTime()+3h` and `getUTC*`. Test 41 also runs under New York, Nairobi and Tokyo. Tests 40–42 (D5) |
+| G5-26 `categoryName` | PASS | Test 44 |
+| G5-27 connection + token stub | PASS | Origin via `new URL(apiBaseUrl).origin`, `/socket.io`, websocket, `reconnection:false`. The stub provider returns `null` and never opens a socket. Tests 45, 48 |
+| G5-28 lifecycle + backoff | PASS | Tests 46–48, 55–57 |
+| G5-29 API + 16 events | PASS | Tests 49–54 (D1) |
+| G5-30 `showReconnecting` | **FAIL** | Finding 1 |
+| G5-31 `MapsLoaderService` | PASS | Empty key → `unavailable` with no `<script>`. `loading=async`, no `libraries=`. Test 66 |
+| G5-32 `nm-live-map` | **FAIL** | Finding 2 (everything else passes: map once, glide, mid-glide restart, `null` removal, self route, reduced motion, colours from tokens; tests 59–65, 67, 68) |
+| G5-33 placeholder | PASS | Blue-050, `role="img"` + label, ETA and overlay still shown, and the same on script error. Test 66 |
+| G5-34 key config | PASS | `mapsApiKey: ''`, example file, `local` build/serve configs, no key anywhere |
+| G5-35 `.gitignore` | PASS | Line 19 |
+| G5-36 deps | PASS | See "Marketing unchanged" (D9) |
+| G5-37 layout + marketing untouched | PASS | Folders as §11 plus `ui/index.ts` and `status/index.ts` barrels. No gallery route |
+| G5-38 responsive + a11y | PASS | No bare outline removal. Hit areas through `--nitume-tap`. Safe-area insets on dialog, panel and toast. Motion (150 ms fades, spinner, glide) off under reduced motion. Tests 6, 18, 34, 37, 38, 67 |
+| G5-39 domain rules | PASS | Six names, five for customers, exhaustive maps, no wallet/escrow, no money-flow component |
+| G5-40 Vitest cases | PASS | 1–68 present once each (see test count) |
+| G5-41 build health | PASS | Output above. 18 conventional commits with scope `angular-website` (`build`/`feat`). `angular.json` changes only `local` |
+
+Open owner questions WQ-2, WQ-4, WQ-5, WQ-6 and WQ-8 are not decided in code beyond the spec defaults (checklist 3). WQ-1 is still open, so the map shows the placeholder.
 
 ### Owner decisions that apply to this section (GitHub #5 comment, owner, 2026-10-28)
 
@@ -66,7 +200,7 @@ Each item gives: **severity**, **current** state in `apps/website`, **target** (
 **G5-3 Type families and type-style mixins** (blocker, missing)
 - Current: none. Fonts are set only by marketing rules.
 - Target: §2.3 `--nitume-font-ui`, `--nitume-font-num`. §2.4 mixin `nm-type($name)` with all 29 styles (`h1` … `num-progress`), with the family, size, weight, colour and letter-spacing in the table. Line-height is 1.4 for Sans and 1.3 for Code. Components never set `font-size`/`font-family` literals.
-- Evidence: test §12 **1** (families); `rg -n "font-(size|family)\s*:" apps/website/src/app/shared apps/website/src/app/core` returns no hits outside `_tokens.scss` mixins; each component test that checks a type style (tests 6, 19, 26, 29, 43, 65) passes.
+- Evidence: test §12 **1** (families); `rg -n "font-(size|family)\s*:" apps/website/src/app/shared/{ui,status,format,map} apps/website/src/app/core/realtime` returns no hits (scope corrected at re-audit 1: the earlier unscoped command also matched the unchanged marketing components); each component test that checks a type style (tests 6, 19, 26, 29, 43, 65) passes.
 
 **G5-4 Spacing and radius tokens** (blocker, missing)
 - Current: marketing only has `--r-s 8px`, `--r-m 14px`, `--r-l 22px` (`styles.scss:27-29`). The design system says 20px for `--r-l`.
@@ -191,7 +325,7 @@ Each item gives: **severity**, **current** state in `apps/website`, **target** (
 - Evidence: tests §12 **49, 50, 51** (all 13 events, two subscribers), **52, 53, 54**; `rg -n "'(errand|location|job|quote|price_change|merchant_details|evidence):" apps/website/src/app --glob '!**/realtime.events.ts' --glob '!**/*.spec.ts'` returns no hits.
 
 **G5-30 `showReconnecting(delayMs)` and the `Reconnecting…` copy** (blocker, missing)
-- Target: §6.3, §6.6. A signal that is true once the state has been non-connected for `delayMs` and false on `connected`. The copy uses the single U+2026 character. View placement (customer line under the map, runner `nm-notice` after 5s) belongs to issues #9/#14.
+- Target: §6.3, §6.6 (corrected in `ebd1325`). A signal that is true once the service has been trying (`connecting` or `reconnecting`) for `delayMs`, and false on `connected` and on `disconnected` (Flutter `_syncReconnecting`). Its listener is removed with the caller. The copy uses the single U+2026 character. View placement (customer line under the map, runner `nm-notice` after 5s) belongs to issues #9/#14.
 - Evidence: test §12 **58**.
 
 #### E. `LiveMapComponent` and maps loading
@@ -201,7 +335,7 @@ Each item gives: **severity**, **current** state in `apps/website`, **target** (
 - Evidence: test §12 **66** (script never requested without a key).
 
 **G5-32 `nm-live-map` behaviour** (blocker, missing)
-- Target: §7.1–§7.3. Inputs: `start`, `end`, `runner`, `routeTo`, `etaLabel`, `height` (default 220), `ariaLabel`, `moveDurationMs` (1200), `fitPadding` (40), plus the `[nmMapOverlay]` slot. Frame: r-m, slate-line border, `overflow:hidden`. ETA chip: white pill with a hairline, Fira Code 11.5/700 blue, padding 6px 10px, no shadow. The map is created **once** with `disableDefaultUI`, `clickableIcons: false`, `gestureHandling: 'cooperative'`, `keyboardShortcuts: true`. Markers: blue start pin, green end pin, 16px green runner dot with a 3px white ring, built from CSS custom properties at runtime. Route: dashed blue straight polyline (self variant runner → `routeTo`). Camera fit/zoom-14/refit rules as specified. The runner marker glides with `requestAnimationFrame` (first point placed directly, a mid-glide update restarts from the current position, `null` removes at once and keeps nothing). `prefers-reduced-motion` jumps without gliding.
+- Target: §7.1–§7.3. Inputs: `start`, `end`, `runner`, `routeTo`, `etaLabel`, `height` (default 220), `ariaLabel`, `moveDurationMs` (1200), `fitPadding` (40), plus the `[nmMapOverlay]` slot. Frame: r-m, slate-line border, `overflow:hidden`. ETA chip: white pill with a hairline, Fira Code 11.5/700 blue, padding 6px 10px, no shadow. The map is created **once** with `disableDefaultUI`, `clickableIcons: false`, `gestureHandling: 'cooperative'`, `keyboardShortcuts: true`. Markers: blue start pin, green end pin, 16px green runner dot with a 3px white ring, built from CSS custom properties at runtime. Route: dashed blue straight polyline (self variant runner → `routeTo`). Camera fit/refit rules as specified: single point → zoom 15 (Flutter `cameraFor`, spec corrected in `ebd1325`); initial camera zoom 14. The runner marker glides with `requestAnimationFrame` (first point placed directly, a mid-glide update restarts from the current position, `null` removes at once and keeps nothing). `prefers-reduced-motion` jumps without gliding.
 - Evidence: tests §12 **59, 60, 61, 62, 63, 64, 65, 67, 68** (fake `google.maps` namespace).
 
 **G5-33 No-key / load-failure placeholder (WQ-1 open)** (blocker, missing)
@@ -237,7 +371,7 @@ Each item gives: **severity**, **current** state in `apps/website`, **target** (
 - Target: §9. Six display names only (five for customers). Exhaustive state maps with no invented or admin labels. No wallet/escrow wording in any default copy. The kit has no money-flow component. Amber and red appear only as chip-sized accents.
 - Evidence: `rg -ni "wallet|escrow" apps/website/src/app/shared apps/website/src/app/core/realtime` returns no hits; tests **10, 11, 44**.
 
-**G5-40 Required Vitest cases (§12, 69 cases)** (blocker, missing)
+**G5-40 Required Vitest cases (§12 cases 1–68; case 69 is the build-health run, G5-41)** (blocker, missing)
 - Current: no kit spec files.
 - Target: §12. Every numbered case 1–68 is its own `it(...)`. Colour assertions check the custom-property **name**, never a hex. The coverage table below must be complete at re-audit.
 - Evidence: the auditor greps the spec files for each case and runs the suite.

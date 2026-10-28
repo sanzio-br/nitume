@@ -193,7 +193,7 @@ Owner decision 2026-10-28: every customer and runner app feature comes to `apps/
 |---|---|
 | Web specs | `docs/specs/website/<view-id>.md` (customer and runner views share one folder; where a view id exists on both surfaces the file is `customer-<view-id>.md` / `runner-<view-id>.md`) |
 | Shared web UI kit spec | `docs/specs/website/ui-kit.md` (token layer, components, formatting, `RealtimeService`, `LiveMapComponent`, required tests, questions WQ-1 … WQ-8) |
-| Web UI kit (to build) | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` |
+| Web UI kit (built, #5) | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` |
 | Signed-in routes (to build, #6) | `/app/customer/...`, `/app/runner/...` |
 | Audits | `docs/audits/website-gap-report.md` |
 
@@ -201,7 +201,7 @@ Status values as above. `unaudited` = no web spec yet. Mobile spec column: the s
 
 | Issue | Surface | View id | Mobile spec (source) | Web spec | Implementation file | Status |
 |---|---|---|---|---|---|---|
-| #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | missing; gap items G5-1…G5-41 in `docs/audits/website-gap-report.md` (branch `feat/website-ui-kit`) | specced |
+| #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` (branch `feat/website-ui-kit` at `6e6c053`); re-audit 1 FAIL, 2 minor findings (G5-30 `showReconnecting`, G5-32 single-point zoom) in `docs/audits/website-gap-report.md` | built |
 | #6 | customer | v-auth-phone | `docs/specs/customer/v-auth-phone.md` | — | — | unaudited |
 | #6 | customer | v-auth-otp | `docs/specs/customer/v-auth-otp.md` | — | — | unaudited |
 | #6 | customer | x-name-capture | `docs/specs/customer/x-name-capture.md` | — | — | unaudited |
