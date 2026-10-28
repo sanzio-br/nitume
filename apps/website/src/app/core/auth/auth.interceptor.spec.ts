@@ -36,10 +36,10 @@ function get(s: Setup, url = ERRANDS) {
   );
 }
 
-async function finishSignOut() {
+async function finishSignOut(s: Setup) {
   await settle();
   httpMock().expectOne(LOGOUT).flush({});
-  await settle();
+  await vi.waitFor(() => expect(s.rig.win.location.replace).toHaveBeenCalled());
 }
 
 describe('authInterceptor (#6)', () => {
@@ -113,7 +113,7 @@ describe('authInterceptor (#6)', () => {
       const r = await result;
       expect(r.ok).toBe(false);
       if (!r.ok) expect((r.error.error as { code: string }).code).toBe('token_expired');
-      await finishSignOut();
+      await finishSignOut(s);
       expect(s.rig.win.location.replace).toHaveBeenCalledWith('/app/customer/sign-in?signedOut=expired');
     }
   });
@@ -126,7 +126,7 @@ describe('authInterceptor (#6)', () => {
     const e = apiError(401, 'account_suspended');
     httpMock().expectOne(REFRESH).flush(e.body, e.opts);
     expect((await result).ok).toBe(false);
-    await finishSignOut();
+    await finishSignOut(s);
     expect(s.rig.win.location.replace).toHaveBeenCalledWith('/app/customer/sign-in?signedOut=suspended');
   });
 
@@ -137,7 +137,7 @@ describe('authInterceptor (#6)', () => {
     httpMock().expectOne(ERRANDS).flush(e.body, e.opts);
     expect((await result).ok).toBe(false);
     httpMock().expectNone(REFRESH);
-    await finishSignOut();
+    await finishSignOut(s);
     expect(s.rig.win.location.replace).toHaveBeenCalledWith('/app/customer/sign-in?signedOut=suspended');
   });
 
@@ -151,7 +151,7 @@ describe('authInterceptor (#6)', () => {
     httpMock().expectOne(ERRANDS).flush({}, { status: 401, statusText: 'Unauthorized' });
     expect((await result).ok).toBe(false);
     httpMock().expectNone(REFRESH);
-    await finishSignOut();
+    await finishSignOut(s);
     expect(s.rig.win.location.replace).toHaveBeenCalledWith('/app/customer/sign-in?signedOut=expired');
   });
 

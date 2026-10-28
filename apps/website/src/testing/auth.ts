@@ -137,3 +137,20 @@ export function storageKeys(): string[] {
   }
   return keys;
 }
+
+/** Waits (macrotasks, lazy chunks) until a request to `url` is pending. */
+export function expectRequest(url: string | { method: string; url: string }) {
+  return vi.waitFor(() => httpMock().expectOne(url));
+}
+
+/** Answers the restore of a signed-out visitor (no `nitume_rt` cookie). */
+export async function restoreSignedOut(): Promise<void> {
+  const req = await expectRequest(`${API}/auth/web/refresh`);
+  req.flush({ statusCode: 401, code: 'refresh_cookie_missing', message: 'x' }, { status: 401, statusText: 'Unauthorized' });
+}
+
+/** Answers the restore of a signed-in visitor with `user`. */
+export async function restoreSignedIn(user: UserMe, token = jwt(900)): Promise<void> {
+  (await expectRequest(`${API}/auth/web/refresh`)).flush({ accessToken: token });
+  (await expectRequest(`${API}/users/me`)).flush(user);
+}

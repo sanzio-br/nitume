@@ -7,7 +7,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, Injectable, Injector, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { RealtimeService } from '../realtime/realtime.service';
 import { UserMe, WebSession } from '../api-types';
 import { AuthApi } from './auth-api';
 import {
@@ -120,9 +119,14 @@ export class SessionStore {
     return this.#token;
   }
 
-  /** Single-flight restore (§4.2). No toast on a silent failure. */
+  /**
+   * Single-flight restore (§4.2). No toast on a silent failure. Once this
+   * tab knows it is signed out (restore or sign-out), it stays so without
+   * another refresh call until a sign-in; a failed restore is retried.
+   */
   ensureRestored(): Promise<RestoreResult> {
     if (this.statusSignal() === 'signedIn' && this.#token) return Promise.resolve('signedIn');
+    if (this.statusSignal() === 'signedOut') return Promise.resolve('signedOut');
     this.restoring ??= this.restore().finally(() => {
       this.restoring = null;
     });
@@ -192,7 +196,7 @@ export class SessionStore {
   async dropSession(): Promise<void> {
     await this.revoke();
     this.clear();
-    this.realtime().disconnect();
+    await this.disconnectRealtime();
   }
 
   /** §4.5. Ends with a full document navigation to the role's sign-in page. */
@@ -257,7 +261,7 @@ export class SessionStore {
     await this.runHook(reason);
     await this.revoke();
     this.clear();
-    this.realtime().disconnect();
+    await this.disconnectRealtime();
     try {
       this.channel?.postMessage({ type: 'signed-out' });
     } catch {
@@ -311,8 +315,17 @@ export class SessionStore {
     this.win.location.replace(`/app/${role}/sign-in`);
   }
 
-  /** Lazy: RealtimeService's token provider depends on this store. */
-  private realtime(): RealtimeService {
-    return this.injector.get(RealtimeService);
+  /**
+   * `RealtimeService.disconnect()`. Loaded on demand: the store is eager
+   * (interceptor) and socket.io-client must stay out of the marketing
+   * bundle; the service's token provider also depends on this store.
+   */
+  private async disconnectRealtime(): Promise<void> {
+    try {
+      const { RealtimeService } = await import('../realtime/realtime.service');
+      this.injector.get(RealtimeService).disconnect();
+    } catch {
+      // Chunk failed to load: the full navigation that follows closes the socket.
+    }
   }
 }

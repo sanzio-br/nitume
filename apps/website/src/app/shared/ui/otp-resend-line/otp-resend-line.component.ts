@@ -9,8 +9,8 @@ import {
   computed,
   inject,
   input,
+  linkedSignal,
   output,
-  signal,
 } from '@angular/core';
 import { formatCountdown } from '../../format/formatters';
 import { NmNum } from '../../format/num.directive';
@@ -46,7 +46,8 @@ export class NmOtpResendLine {
 
   readonly resend = output<void>();
 
-  private readonly now = signal(Date.now());
+  /** The clock, re-read whenever the cooldown (re)starts and every second. */
+  private readonly now = linkedSignal({ source: this.cooldownEndsAt, computation: () => Date.now() });
 
   protected readonly remaining = computed(() =>
     Math.max(0, Math.ceil((this.cooldownEndsAt() - this.now()) / 1000)),

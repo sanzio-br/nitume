@@ -18,5 +18,7 @@ export const routes: Routes = [
       { path: 'auth', component: AuthComponent },
     ],
   },
+  // Signed-in app: lazy only, so the marketing bundle does not grow.
+  { path: 'app', loadChildren: () => import('./app-area/app-area.routes').then((m) => m.APP_AREA_ROUTES) },
   { path: '**', redirectTo: '' },
 ];

@@ -82,6 +82,8 @@ describe('nm-otp-resend-line (#6)', () => {
       seen.add(t.live().textContent ?? '');
     }
     expect([...seen]).toEqual(['You can resend in 60 seconds.', 'You can resend the code now.']);
+    // A restart mid-second shows the new value at once (no stale second).
+    await vi.advanceTimersByTimeAsync(400);
     t.host.endsAt.set(Date.now() + 30000);
     t.fixture.detectChanges();
     expect(t.live().textContent).toBe('You can resend in 30 seconds.');

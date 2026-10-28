@@ -26,28 +26,10 @@ export const SOCKET_IO_FACTORY = new InjectionToken<SocketIoFactory>('SOCKET_IO_
   factory: () => (url, options) => io(url, { ...options, forceNew: true }),
 });
 
-/**
- * Fresh access token for each (re)connect, or `null` when signed out.
- * Issue #6 provides the real one in `app.config.ts`
- * (`SessionStore.freshAccessToken()`, refreshing through
- * `POST /api/v1/auth/web/refresh`). This stub default (tests, signed out)
- * returns `null`, so `connect()` ends `disconnected` and never opens a
- * socket.
- */
-export const REALTIME_TOKEN_PROVIDER = new InjectionToken<() => Promise<string | null>>(
-  'REALTIME_TOKEN_PROVIDER',
-  { providedIn: 'root', factory: () => () => Promise.resolve(null) },
-);
-
-/**
- * Called once when the handshake is refused with `account_suspended`
- * (auth-foundation §5 item 8, PR #25). Default no-op; #6 provides
- * `() => session.signOut('suspended', role)` in `app.config.ts`.
- */
-export const REALTIME_ACCOUNT_SUSPENDED = new InjectionToken<() => void>(
-  'REALTIME_ACCOUNT_SUSPENDED',
-  { providedIn: 'root', factory: () => () => undefined },
-);
+// REALTIME_TOKEN_PROVIDER and REALTIME_ACCOUNT_SUSPENDED live in a file
+// without socket.io-client so app.config.ts can provide them without
+// pulling the socket stack into the marketing bundle (issue #6).
+export { REALTIME_ACCOUNT_SUSPENDED, REALTIME_TOKEN_PROVIDER } from './realtime.session-tokens';
 
 /** `connect_error` of a suspended or banned account (PR #25 gateway). */
 export function isSuspendedConnectError(error: unknown): boolean {

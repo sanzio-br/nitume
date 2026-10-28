@@ -56,12 +56,12 @@ async function signIn(s: Setup, token = jwt(900), user = userJson()) {
 }
 
 /** Answers the hook-then-logout part of a sign-out. */
-async function finishSignOut(answer: 'ok' | 'error' = 'ok') {
+async function finishSignOut(s: { rig: AuthRig }, answer: 'ok' | 'error' = 'ok') {
   await settle();
   const req = httpMock().expectOne(URLS.logout);
   if (answer === 'ok') req.flush({ message: 'ok' });
   else req.flush({ message: 'boom' }, { status: 500, statusText: 'Error' });
-  await settle();
+  await vi.waitFor(() => expect(s.rig.win.location.replace).toHaveBeenCalled());
 }
 
 describe('SessionStore (#6)', () => {
@@ -98,7 +98,7 @@ describe('SessionStore (#6)', () => {
     await saved;
     expect(storageKeys()).toEqual([]);
     void s.store.signOut('user', 'customer');
-    await finishSignOut();
+    await finishSignOut(s);
     expect(storageKeys()).toEqual([]);
   });
 
@@ -249,7 +249,7 @@ describe('SessionStore (#6)', () => {
     expect(logout.request.withCredentials).toBe(true);
     expect(logout.request.headers.has('Authorization')).toBe(false);
     logout.flush({ message: 'Logged out' });
-    await settle();
+    await vi.waitFor(() => expect(s.rig.win.location.replace).toHaveBeenCalled());
     expect(s.store.accessToken()).toBeNull();
     expect(s.store.user()).toBeNull();
     expect(disconnect).toHaveBeenCalled();
@@ -265,7 +265,7 @@ describe('SessionStore (#6)', () => {
       const s = setup();
       await signIn(s);
       void s.store.signOut(reason, role);
-      await finishSignOut();
+      await finishSignOut(s);
       expect(s.rig.win.location.replace).toHaveBeenCalledWith(`/app/${role}/sign-in?signedOut=${reason}`);
     }
   });
@@ -274,7 +274,7 @@ describe('SessionStore (#6)', () => {
     const s = setup();
     await signIn(s);
     void s.store.signOut('expired', 'customer');
-    await finishSignOut('error');
+    await finishSignOut(s, 'error');
     expect(s.store.accessToken()).toBeNull();
     expect(s.rig.win.location.replace).toHaveBeenCalledWith('/app/customer/sign-in?signedOut=expired');
   });
@@ -299,7 +299,7 @@ describe('SessionStore (#6)', () => {
     httpMock().expectOne(URLS.refresh).flush({ accessToken: jwt(900) });
     await r;
     void s.store.signOut('user', 'customer');
-    await finishSignOut();
+    await finishSignOut(s);
     httpMock().expectNone(URLS.mobileVerify);
     httpMock().expectNone(URLS.mobileRefresh);
     httpMock().expectNone(URLS.mobileLogout);
@@ -327,13 +327,13 @@ describe('SessionStore (#6)', () => {
     let s = setup({ hook });
     await signIn(s);
     void s.store.signOut('expired', 'customer');
-    await finishSignOut();
+    await finishSignOut(s);
     expect(calls).toEqual(['hook:expired:0']);
 
     s = setup({ hook: () => Promise.reject(new Error('push down')) });
     await signIn(s);
     void s.store.signOut('user', 'customer');
-    await finishSignOut();
+    await finishSignOut(s);
     expect(s.rig.win.location.replace).toHaveBeenCalled();
 
     vi.useFakeTimers();
@@ -346,7 +346,7 @@ describe('SessionStore (#6)', () => {
     await settle();
     httpMock().expectNone(URLS.logout);
     await vi.advanceTimersByTimeAsync(3000);
-    await finishSignOut();
+    await finishSignOut(s);
     expect(s.rig.win.location.replace).toHaveBeenCalledWith('/app/runner/sign-in');
     vi.useRealTimers();
 
@@ -378,7 +378,7 @@ describe('SessionStore (#6)', () => {
       await settle();
       httpMock().expectOne(URLS.refresh).flush(c.answer.body, c.answer.opts);
       expect(await token).toBeNull();
-      await finishSignOut();
+      await finishSignOut(s);
       expect(s.rig.win.location.replace).toHaveBeenCalledWith(c.expected);
     }
     const s = setup({ pathname: '/app/runner/jobs' });
