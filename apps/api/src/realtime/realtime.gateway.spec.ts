@@ -412,3 +412,93 @@ describe('RealtimeGateway location:ping (RA-4)', () => {
     expect(location.ingest).toHaveBeenCalledWith({ userId: 'r-1', role: UserRole.RUNNER }, body);
   });
 });
+
+describe('RealtimeGateway suspended accounts (issue #23)', () => {
+  const SUSPENDED = { id: 'u-1', role: UserRole.CUSTOMER, phone: '+254700000000', status: UserStatus.SUSPENDED };
+
+  it.each([UserStatus.SUSPENDED, UserStatus.BANNED])(
+    'refuses the handshake of a %s account with connect_error account_suspended',
+    async (status) => {
+      const { gateway } = build({ user: { ...SUSPENDED, status } });
+      const client = socket();
+      const refusal = await gateway.checkHandshake(client as never);
+      expect(refusal?.message).toBe('account_suspended');
+      expect(refusal?.data).toEqual({
+        statusCode: 401,
+        code: 'account_suspended',
+        message: 'Account is suspended or banned',
+      });
+      expect(client.data.user).toBeUndefined();
+    },
+  );
+
+  it('the handshake middleware passes the refusal to next() and lets others through', async () => {
+    const middlewares: ((s: unknown, next: (err?: Error) => void) => void)[] = [];
+    const server = { use: vi.fn((fn: (typeof middlewares)[number]) => middlewares.push(fn)) };
+
+    const suspended = build({ user: SUSPENDED });
+    suspended.gateway.afterInit(server as never);
+    const refused = await new Promise<Error | undefined>((res) => middlewares[0](socket(), res));
+    expect(refused?.message).toBe('account_suspended');
+
+    const active = build();
+    active.gateway.afterInit(server as never);
+    const client = socket();
+    expect(await new Promise<Error | undefined>((res) => middlewares[1](client, res))).toBeUndefined();
+    expect(client.data.user).toMatchObject({ userId: 'u-1', status: UserStatus.ACTIVE });
+
+    // A bad token is not refused here: handleConnection disconnects it as before.
+    const bad = build({ verify: () => Promise.reject(new Error('jwt')) });
+    bad.gateway.afterInit(server as never);
+    expect(await new Promise<Error | undefined>((res) => middlewares[2](socket(), res))).toBeUndefined();
+  });
+
+  it('does not check the token twice after the middleware ran', async () => {
+    const { gateway, jwt } = build();
+    const client = socket();
+    await gateway.checkHandshake(client as never);
+    await gateway.handleConnection(client as never);
+    expect(jwt.verifyAsync).toHaveBeenCalledTimes(1);
+    expect(client.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('joins the internal user:{id} room on connect', async () => {
+    const { gateway } = build();
+    const client = socket();
+    await gateway.handleConnection(client as never);
+    expect(client.join).toHaveBeenCalledWith('user:u-1');
+  });
+
+  it('disconnects when the account was suspended between the handshake and joining user:{id}', async () => {
+    const { gateway, access } = build();
+    const client = socket();
+    await gateway.checkHandshake(client as never);
+    access.accessOf.mockResolvedValueOnce({ status: UserStatus.SUSPENDED, role: UserRole.CUSTOMER, phone: 'x' } as never);
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it.each([UserStatus.SUSPENDED, UserStatus.BANNED])(
+    'disconnects every live socket of the user on user.status_changed to %s',
+    (status) => {
+      const { gateway, inRoom } = build();
+      const disconnectSockets = vi.fn();
+      inRoom.mockReturnValue({ disconnectSockets } as never);
+      gateway.onUserStatusChanged({ userId: 'u-9', status, from: UserStatus.ACTIVE });
+      expect(inRoom).toHaveBeenCalledWith('user:u-9');
+      expect(disconnectSockets).toHaveBeenCalledWith(true);
+    },
+  );
+
+  it('leaves sockets alone on reactivation and never throws', () => {
+    const { gateway, inRoom } = build();
+    gateway.onUserStatusChanged({ userId: 'u-9', status: UserStatus.ACTIVE, from: UserStatus.SUSPENDED });
+    expect(inRoom).not.toHaveBeenCalled();
+    inRoom.mockImplementation(() => {
+      throw new Error('adapter down');
+    });
+    expect(() =>
+      gateway.onUserStatusChanged({ userId: 'u-9', status: UserStatus.BANNED, from: UserStatus.ACTIVE }),
+    ).not.toThrow();
+  });
+});
