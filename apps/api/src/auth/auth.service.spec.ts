@@ -67,3 +67,49 @@ describe('AuthService runner OTP sign-in (row 217)', () => {
     expect(customer.runners.ensurePhoneVerified).not.toHaveBeenCalled();
   });
 });
+
+describe('AuthService.refresh account status (issue #21)', () => {
+  const buildRefresh = (status: UserStatus | null) => {
+    const users = { statusOf: vi.fn(() => Promise.resolve(status)) };
+    const tokens = {
+      verifyRefresh: vi.fn(() => Promise.resolve({ sub: 'u-1', role: 'customer', phone: '+254700000000', type: 'refresh', jti: 'j-1' })),
+      rotate: vi.fn(() => Promise.resolve({ accessToken: 'a2', refreshToken: 'r2' })),
+      revoke: vi.fn(() => Promise.resolve()),
+    };
+    const service = new AuthService(users as never, {} as never, {} as never, {} as never, tokens as never, {} as never);
+    return { service, users, tokens };
+  };
+
+  it('rotates exactly as before for an active account', async () => {
+    const { service, users, tokens } = buildRefresh(UserStatus.ACTIVE);
+    expect(await service.refresh('rt')).toEqual({ accessToken: 'a2', refreshToken: 'r2' });
+    expect(users.statusOf).toHaveBeenCalledWith('u-1');
+    expect(tokens.rotate).toHaveBeenCalledWith('rt');
+    expect(tokens.revoke).not.toHaveBeenCalled();
+  });
+
+  it.each([UserStatus.SUSPENDED, UserStatus.BANNED])(
+    'revokes the session and answers 401 account_suspended for a %s account',
+    async (status) => {
+      const { service, tokens } = buildRefresh(status);
+      expect(await codeOf(service.refresh('rt'))).toBe('401 account_suspended');
+      expect(tokens.revoke).toHaveBeenCalledWith('rt');
+      expect(tokens.rotate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('revokes and refuses a session whose user no longer exists', async () => {
+    const { service, tokens } = buildRefresh(null);
+    await expect(service.refresh('rt')).rejects.toThrow('Invalid refresh token');
+    expect(tokens.revoke).toHaveBeenCalledWith('rt');
+    expect(tokens.rotate).not.toHaveBeenCalled();
+  });
+
+  it('does not look up the account when the token itself is invalid', async () => {
+    const { service, users, tokens } = buildRefresh(UserStatus.ACTIVE);
+    tokens.verifyRefresh.mockImplementationOnce(() => Promise.reject(new Error('Refresh token revoked or expired')));
+    await expect(service.refresh('rt')).rejects.toThrow('Refresh token revoked or expired');
+    expect(users.statusOf).not.toHaveBeenCalled();
+    expect(tokens.rotate).not.toHaveBeenCalled();
+  });
+});
