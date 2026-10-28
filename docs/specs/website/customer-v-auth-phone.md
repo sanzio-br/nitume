@@ -3,13 +3,13 @@
 - Route: `/app/customer/sign-in` (`guestGuard`). Shared rules: `auth-foundation.md` (cited as F§n). Kit: `ui-kit.md` (cited as K§n).
 - Sources: mobile spec `docs/specs/customer/v-auth-phone.md` (status matches-design); Flutter `apps/customer_app/lib/src/screens/auth/phone_screen.dart`, `auth_frame.dart`; mockup `docs/design/nitume_customer_app.html` lines 317–327; OA-11, OA-12, OA-13, OA-17, rows 39, 82.
 - Runner variant: `runner-v-auth-phone.md` (same layout and states, different copy).
-- Implementation: none yet (`apps/website/src/app/pages/auth/auth.component.ts` is the old public page, not this view; F§1, WQ-9). Status: **missing**.
+- Implementation: none yet (`apps/website/src/app/pages/auth/auth.component.ts` is the old public page, not this view; it is replaced by the role chooser, F§6.7, WQ-12). Status: **missing**.
 
 ## Purpose
 First screen for a signed-out customer on the website. Collects a Kenyan phone number and requests an OTP. Same screen for new and returning customers.
 
 ## Entry / exit
-- Entry: `/app` when signed out (F§6.4); `authGuard` redirect from any `/app/customer/**` URL (with `returnUrl`); the `/auth` chooser (WQ-9 default); full-reload sign-out (F§4.5, with an optional `signedOut` toast); Back from the code screen (number prefilled from `SignInFlowStore`).
+- Entry: the `/auth` role chooser's `I need tasks done` link (F§6.7, WQ-12; `/app` signed out also goes through the chooser, F§6.4); `authGuard` redirect from any `/app/customer/**` URL (with `returnUrl`); full-reload sign-out (F§4.5, with an optional `signedOut` toast); Back from the code screen (number prefilled from `SignInFlowStore`).
 - Exit: `Send code` success → store `{ phone, cooldownEndsAt: now + 60 s }` and navigate to `/app/customer/sign-in/code` (keeps `returnUrl`). No back button (root of the signed-out flow). Browser Back leaves `/app` normally.
 - Cooldown hit (`otp_resend_cooldown`) → same navigation with `cooldownEndsAt = now + retryAfterSeconds`, no error.
 - `Terms` / `Privacy Policy` → the configured URLs in a new tab (F§8).
@@ -98,7 +98,7 @@ Input handling (web adaptation, noted for flutter-customer): spaces and hyphens 
 14. No `localStorage` / `sessionStorage` writes during the flow.
 
 ## Current vs design
-`/auth` (`apps/website/src/app/pages/auth/auth.component.ts`) is the only existing sign-in UI. Against this spec: login/sign-up tabs and a `Full name` field (not in the app flow; the name is OA-2's `x-name-capture`); heading, sub and button copy differ (`Send verification code`); `Continue with Google` stub and an `or` divider (no Google sign-in exists); slate input with 10px radius (OA-12: white, 8px); 10px-radius button (OA-11: pill); box-shadows and raw `#fff` (palette/token rule); phone and code on one card (app: two screens); API `message` text shown to the user instead of OA-17 copy; no rate-limit / cooldown / delivery states; tokens written to `localStorage` (WQ-8); navigates to `/` with no role routing; legal line without links. Decision on that page: WQ-9.
+`/auth` (`apps/website/src/app/pages/auth/auth.component.ts`) is the only existing sign-in UI. Against this spec: login/sign-up tabs and a `Full name` field (not in the app flow; the name is OA-2's `x-name-capture`); heading, sub and button copy differ (`Send verification code`); `Continue with Google` stub and an `or` divider (no Google sign-in exists); slate input with 10px radius (OA-12: white, 8px); 10px-radius button (OA-11: pill); box-shadows and raw `#fff` (palette/token rule); phone and code on one card (app: two screens); API `message` text shown to the user instead of OA-17 copy; no rate-limit / cooldown / delivery states; tokens written to `localStorage` (WQ-8); navigates to `/` with no role routing; legal line without links. Decision on that page: WQ-12 (owner, 2026-10-28): replaced by the role chooser (F§6.7).
 
 ## Questions
-- WQ-9 (the `/auth` page) and WQ-15 (session lifetime) in F§11. Nothing view-specific.
+- WQ-12 (the `/auth` page → role chooser) and WQ-18 (30-day session) answered by the owner on 2026-10-28 (F§11; numbered WQ-9 and WQ-15 in the first version of this spec). Nothing open for this view.

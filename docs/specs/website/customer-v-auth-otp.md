@@ -14,10 +14,10 @@ Verify the 6-digit SMS code, start the session (access token in memory, refresh 
 - Verify success → `SessionStore.completeSignIn` → `resolveDestination` (F§6.2) with `flowRole: 'customer'`, `fresh: true`, `replaceUrl: true`:
   - customer, no `displayName` → `/app/customer/name` (OA-2);
   - customer with a name → `returnUrl` (validated) or `/app/customer/home`;
-  - runner number → the runner destination (WQ-10 default);
-  - admin / business / unknown role → stay, not-allowed line (WQ-11), `dropSession()`.
+  - runner number → the runner destination (WQ-13, owner 2026-10-28; onboarding step for a fresh runner, F§6.2 row 3);
+  - admin / business / unknown role → stay, not-allowed line (WQ-14), `dropSession()`.
 - `Resend code` → new OTP request, stay.
-- After success `RealtimeService.connect()` is called by the shell when it first renders (not here). No FCM registration on the web (F§4.5).
+- After success `RealtimeService.connect()` is called by the shell when it first renders (not here). No push registration in #6: FCM web push (WQ-4) is added by #11/#18; #6 only ships the no-op `SIGN_OUT_HOOK` (F§4.2, F§4.5).
 
 ## Task states
 None (pre-auth).
@@ -78,9 +78,10 @@ None (pre-auth).
 | Resend hourly limit (`otp_rate_limited`) | Other-error line `Too many code requests. Try again in N min.` (N in `nmNum`; `… Try again later.` without a value); the resend line is hidden for the rest of the visit |
 | Resend network throttle (`otp_ip_rate_limited`) | Same line as the hourly limit (F§3) |
 | Resend delivery failed (`otp_delivery_failed`) | `We couldn't send the code. Try again.` |
-| Verify network throttle (`otp_ip_rate_limited` on verify) | `Too many attempts. Try again in N min.` (**proposed**, WQ-14) |
+| Verify network throttle (`otp_ip_rate_limited` on verify) | `Too many attempts. Try again in N min.` (WQ-17, owner 2026-10-28; N = `minutesFrom(retryAfterSeconds)` in `nmNum`; without the field: `Too many attempts. Try again later.`, **proposed**) |
 | Account suspended or banned (`account_suspended`; an uncoded 401 on verify is treated the same) | Other-error line `This account can't sign in. Contact support.` + `Contact support` link when `links.customer.supportUrl` is set (F§8). Never a reason |
-| Not allowed role (admin, business, unknown) | `This number can't be used to sign in here. Use another number, or contact support.` (**proposed**, WQ-11) + `Contact support` link when configured; `dropSession()` |
+| Not allowed role (admin, business, unknown) | `This number can't be used to sign in here. Use another number, or contact support.` (WQ-14, owner 2026-10-28) + `Contact support` link when configured; `dropSession()` |
+| Verify answers 403 `web_origin_not_allowed` (deployment error, F§4.3) | `Something went wrong. Please try again.` |
 | Network (status 0) | `Check your connection and try again.` |
 | Other | `Something went wrong. Please try again.` |
 
@@ -91,7 +92,7 @@ None (pre-auth).
 - `N` minutes in the rate-limit lines.
 
 ## Data
-- `POST /api/v1/auth/otp/verify { phone, code, role: 'customer' }` with credentials (F§4.3; cookie mode TBD-api). Response `{ user, tokens }`; only `tokens.accessToken` is kept, in memory.
+- `POST /api/v1/auth/web/otp/verify { phone, code, role: 'customer' }` with credentials, no Bearer (F§4.3, PR #20). Response 201 `{ user, tokens: { accessToken } }`; the access token is kept in memory; the API sets the httpOnly `nitume_rt` cookie (30 days, WQ-18).
 - Then `GET /api/v1/users/me` (`displayName`, `role`); fallback to the verify user.
 - `POST /api/v1/auth/otp/request { phone }` for resend.
 - No socket events here. No storage writes (F§4.1).
@@ -107,7 +108,7 @@ None (pre-auth).
 ## Required tests (Vitest)
 1. Copy: heading, sub with the formatted number inside `nmNum`, button, resend lines.
 2. `nm-otp-field`: typing digits fills boxes with green borders; letters are stripped; paste `Your code is 123456` → `123456`; 6th digit emits `completed` once; `•` placeholders; focused box ring at the next position; error makes every border red and links the message with `aria-describedby`.
-3. Auto-submit on the 6th digit sends `{ phone, code, role: 'customer' }` with credentials.
+3. Auto-submit on the 6th digit sends `{ phone, code, role: 'customer' }` to `/api/v1/auth/web/otp/verify` with credentials and no `Authorization` header.
 4. Fewer than 6 digits + button → `Enter the 6-digit code.`, no request.
 5. `otp_incorrect` → copy, boxes cleared, focus back in the input.
 6. **Lockout**: `otp_attempts_exhausted` → copy, field and button disabled; resend re-enables them.
@@ -119,14 +120,14 @@ None (pre-auth).
 12. Countdown from `cooldownEndsAt` is correct after a simulated 20 s timer stall (clock-based).
 13. Live region announces only at start and at zero.
 14. `account_suspended` (and an uncoded 401) → suspended line; `Contact support` link only when `supportUrl` is set.
-15. Success routing: customer without name → `/app/customer/name`; with name → `/app/customer/home`; with a valid `returnUrl` → it; runner number → runner destination; admin → not-allowed line and `logout` called. All with `replaceUrl`.
+15. Success routing: customer without name → `/app/customer/name`; with name → `/app/customer/home`; with a valid `returnUrl` → it; runner number → runner destination (WQ-13); admin → not-allowed line and `POST /auth/web/logout` called. All with `replaceUrl`.
 16. Back → phone screen with the number prefilled.
 17. Reload without flow state → phone screen (`otpStepGuard`).
 18. Verify `otp_ip_rate_limited` → `Too many attempts. Try again in N min.`
-19. No storage writes; the refresh token in the response body is not kept.
+19. No storage writes; nothing but `tokens.accessToken` is read from the verify response (a `refreshToken` field, if ever present, is ignored).
 
 ## Current vs design
-The old `/auth` page shows the code field on the same card as the phone (plain input `6-digit code`, slate fill, 10px radius), labels the button `Log in` / `Create account`, has `Change number` instead of Back, no resend, no countdown, no OA-17 error copy (API `message` shown raw), sends no `role`, stores tokens in `localStorage` and navigates to `/`. None of it is reused (F§1, WQ-9).
+The old `/auth` page shows the code field on the same card as the phone (plain input `6-digit code`, slate fill, 10px radius), labels the button `Log in` / `Create account`, has `Change number` instead of Back, no resend, no countdown, no OA-17 error copy (API `message` shown raw), sends no `role`, stores tokens in `localStorage` and navigates to `/`. None of it is reused (F§1); the page is replaced by the role chooser (WQ-12, F§6.7).
 
 ## Questions
-- WQ-10, WQ-11, WQ-14 (F§11).
+- WQ-13, WQ-14, WQ-17 answered by the owner on 2026-10-28 (F§11; numbered WQ-10, WQ-11, WQ-14 in the first version of this spec). Nothing open for this view.

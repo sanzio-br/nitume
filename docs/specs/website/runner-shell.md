@@ -30,7 +30,7 @@ None in the shell. Views use `runnerStatus()` (K§4.2.4).
 ## Layout
 `nm-app-shell` (F§7.3) with the four items, `wordmarkSuffix="Runner"`, home link `/app/runner/jobs`.
 - Below 768px: bottom bar C-13, four equal columns (90px each at 360px), inactive slate-400, active green-700 + filled icon; hidden on pushed routes.
-- From 768px: 220px white side nav headed by `nm-wordmark` `Nitume Runner`, four 48px items (label 14.5/600, inactive slate-600, active green-700); content column max 1180px. Pushed routes keep the side nav (WQ-12).
+- From 768px: 220px white side nav headed by `nm-wordmark` `Nitume Runner`, four 48px items (label 14.5/600, inactive slate-600, active green-700); content column max 1180px. Pushed routes keep the side nav visible (WQ-15, owner 2026-10-28). The side nav is white (WQ-16, owner 2026-10-28).
 - Until #14, #15, #17, #18 and #13 land, the roots and `onboarding/*` load `ViewStubComponent` (F§2).
 
 ## Components
@@ -45,7 +45,7 @@ Same as `customer-shell.md` (`nm-app-shell`, `nm-app-nav`, `nm-icon`, `nm-wordma
 |---|---|
 | Arrive after sign-in | `RealtimeService.connect()` once; the server joins the runner status room (offers, withdrawals, price-change decisions, K§6.4) |
 | Disconnected ≥ 5 s | `Reconnecting…` notice on `v-jobs` (#14, K§6.6); the shell shows nothing |
-| Session expires / suspended | Interceptor sign-out (F§4.5) to `/app/runner/sign-in` with the toast |
+| Session expires / suspended | Interceptor sign-out, token-provider refresh failure or socket `connect_error` `account_suspended` (F§4.2, F§5 items 4 and 8) → full reload to `/app/runner/sign-in` with the toast (F§4.5) |
 | Another tab signs out | Reload to `/app/runner/sign-in` |
 | Not verified | Shell as normal; `v-jobs` shows the verification card (#14) |
 | Loading, empty, error | Per view |
@@ -56,7 +56,7 @@ Not in the shell (later issues decide): location pings while online or on a job 
 None in the shell.
 
 ## Data
-No REST call of its own. `RealtimeService.connect()` / `disconnect()` with the F§5 token provider. Runner room events are consumed by the views.
+No REST call of its own. `RealtimeService.connect()` / `disconnect()` with the F§5 token provider (refresh through `POST /api/v1/auth/web/refresh`) and the `REALTIME_ACCOUNT_SUSPENDED` handler (F§5 item 8). Runner room events are consumed by the views.
 
 ## Accessibility and responsive
 As `customer-shell.md`: one `<nav aria-label="Main">`, link list with `aria-current="page"`, 48px targets, focus ring, `Skip to content`, safe-area padding, no horizontal scroll from 360px, labels always visible.
@@ -75,4 +75,4 @@ As `customer-shell.md`: one `<nav aria-label="Main">`, link list with `aria-curr
 No signed-in runner area exists on the website.
 
 ## Questions
-- WQ-12, WQ-13 (F§11). WQ-6 (`ui-kit.md`) decides whether runners can work an active job from the browser; it does not change the shell.
+- WQ-15, WQ-16 answered by the owner on 2026-10-28 (F§11). WQ-6 (answered on the board: foreground pings while the tab is open) (`ui-kit.md`) decides whether runners can work an active job from the browser; it does not change the shell.

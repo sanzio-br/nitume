@@ -29,7 +29,7 @@ The shell shows none itself. Views inside it show §3.3 states through the kit's
 ## Layout
 `nm-app-shell` (F§7.3) with the five items, no wordmark suffix, home link `/app/customer/home`.
 - Below 768px: routed view full width on slate, bottom bar C-13 (white, slate-line top hairline, 52px items, icon 21, label 10/700, inactive slate-400, active green-700 + filled icon, safe-area padding); hidden on pushed routes.
-- From 768px: 220px white side nav (wordmark, then the five items, 48px rows, label 14.5/600, inactive slate-600, active green-700 + filled icon, hover slate fill); content column max 1180px, padding 24px. Pushed routes keep the side nav (WQ-12).
+- From 768px: 220px white side nav (wordmark, then the five items, 48px rows, label 14.5/600, inactive slate-600, active green-700 + filled icon, hover slate fill); content column max 1180px, padding 24px. Pushed routes keep the side nav visible (WQ-15, owner 2026-10-28). The side nav is white (WQ-16, owner 2026-10-28).
 - Views own their top bar (`nm-top-bar`, F§7.2) or pushed header.
 - Until #7, #9, #11, #12 land, the four roots and `new` load `ViewStubComponent` (F§2).
 
@@ -52,7 +52,7 @@ The shell shows none itself. Views inside it show §3.3 states through the kit's
 |---|---|
 | Arrive after sign-in | `RealtimeService.connect()` once (K§6.2); the first route view loads its own snapshot |
 | Realtime reconnecting | Handled by the service and views (`Reconnecting…` on `v-track`, K§6.6); the shell shows nothing |
-| Session expires / suspended | Interceptor sign-out, full reload to the sign-in screen with the toast (F§4.5) |
+| Session expires / suspended | Interceptor sign-out (any authenticated call can answer `account_suspended`, PR #25), a refresh failure seen by the socket token provider (F§4.2), or the socket `connect_error` `account_suspended` (F§5 item 8): full reload to the sign-in screen with the toast (F§4.5) |
 | Another tab signs out | This tab reloads to `/app/customer/sign-in` (F§4.5) |
 | Loading, empty, error | Per view; the shell has none of its own (restore is handled before the shell renders, F§6) |
 
@@ -65,7 +65,7 @@ Web difference: the app keeps each root tab alive (`IndexedStack`); the web re-c
 None in the shell.
 
 ## Data
-- No REST call of its own. `RealtimeService.connect()` / `disconnect()` with `REALTIME_TOKEN_PROVIDER = () => session.freshAccessToken()` (F§5 item 7).
+- No REST call of its own. `RealtimeService.connect()` / `disconnect()` with `REALTIME_TOKEN_PROVIDER = () => session.freshAccessToken()` and `REALTIME_ACCOUNT_SUSPENDED` → `signOut('suspended')` (F§5 items 7–8). The token provider refreshes through `POST /api/v1/auth/web/refresh`.
 - Socket events are subscribed by the views (K§6.4), not by the shell, except the #8 price-change listener above.
 
 ## Accessibility and responsive
@@ -92,4 +92,4 @@ None in the shell.
 No signed-in area exists on the website. Marketing header/footer wrap every route today (`app.component.ts`); F§1 moves them to a marketing layout so `/app` has its own frame.
 
 ## Questions
-- WQ-12 (pushed screens on desktop), WQ-13 (side-nav style) in F§11.
+- WQ-15 (pushed screens keep the side nav from 768px) and WQ-16 (white side nav) answered by the owner on 2026-10-28 (F§11; numbered WQ-12 and WQ-13 in the first version of this spec). Nothing open for this view.

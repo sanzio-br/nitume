@@ -58,10 +58,10 @@ None.
 
 ## Data
 - `PATCH /api/v1/users/me { displayName }` (trimmed, 2–60, exists) through `SessionStore.saveDisplayName` with Bearer.
-- No push registration on the web (F§4.5). No socket events. No storage writes.
+- No push registration in #6 (WQ-4: FCM web push comes with #11/#18). No socket events. No storage writes.
 
 ## Accessibility and responsive
-- `<label for>` `Your name`; `autocomplete="name"`, `autocapitalize="words"` (mobile `TextCapitalization.words`), `spellcheck="false"`.
+- `<label for>` `Your name`; `autocomplete="name"`, `autocapitalize="words"` (mobile `TextCapitalization.words`), `spellcheck="false"` (the `nm-field` `autocapitalize` / `spellcheck` inputs are a #6 kit addition, F§7.1).
 - Field error linked with `aria-describedby`, `role="alert"`.
 - Focus on load: the `h1` (F§7.3). Same frame at every width.
 
