@@ -201,7 +201,7 @@ Status values as above. `unaudited` = no web spec yet. Mobile spec column: the s
 
 | Issue | Surface | View id | Mobile spec (source) | Web spec | Implementation file | Status |
 |---|---|---|---|---|---|---|
-| #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` (branch `feat/website-ui-kit` at `6e6c053`); re-audit 1 FAIL, 2 minor findings (G5-30 `showReconnecting`, G5-32 single-point zoom) in `docs/audits/website-gap-report.md` | built |
+| #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` (branch `feat/website-ui-kit` at `8d9c7e9`); re-audit 2 PASS, G5-1…G5-41 closed in `docs/audits/website-gap-report.md` | matches-design |
 | #6 | customer | v-auth-phone | `docs/specs/customer/v-auth-phone.md` | — | — | unaudited |
 | #6 | customer | v-auth-otp | `docs/specs/customer/v-auth-otp.md` | — | — | unaudited |
 | #6 | customer | x-name-capture | `docs/specs/customer/x-name-capture.md` | — | — | unaudited |

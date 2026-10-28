@@ -20,7 +20,56 @@
 - Builder: `web-parity`, branch `feat/website-ui-kit`, commit scope `angular-website`.
 - Every item G5-1 … G5-41 is **approved extension, W-Q0**.
 
-### Verdict: FAIL (re-audit 1, 2026-10-28; 2 minor findings, both from spec defects)
+### Verdict: PASS (re-audit 2, 2026-10-28, `feat/website-ui-kit` at `8d9c7e9`)
+
+Both re-audit 1 findings are closed. All 41 items pass. Only `apps/website/src/app/core/realtime/realtime.service{,.spec}.ts` and `apps/website/src/app/shared/map/live-map.component{,.spec}.ts` changed after `9bd8c16`, in two commits:
+- `376199d` fix(angular-website): showReconnecting counts only while trying and is removed with its caller (G5-30)
+- `8d9c7e9` fix(angular-website): centre a single map point at zoom 15 like Flutter cameraFor (G5-32)
+
+**Build health (re-run by the auditor)**
+
+```
+$ cd apps/website && npx ng test --watch=false
+ Test Files  14 passed (14)
+      Tests  73 passed (73)
+exit 0
+$ npx ng build
+main-OU62VUCR.js      | main          | 311.62 kB
+polyfills-5CFQRCPP.js | polyfills     |  34.59 kB
+styles-3NFIVCKS.css   | styles        |   4.71 kB
+                      | Initial total | 350.92 kB
+$ npx tsc -p tsconfig.app.json --noEmit && npx tsc -p tsconfig.spec.json --noEmit -> clean
+```
+
+There are 73 tests: the 68 numbered §12 cases, the new `58 (stub provider)` case, 2 existing app cases and 2 extras. Each numbered case 1–68 still appears exactly once. The bundle is identical to re-audit 1.
+
+**Finding 1 (G5-30): closed.**
+- `realtime.service.ts` `showReconnecting(delayMs, destroyRef?)` now counts only `connecting`/`reconnecting`. On `connected` or `disconnected` it clears the timer and sets false. This matches corrected spec §6.3 / §6.6 and Flutter `jobs_tab.dart:178-194`.
+- The listener and timer are removed through the given `DestroyRef`, or else through the caller's injection-context `DestroyRef`.
+- Test 58 covers:
+  - never connected: no notice after 10 s
+  - a 5 s reconnect: shown
+  - `connected`: hidden again
+  - a short blip: never shown
+  - `disconnect()` while shown: hidden at once and stays hidden
+  - a destroyed component caller: its signal never turns true, while a live listener still works
+  - an explicit `DestroyRef`
+  - `RECONNECTING_COPY` is the single U+2026 character
+- The new `58 (stub provider)` case checks that the #5 stub ends `disconnected`, opens no socket and never shows the notice.
+
+**Builder caveat: called outside an injection context with no `DestroyRef`.** **Accepted, not a FAIL.** In that case the listener is never removed and nothing reports it. It is still acceptable for four reasons:
+- (a) The contract in spec §6.3 is met for both supported call paths, and the JSDoc on the method states how to call it.
+- (b) The only planned callers are the views in #9 (customer `v-track`) and #14 (runner `v-jobs`). Both read a connection signal for a template, which is naturally a field initializer (an injection context).
+- (c) What leaks is one closure and at most one 5 s timer per misplaced call. There is no socket, subscription or DOM leak, and the visible behaviour is unchanged.
+- (d) Throwing in dev would be stricter, but the spec does not require it.
+
+Carried forward to the #9 and #14 view audits: they check that `showReconnecting` is called in a field initializer or constructor, or with an explicit `DestroyRef`. A call from `ngOnInit`, an effect or an event handler without a `DestroyRef` is a FAIL there. Optional hardening for a later kit change (not required): `isDevMode()` warning when neither a `DestroyRef` nor an injection context is found.
+
+**Finding 2 (G5-32): closed.** `live-map.component.ts:35` sets `SINGLE_POINT_ZOOM = 15`. `BASE_OPTIONS.zoom` stays 14 for the initial camera, as in Flutter `google_tracking_map.dart:216` and `:282`. Test 63 asserts `setZoom(15)` for a single point and `options.zoom === 14`.
+
+Item table update: **G5-30 PASS**, **G5-32 PASS**, all other items unchanged (PASS). The re-audit 1 record follows.
+
+### Re-audit 1 (2026-10-28, at `6e6c053`): FAIL, 2 minor findings, both from spec defects (closed at re-audit 2)
 
 Re-audit 1 of `feat/website-ui-kit` at `6e6c053` (18 `web-parity` commits `bb9ace9` … `6e6c053` on top of `3e6c7c9`). 39 of 41 items pass. G5-30 and G5-32 fail on one point each. In both cases the builder followed the spec as written, but the spec contradicted the Flutter source it ports. The spec is corrected in `ebd1325` (`docs(specs): ui-kit single-point zoom 15 and showReconnecting only while trying (Flutter parity)`). Both fixes are small and need no new widget, endpoint or owner decision.
 
@@ -143,9 +192,9 @@ Baseline `main` (`8df4356`) builds to an initial total of 350.09 kB (`main` 311.
 | G5-27 connection + token stub | PASS | Origin via `new URL(apiBaseUrl).origin`, `/socket.io`, websocket, `reconnection:false`. The stub provider returns `null` and never opens a socket. Tests 45, 48 |
 | G5-28 lifecycle + backoff | PASS | Tests 46–48, 55–57 |
 | G5-29 API + 16 events | PASS | Tests 49–54 (D1) |
-| G5-30 `showReconnecting` | **FAIL** | Finding 1 |
+| G5-30 `showReconnecting` | **FAIL** at re-audit 1 → **PASS** at re-audit 2 | Finding 1, fixed in `376199d` |
 | G5-31 `MapsLoaderService` | PASS | Empty key → `unavailable` with no `<script>`. `loading=async`, no `libraries=`. Test 66 |
-| G5-32 `nm-live-map` | **FAIL** | Finding 2 (everything else passes: map once, glide, mid-glide restart, `null` removal, self route, reduced motion, colours from tokens; tests 59–65, 67, 68) |
+| G5-32 `nm-live-map` | **FAIL** at re-audit 1 → **PASS** at re-audit 2 | Finding 2, fixed in `8d9c7e9` (everything else passes: map once, glide, mid-glide restart, `null` removal, self route, reduced motion, colours from tokens; tests 59–65, 67, 68) |
 | G5-33 placeholder | PASS | Blue-050, `role="img"` + label, ETA and overlay still shown, and the same on script error. Test 66 |
 | G5-34 key config | PASS | `mapsApiKey: ''`, example file, `local` build/serve configs, no key anywhere |
 | G5-35 `.gitignore` | PASS | Line 19 |
