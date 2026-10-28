@@ -59,7 +59,7 @@ describe('RealtimeService account_suspended (#6)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("F9.55a. connect_error with message 'account_suspended' → no retry, disconnected, rooms cleared, handler once", async () => {
+  it("F9.55. connect_error with message 'account_suspended' → no retry, disconnected, rooms cleared, handler once", async () => {
     const h = setup();
     await h.service.connect();
     void h.service.joinErrand('e-1');
@@ -77,7 +77,7 @@ describe('RealtimeService account_suspended (#6)', () => {
     expect(h.suspended).toHaveBeenCalledTimes(1);
   });
 
-  it("F9.55b. connect_error with data.code 'account_suspended' (other message) is final too", async () => {
+  it("F9.55 (data.code). connect_error with data.code 'account_suspended' (other message) is final too", async () => {
     const h = setup();
     await h.service.connect();
     h.last().fire('connect_error', { message: 'Unauthorized', data: { code: 'account_suspended' } });
@@ -87,7 +87,7 @@ describe('RealtimeService account_suspended (#6)', () => {
     expect(h.sockets).toHaveLength(1);
   });
 
-  it('F9.55c. any other connect_error still retries with the backoff; disconnect keeps the retry', async () => {
+  it('F9.55 (other errors). any other connect_error still retries with the backoff; disconnect keeps the retry', async () => {
     const h = setup();
     await h.service.connect();
     h.last().fire('connect_error', new Error('xhr poll error'));

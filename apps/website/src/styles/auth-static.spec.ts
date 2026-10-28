@@ -64,4 +64,17 @@ describe('issue #6 static checks', () => {
   it('G6-42. no bare outline: none / outline: 0 in #6 files', () => {
     expect(offenders(/outline:\s*(none|0)\b/)).toEqual([]);
   });
+
+  it('F9.50 (static part). the eager entry imports no /app view, shell or socket code (only the session layer app.config needs)', () => {
+    const eager = ['../app.config.ts', 'app.routes.ts', 'app.component.ts', 'layout/marketing-layout.component.ts'];
+    for (const file of eager) {
+      const source = readFileSync(resolve(appDir, file), 'utf8');
+      const imports = [...source.matchAll(/^import [^;]*from '([^']+)'/gm)].map((m) => m[1]);
+      expect.soft(imports.filter((i) => /app-area\/(?!title\.strategy)|realtime\.service|realtime\.tokens|socket\.io|pages\/auth-chooser/.test(i)), file).toEqual([]);
+    }
+    // SessionStore (eager through the interceptor) loads RealtimeService on demand.
+    const store = readFileSync(resolve(appDir, 'core/auth/session.store.ts'), 'utf8');
+    expect(store).not.toMatch(/^import .*realtime/m);
+    expect(store).toContain("await import('../realtime/realtime.service')");
+  });
 });
