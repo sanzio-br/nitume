@@ -6,11 +6,13 @@ import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
+import { ACCOUNT_SUSPENDED, ACCOUNT_SUSPENDED_MESSAGE } from '../common/api-error';
 import { AuthContext, Public } from '../common/decorators/auth.decorators';
 import { ErrandStatus, UserRole, UserStatus } from '../common/enums';
 import {
@@ -24,7 +26,11 @@ import {
 import { LocationIngestService } from '../location/location-ingest.service';
 import { MerchantDetailsChangedEvent, PriceDifferencePaidEvent } from '../payments/payment-events';
 import { RunnersService } from '../runners/runners.service';
-import { UsersService } from '../users/users.service';
+import {
+  USER_STATUS_CHANGED,
+  UserAccessService,
+  UserStatusChangedEvent,
+} from '../users/user-access.service';
 import {
   ADMIN_ROOM,
   DomainEvent,
@@ -40,6 +46,7 @@ import {
   SocketServerEvent,
   errandRoom,
   runnerRoom,
+  userRoom,
 } from './realtime.events';
 
 interface StatusChangedEvent {
@@ -51,6 +58,8 @@ interface StatusChangedEvent {
 
 interface SocketData {
   user?: AuthContext;
+  /** True once the handshake middleware ran the token check. */
+  authChecked?: boolean;
   /** Set on connect for a runner with a profile (RA-5 room). */
   runnerProfileId?: string;
 }
@@ -61,6 +70,21 @@ type AuthedSocket = Socket<
   Record<string, never>,
   SocketData
 >;
+
+type AuthResult =
+  | { kind: 'ok'; user: AuthContext }
+  | { kind: 'suspended' }
+  | { kind: 'invalid' };
+
+/** Socket.IO `connect_error` for a suspended or banned account (issue #23). */
+export interface AccountSuspendedConnectError extends Error {
+  data: { statusCode: 401; code: string; message: string };
+}
+
+const accountSuspendedConnectError = (): AccountSuspendedConnectError =>
+  Object.assign(new Error(ACCOUNT_SUSPENDED), {
+    data: { statusCode: 401 as const, code: ACCOUNT_SUSPENDED, message: ACCOUNT_SUSPENDED_MESSAGE },
+  });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -74,7 +98,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 @Public()
 @WebSocketGateway({ cors: { origin: true, credentials: true } })
-export class RealtimeGateway implements OnGatewayConnection {
+export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
   private readonly logger = new Logger(RealtimeGateway.name);
 
   @WebSocketServer()
@@ -83,19 +107,56 @@ export class RealtimeGateway implements OnGatewayConnection {
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-    private readonly users: UsersService,
+    private readonly access: UserAccessService,
     private readonly errands: ErrandsService,
     private readonly runners: RunnersService,
     private readonly location: LocationIngestService,
   ) {}
 
+  /**
+   * Issue #23: the token is checked in the handshake middleware, so a
+   * suspended or banned account is refused before it connects, with a
+   * `connect_error` whose `message` is `account_suspended` and whose `data`
+   * is the HTTP body (`{ statusCode: 401, code, message }`). A missing or
+   * invalid token keeps the earlier behaviour (connect, then disconnect).
+   */
+  afterInit(server: Server): void {
+    server.use((socket, next) => {
+      void this.checkHandshake(socket as AuthedSocket).then(
+        (refusal) => next(refusal ?? undefined),
+        () => next(),
+      );
+    });
+  }
+
+  /** Runs the token check once; returns the refusal for a suspended account. */
+  async checkHandshake(client: AuthedSocket): Promise<AccountSuspendedConnectError | null> {
+    const result = await this.authenticate(client);
+    client.data.authChecked = true;
+    if (result.kind === 'ok') {
+      client.data.user = result.user;
+    }
+    return result.kind === 'suspended' ? accountSuspendedConnectError() : null;
+  }
+
   async handleConnection(client: AuthedSocket): Promise<void> {
-    const user = await this.authenticate(client);
+    if (!client.data.authChecked && (await this.checkHandshake(client))) {
+      client.disconnect(true);
+      return;
+    }
+    const user = client.data.user;
     if (!user) {
       client.disconnect(true);
       return;
     }
-    client.data.user = user;
+    await client.join(userRoom(user.userId));
+    // Closes the gap between the handshake check and joining `user:{id}`: a
+    // suspension in between found no socket to disconnect.
+    const now = await this.access.accessOf(user.userId).catch(() => null);
+    if (now?.status !== UserStatus.ACTIVE) {
+      client.disconnect(true);
+      return;
+    }
     if (user.role === UserRole.ADMIN) {
       await client.join(ADMIN_ROOM);
     }
@@ -108,6 +169,25 @@ export class RealtimeGateway implements OnGatewayConnection {
       } catch (err) {
         this.logger.warn(`Runner ${user.userId} connected without a runner room: ${err instanceof Error ? err.message : String(err)}`);
       }
+    }
+  }
+
+  /**
+   * Issue #23: when an account is suspended or banned every live socket of
+   * it is disconnected (the client's reconnect is then refused at the
+   * handshake). Never throws.
+   */
+  @OnEvent(USER_STATUS_CHANGED)
+  onUserStatusChanged(event: UserStatusChangedEvent): void {
+    if (event.status === UserStatus.ACTIVE || !this.server) {
+      return;
+    }
+    try {
+      this.server.in(userRoom(event.userId)).disconnectSockets(true);
+    } catch (err) {
+      this.logger.error(
+        `Could not disconnect sockets of ${event.userId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -345,26 +425,32 @@ export class RealtimeGateway implements OnGatewayConnection {
       .emit(SocketServerEvent.QUOTE_REQUESTED, event);
   }
 
-  private async authenticate(client: AuthedSocket): Promise<AuthContext | null> {
+  private async authenticate(client: AuthedSocket): Promise<AuthResult> {
     const token = tokenFrom(client);
     if (!token) {
-      return null;
+      return { kind: 'invalid' };
     }
     try {
       const payload = await this.jwt.verifyAsync<{ sub?: string; type?: string }>(token, {
         secret: this.config.get<string>('jwt.accessSecret') as string,
       });
       if (payload.type !== 'access' || !payload.sub) {
-        return null;
+        return { kind: 'invalid' };
       }
-      const user = await this.users.findById(payload.sub);
-      if (!user || user.status !== UserStatus.ACTIVE) {
-        return null;
+      const user = await this.access.accessOf(payload.sub);
+      if (!user) {
+        return { kind: 'invalid' };
       }
-      return { userId: user.id, role: user.role, phone: user.phone, status: user.status };
+      if (user.status !== UserStatus.ACTIVE) {
+        return { kind: 'suspended' };
+      }
+      return {
+        kind: 'ok',
+        user: { userId: payload.sub, role: user.role, phone: user.phone, status: user.status },
+      };
     } catch (err) {
       this.logger.debug(`Socket auth rejected: ${err instanceof Error ? err.message : String(err)}`);
-      return null;
+      return { kind: 'invalid' };
     }
   }
 }

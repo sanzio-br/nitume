@@ -13,17 +13,16 @@ const build = (opts: {
   holder?: () => Promise<unknown>;
   profile?: () => Promise<unknown>;
 } = {}) => {
+  const row = (opts.user === undefined
+    ? { id: 'u-1', role: UserRole.CUSTOMER, phone: '+254700000000', status: UserStatus.ACTIVE }
+    : opts.user) as { id?: string; role?: UserRole; phone?: string; status?: UserStatus } | null;
   const jwt = {
-    verifyAsync: vi.fn(opts.verify ?? (() => Promise.resolve({ sub: 'u-1', type: 'access' }))),
+    verifyAsync: vi.fn(opts.verify ?? (() => Promise.resolve({ sub: row?.id ?? 'u-1', type: 'access' }))),
   };
   const config = { get: vi.fn(() => 'secret') };
-  const users = {
-    findById: vi.fn(() =>
-      Promise.resolve(
-        opts.user === undefined
-          ? { id: 'u-1', role: UserRole.CUSTOMER, phone: '+254700000000', status: UserStatus.ACTIVE }
-          : opts.user,
-      ),
+  const access = {
+    accessOf: vi.fn(() =>
+      Promise.resolve(row ? { status: row.status, role: row.role, phone: row.phone } : null),
     ),
   };
   const errands = {
@@ -37,7 +36,7 @@ const build = (opts: {
   const gateway = new RealtimeGateway(
     jwt as never,
     config as never,
-    users as never,
+    access as never,
     errands as never,
     runners as never,
     location as never,
@@ -48,7 +47,7 @@ const build = (opts: {
   const fetchSockets = vi.fn(() => Promise.resolve(roomSockets));
   const inRoom = vi.fn(() => ({ fetchSockets }));
   gateway.server = { to, in: inRoom } as never;
-  return { gateway, jwt, users, errands, runners, location, to, emit, roomSockets, inRoom };
+  return { gateway, jwt, access, errands, runners, location, to, emit, roomSockets, inRoom };
 };
 
 const socket = (auth: Record<string, unknown> = { token: 'abc' }, headers = {}) => ({
@@ -241,7 +240,7 @@ describe('RealtimeGateway admin room (row 68)', () => {
     const customer = build();
     const customerSocket = socket();
     await customer.gateway.handleConnection(customerSocket as never);
-    expect(customerSocket.join).not.toHaveBeenCalled();
+    expect(customerSocket.join).not.toHaveBeenCalledWith('admins');
   });
 
   it('pushes quote:requested to the admins and the errand room', () => {
@@ -329,7 +328,7 @@ describe('RealtimeGateway runner room (RA-5, row 139)', () => {
     const client = socket();
     await gateway.handleConnection(client as never);
     expect(client.disconnect).not.toHaveBeenCalled();
-    expect(client.join).not.toHaveBeenCalled();
+    expect(client.join).not.toHaveBeenCalledWith(expect.stringMatching(/^runner:/));
   });
 
   it('never puts customers or admins in a runner room', async () => {
