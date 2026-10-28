@@ -14,6 +14,10 @@
   @include nm-type(field-label);
 }
 
+.nm-field__label--hidden {
+  @include nm-visually-hidden;
+}
+
 .nm-field__control {
   position: relative;
 }

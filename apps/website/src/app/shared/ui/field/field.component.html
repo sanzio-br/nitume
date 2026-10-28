@@ -1,6 +1,6 @@
 <div class="nm-field">
   @if (label(); as text) {
-    <label class="nm-field__label" [for]="id">{{ text }}</label>
+    <label class="nm-field__label" [class.nm-field__label--hidden]="hideLabel()" [for]="id">{{ text }}</label>
   }
   <div class="nm-field__control">
     @if (kind() === 'multiline') {
@@ -13,6 +13,8 @@
         [attr.placeholder]="placeholder()"
         [attr.maxlength]="maxLength()"
         [attr.autocomplete]="autocomplete()"
+        [attr.autocapitalize]="autocapitalize()"
+        [attr.spellcheck]="spellcheckAttr()"
         [disabled]="isDisabled()"
         [readOnly]="readonly()"
         [attr.aria-invalid]="error() ? 'true' : null"
@@ -33,6 +35,8 @@
         [attr.type]="kind() === 'phone' ? 'tel' : 'text'"
         [attr.inputmode]="kind() === 'money' ? 'numeric' : kind() === 'phone' ? 'tel' : null"
         [attr.autocomplete]="kind() === 'phone' ? 'tel' : autocomplete()"
+        [attr.autocapitalize]="autocapitalize()"
+        [attr.spellcheck]="spellcheckAttr()"
         [value]="value()"
         [attr.placeholder]="placeholder()"
         [attr.maxlength]="maxLength()"
