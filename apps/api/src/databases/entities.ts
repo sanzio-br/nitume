@@ -32,9 +32,11 @@ import { RunnerVerification } from '../runners/runner-verification.entity';
 import { VerificationDocumentAccessLog } from '../runners/verification-document-access-log.entity';
 import { Device } from '../users/device.entity';
 import { User } from '../users/user.entity';
+import { UserStatusHistory } from '../users/user-status-history.entity';
 
 export const ENTITY_LIST = [
   User,
+  UserStatusHistory,
   Device,
   CustomerProfile,
   SavedAddress,
