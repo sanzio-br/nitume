@@ -28,14 +28,35 @@ export const SOCKET_IO_FACTORY = new InjectionToken<SocketIoFactory>('SOCKET_IO_
 
 /**
  * Fresh access token for each (re)connect, or `null` when signed out.
- * Issue #6 provides the real one (refreshing through
- * `POST /api/v1/auth/refresh`). Until then this stub returns `null`, so
- * `connect()` ends `disconnected` and never opens a socket.
+ * Issue #6 provides the real one in `app.config.ts`
+ * (`SessionStore.freshAccessToken()`, refreshing through
+ * `POST /api/v1/auth/web/refresh`). This stub default (tests, signed out)
+ * returns `null`, so `connect()` ends `disconnected` and never opens a
+ * socket.
  */
 export const REALTIME_TOKEN_PROVIDER = new InjectionToken<() => Promise<string | null>>(
   'REALTIME_TOKEN_PROVIDER',
   { providedIn: 'root', factory: () => () => Promise.resolve(null) },
 );
+
+/**
+ * Called once when the handshake is refused with `account_suspended`
+ * (auth-foundation §5 item 8, PR #25). Default no-op; #6 provides
+ * `() => session.signOut('suspended', role)` in `app.config.ts`.
+ */
+export const REALTIME_ACCOUNT_SUSPENDED = new InjectionToken<() => void>(
+  'REALTIME_ACCOUNT_SUSPENDED',
+  { providedIn: 'root', factory: () => () => undefined },
+);
+
+/** `connect_error` of a suspended or banned account (PR #25 gateway). */
+export function isSuspendedConnectError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const e = error as { message?: unknown; data?: unknown };
+  if (e.message === 'account_suspended') return true;
+  const data = e.data as { code?: unknown } | null | undefined;
+  return typeof data === 'object' && data !== null && data.code === 'account_suspended';
+}
 
 /** 1 s, 2 s, 4 s … capped at 30 s, ±20% jitter. `attempt` starts at 1. */
 export function defaultBackoff(attempt: number, random: () => number = Math.random): number {
