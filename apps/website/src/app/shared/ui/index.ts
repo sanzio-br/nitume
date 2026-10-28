@@ -25,3 +25,5 @@ export * from './links';
 export * from './otp-field/otp-field.component';
 export * from './otp-resend-line/otp-resend-line.component';
 export * from './legal-line/legal-line.component';
+export * from './app-nav/app-nav.component';
+export * from './app-shell/app-shell.component';
