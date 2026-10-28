@@ -1,0 +1,184 @@
+// ============================================================
+// NITUME WEBSITE (signed-in app) — DESIGN TOKENS
+// Spec: docs/specs/website/ui-kit.md §2. Values are VERBATIM from
+// docs/design/nitume_design_system.html (Flutter: nitume_core theme).
+//
+// This is the ONLY file in the signed-in app that may hold a hex or
+// rgba() colour. Components read `var(--nitume-…)` and the mixins below.
+// The marketing variables in styles.scss (--blue … --r-l) are separate
+// and left untouched (WQ-5).
+//
+// Usage:
+//   styles.scss      @use 'styles/tokens';            (emits :root)
+//   component.scss   @use '<rel>/styles/tokens' as * with ($nm-emit-root: false);
+// ============================================================
+
+@use 'sass:list';
+@use 'sass:map';
+
+/// When true (global stylesheet), the custom properties are emitted on
+/// :root. Component stylesheets load the mixins only.
+$nm-emit-root: true !default;
+
+// --- Breakpoints (§2.7, web adaptation) ---
+$nm-bp-min: 360px;
+$nm-bp-md: 768px;
+$nm-bp-lg: 1024px;
+$nm-bp-xl: 1280px;
+
+@if $nm-emit-root {
+  :root {
+    // --- Colour (§2.2): exactly 16 tokens, no neutral, no grey ---
+    --nitume-blue: #0B2545;
+    --nitume-white: #FFFFFF;
+    --nitume-slate: #F4F6F9;
+    --nitume-green: #04AF4D;
+    --nitume-blue-700: #08192F;
+    --nitume-blue-050: #E9EDF3;
+    --nitume-slate-line: #E2E7EF;
+    --nitume-slate-600: #5C6B85;
+    --nitume-slate-400: #8C97AC;
+    --nitume-green-050: #E3F8EA;
+    --nitume-green-700: #038A3D;
+    --nitume-amber: #B8860B;
+    --nitume-amber-050: #FBF3E1;
+    --nitume-red: #C1433C;
+    --nitume-red-050: #FBEAE9;
+    --nitume-scrim: rgba(11, 37, 69, 0.5);
+
+    // --- Type families (§2.3) ---
+    --nitume-font-ui: 'Fira Sans', system-ui, sans-serif;
+    --nitume-font-num: 'Fira Code', ui-monospace, monospace;
+
+    // --- Spacing (§2.5) ---
+    --nitume-space-xs: 4px;
+    --nitume-space-sm: 8px;
+    --nitume-space-md: 16px;
+    --nitume-space-lg: 24px;
+    --nitume-space-xl: 32px;
+    --nitume-space-screen: 20px;
+    --nitume-tap: 48px;
+
+    // --- Radius (§2.6) ---
+    --nitume-r-s: 8px;
+    --nitume-r-m: 14px;
+    --nitume-r-l: 20px;
+    --nitume-r-pill: 999px;
+
+    // --- Layout (§2.7) ---
+    --nitume-content-max: 1180px;
+  }
+}
+
+// --- Type styles (§2.4) ---
+// family, size, weight, colour (null = per variant), uppercase, letter-spacing
+$nm-type-styles: (
+  'h1': (ui, 34px, 700, blue, false, null),
+  'h2': (ui, 24px, 600, blue, false, null),
+  'auth-heading': (ui, 22px, 700, blue, false, null),
+  'top-bar-title': (ui, 21px, 700, blue, false, null),
+  'pushed-title': (ui, 18px, 700, blue, false, null),
+  'dialog-title': (ui, 17px, 600, blue, false, null),
+  'card-title': (ui, 15.5px, 600, blue, false, null),
+  'body-lg': (ui, 15px, 400, blue, false, null),
+  'field-input': (ui, 14.5px, 400, blue, false, null),
+  'button': (ui, 14.5px, 600, null, false, null),
+  'list-title': (ui, 14.5px, 600, blue, false, null),
+  'row-title': (ui, 13.5px, 600, blue, false, null),
+  'body': (ui, 13.5px, 400, blue, false, null),
+  'muted': (ui, 13px, 400, slate-600, false, null),
+  'field-label': (ui, 12.5px, 600, slate-600, false, null),
+  'error': (ui, 12.5px, 400, red, false, null),
+  'button-sm': (ui, 12.5px, 700, null, false, null),
+  'chip': (ui, 12px, 600, blue, false, null),
+  'section-label': (ui, 11.5px, 700, slate-600, true, 0.05em),
+  'muted-sm': (ui, 11.5px, 400, slate-600, false, null),
+  'card-label': (ui, 11px, 700, slate-600, true, 0.04em),
+  'tag': (ui, 10px, 700, null, false, null),
+  'tab-label': (ui, 10px, 700, null, false, null),
+  'num-amount-lg': (num, 30px, 600, blue, false, null),
+  'num-amount': (num, 20px, 600, blue, false, null),
+  'num': (num, 14px, 500, blue, false, null),
+  'num-sm': (num, 13px, 400, slate-600, false, null),
+  'num-meta-lg': (num, 12px, 400, slate-600, false, null),
+  'num-meta': (num, 11px, 400, slate-600, false, null),
+  'num-progress': (num, 12.5px, 600, slate-600, false, null),
+);
+
+/// Applies a §2.4 type style. Optional overrides exist for the few Flutter
+/// widgets whose text sits between two named styles (e.g. step-card title
+/// 13/600, ETA chip Code 11.5/700); components never write font literals.
+@mixin nm-type($name, $size: null, $weight: null, $color: null) {
+  @if not map.has-key($nm-type-styles, $name) {
+    @error 'Unknown nm-type style: #{$name}';
+  }
+  $s: map.get($nm-type-styles, $name);
+  $family: list.nth($s, 1);
+  $tone: list.nth($s, 4);
+  @if $color {
+    $tone: $color;
+  }
+  @if not $size {
+    $size: list.nth($s, 2);
+  }
+  @if not $weight {
+    $weight: list.nth($s, 3);
+  }
+  font-family: var(--nitume-font-#{$family});
+  font-size: $size;
+  font-weight: $weight;
+  @if $family == num {
+    line-height: 1.3;
+  } @else {
+    line-height: 1.4;
+  }
+  @if $tone {
+    color: var(--nitume-#{$tone});
+  }
+  @if list.nth($s, 5) {
+    text-transform: uppercase;
+  }
+  @if list.nth($s, 6) {
+    letter-spacing: list.nth($s, 6);
+  }
+}
+
+/// Switches only the family (Flutter `NumSpan`): size, weight and colour
+/// are inherited.
+@mixin nm-num-family {
+  font-family: var(--nitume-font-num);
+}
+
+/// `@media (min-width: $bp)`.
+@mixin nm-up($bp) {
+  @media (min-width: $bp) {
+    @content;
+  }
+}
+
+/// Pads a visually smaller control to a 48×48 hit area.
+@mixin nm-hit-area {
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--nitume-tap));
+    height: max(100%, var(--nitume-tap));
+    transform: translate(-50%, -50%);
+  }
+}
+
+/// Design-system focus ring: 2px green outline, offset 2px (1px on fields).
+@mixin nm-focus-ring($offset: 2px) {
+  outline: 2px solid var(--nitume-green);
+  outline-offset: $offset;
+}
+
+/// Motion is off under `prefers-reduced-motion: reduce` (§8).
+@mixin nm-reduced-motion {
+  @media (prefers-reduced-motion: reduce) {
+    @content;
+  }
+}
