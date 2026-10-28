@@ -201,7 +201,7 @@ Status values as above. `unaudited` = no web spec yet. Mobile spec column: the s
 
 | Issue | Surface | View id | Mobile spec (source) | Web spec | Implementation file | Status |
 |---|---|---|---|---|---|---|
-| #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | — (branch `feat/website-ui-kit`) | specced |
+| #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | missing; gap items G5-1…G5-41 in `docs/audits/website-gap-report.md` (branch `feat/website-ui-kit`) | specced |
 | #6 | customer | v-auth-phone | `docs/specs/customer/v-auth-phone.md` | — | — | unaudited |
 | #6 | customer | v-auth-otp | `docs/specs/customer/v-auth-otp.md` | — | — | unaudited |
 | #6 | customer | x-name-capture | `docs/specs/customer/x-name-capture.md` | — | — | unaudited |
