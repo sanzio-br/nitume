@@ -1,22 +1,17 @@
 import {
-  HttpStatus,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { ApiError, conflict } from '../common/api-error';
+import { accountSuspended, conflict } from '../common/api-error';
 import { UserRole, UserStatus } from '../common/enums';
 import { CustomersService } from '../customers/customers.service';
 import { RunnersService } from '../runners/runners.service';
 import { PublicUser, toPublicUser, UsersService } from '../users/users.service';
 import { OtpService } from './otp.service';
 import { TokenPair, TokenService } from './token.service';
-
-/** 401 with machine-readable `account_suspended` (suspended or banned user). */
-const accountSuspended = (): ApiError =>
-  new ApiError(HttpStatus.UNAUTHORIZED, 'account_suspended', 'Account is suspended or banned');
 
 const LEGACY_BUSINESS_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.BUSINESS];
 
