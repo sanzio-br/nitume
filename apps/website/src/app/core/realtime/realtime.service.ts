@@ -9,6 +9,9 @@
 // - Re-joins every errand room joined through `joinErrand` on each connect.
 // - Hot, no-replay streams; malformed payloads are dropped, never thrown.
 // - Tokens come only from REALTIME_TOKEN_PROVIDER (issue #6).
+// - A handshake refused with `account_suspended` (PR #25) is final: no
+//   retry, `disconnected`, rooms cleared, REALTIME_ACCOUNT_SUSPENDED called
+//   once (issue #6, auth-foundation §5 item 8).
 import { DestroyRef, Injectable, Signal, inject, signal } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 import {
@@ -36,12 +39,14 @@ import {
   locationPingToJson,
 } from './realtime.events';
 import {
+  REALTIME_ACCOUNT_SUSPENDED,
   REALTIME_ACK_TIMEOUT_MS,
   REALTIME_BACKOFF,
   REALTIME_TOKEN_PROVIDER,
   REALTIME_URL,
   RealtimeSocket,
   SOCKET_IO_FACTORY,
+  isSuspendedConnectError,
 } from './realtime.tokens';
 
 type JoinResult = 'ok' | 'refused' | 'timeout';
@@ -64,6 +69,7 @@ export class RealtimeService {
   private readonly tokenProvider = inject(REALTIME_TOKEN_PROVIDER);
   private readonly backoff = inject(REALTIME_BACKOFF);
   private readonly url = inject(REALTIME_URL);
+  private readonly onAccountSuspended = inject(REALTIME_ACCOUNT_SUSPENDED);
 
   private readonly stateSignal = signal<RealtimeConnectionState>('disconnected');
   /** `disconnected | connecting | connected | reconnecting`. */
@@ -275,8 +281,14 @@ export class RealtimeService {
     s.on('disconnect', () => {
       if (current()) this.scheduleRetry();
     });
-    s.on('connect_error', () => {
-      if (current()) this.scheduleRetry();
+    s.on('connect_error', (error: never) => {
+      if (!current()) return;
+      if (isSuspendedConnectError(error)) {
+        this.disconnect();
+        this.onAccountSuspended();
+        return;
+      }
+      this.scheduleRetry();
     });
 
     this.listen(s, RealtimeEvents.locationUpdate, RealtimeParsers.locationUpdate, this.locations);

@@ -183,7 +183,7 @@ Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced
 | page-runner | Become a runner | | unaudited |
 | page-business | Business | | unaudited |
 | page-diaspora | Diaspora | | unaudited |
-| page-auth | Sign in / sign up | | unaudited |
+| page-auth | Sign in / sign up → **role chooser** (WQ-12, owner 2026-10-28) | `apps/website/src/app/pages/auth-chooser/auth-chooser.page.ts` (old `pages/auth/` deleted in `c4bbdf1`; branch `feat/website-auth-shell`); spec `auth-foundation.md` §6.7, G6-20; WQ-24 copy met; re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
 
 ## Website — signed-in app (parity, issues #5–#18)
 
@@ -194,7 +194,8 @@ Owner decision 2026-10-28: every customer and runner app feature comes to `apps/
 | Web specs | `docs/specs/website/<view-id>.md` (customer and runner views share one folder; where a view id exists on both surfaces the file is `customer-<view-id>.md` / `runner-<view-id>.md`) |
 | Shared web UI kit spec | `docs/specs/website/ui-kit.md` (token layer, components, formatting, `RealtimeService`, `LiveMapComponent`, required tests, questions WQ-1 … WQ-8) |
 | Web UI kit (built, #5) | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` |
-| Signed-in routes (to build, #6) | `/app/customer/...`, `/app/runner/...` |
+| Signed-in routes (built on `feat/website-auth-shell`, #6; re-audit 3 PASS; initial-bundle cap for #7–#18: 360 kB raw, WQ-34) | `/app/customer/...`, `/app/runner/...`; `/auth` role chooser (outside `/app`) |
+| Auth foundation spec (#6) | `docs/specs/website/auth-foundation.md` (routes, session WQ-8, web auth API `/api/v1/auth/web/*`, interceptor, guards, role routing, chooser, #6 components, Vitest 1–59, owner answers WQ-12…WQ-18, WQ-24 (Q6-1), WQ-33) |
 | Audits | `docs/audits/website-gap-report.md` |
 
 Status values as above. `unaudited` = no web spec yet. Mobile spec column: the source the web spec adapts.
@@ -202,14 +203,15 @@ Status values as above. `unaudited` = no web spec yet. Mobile spec column: the s
 | Issue | Surface | View id | Mobile spec (source) | Web spec | Implementation file | Status |
 |---|---|---|---|---|---|---|
 | #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` (branch `feat/website-ui-kit` at `8d9c7e9`); re-audit 2 PASS, G5-1…G5-41 closed in `docs/audits/website-gap-report.md` | matches-design |
-| #6 | customer | v-auth-phone | `docs/specs/customer/v-auth-phone.md` | — | — | unaudited |
-| #6 | customer | v-auth-otp | `docs/specs/customer/v-auth-otp.md` | — | — | unaudited |
-| #6 | customer | x-name-capture | `docs/specs/customer/x-name-capture.md` | — | — | unaudited |
-| #6 | customer | shell | `docs/specs/customer/_shared.md` §1 (C-13) | — | — | unaudited |
-| #6 | runner | v-auth-phone | `docs/specs/runner/v-auth-phone.md` | — | — | unaudited |
-| #6 | runner | v-auth-otp | `docs/specs/runner/v-auth-otp.md` | — | — | unaudited |
-| #6 | runner | x-name-capture | `docs/specs/runner/x-name-capture.md` | — | — | unaudited |
-| #6 | runner | shell | `docs/specs/runner/_shared.md` §1 (C-13) | — | — | unaudited |
+| #6 | shared | auth-foundation | Flutter `services/session.dart` (both apps), `onboarding_routing.dart`, `nitume_core` `otp_policy.dart`; owner WQ-8, WQ-12…WQ-18 | `docs/specs/website/auth-foundation.md` | `apps/website/src/app/core/auth/` (session.store, auth-api, auth.interceptor, guards, role-routing, otp-policy), `src/app/app-area/` (lazy `/app` tree, `AppAreaComponent`, splash, offline page), `src/app/layout/marketing-layout.component.ts`, `src/app/core/realtime/realtime.session-tokens.ts` (branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | customer | v-auth-phone | `docs/specs/customer/v-auth-phone.md` | `docs/specs/website/customer-v-auth-phone.md` (+ `auth-foundation.md`) | `apps/website/src/app/app-area/sign-in/auth-phone.page.ts` (`/app/customer/sign-in`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | customer | v-auth-otp | `docs/specs/customer/v-auth-otp.md` | `docs/specs/website/customer-v-auth-otp.md` (+ `auth-foundation.md`) | `apps/website/src/app/app-area/sign-in/auth-otp.page.ts` + `shared/ui/otp-field`, `shared/ui/otp-resend-line` (`/app/customer/sign-in/code`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | customer | x-name-capture | `docs/specs/customer/x-name-capture.md` | `docs/specs/website/customer-x-name-capture.md` (+ `auth-foundation.md`) | `apps/website/src/app/app-area/sign-in/name-capture.page.ts` (`/app/customer/name`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | customer | shell | `docs/specs/customer/_shared.md` §1 (C-13) | `docs/specs/website/customer-shell.md` (+ `auth-foundation.md`) | `apps/website/src/app/app-area/shell/app-shell.page.ts` + `shared/ui/app-shell`, `shared/ui/app-nav` (`/app/customer`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | runner | v-auth-phone | `docs/specs/runner/v-auth-phone.md` | `docs/specs/website/runner-v-auth-phone.md` (+ `auth-foundation.md`) | `AuthPhonePage` with `data.role: runner` (`/app/runner/sign-in`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | runner | v-auth-otp | `docs/specs/runner/v-auth-otp.md` | `docs/specs/website/runner-v-auth-otp.md` (+ `auth-foundation.md`) | `AuthOtpPage` with `data.role: runner` (`/app/runner/sign-in/code`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | runner | x-name-capture | `docs/specs/runner/x-name-capture.md` | `docs/specs/website/runner-x-name-capture.md` (+ `auth-foundation.md`) | `NameCapturePage` with `data.role: runner` (`/app/runner/name`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | runner | shell | `docs/specs/runner/_shared.md` §1 (C-13) | `docs/specs/website/runner-shell.md` (+ `auth-foundation.md`) | `AppShellPage` with `data.role: runner` (`/app/runner`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
 | #7 | customer | v-home | `docs/specs/customer/v-home.md` | — | — | unaudited |
 | #7 | customer | v-new-category | `docs/specs/customer/v-new-category.md` | — | — | unaudited |
 | #7 | customer | v-new-details | `docs/specs/customer/v-new-details.md` | — | — | unaudited |

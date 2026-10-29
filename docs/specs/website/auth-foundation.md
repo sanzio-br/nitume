@@ -30,7 +30,7 @@
 | `ApiService` (OTP request/verify, register) | `src/app/core/services/api.service.ts` | Replaced by `AuthApi` (§4.3), which calls the web routes `/auth/web/*`. `register()` is not used by any view (the apps never call it) and is dropped with the old page |
 | `/auth` page: login/sign-up tabs, phone + code in one card, `Full name` on sign-up, `Continue with Google` stub, writes tokens to `localStorage`, navigates to `/` | `src/app/pages/auth/auth.component.ts` | Off-system (slate inputs, 10px radius, box-shadows, raw `#fff`), no OA-17 states, no role routing, a fake Google button. **WQ-12 (owner, 2026-10-28): replaced by the role chooser** (§6.7). The old component, its Google stub and its `localStorage` writes are deleted, in their own commit |
 | Marketing CTAs (`Log in`, `Request a task`, `Apply to become a Runner`, `Talk to sales`, …) all link to `/auth` | `shared/header`, `pages/*` | Unchanged (marketing pages must not change). They keep pointing at `/auth`, which now opens the role chooser (WQ-12) |
-| `provideHttpClient(withFetch())`, `provideRouter(routes, withComponentInputBinding())` | `src/app.config.ts` | Gains `withInterceptors([authInterceptor])` (§5), a `TitleStrategy` provider (§2), the real `REALTIME_TOKEN_PROVIDER` and the `REALTIME_ACCOUNT_SUSPENDED` handler (§5 items 7–8); nothing else changes |
+| `provideHttpClient(withFetch())`, `provideRouter(routes, withComponentInputBinding())` | `src/app.config.ts` | Gains `withInterceptors([authInterceptor])` (§5), a `TitleStrategy` provider (§2), the real `REALTIME_TOKEN_PROVIDER` and the `REALTIME_ACCOUNT_SUSPENDED` handler (§5 items 7–8); nothing else changes. **WQ-33 (2026-10-29):** all of these must reach the session code lazily (dynamic `import()` or providers in the lazy `/app` tree); `app.config.ts` statically imports nothing from `core/auth/**`, `core/realtime/**` or `app-area/**` (§9.9 item 50) |
 | `REALTIME_TOKEN_PROVIDER` stub (returns `null`) and its doc comment naming `POST /api/v1/auth/refresh` | `src/app/core/realtime/realtime.tokens.ts` (#5) | The stub default stays (tests and signed-out use); the comment names `POST /api/v1/auth/web/refresh`. #6 overrides it in `app.config.ts` (#5 handoff need) |
 | `nm-toast-host` exists but is placed nowhere | `src/app/shared/ui/overlay/toast-host.component.ts` (#5) | Placed once in `AppAreaComponent` (§7.3), which wraps the shells and the sign-in screens (#5 handoff need) |
 | `environment.ts` `{ apiBaseUrl }` (+ `mapsApiKey` from #5) | `src/environments/environment.ts` | Gains the link settings in §8 |
@@ -39,7 +39,7 @@
 
 ## 2. Routes
 
-All signed-in and sign-in routes live under one lazy `app` entry, so the marketing bundle is unchanged. Customer and runner trees are separate lazy chunks.
+All signed-in and sign-in routes live under one lazy `app` entry, so the marketing bundle is unchanged. The session layer is lazy too (WQ-33, owner 2026-10-29; §9.9 item 50): `app.config.ts` keeps only thin shims (an interceptor that dynamically imports the real one for API URLs) and no static import of `core/auth/**`. Customer and runner trees are separate lazy chunks.
 
 ```
 /app                               AppEntryPage (splash) → session-based redirect (§6.4)
@@ -76,7 +76,7 @@ Outside `/app`, at the top level of `app.routes.ts` (WQ-12): `/auth` → `AuthCh
 - `v-onboard-id` / `v-onboard-selfie` are outside the shell because the runner app replaces the stack with them (no tab bar under them); `v-onboard-pending` is inside the shell because the app shows it pushed over `v-jobs` (runner `v-auth-otp.md` routing step 3).
 - **Route stubs for later issues.** #6 declares every path in the tree above. A path whose view belongs to a later issue lazy-loads one shared `ViewStubComponent` that renders only an `h1` in the `top-bar-title` style with the nav label (`Home`, `Track`, `History`, `Profile`, `Jobs`, `Active`, `Earnings`) or, for `new` and the onboarding paths, nothing but a `nm-skeleton-card`; it has no copy of its own, no data and no TODO text on screen. Each later issue replaces its stub. The stub exists so the nav, guards and routing can be built and tested now; reviewer checks no stub is left once #7–#18 are merged.
 - Route `data`: `{ role: 'customer' | 'runner', navKey?: string, pushed?: boolean, title: string }`. `navKey` decides the highlighted nav item; `pushed: true` hides the bottom bar below 768px (§7.3).
-- Document titles (**proposed**; set through a `TitleStrategy`): chooser `Sign in · Nitume`; `Sign in · Nitume`, `Enter the code · Nitume`, `Your name · Nitume`, `Home · Nitume`, `Track · Nitume`, `History · Nitume`, `Profile · Nitume`; runner `Sign in · Nitume Runner`, `Enter the code · Nitume Runner`, `Your name · Nitume Runner`, `Jobs · Nitume Runner`, `Active · Nitume Runner`, `Earnings · Nitume Runner`, `Profile · Nitume Runner`. Later issues add theirs in the same pattern.
+- Document titles (**proposed**; route `title` strings read by Angular's default `TitleStrategy` since WQ-33, re-audit 2; the marketing parent route carries the `index.html` title `Nitume — Someone there, when you can't be.` so a marketing page reached in-app never keeps an `/app` title): chooser `Sign in · Nitume`; `Sign in · Nitume`, `Enter the code · Nitume`, `Your name · Nitume`, `Home · Nitume`, `Track · Nitume`, `History · Nitume`, `Profile · Nitume`; runner `Sign in · Nitume Runner`, `Enter the code · Nitume Runner`, `Your name · Nitume Runner`, `Jobs · Nitume Runner`, `Active · Nitume Runner`, `Earnings · Nitume Runner`, `Profile · Nitume Runner`. Later issues add theirs in the same pattern.
 - Navigation after sign-in, after name capture and after sign-out uses `replaceUrl: true` (the apps replace the stack, so browser Back never returns to the code screen).
 
 ---
@@ -164,7 +164,7 @@ export const SIGN_OUT_HOOK = new InjectionToken<(reason: SignOutReason) => Promi
 });
 ```
 
-- `ensureRestored()` (single-flight; later calls return the same promise until it settles): access token in memory → `signedIn`. Otherwise `refresh()`: `ok` → `GET /users/me` → `signedIn`; `rejected` or `suspended` → `signedOut`, silently (no toast: there was no session in this tab, same as the apps' restore); `network` → `restoreFailed` / `'failed'`. `GET /users/me` 401 → `signedOut`; network/5xx → `failed`.
+- `ensureRestored()` (single-flight; later calls return the same promise until it settles): access token in memory → `signedIn`. Otherwise `refresh()`: `ok` → `GET /users/me` → `signedIn`; `rejected` or `suspended` → `signedOut`, silently (no toast: there was no session in this tab, same as the apps' restore); `network` → `restoreFailed` / `'failed'`. `GET /users/me` 401 → `signedOut`; network/5xx → `failed`. Once the tab knows it is signed out (the restore answered `signedOut`, or `dropSession()` ran), later calls return `signedOut` without another refresh until a sign-in in this tab or a reload (the apps restore once per launch; tabs share only the sign-out broadcast, §4.4). A `failed` restore is retried on the next call. (Builder choice accepted at re-audit 1, 2026-10-29.)
 - `completeSignIn(result)`: keep `result.tokens.accessToken` in memory (ignore any refresh token), then `GET /users/me` for the display name; on failure keep `result.user` (Flutter parity). Sets the fresh-sign-in flag. Never persists anything.
 - `saveDisplayName(name)`: `PATCH /users/me { displayName }` (trimmed), replaces `user` with the response.
 - `freshAccessToken()`: signed out → `null`; token missing or its `exp` (read from the JWT payload, base64url-decoded, never verified client-side) within 30 s → `refresh()` first; `ok` → the new token; `network` → `null` (the socket retries later); `rejected` → `null` **and**, when the status was `signedIn`, `signOut('expired', role)`; `suspended` → `null` and `signOut('suspended', role)` (role as §5 item 5). This is how a session that dies while only the socket is active (no HTTP call) still ends on the sign-in page.
@@ -256,7 +256,7 @@ File `apps/website/src/app/core/auth/auth.interceptor.ts`, registered in `app.co
 | `roleGuard(role)` | `roleOf(user)`: equal → allow. The other app role → redirect to that role's home (no sign-out; one website hosts both areas). `other` (admin, business or an unknown value) → `signOut('not-allowed', role)` |
 | `hasNameGuard` | `hasName()` → allow, else `/app/<role>/name` |
 | `needsNameGuard` | `!hasName()` → allow, else the role home |
-| `guestGuard` (sign-in routes) | `await ensureRestored()`. `signedIn` → the destination of §6.2 for the stored user (not fresh). `signedOut` or `failed` → allow (the visitor can still sign in) |
+| `guestGuard` (sign-in routes) | `await ensureRestored()`. `signedIn` → the destination of §6.2 for the stored user (not fresh); §6.2 row 1 → `signOut('not-allowed', flowRole)`; §6.2 row 2 (a customer session on `/app/runner/sign-in`) → `dropSession()`, then allow: the runner phone screen shows with no message (accepted at re-audit 1, 2026-10-29). `signedOut` or `failed` → allow (the visitor can still sign in) |
 | `otpStepGuard` | `SignInFlowStore` (§6.6) holds a phone for this route's role → allow, else `/app/<role>/sign-in` |
 
 Role homes: customer `/app/customer/home`, runner `/app/runner/jobs`.
@@ -273,6 +273,8 @@ Input: `user`, `flowRole` (the sign-in route the visitor used), `fresh` (OTP sig
 | 4 | `displayName` blank | `/app/<role>/name` |
 | 5 | role `runner` and `fresh` | `runnerOnboardingStep()` (§6.3): `id` → `/app/runner/onboarding/id`; `selfie` → `/app/runner/onboarding/selfie`; `pending` → `/app/runner/onboarding/pending`; `shell` → row 6 |
 | 6 | otherwise | the validated `returnUrl` (§6.5), else the role home |
+
+On the code screen both refusals (rows 1 and 2) clear the code boxes and leave the field enabled. Row 4 carries a `returnUrl` that passed §6.5 to the name screen (`/app/<role>/name?returnUrl=…`); the name screen applies §6.2 again after the save (accepted at re-audit 1, 2026-10-29).
 
 Customer with a name → `/app/customer/home` (or `returnUrl`). A restored runner session (not fresh) goes to the shell, never to onboarding (runner `SessionController.takeFreshSignIn`).
 
@@ -326,6 +328,10 @@ Owner, 2026-10-28: "replace the public `/auth` page with a role chooser (send er
 | `nm-field` input `hideLabel` | keeps the `<label for>` but visually hidden | `Semantics(label: 'Phone number')` without a visible label | phone field |
 | `nm-field` inputs `autocapitalize` and `spellcheck` | bound to the native attributes (`null` = attribute absent; defaults unchanged) | `TextCapitalization.words` | name fields (`autocapitalize="words"`, `spellcheck="false"`) |
 | `normalizeKenyanPhone(input): string \| null` in `shared/format/formatters.ts` | port of `KenyanPhone.normalize`: strip spaces and hyphens, accept `+254`/`254`/`0` + `7XXXXXXXX`/`1XXXXXXXX`, return `+254…` or `null` | `KenyanPhone.normalize` | phone screens (not shipped by #5, verified 2026-10-28; `formatPhoneIntl` exists) |
+
+Also accepted at re-audit 1 (2026-10-29), additive and with #5 defaults unchanged: `nm-button` inputs `target`, `rel`, `ariaLabel` and `inline` (in-text link that keeps the 48×48 hit area), `nmNum` styles `otp` and `resend` (the two `num-*` styles above), the `nm-visually-hidden` mixin in `_tokens.scss`.
+
+**Style files.** `apps/website/angular.json` sets no `inlineStyleLanguage`, so a component's inline `styles` are compiled as plain CSS: `@use`, `@include` and `$` variables there reach the browser untouched and are dropped. Any component style that uses the token layer's mixins (`nm-type`, `nm-visually-hidden`, `nm-focus-ring`, `nm-hover`, …) lives in a `styleUrl` `.scss` file. A static Vitest check enforces it.
 
 If the #5 build already provides any of these, reuse it; do not add a second one. Verified on `feat/website-auth-shell` at `77e34f0`: none of the type styles `resend`, `wordmark-suffix`, `greeting`, `num-otp`, `num-resend`, nor `hideLabel`, `autocapitalize`, `spellcheck` or `normalizeKenyanPhone` exist yet; `auth-heading`, `top-bar-title`, `pushed-title`, `list-title`, `tab-label`, `muted`, `field-label`, `error`, `num-meta` do.
 
@@ -452,7 +458,7 @@ The per-view lists are in each view spec (§ "Required tests"): `customer-v-auth
 ### 9.9 Static checks and build
 48. The ui-kit static check (no hex / `rgb(a)` / `hsl(a)` / `box-shadow` under `src/app/` except marketing files) passes for all #6 files.
 49. No Fira Code outside `nmNum` and the `num-*` mixins in #6 files.
-50. `npx ng test --watch=false` 0 failures; `npx ng build` succeeds; the marketing entry bundle does not grow by the `/app` code (only lazy chunks).
+50. `npx ng test --watch=false` 0 failures; `npx ng build` succeeds; the marketing entry bundle does not grow by the `/app` code (only lazy chunks). **WQ-33 (owner, 2026-10-29):** the initial total stays at the #5 baseline: ≤ 352.00 kB raw (350.92 kB + 1.08 kB tolerance for eager lazy-load shims). The session layer (`SessionStore`, `AuthApi`, the full interceptor, role routing, OTP policy, guards, title strategy, realtime token providers) loads lazily; the first API call may wait for that chunk. A static test walks the eager import graph from `src/main.ts` (static imports and re-exports only) and asserts that none of those files, `core/realtime/**`, `app-area/**` or `shared/ui/**` is reached.
 
 ### 9.10 Added 2026-10-28 (owner answers and the web auth API)
 51. No request from `/app` code goes to the mobile `/api/v1/auth/otp/verify`, `/api/v1/auth/refresh` or `/api/v1/auth/logout` (one flow-level test: sign in, refresh, sign out with `HttpTestingController.expectNone` on the three URLs).
@@ -464,6 +470,15 @@ The per-view lists are in each view spec (§ "Required tests"): `customer-v-auth
 57. `/auth` chooser: renders wordmark (link to `/`), heading, sub and the two links with the §6.7 copy and `href`s; no marketing header/footer; a signed-in customer is sent to `/app/customer/home` and a runner to `/app/runner/jobs` with `replaceUrl`; restore `failed` still shows the chooser; the old `AuthComponent` and `pages/auth/` no longer exist.
 58. `/app` signed out → `/auth`.
 59. Side nav from 768px on a pushed route stays visible with the parent item active (WQ-15) and its background token is `--nitume-white` (WQ-16).
+
+### 9.11 Added at re-audit 1 (2026-10-29)
+60. Static: no inline component `styles` under `src/app/` contains `@use`, `@include`, `@mixin` or a `$` variable (§7.1 "Style files").
+61. The splash `Loading` status is visually hidden: its rule comes from a `.scss` file that applies `nm-visually-hidden` (the `declared()` helper finds `clip-path: inset(50%)` for it).
+62. The sign-in "other error" line uses the `error` type style: `declared()` finds `color: var(--nitume-red)` and `font-size: 12.5px` for its rule.
+63. `guestGuard` with a customer session on `/app/runner/sign-in` → `dropSession()` called, route allowed, no `signOut`.
+64. `ensureRestored()` after a `signedOut` restore → `signedOut` with no second `POST /auth/web/refresh`; after `failed` → a second refresh is made.
+65. Code screen: the not-allowed refusal clears the boxes; a customer without a name and a valid `returnUrl` → `/app/customer/name?returnUrl=…`, and the name save then opens that `returnUrl`.
+66. Titles without a strategy (re-audit 2): after `/auth` → `/` and after `/app/customer/sign-in` → `/business` (in-app navigation), the document title is the `index.html` title `Nitume — Someone there, when you can't be.` The marketing parent route carries that title (§2).
 
 ---
 

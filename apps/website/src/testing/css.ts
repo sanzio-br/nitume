@@ -63,3 +63,14 @@ export function accessibleText(el: Element): string {
   walk(el);
   return out.replace(/\s+/g, ' ').trim();
 }
+
+/**
+ * Raw text of every component stylesheet in the document, whitespace
+ * removed. For values jsdom's CSSOM drops (e.g. `env(safe-area-inset-*)`).
+ */
+export function rawStyles(): string {
+  return Array.from(document.querySelectorAll('style'))
+    .map((s) => s.textContent ?? '')
+    .join('\n')
+    .replace(/\s+/g, '');
+}

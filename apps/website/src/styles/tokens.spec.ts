@@ -163,3 +163,35 @@ describe('token layer (§12.1)', () => {
     expect([...vars.keys()].filter((k) => k.startsWith('--nitume-'))).toEqual([]);
   });
 });
+
+describe('token layer: issue #6 type styles (auth-foundation §7.1)', () => {
+  it('declares resend, wordmark-suffix, greeting, num-otp and num-resend with the exact values, no new colour', async () => {
+    const specifier = 'sass';
+    const sass = (await import(/* @vite-ignore */ specifier)) as SassModule;
+    const compile = (name: string) =>
+      sass.compileString(
+        `@use 'tokens' as * with ($nm-emit-root: false); .x { @include nm-type(${name}); }`,
+        { loadPaths: [resolve(root, 'src/styles')], style: 'expanded' },
+      ).css;
+    const expected: Record<string, [string, string, string, string]> = {
+      resend: ['ui', '12.5px', '400', 'slate-600'],
+      'wordmark-suffix': ['ui', '12px', '600', 'slate-600'],
+      greeting: ['ui', '12px', '400', 'slate-600'],
+      'num-otp': ['num', '18px', '600', 'blue'],
+      'num-resend': ['num', '12.5px', '400', 'slate-600'],
+    };
+    for (const [name, [family, size, weight, colour]] of Object.entries(expected)) {
+      const css = compile(name);
+      expect.soft(css, name).toContain(`font-family: var(--nitume-font-${family})`);
+      expect.soft(css, name).toContain(`font-size: ${size}`);
+      expect.soft(css, name).toContain(`font-weight: ${weight}`);
+      expect.soft(css, name).toContain(`color: var(--nitume-${colour})`);
+    }
+    // Still exactly the 16 colour tokens.
+    const source = readFileSync(tokensPath, 'utf8');
+    const colourDecls = [...source.matchAll(/(--nitume-[a-z0-9-]+):/g)]
+      .map((m) => m[1])
+      .filter((k) => !/--nitume-(font|space|tap|r-|content)/.test(k));
+    expect(colourDecls.sort()).toEqual([...COLOUR_TOKENS].sort());
+  });
+});

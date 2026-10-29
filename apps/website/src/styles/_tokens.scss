@@ -87,22 +87,27 @@ $nm-type-styles: (
   'row-title': (ui, 13.5px, 600, blue, false, null),
   'body': (ui, 13.5px, 400, blue, false, null),
   'muted': (ui, 13px, 400, slate-600, false, null),
+  'resend': (ui, 12.5px, 400, slate-600, false, null),
   'field-label': (ui, 12.5px, 600, slate-600, false, null),
   'error': (ui, 12.5px, 400, red, false, null),
   'button-sm': (ui, 12.5px, 700, null, false, null),
   'chip': (ui, 12px, 600, blue, false, null),
+  'wordmark-suffix': (ui, 12px, 600, slate-600, false, null),
+  'greeting': (ui, 12px, 400, slate-600, false, null),
   'section-label': (ui, 11.5px, 700, slate-600, true, 0.05em),
   'muted-sm': (ui, 11.5px, 400, slate-600, false, null),
   'card-label': (ui, 11px, 700, slate-600, true, 0.04em),
   'tag': (ui, 10px, 700, null, false, null),
   'tab-label': (ui, 10px, 700, null, false, null),
   'num-amount-lg': (num, 30px, 600, blue, false, null),
+  'num-otp': (num, 18px, 600, blue, false, null),
   'num-amount': (num, 20px, 600, blue, false, null),
   'num': (num, 14px, 500, blue, false, null),
   'num-sm': (num, 13px, 400, slate-600, false, null),
   'num-meta-lg': (num, 12px, 400, slate-600, false, null),
   'num-meta': (num, 11px, 400, slate-600, false, null),
   'num-progress': (num, 12.5px, 600, slate-600, false, null),
+  'num-resend': (num, 12.5px, 400, slate-600, false, null),
 );
 
 /// Applies a §2.4 type style. Optional overrides exist for the few Flutter
@@ -141,6 +146,19 @@ $nm-type-styles: (
   @if list.nth($s, 6) {
     letter-spacing: list.nth($s, 6);
   }
+}
+
+/// Hidden visually, still read by screen readers (labels, live regions).
+@mixin nm-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /// Switches only the family (Flutter `NumSpan`): size, weight and colour

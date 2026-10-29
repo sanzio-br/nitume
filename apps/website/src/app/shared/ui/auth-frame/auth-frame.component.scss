@@ -1,0 +1,73 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-auth-frame {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  background-color: var(--nitume-slate);
+}
+
+.nm-auth-frame__inner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.nm-auth-frame__header:empty {
+  display: none;
+}
+
+.nm-auth-frame__column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 28px;
+  text-align: left;
+}
+
+.nm-auth-frame__title {
+  @include nm-type(auth-heading);
+  margin: 0;
+}
+
+.nm-auth-frame__sub {
+  @include nm-type(muted);
+  margin: 8px 0 26px;
+}
+
+// From 768px (web adaptation): the header sits inside the column, 16px
+// above the heading, and the whole column is centred.
+.nm-auth-frame--wide {
+  .nm-auth-frame__inner {
+    flex: none;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 400px;
+    margin: auto;
+    padding: 28px;
+  }
+
+  .nm-auth-frame__header {
+    margin-bottom: 16px;
+  }
+
+  .nm-auth-frame__column {
+    flex: none;
+    max-width: none;
+    padding: 0;
+  }
+}
