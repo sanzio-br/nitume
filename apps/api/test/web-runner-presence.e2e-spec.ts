@@ -372,6 +372,13 @@ describe('Web runner presence (e2e, issue #36)', () => {
       (d) => d.runnerProfileId === web.profileId,
     );
     expect(offline).toEqual({ runnerProfileId: web.profileId, lastPingAt: expect.any(String), at: expect.any(String) });
+    // Owner (2026-10-29): the runner's own socket is told at once; the app runner hears nothing.
+    await expect(webSocket.waitFor('runner:availability_changed')).resolves.toEqual({
+      availability: 'offline',
+      reason: 'web_pings_stopped',
+      at: offline.at,
+    });
+    expect(appSocket.received.filter((r) => r.event === 'runner:availability_changed')).toEqual([]);
     expect(events(adminSocket, 'runner:web_pings_stopped', appRunner)).toEqual([]);
     expect(events(adminSocket, 'runner:web_auto_offline', appRunner)).toEqual([]);
 
@@ -429,6 +436,7 @@ describe('Web runner presence (e2e, issue #36)', () => {
     await adminSocket.waitFor('runner:web_pings_stopped', (d: { runnerProfileId: string }) => d.runnerProfileId === web.profileId);
     expect(await availabilityOf(web)).toBe('busy');
     expect(events(adminSocket, 'runner:web_auto_offline', web)).toEqual([]);
+    expect(webSocket.received.filter((r) => r.event === 'runner:availability_changed')).toEqual([]);
     expect((await http().get(`/api/v1/errands/${errandId}`).set(bearer(admin.token)).expect(200)).body.status).toBe(status);
     const assignments: { status: string }[] = await db().query(
       `SELECT status::text AS status FROM "errand_assignments" WHERE "errandId" = $1`,

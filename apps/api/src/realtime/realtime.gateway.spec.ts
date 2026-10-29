@@ -594,7 +594,7 @@ describe('RealtimeGateway web runner presence (issue #36)', () => {
     expect(location.ingest).toHaveBeenCalledWith(client.data.user, { lat: 1, lng: 2 }, expect.any(Date), 'web');
   });
 
-  it('relays the three presence events to the admins room only', () => {
+  it('relays the three presence events to the admins room', () => {
     const { gateway, to, emit } = build();
     gateway.onWebPingsStopped({ runnerProfileId: 'rp-1', lastPingAt: null, at: '2026-10-29T08:00:00.000Z' });
     expect(to).toHaveBeenLastCalledWith('admins');
@@ -607,12 +607,29 @@ describe('RealtimeGateway web runner presence (issue #36)', () => {
     expect(to).toHaveBeenLastCalledWith('admins');
     expect(emit).toHaveBeenLastCalledWith('runner:web_pings_resumed', { runnerProfileId: 'rp-1', at: '2026-10-29T08:01:00.000Z' });
     gateway.onWebAutoOffline({ runnerProfileId: 'rp-1', lastPingAt: '2026-10-29T07:55:00.000Z', at: '2026-10-29T08:00:30.000Z' });
-    expect(to).toHaveBeenLastCalledWith('admins');
-    expect(emit).toHaveBeenLastCalledWith('runner:web_auto_offline', {
+    expect(to).toHaveBeenCalledWith('admins');
+    expect(emit).toHaveBeenCalledWith('runner:web_auto_offline', {
       runnerProfileId: 'rp-1',
       lastPingAt: '2026-10-29T07:55:00.000Z',
       at: '2026-10-29T08:00:30.000Z',
     });
     expect(SocketServerEvent.RUNNER_WEB_PINGS_STOPPED).toBe('runner:web_pings_stopped');
+  });
+
+  it("tells the runner's own room when the system set them offline (owner, 2026-10-29)", () => {
+    const { gateway, to, emit } = build();
+    gateway.onWebAutoOffline({ runnerProfileId: 'rp-7', lastPingAt: null, at: '2026-10-29T09:00:00.000Z' });
+    expect(to).toHaveBeenCalledWith('admins');
+    expect(to).toHaveBeenCalledWith('runner:rp-7:status');
+    expect(emit).toHaveBeenCalledWith('runner:availability_changed', {
+      availability: 'offline',
+      reason: 'web_pings_stopped',
+      at: '2026-10-29T09:00:00.000Z',
+    });
+    // The stopped/resumed flags stay admin only.
+    to.mockClear();
+    gateway.onWebPingsStopped({ runnerProfileId: 'rp-7', lastPingAt: null, at: '2026-10-29T09:00:00.000Z' });
+    gateway.onWebPingsResumed({ runnerProfileId: 'rp-7', at: '2026-10-29T09:01:00.000Z' });
+    expect(to.mock.calls).toEqual([['admins'], ['admins']]);
   });
 });

@@ -53,6 +53,7 @@ import {
   LocationUpdatePayload,
   PriceChangeDecidedEvent,
   PriceChangeRequestedEvent,
+  RunnerAvailabilityChangedPayload,
   SocketClientEvent,
   SocketServerEvent,
   errandRoom,
@@ -510,6 +511,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
       lastPingAt: event.lastPingAt,
       at: event.at,
     });
+    // Owner (2026-10-29): the runner's own sockets learn it at once (the website shows offline).
+    const own: RunnerAvailabilityChangedPayload = { availability: 'offline', reason: 'web_pings_stopped', at: event.at };
+    this.server?.to(runnerRoom(event.runnerProfileId)).emit(SocketServerEvent.RUNNER_AVAILABILITY_CHANGED, own);
   }
 
   /** Customer asked for a new quote (row 68): admins and the errand room. */

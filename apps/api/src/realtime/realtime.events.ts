@@ -101,6 +101,13 @@ export const SocketServerEvent = {
    * the system (`RunnerWebAutoOfflinePayload`). Busy runners never are.
    */
   RUNNER_WEB_AUTO_OFFLINE: 'runner:web_auto_offline',
+  /**
+   * Issue #36 (owner, 2026-10-29): to the runner's own room
+   * `runner:{id}:status`, the server changed the runner's availability
+   * (`RunnerAvailabilityChangedPayload`). Today only when the system sets an
+   * idle web runner offline (`reason: 'web_pings_stopped'`).
+   */
+  RUNNER_AVAILABILITY_CHANGED: 'runner:availability_changed',
 } as const;
 
 /** In-process domain events (EventEmitter2) the realtime module listens to. */
@@ -143,6 +150,13 @@ export interface RunnerWebPingsResumedPayload {
 export interface RunnerWebAutoOfflinePayload {
   runnerProfileId: string;
   lastPingAt: string | null;
+  at: string;
+}
+
+/** `runner:availability_changed` (issue #36) to the runner's own room. */
+export interface RunnerAvailabilityChangedPayload {
+  availability: 'offline';
+  reason: 'web_pings_stopped';
   at: string;
 }
 
