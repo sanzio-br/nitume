@@ -55,8 +55,21 @@ async function failVerify(h: AppHarness, status: number, code?: string, extra: R
 
 const verified = { verification: { verified: true, checks: [], level2Missing: [] } };
 
+/**
+ * The countdown reads Date.now() and ticks on setInterval: both are fake
+ * and only move when a test advances them, so no assertion depends on how
+ * long a (cold) run takes. setTimeout stays real for the router harness.
+ */
+function freezeClock(): void {
+  vi.useFakeTimers({
+    toFake: ['Date', 'setInterval', 'clearInterval'],
+    now: new Date('2026-10-28T10:00:00Z'),
+  });
+}
+
 for (const role of ['customer', 'runner'] as const) {
   describe(`${role} v-auth-otp (#6)`, () => {
+    beforeEach(() => freezeClock());
     afterEach(() => {
       vi.useRealTimers();
       vi.restoreAllMocks();
@@ -150,7 +163,6 @@ for (const role of ['customer', 'runner'] as const) {
     });
 
     it('T8. resend: 1:00 → 0:59 → 0:00, link at zero, click sends requestOtp, toast, restarts at 1:00, clears boxes', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
       const h = await openCode(role);
       await enter(h, '12');
       await vi.advanceTimersByTimeAsync(1000);
@@ -207,16 +219,15 @@ for (const role of ['customer', 'runner'] as const) {
     });
 
     it('T12. the countdown is clock based: correct after a 20 s timer stall', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
       const h = await openCode(role);
+      // Timers stalled for 20 s (clock moved, no tick), then one tick.
       vi.setSystemTime(Date.now() + 20_000);
       await vi.advanceTimersByTimeAsync(1000);
       await h.detect();
-      expect(text(resendLine(h))).toMatch(/0:3[89]/);
+      expect(text(resendLine(h)?.querySelector('.nm-resend__line'))).toBe("Didn't get it? Resend code in 0:39");
     });
 
     it('T13. the live region announces only at start and at zero', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
       const h = await openCode(role);
       const live = () => text(resendLine(h)?.querySelector('[aria-live]'));
       const seen = new Set([live()]);
@@ -225,7 +236,7 @@ for (const role of ['customer', 'runner'] as const) {
         await h.detect();
         seen.add(live());
       }
-      expect([...seen]).toEqual([expect.stringMatching(/^You can resend in (59|60) seconds\.$/), 'You can resend the code now.']);
+      expect([...seen]).toEqual(['You can resend in 60 seconds.', 'You can resend the code now.']);
     });
 
     it('T14. account_suspended (and an uncoded 401) → suspended line; Contact support only when supportUrl is set', async () => {
@@ -326,7 +337,11 @@ for (const role of ['customer', 'runner'] as const) {
 }
 
 describe('code-screen refusals and returnUrl (#6, §9.11)', () => {
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => freezeClock());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('F9.65. the not-allowed refusal clears the boxes; a nameless customer with a valid returnUrl goes to name?returnUrl=… and then to it', async () => {
     let h = await openCode('customer');
@@ -355,7 +370,11 @@ describe('code-screen refusals and returnUrl (#6, §9.11)', () => {
 });
 
 describe('runner v-auth-otp differences (#6)', () => {
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => freezeClock());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it("T1. verify sends role: 'runner'", async () => {
     const h = await openCode('runner');
