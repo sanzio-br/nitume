@@ -1,6 +1,5 @@
 <div class="nm-overlay__scrim" (click)="onScrim()"></div>
 <div
-  #card
   class="nm-dialog"
   [attr.role]="config().role ?? 'dialog'"
   aria-modal="true"
@@ -8,7 +7,7 @@
   [attr.aria-describedby]="config().body ? bodyId : null"
 >
   @if (config().title; as title) {
-    <h2 #title class="nm-dialog__title" [id]="titleId" tabindex="-1">{{ title }}</h2>
+    <h2 class="nm-dialog__title" [id]="titleId" tabindex="-1">{{ title }}</h2>
   }
   @if (config().body; as body) {
     <p class="nm-dialog__body" [id]="bodyId">{{ body }}</p>
@@ -20,7 +19,7 @@
   }
   @if (templateContent(); as tpl) {
     <div class="nm-dialog__content">
-      <ng-container [ngTemplateOutlet]="tpl" [ngTemplateOutletContext]="{ $implicit: ref, data: config().data }" />
+      <ng-container [nmTemplateOutlet]="tpl" [nmTemplateOutletContext]="{ $implicit: ref, data: config().data }" />
     </div>
   }
   @if (config().actions?.length) {

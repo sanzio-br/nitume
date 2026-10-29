@@ -1,6 +1,6 @@
 // NC§W9.16: the #7 kit additions (customer-v-new-category §W9a). The #5 and
 // #6 spec files of the touched components stay unchanged and passing.
-import { Component, signal } from '@angular/core';
+import { Component, TemplateRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { declared } from '../../testing/css';
@@ -14,6 +14,8 @@ import { RealtimeService } from '../core/realtime/realtime.service';
 import { REALTIME_BACKOFF, REALTIME_TOKEN_PROVIDER, SOCKET_IO_FACTORY } from '../core/realtime/realtime.tokens';
 import { CUSTOMER_MVP_CATEGORIES, categoryIcon } from './format/category';
 import { FORMAT_PIPES, FormatHoursPipe } from './format/format.pipes';
+import { NmDialogService } from './ui/overlay/dialog.service';
+import { NmOverlayRef } from './ui/overlay/overlay-ref';
 import { formatHours, initialsFor } from './format/formatters';
 import { NmIcon } from './ui/icon/icon.component';
 import { NM_ICONS } from './ui/icon/icons';
@@ -330,6 +332,32 @@ describe('NC§W9.16 #7 kit additions', () => {
       expect(initialsFor('   ')).toBe('');
       expect(initialsFor(null)).toBe('');
       expect(initialsFor('  mary  njeri kamau ')).toBe('MN');
+    });
+  });
+
+  describe('WQ-33 conversions in kit files the #7 routes reach (G7-14)', () => {
+    it('NC§W9.16 dialog template content. a template opened in nm-dialog receives the ref and data through nmTemplateOutlet', async () => {
+      @Component({
+        template: `<ng-template #tpl let-ref let-data="data"
+          ><button type="button" class="inside" (click)="ref.close(data.answer)">{{ data.answer }}</button></ng-template
+        >`,
+      })
+      class Host {
+        readonly service = TestBed.inject(NmDialogService);
+        open(tpl: TemplateRef<unknown>): NmOverlayRef<string> {
+          return this.service.open<string>(tpl, { title: 'Pick', data: { answer: 'yes' } });
+        }
+      }
+      const fixture = TestBed.createComponent(Host);
+      fixture.detectChanges();
+      const tpl = (fixture.debugElement.childNodes[0].references as Record<string, TemplateRef<unknown>>)['tpl'];
+      const ref = fixture.componentInstance.open(tpl);
+      const button = document.body.querySelector('nm-dialog .inside') as HTMLButtonElement;
+      expect(button.textContent).toBe('yes');
+      // Initial focus on the title, found without a view query.
+      expect(document.activeElement?.classList.contains('nm-dialog__title')).toBe(true);
+      button.click();
+      await expect(ref.closed).resolves.toBe('yes');
     });
   });
 });
