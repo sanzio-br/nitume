@@ -325,6 +325,35 @@ for (const role of ['customer', 'runner'] as const) {
   });
 }
 
+describe('code-screen refusals and returnUrl (#6, §9.11)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('F9.65. the not-allowed refusal clears the boxes; a nameless customer with a valid returnUrl goes to name?returnUrl=… and then to it', async () => {
+    let h = await openCode('customer');
+    await signInAs(h, userJson({ role: 'business' }));
+    (await expectRequest(LOGOUT)).flush({});
+    await vi.waitFor(async () => {
+      await h.detect();
+      expect(other(h)).toBe(NOT_ALLOWED);
+    });
+    expect(codeInput(h).value).toBe('');
+    expect(boxes(h).map((b) => text(b))).toEqual(['•', '•', '•', '•', '•', '•']);
+    expect(codeInput(h).disabled).toBe(false);
+
+    const returnUrl = '/app/customer/history';
+    h = await openCode('customer', { query: `?returnUrl=${encodeURIComponent(returnUrl)}` });
+    await signInAs(h, userJson({ displayName: null }));
+    await vi.waitFor(() =>
+      expect(h.router.url).toBe(`/app/customer/name?returnUrl=${encodeURIComponent(returnUrl)}`),
+    );
+    await h.detect();
+    typeInto(h.root().querySelector('nm-field input') as HTMLInputElement, 'Achieng Otieno');
+    submitForm(h.root());
+    httpMock().expectOne({ method: 'PATCH', url: ME }).flush(userJson({ displayName: 'Achieng Otieno' }));
+    await vi.waitFor(() => expect(h.router.url).toBe(returnUrl));
+  });
+});
+
 describe('runner v-auth-otp differences (#6)', () => {
   afterEach(() => vi.restoreAllMocks());
 

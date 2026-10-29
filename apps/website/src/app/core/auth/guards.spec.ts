@@ -159,4 +159,12 @@ describe('guards (#6)', () => {
       expect.soft(validReturnUrl(bad, 'customer'), String(bad)).toBeNull();
     }
   });
+
+  it('F9.63. guestGuard with a customer session on /app/runner/sign-in → dropSession(), route allowed, no signOut', async () => {
+    const session = new FakeSession().as('customer');
+    expect(await go(session, '/app/runner/sign-in')).toBe('/app/runner/sign-in');
+    expect(session.dropSession).toHaveBeenCalledTimes(1);
+    expect(session.signOut).not.toHaveBeenCalled();
+  });
 });
+

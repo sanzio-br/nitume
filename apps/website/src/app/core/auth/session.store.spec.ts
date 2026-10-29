@@ -182,6 +182,26 @@ describe('SessionStore (#6)', () => {
     httpMock().verify();
   });
 
+  it('F9.64. after a signedOut restore no second refresh is made; after a failed restore the next call refreshes again', async () => {
+    let s = setup();
+    let restored = s.store.ensureRestored();
+    const e = apiError(401, 'refresh_cookie_missing');
+    httpMock().expectOne(URLS.refresh).flush(e.body, e.opts);
+    expect(await restored).toBe('signedOut');
+    expect(await s.store.ensureRestored()).toBe('signedOut');
+    httpMock().expectNone(URLS.refresh);
+
+    s = setup();
+    restored = s.store.ensureRestored();
+    httpMock().expectOne(URLS.refresh).error(new ProgressEvent('error'), { status: 0 });
+    expect(await restored).toBe('failed');
+    restored = s.store.ensureRestored();
+    httpMock().expectOne(URLS.refresh).flush({ accessToken: jwt(900) });
+    await settle();
+    httpMock().expectOne(URLS.me).flush(userJson());
+    expect(await restored).toBe('signedIn');
+  });
+
   it('F9.12. completeSignIn keeps the verify user when GET /users/me fails; fresh flag once', async () => {
     const s = setup();
     const done = s.store.completeSignIn({
