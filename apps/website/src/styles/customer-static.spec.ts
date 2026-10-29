@@ -371,6 +371,15 @@ describe('issue #8 static checks (A.T14, G8-39 and the gap report rg evidence)',
     expect([...hits('app-area/customer', /wallet|escrow/i), ...hits('shared', /wallet|escrow/i)]).toEqual([]);
   });
 
+  it('Re-audit 1 finding 1. the three #8 pages follow ActivatedRoute.paramMap, never a one-off snapshot of the errand id; no custom RouteReuseStrategy', () => {
+    for (const page of ['awaiting-quote.page.ts', 'payment.page.ts', 'merchant-payment.page.ts']) {
+      const source = readFileSync(resolve(appDir, 'app-area/customer/checkout', page), 'utf8');
+      expect.soft(source, page).toMatch(/paramMap\.pipe\(takeUntilDestroyed\(\)\)/);
+      expect.soft(source, page).not.toMatch(/snapshot\.paramMap/);
+    }
+    expect(hits('.', /RouteReuseStrategy/, true)).toEqual([]);
+  });
+
   it('G8-36 / G8-41. every new #8 component is OnPush; nothing under features/', () => {
     const files = [
       ...walk(resolve(appDir, 'app-area/customer/checkout')),
