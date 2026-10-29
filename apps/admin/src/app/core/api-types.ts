@@ -764,6 +764,20 @@ export interface RunnerListItem {
   skillsCount?: number;
   createdAt: string;
   updatedAt?: string;
+  /** Web runner presence (#36). Absent on an older API: read as `client: null`. */
+  presence?: RunnerPresence;
+}
+
+/**
+ * Live presence from Redis (#36). `client` null = no socket or ping within
+ * 24 h. `lastPingAt` moves on every accepted ping. `webPingsStoppedAt` is set
+ * while a web runner who is online or busy has sent no ping for 90 s, and is
+ * always null for an offline runner. Times ISO.
+ */
+export interface RunnerPresence {
+  client: 'web' | 'app' | null;
+  lastPingAt: string | null;
+  webPingsStoppedAt: string | null;
 }
 
 export interface ListRunnersResult {
