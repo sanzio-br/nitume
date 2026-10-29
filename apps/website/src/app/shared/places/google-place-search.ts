@@ -2,7 +2,9 @@
 // (New) through the Maps JavaScript API, loaded by the kit MapsLoaderService
 // (`importLibrary('places')`). Kenya only, English. Answers are cached per
 // session token + normalised query (cap 200, then cleared; a session's
-// entries go after its Details call). A library that fails to load makes
+// entries go after its Details call), each with its `placePrediction`:
+// Details runs `placePrediction.toPlace().fetchFields(...)`, which carries
+// the autocomplete session token and closes the billing session (WQ-25). A library that fails to load makes
 // every search reject, so the field shows the search-failure line.
 import { signal } from '@angular/core';
 import type { MapsLoaderService } from '../map/maps-loader.service';
@@ -19,16 +21,24 @@ export interface PlacesLibrary {
       language: string;
     }): Promise<{ suggestions: GoogleSuggestion[] }>;
   };
-  Place: new (options: { id: string; sessionToken?: object }) => GooglePlace;
+  Place: new (options: { id: string }) => GooglePlace;
+}
+
+interface GooglePrediction {
+  placeId: string;
+  text?: { text: string } | null;
+  mainText?: { text: string } | null;
+  secondaryText?: { text: string } | null;
+  toPlace(): GooglePlace;
 }
 
 interface GoogleSuggestion {
-  placePrediction?: {
-    placeId: string;
-    text?: { text: string } | null;
-    mainText?: { text: string } | null;
-    secondaryText?: { text: string } | null;
-  } | null;
+  placePrediction?: GooglePrediction | null;
+}
+
+interface CachedAnswer {
+  readonly suggestions: PlaceSuggestion[];
+  readonly predictions: ReadonlyMap<string, GooglePrediction>;
 }
 
 interface GoogleLatLng {
@@ -69,7 +79,7 @@ export class GooglePlaceSearch implements PlaceSearch {
 
   private library: Promise<PlacesLibrary | null> | null = null;
   private readonly tokens = new WeakMap<SessionKey, object>();
-  private readonly cache = new Map<string, PlaceSuggestion[]>();
+  private readonly cache = new Map<string, CachedAnswer>();
   private nextSession = 0;
 
   constructor(private readonly loader: Pick<MapsLoaderService, 'importLibrary'>) {}
@@ -81,7 +91,7 @@ export class GooglePlaceSearch implements PlaceSearch {
   async autocomplete(query: string, sessionToken: unknown): Promise<PlaceSuggestion[]> {
     const key = `${this.sessionId(sessionToken)}|${query.trim().toLowerCase()}`;
     const cached = this.cache.get(key);
-    if (cached) return cached;
+    if (cached) return cached.suggestions;
     const places = await this.places();
     const { suggestions } = await places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
       input: query,
@@ -90,9 +100,11 @@ export class GooglePlaceSearch implements PlaceSearch {
       language: 'en',
     });
     const out: PlaceSuggestion[] = [];
+    const predictions = new Map<string, GooglePrediction>();
     for (const s of suggestions ?? []) {
       const p = s.placePrediction;
       if (!p?.placeId) continue;
+      predictions.set(p.placeId, p);
       out.push({
         placeId: p.placeId,
         primaryText: p.mainText?.text ?? p.text?.text ?? '',
@@ -101,13 +113,15 @@ export class GooglePlaceSearch implements PlaceSearch {
       });
     }
     if (this.cache.size >= PLACES_CACHE_CAP) this.cache.clear();
-    this.cache.set(key, out);
+    this.cache.set(key, { suggestions: out, predictions });
     return out;
   }
 
   async details(placeId: string, sessionToken: unknown): Promise<PlaceDetails> {
     const places = await this.places();
-    const place = new places.Place({ id: placeId, sessionToken: this.googleToken(sessionToken, places) });
+    // toPlace() keeps the autocomplete session; `new Place` only when no prediction is held.
+    const prediction = this.predictionFor(placeId, sessionToken);
+    const place = prediction ? prediction.toPlace() : new places.Place({ id: placeId });
     await place.fetchFields({ fields: [...PLACE_DETAIL_FIELDS] });
     this.dropSession(sessionToken);
     if (!place.location) throw new Error('This place has no map location.');
@@ -138,6 +152,16 @@ export class GooglePlaceSearch implements PlaceSearch {
       this.tokens.set(token, real);
     }
     return real;
+  }
+
+  private predictionFor(placeId: string, token: unknown): GooglePrediction | null {
+    const prefix = `${this.sessionId(token)}|`;
+    for (const [key, answer] of this.cache) {
+      if (!key.startsWith(prefix)) continue;
+      const found = answer.predictions.get(placeId);
+      if (found) return found;
+    }
+    return null;
   }
 
   private dropSession(token: unknown): void {

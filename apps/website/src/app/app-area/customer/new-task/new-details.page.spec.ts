@@ -103,31 +103,45 @@ class FakeSearch implements PlaceSearch {
 
 function fakeLibrary() {
   class Token {}
-  const fetchAutocompleteSuggestions = vi.fn(async (request: { input: string; sessionToken: object }) => ({
-    suggestions: [
-      { placePrediction: { placeId: `pid-${request.input}`, mainText: { text: `${request.input} Centre` }, secondaryText: { text: 'Nairobi' } } },
-    ],
-  }));
-  const placeOptions: { id: string; sessionToken?: object }[] = [];
+  const toPlaceTokens: object[] = [];
+  const constructed: Record<string, unknown>[] = [];
   class Place {
     id: string;
     displayName = 'Sarit Centre';
     formattedAddress = 'Westlands, Nairobi';
     location = { lat: () => -1.26, lng: () => 36.8 };
-    constructor(options: { id: string; sessionToken?: object }) {
-      this.id = options.id;
-      placeOptions.push(options);
+    constructor(options: Record<string, unknown>) {
+      this.id = options['id'] as string;
+      constructed.push(options);
     }
     async fetchFields() {
       return {};
     }
   }
+  const fetchAutocompleteSuggestions = vi.fn(async (request: { input: string; sessionToken: object }) => ({
+    suggestions: [
+      {
+        placePrediction: {
+          placeId: `pid-${request.input}`,
+          mainText: { text: `${request.input} Centre` },
+          secondaryText: { text: 'Nairobi' },
+          // The prediction carries its request's session token into Details.
+          toPlace: () => {
+            toPlaceTokens.push(request.sessionToken);
+            const place = new Place({ id: `pid-${request.input}` });
+            constructed.pop(); // built by the prediction, not by a caller
+            return place;
+          },
+        },
+      },
+    ],
+  }));
   const library = {
     AutocompleteSessionToken: Token,
     AutocompleteSuggestion: { fetchAutocompleteSuggestions },
     Place,
   } as unknown as PlacesLibrary;
-  return { library, fetchAutocompleteSuggestions, placeOptions };
+  return { library, fetchAutocompleteSuggestions, toPlaceTokens, constructed };
 }
 
 const fakeSearchProviders = (search: PlaceSearch): Provider[] => [
@@ -306,7 +320,7 @@ describe('customer v-new-details (#7)', () => {
     expect(alerts(h)).toEqual([]);
   });
 
-  it('ND T7. debounce and caching: none under 2 characters; one call at 300 ms; same query in a session cached; details with the same token then a new one; only the latest answer renders', async () => {
+  it('ND T7. debounce and caching: none under 2 characters; one call at 300 ms; same query in a session cached; details through toPlace() of that session, then a new token; only the latest answer renders', async () => {
     const fake = fakeLibrary();
     const google = new GooglePlaceSearch({ importLibrary: async () => fake.library });
     const { h } = await openDetails('inspection', { providers: fakeSearchProviders(google) });
@@ -331,7 +345,8 @@ describe('customer v-new-details (#7)', () => {
     options(h, 'first')[0].click();
     await vi.advanceTimersByTimeAsync(0);
     await h.detect();
-    expect(fake.placeOptions[0].sessionToken).toBe(token);
+    expect(fake.toPlaceTokens).toEqual([token]); // Details through toPlace() of the same session
+    expect(fake.constructed).toEqual([]);
     await typePlace(h, 'first', 'Westgate');
     await vi.advanceTimersByTimeAsync(300);
     await h.detect();

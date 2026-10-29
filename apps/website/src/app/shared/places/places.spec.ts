@@ -20,41 +20,52 @@ interface FakePlaceData {
 }
 
 function fakePlaces(data: Record<string, FakePlaceData> = {}) {
-  const fetchAutocompleteSuggestions = vi.fn(async (request: { input: string }) => ({
-    suggestions: [
-      {
-        placePrediction: {
-          placeId: `pid-${request.input}`,
-          text: { text: `${request.input} full` },
-          mainText: { text: 'Sarit Centre' },
-          secondaryText: { text: 'Westlands, Nairobi' },
-        },
-      },
-      { placePrediction: { placeId: 'pid-2', text: { text: 'Only text' }, mainText: null, secondaryText: null } },
-      { placePrediction: null },
-    ],
-  }));
-  const places: { options: { id: string; sessionToken?: object }; fields: string[] }[] = [];
+  /** Every Place constructed (`new Place(options)`) and every toPlace() call. */
+  const constructed: Record<string, unknown>[] = [];
+  const toPlaceCalls: string[] = [];
+  const places: { id: string; fields: string[]; via: 'toPlace' | 'constructor' }[] = [];
   class Place {
     id: string;
     displayName?: string | null;
     formattedAddress?: string | null;
     location?: FakePlaceData['location'];
-    constructor(readonly options: { id: string; sessionToken?: object }) {
-      this.id = options.id;
+    via: 'toPlace' | 'constructor' = 'constructor';
+    constructor(options: Record<string, unknown>) {
+      this.id = options['id'] as string;
+      constructed.push(options);
     }
     async fetchFields(request: { fields: string[] }) {
-      places.push({ options: this.options, fields: request.fields });
+      places.push({ id: this.id, fields: request.fields, via: this.via });
       Object.assign(this, data[this.id] ?? {});
       return { place: this };
     }
   }
+  const prediction = (placeId: string, main: { text: string } | null, secondary: { text: string } | null, text: string) => ({
+    placeId,
+    text: { text },
+    mainText: main,
+    secondaryText: secondary,
+    toPlace() {
+      toPlaceCalls.push(placeId);
+      const place = Object.create(Place.prototype) as Place;
+      place.id = placeId;
+      place.via = 'toPlace';
+      return place;
+    },
+  });
+  const fetchAutocompleteSuggestions = vi.fn(async (request: { input: string }) => ({
+    suggestions: [
+      { placePrediction: prediction(`pid-${request.input}`, { text: 'Sarit Centre' }, { text: 'Westlands, Nairobi' }, `${request.input} full`) },
+      { placePrediction: prediction('pid-2', null, null, 'Only text') },
+      { placePrediction: null },
+    ],
+  }));
   const library: PlacesLibrary = {
     AutocompleteSessionToken: FakeToken,
     AutocompleteSuggestion: { fetchAutocompleteSuggestions },
     Place: Place as unknown as PlacesLibrary['Place'],
   };
-  return { library, fetchAutocompleteSuggestions, places };
+  return { library, fetchAutocompleteSuggestions, places, constructed, toPlaceCalls };
 }
 
 const SARIT: FakePlaceData = {
@@ -80,16 +91,24 @@ describe('GooglePlaceSearch (ND T11)', () => {
     ]);
   });
 
-  it('ND T11 details. fetchFields asks exactly id, displayName, formattedAddress, location with the same token; composes the address', async () => {
+  it('ND T11 details. toPlace() on the picked suggestion\'s placePrediction, then fetchFields with exactly id, displayName, formattedAddress, location; no sessionToken on a Place constructor', async () => {
     const fake = fakePlaces({ 'pid-Sarit': SARIT });
     const search = new GooglePlaceSearch({ importLibrary: async () => fake.library });
     const token = search.newSessionToken();
     await search.autocomplete('Sarit', token);
-    const sessionToken = (fake.fetchAutocompleteSuggestions.mock.calls[0][0] as unknown as { sessionToken: object }).sessionToken;
     const details = await search.details('pid-Sarit', token);
-    expect(fake.places[0].fields).toEqual(['id', 'displayName', 'formattedAddress', 'location']);
-    expect(fake.places[0].options.sessionToken).toBe(sessionToken);
+    expect(fake.toPlaceCalls).toEqual(['pid-Sarit']);
+    expect(fake.places).toEqual([{ id: 'pid-Sarit', fields: ['id', 'displayName', 'formattedAddress', 'location'], via: 'toPlace' }]);
+    expect(fake.constructed).toEqual([]);
     expect(details).toEqual({ placeId: 'pid-Sarit', addressText: 'Sarit Centre, Westlands, Nairobi', lat: -1.2614, lng: 36.8027 });
+  });
+
+  it('ND T11 details fallback. with no prediction held for that session, new Place({ id }) without a sessionToken key', async () => {
+    const fake = fakePlaces({ 'pid-x': SARIT });
+    const search = new GooglePlaceSearch({ importLibrary: async () => fake.library });
+    await search.details('pid-x', search.newSessionToken());
+    expect(fake.constructed).toEqual([{ id: 'pid-x' }]);
+    expect(fake.constructed.some((o) => 'sessionToken' in o)).toBe(false);
   });
 
   it('ND T11 cache. same query twice in one session → one call; a new session → a new call; entry 201 clears the cache; Details drops its session', async () => {
