@@ -477,7 +477,90 @@ Each item gives: **severity**, **current** state in `apps/website`, **target** (
 - Builder: `web-parity`, branch `feat/website-auth-shell`, commit scope `angular-website`.
 - Every item G6-1 … G6-46 is **approved extension, W-Q0**.
 
-### Verdict: FAIL (baseline, not built, 2026-10-28)
+### Verdict: FAIL (re-audit 1, 2026-10-29, `feat/website-auth-shell` at `d2d0fc9`): 3 blockers (incl. G6-46 after owner WQ-33), 1 minor
+
+Built by `web-parity` in 15 commits `9f7af20` … `d2d0fc9` on top of the spec/audit commits. Auditor re-run in the worktree `nitume-feat-website-auth-shell`: `npx ng test --watch=false` → **44 files, 398 tests, 0 failures**; `npx ng build` → **succeeds**, initial total **379.20 kB raw / 103.78 kB transfer** (was 350.92 kB at #5). 42 of 46 items close as built. G6-46 fails on the owner's WQ-33 decision (finding 4). Two components put SCSS in inline `styles`, which this project compiles as plain CSS, so their mixins never reach the browser (findings 1 and 2). That fails G6-11, G6-20 (splash), G6-34 and G6-35 (error line). Every other check passes: copy, storage, routes, tokens, fonts, contrast, the #5 kit and the marketing pages.
+
+#### Findings
+
+1. **blocker. Splash `Loading` text is visible.** `apps/website/src/app/app-area/splash.component.ts:16-22`.
+   - Design: F§4.6, the splash is the wordmark plus a **visually hidden** `role="status"` `Loading`.
+   - Code: the inline `styles` start with `@use '../../styles/tokens' …` and give `.status` `@include nm-visually-hidden;`. `apps/website/angular.json` sets no `inlineStyleLanguage`, so the inline styles are compiled as CSS. The production build emits the text literally (`chunk-DvpXlm88.js`: `.status[_ngcontent-%COMP%]{@include nm-visually-hidden;}`), the browser drops the unknown at-rule, and `Loading` shows as a 16px navy line under the wordmark. This happens on `/app` and on `/auth` while the session restores. The chooser test (`auth-chooser.page.spec.ts:62`) checks only the text and role, not that it is hidden.
+   - Fix: move the rule to `splash.component.scss` (`styleUrl`), keep `@include nm-visually-hidden`, and add F9.61.
+2. **blocker. The "other error" line of both sign-in screens loses its `error` style.** `apps/website/src/app/app-area/sign-in/sign-in-message.component.ts:41-56`.
+   - Design: `customer-v-auth-phone.md` and `customer-v-auth-otp.md` Layout, plus the runner variants: the other-error line uses the `error` style (Fira Sans 12.5/400, `--nitume-red`), centred on the code screen. G6-40 says red is used only for errors, and errors are red.
+   - Code: same mechanism as finding 1. The build emits `.message[_ngcontent-%COMP%]{@include nm-type(error);margin:0}` (`chunk-BM3ONoH5.js`), so the line renders in the body style (16px, `--blue`, line-height 1.5). This affects every non-field error on the phone and code screens for both roles: hourly/IP limit, WQ-17 verify limit, delivery failed, suspended, the WQ-14 not-allowed line, the wrong-account line, network and generic errors. The copy is correct; only the style is lost.
+   - Fix: move the styles to `sign-in-message.component.scss` (`styleUrl`), and add F9.62 and the static check F9.60 (no `@use`/`@include`/`@mixin`/`$var` in inline `styles` under `src/app/`). A scan of every #6 `.ts` file found only these two components with SCSS-only syntax inline.
+3. **minor. The accepted builder choices have no tests.**
+   - `core/auth/guards.spec.ts` F9.33 does not cover a customer session on `/app/runner/sign-in`: `dropSession()` called, route allowed, no `signOut`.
+   - `core/auth/session.store.spec.ts` F9.11 does not assert that a second `ensureRestored()` after `signedOut` makes no refresh call.
+   - `app-area/sign-in/auth-otp.page.spec.ts` T15 does not assert that the not-allowed refusal clears the boxes, and no view test follows a `returnUrl` through the name screen. Only the pure `resolveDestination` case F9.36 covers it.
+   - Fix: add F9.63, F9.64 and F9.65 (spec §9.11, added at this re-audit).
+
+4. **blocker. G6-46: the marketing initial bundle grew; owner WQ-33 (2026-10-29) requires the #5 baseline.**
+   - Design (WQ-33, owner, relayed by the orchestrator 2026-10-29): the marketing initial bundle stays at the #5 baseline (350.92 kB raw). The session layer must load lazily: interceptor, `SessionStore`, `AuthApi`, title strategy, realtime token providers, and the router/HTTP code they pull in. The owner accepts that the first API call waits for that chunk.
+   - Code: initial total **379.20 kB raw** (+28.28 kB), 103.78 kB transfer. `ng build --stats-json` puts these #6 `src/app` inputs in the initial chunks (`main-4YZPZHAV.js`, `chunk-h7ewk44d.js`): `core/auth/{session.store 5667 B, role-routing 3042, otp-policy 1784, auth-api 1435, auth.interceptor 1055, auth.tokens 505, realtime-session 244}`, `core/realtime/realtime.session-tokens 249`, `app-area/title.strategy 542`, `layout/marketing-layout 414`. That is about 14.9 kB, pulled eagerly by `app.config.ts` (`withInterceptors([authInterceptor])`, `TitleStrategy`, `provideRealtimeSession()`). The remaining ~13 kB is Angular framework code those providers reach.
+   - The builder's narrower claim is **confirmed**: no `app-area/**` view, page, shell, stub or splash, no `shared/ui/**` component, and no `socket.io-client`, `engine.io-client`, `@angular/google-maps` or `@angular/forms` is in the initial chunks. The only packages are `@angular/{core,common,router,platform-browser}`, `rxjs`, `tslib` and `zone.js`.
+   - **Fix target (all required):**
+     a. **Size.** `npx ng build` "Initial total" at or below **352.00 kB raw**. That is the #5 baseline 350.92 kB plus a tolerance of **1.08 kB** (about 0.3%) for the eager shims that lazy loading needs, such as a thin `HttpInterceptorFn` that dynamically imports the real interceptor for `${apiBaseUrl}/api/v1/` URLs only and passes every other request through synchronously. Transfer size is recorded but not gated.
+     b. **Eager graph.** None of these is reachable from `main.ts` / `app.config.ts` / `app.routes.ts` through static imports: `core/auth/{session.store,auth-api,auth.interceptor (the full one),role-routing,otp-policy,guards,realtime-session,sign-in-flow.store,restored-destination}`, `core/realtime/**`, `app-area/**` (including `title.strategy`), `shared/ui/**`. Dynamic `import()` is allowed. Titles may use Angular's default strategy with route `title` strings set in the lazy route files, or a lazily provided strategy; either way they read exactly as F§2.
+     c. **Behaviour unchanged.** Every F9 and view-spec test still passes. The interceptor tests F9.20 … F9.29 run through the lazy path, so the first API request waits for the chunk and then gets the Bearer, the credentials rule and the 401 handling. A request outside `/api/v1/` is not delayed and never loads the chunk. `REALTIME_TOKEN_PROVIDER` / `REALTIME_ACCOUNT_SUSPENDED` still resolve to the session (F9.56) when provided from the lazy `/app` tree or the lazy session chunk. The `/auth` chooser restore and the cross-tab `signed-out` broadcast work once the session chunk has loaded. The legacy-key cleanup (F§1) may stay eager inside the tolerance or run when the session chunk first loads; record which.
+     d. **Tests proving it.** Extend `styles/auth-static.spec.ts` F9.50. It walks the static import graph from `src/main.ts` (following `import … from` and `export … from`, skipping `import()`) and asserts that no file in (b) is reached. Add a test that a non-API `HttpClient` request (for example an asset URL) completes without loading the session module.
+   - Evidence the auditor will check at re-audit 2:
+     1. `npx ng build --stats-json`: "Initial total" ≤ 352.00 kB raw.
+     2. The stats inputs of every initial chunk list no file from (b) and no package beyond `@angular/{core,common,router,platform-browser}`, `rxjs`, `tslib`, `zone.js`.
+     3. The extended F9.50 test is present and fails if `app.config.ts` statically imports `session.store.ts` (the auditor checks the assertion logic).
+     4. `npx ng test --watch=false` passes with 0 failures and every F9 / T case is still present.
+     5. Titles, the interceptor, the realtime providers and the chooser restore are covered by tests that run through the lazy path.
+
+#### Builder choices the spec did not settle (auditor ruling)
+
+| # | Choice | Ruling | Reason |
+|---|---|---|---|
+| 1 | Customer session on `/app/runner/sign-in` → `dropSession()`, then the runner phone screen shows (`guards.ts` `guestGuard`) | **PASS** | F§6.2 row 2 prescribes `dropSession()` for a customer on the runner flow. The wrong-account line belongs to the code screen and the phone screen has no slot for it. A redirect to the customer home would block the runner path the chooser offers. Recorded in F§6.1. Test missing (finding 3) |
+| 2 | A tab that restored as signed out skips later refresh calls until a reload or a sign-in (`session.store.ts` `ensureRestored`) | **PASS** | Matches the apps' restore-once-per-launch. §4.4 says tabs share only the sign-out broadcast. A `failed` restore is still retried, as §6.7 requires. `dropSession` revoked the cookie anyway. Recorded in F§4.2. Test missing (finding 3) |
+| 3 | The not-allowed refusal clears the code boxes; a valid `returnUrl` is carried to the name screen (`auth-otp.page.ts` `refuse`, `role-routing.ts` row 4) | **PASS** | It mirrors the specified wrong-account refusal (G6-35: "boxes cleared, field enabled"). The `returnUrl` is validated (F§6.5) before it is carried and again after the name save, so there is no open redirect. Recorded in F§6.2. Test missing (finding 3) |
+| 4 | Kit additions: `nm-button` `target`/`rel`/`ariaLabel`/`inline`, `nmNum` `otp`/`resend`, the `nm-visually-hidden` mixin, the resend-line stale-second fix (`linkedSignal` on `cooldownEndsAt`) | **PASS** | All additive with #5 defaults unchanged (`null`/`false`, no attribute rendered; `button-link.spec.ts` "defaults add no target, rel or aria-label"). `target`/`rel`/the new-tab name are what G6-31 requires. `inline` keeps the 48×48 `::before` hit area and the focus ring. `otp`/`resend` are the G6-21 `num-*` styles. The countdown fix corrects a real stale second (test `otp-resend-line.spec.ts`). No new colour. Recorded in F§7.1 |
+| 5 | `REALTIME_TOKEN_PROVIDER` and `REALTIME_ACCOUNT_SUSPENDED` declared in `realtime.session-tokens.ts` and re-exported from `realtime.tokens.ts` | **PASS** | The spec asks for them "next to `REALTIME_TOKEN_PROVIDER`". They are together, the public import path (`realtime.tokens`) is unchanged, and the split keeps `socket.io-client` out of the initial bundle (confirmed under finding 4). Under WQ-33 both tokens may stay in this file, which has no socket import; their session-backed providers must move off the eager path (finding 4b) |
+
+#### Item status at re-audit 1
+
+| Item | Status | Evidence (auditor) |
+|---|---|---|
+| G6-1 | closed | `MarketingLayoutComponent` template/styles equal `main:app.component.ts`. `git diff main` on `pages/{home,business,diaspora,runner}` and `shared/{header,footer,category-card,profile-card,proof-item,ticket}` is empty. #6 does not touch `styles.scss` or `index.html` (their `main` diff is #5's). F9.1 |
+| G6-2 | closed | the legacy scan has no hits; old page deleted in its own commit `c4bbdf1`; `AuthStore`/`ApiService` in `1db0b94`; F9.9 |
+| G6-3 | closed | `app.routes.ts` lazy `auth` + `app`; `app-area.routes.ts`, `customer.routes.ts`, `runner.routes.ts` separate lazy chunks; stub has no TODO/Lorem; F9.2, F9.3 |
+| G6-4 | closed | `NitumeTitleStrategy`; F9.4 |
+| G6-5 | closed | exactly one `<nm-toast-host` (`app-area.component.ts:21`); F9.5 |
+| G6-6 … G6-10 | closed | `otp-policy.ts`, `session.store.ts`, `auth-api.ts`; storage scan → only the legacy-key removal (`session.store.ts:79`); no mobile route or `AUTH_COOKIE_MODE`/`X-Nitume-Client`; F9.6 … F9.19, F9.45, F9.46, F9.51 … F9.54 |
+| G6-11 | **open (finding 1)** | the offline page and `Try again` are correct; the splash shows `Loading` visibly |
+| G6-12, G6-13 | closed | `auth.interceptor.ts`; `realtime.service.ts` final `account_suspended`; `app.config.ts` providers; F9.20 … F9.29, F9.55, F9.56; the #5 realtime suites pass unchanged |
+| G6-14 | closed | no `showReconnecting(` caller outside `core/realtime` |
+| G6-15 … G6-19 | closed | `guards.ts`, `role-routing.ts`, `sign-in-flow.store.ts`; F9.30 … F9.44 |
+| G6-20 | **open (finding 1)** | chooser copy is exactly WQ-24 (`Sign in to Nitume` / `Choose how you use Nitume.` / `I need tasks done` / `I'm a Runner or want to become one`), links and `href`s correct, outside the marketing layout; its restoring state uses the faulty splash |
+| G6-21 … G6-23 | closed | five type styles added; colour-token line count 30, the same as at #5; field inputs additive; `normalizeKenyanPhone`; F9.47 |
+| G6-24 … G6-33 | closed | components under `shared/ui/`; icon file carries the Apache-2.0 notice, no package added; nav white (`--nitume-white`) and kept on pushed routes from 768px (WQ-15, WQ-16); F9.59; one spec file per component |
+| G6-34 | **open (finding 2)** | copy, states, numeric fields and accessibility correct; the other-error line renders without the `error` style |
+| G6-35, G6-36 | **open (finding 2)** | WQ-14 and WQ-17 sentences verbatim in `core/auth/auth-copy.ts`; `… later.` fallback per WQ-24; same style defect on the line that shows them |
+| G6-37 | closed | name screens: copy per role, 2–60 validation, save error through `nm-field` (kit styles) |
+| G6-38, G6-39 | closed | five / four items in order with the icon pairs; Earnings uses `add-circle`; realtime `connect()` once; no geolocation |
+| G6-40 | closed (with findings 1–2 fixed) | colour/`box-shadow`/font scans: no #6 hits; F9.48, F9.49 |
+| G6-41, G6-42 | closed | no wallet/escrow; no bare `outline: none`; skip link visible on focus |
+| G6-43, G6-44 | closed except finding 3 | every F9.1 … F9.59 case named in a spec file; view T-cases complete for both roles |
+| G6-45 | closed | 15 conventional commits, scope `angular-website`; every new component `OnPush` except `MarketingLayoutComponent`, which F§1 requires verbatim from the old `AppComponent` (accepted) |
+| G6-46 | **open (finding 4, WQ-33)** | 379.20 kB raw against the 352.00 kB target; session layer eager |
+
+#### Owner-decision copy and behaviour check
+
+WQ-12 chooser at `/auth`: met. WQ-13 customer flow + runner → runner destination with `fresh` kept (`role-routing.ts` row 3; F9.43): met. WQ-14 line on the code screen and in the `signedOut=not-allowed` toast: met. WQ-15 and WQ-16: met. WQ-17 `Too many attempts. Try again in N min.` (N in `nmNum`): met. WQ-18: nothing client-side sets a lifetime: met. WQ-24 chooser copy and `Too many attempts. Try again later.`: met. WQ-8: the access token lives only in the private `#token`, no storage writes (F9.6, F9.7), credentials only on `/auth/web/*`: met.
+
+#### Re-audit 2 checklist
+
+1. Findings 1–4 fixed; F9.60 … F9.65 and the extended F9.50 present and passing.
+2. `npx ng build` output: `rg -o "@include|@use" dist/**/*.js` finds nothing.
+3. Re-run tests and build; finding 4 evidence 1–5.
+
+### Baseline verdict: FAIL (not built, 2026-10-28)
 
 Nothing of #6 is built: there is no `/app` route, no session layer, no guard, no interceptor, no #6 component, and the old `/auth` page still writes tokens to `localStorage`. The items below are the build list. Severity is **blocker** for every item unless it says minor.
 
@@ -804,7 +887,7 @@ Each item gives the **current** state, the **target** (spec section) and the **e
 - Evidence: `git log --oneline main..feat/website-auth-shell`; `rg -n "changeDetection" <new component files>` shows `OnPush` on each.
 
 **G6-46 Build health**
-- Target: F9.50. `cd apps/website && npx ng test --watch=false` 0 failures (the 73 #5 tests included); `npx ng build` succeeds; the marketing `initial` total does not grow by `/app` code (only lazy chunks; compare with the #5 figure, 350.92 kB initial).
+- Target: F9.50. `cd apps/website && npx ng test --watch=false` 0 failures (the 73 #5 tests included); `npx ng build` succeeds; the marketing `initial` total does not grow by `/app` code (only lazy chunks; compare with the #5 figure, 350.92 kB initial). **Re-audit 1 (WQ-33, owner 2026-10-29):** initial total ≤ 352.00 kB raw and the session layer lazy; see finding 4 for the target and the evidence.
 - Evidence: the PR body pastes the test summary and the build table; the auditor re-runs both.
 
 ### Re-audit checklist for #6 (auditor)
