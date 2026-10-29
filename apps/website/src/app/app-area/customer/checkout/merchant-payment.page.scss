@@ -1,0 +1,73 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.mp {
+  padding: 0 20px;
+}
+
+.mp__column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mp__heading {
+  @include nm-type(dialog-title, $weight: 700);
+  margin: 0;
+}
+
+.mp__body {
+  @include nm-type(muted);
+  margin: 6px 0 0;
+}
+
+.mp__changed-line {
+  display: block;
+}
+
+.mp__old {
+  margin-top: 4px;
+}
+
+.mp__rows {
+  nm-copy-row + nm-copy-row {
+    border-top: 1px solid var(--nitume-slate-line);
+  }
+}
+
+.mp__increase {
+  @include nm-type(resend, $color: blue);
+  margin: 0;
+}
+
+.mp__increase-amount {
+  font-weight: 600;
+  color: var(--nitume-amber);
+}
+
+.mp__how {
+  @include nm-type(resend);
+  margin: 0;
+}
+
+.mp__stk {
+  display: flex;
+  justify-content: center;
+  padding: 32px 0;
+}
+
+// From 768px (web adaptation): one centred 560px column; Done 320px wide.
+@include nm-up($nm-bp-md) {
+  .mp__column {
+    max-width: 560px;
+    margin: 0 auto;
+  }
+
+  .mp__done {
+    display: block;
+    max-width: 320px;
+  }
+}

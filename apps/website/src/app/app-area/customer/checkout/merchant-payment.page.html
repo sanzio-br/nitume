@@ -1,0 +1,86 @@
+<div class="mp">
+  <nm-pushed-header [title]="difference() ? copy.titleB : copy.titleA" [fallback]="trackLink" />
+  @switch (variant().kind) {
+    @case ('loading') {
+      <div class="mp__column">
+        <nm-skeleton-card [height]="220" />
+      </div>
+    }
+    @case ('error') {
+      <div class="mp__column">
+        <nm-error-state [message]="copy.loadError" (retry)="retry()" />
+      </div>
+    }
+    @case ('direct') {
+      <div class="mp__column mp__direct">
+        <div class="mp__intro">
+          <h2 class="mp__heading">{{ copy.introHeading }}</h2>
+          <p class="mp__body">{{ copy.introBody }}</p>
+        </div>
+        @if (details(); as d) {
+          @if (changedAt(); as at) {
+            <nm-notice class="mp__changed">
+              <span class="mp__changed-line">{{ copy.changedLead }}<span nmNum>{{ at }}</span>{{ copy.changedEnd }}</span>
+              @if (supportUrl) {
+                <span class="mp__changed-line mp__old">{{ copy.oldNumber }}</span>
+              }
+              @if (supportUrl; as url) {
+                <nm-button nmNoticeAction variant="link" size="small" [href]="url" target="_blank" rel="noopener noreferrer">{{ copy.support }}</nm-button>
+              }
+            </nm-notice>
+          }
+          <nm-card class="mp__card" padding="4px 16px">
+            <div class="mp__rows">
+              @if (d.name) {
+                <nm-copy-row [label]="copy.merchant" [value]="d.name" valueStyle="text" [copyable]="false" />
+              }
+              @if (d.kind === 'till') {
+                <nm-copy-row class="mp__till" [label]="copy.till" [value]="d.till" />
+              } @else {
+                <nm-copy-row class="mp__paybill" [label]="copy.paybill" [value]="d.paybill" />
+                @if (d.account) {
+                  <nm-copy-row class="mp__account" [label]="copy.account" [value]="d.account" />
+                }
+              }
+              <nm-copy-row class="mp__amount" [label]="copy.amount" [value]="amountText() ?? ''" valueStyle="amount" [copyValue]="amountCopy()" [valueLabel]="amountSpoken()" />
+            </div>
+          </nm-card>
+          @if (increaseText(); as inc) {
+            <p class="mp__increase">Includes the <span class="mp__increase-amount" nmNum>{{ inc }}</span> increase you approved.</p>
+          }
+          <p class="mp__how">{{ d.kind === 'till' ? copy.howTill : copy.howPaybill }}</p>
+        } @else {
+          <nm-card class="mp__card" padding="4px 16px">
+            <nm-copy-row class="mp__amount" [label]="copy.amount" [value]="amountText() ?? ''" valueStyle="amount" [copyable]="false" [valueLabel]="amountSpoken()" />
+          </nm-card>
+          @if (increaseText(); as inc) {
+            <p class="mp__increase">Includes the <span class="mp__increase-amount" nmNum>{{ inc }}</span> increase you approved.</p>
+          }
+          <nm-notice class="mp__pending">{{ copy.pending }}</nm-notice>
+        }
+        <nm-fixed-cta class="mp__cta">
+          <nm-button class="mp__done" [expand]="true" (pressed)="done()">{{ copy.done }}</nm-button>
+        </nm-fixed-cta>
+      </div>
+    }
+    @case ('difference') {
+      @if (difference(); as d) {
+        <div class="mp__stk">
+          <nm-stk-status
+            [tone]="tone()"
+            [heading]="stkHeading()"
+            [body]="stkBody()"
+            [reason]="stk() === 'FAILED' ? d.failureReason : null"
+            [amount]="d.payment.merchantAmount"
+            [pending]="stk() === 'PENDING'"
+            [stillPending]="stillPending() && stk() === 'PENDING'"
+            [primary]="primary()"
+            [secondary]="secondary()"
+            (primaryPressed)="onPrimary()"
+            (secondaryPressed)="onSecondary()"
+          />
+        </div>
+      }
+    }
+  }
+</div>

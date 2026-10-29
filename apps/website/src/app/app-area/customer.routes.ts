@@ -116,6 +116,12 @@ export const CUSTOMER_ROUTES: Routes = [
         data: { role, navKey: 'home', pushed: true },
         loadComponent: () => import('./customer/checkout/payment.page').then((m) => m.PaymentPage),
       },
+      {
+        path: 'tasks/:errandId/item-payment',
+        title: 'Pay the item amount · Nitume',
+        data: { role, navKey: 'track', pushed: true },
+        loadComponent: () => import('./customer/checkout/merchant-payment.page').then((m) => m.MerchantPaymentPage),
+      },
       { path: 'tasks/:errandId/evidence', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #10
       { path: 'notifications', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #11
     ],

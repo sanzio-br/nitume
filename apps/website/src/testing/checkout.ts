@@ -69,7 +69,7 @@ export class FakeTimers implements CheckoutTimers {
       for (const entry of this.tasks) if (entry[1].at <= end && (!next || entry[1].at < next[1].at)) next = entry;
       if (!next) break;
       this.tasks.delete(next[0]);
-      this.elapsed = next[1].at;
+      this.elapsed = Math.max(this.elapsed, next[1].at);
       next[1].fn();
     }
     this.elapsed = end;
