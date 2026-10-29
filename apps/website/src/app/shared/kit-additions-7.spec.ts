@@ -6,6 +6,8 @@ import { Router, provideRouter } from '@angular/router';
 import { declared } from '../../testing/css';
 import { NmBackButton, NmBackEvent } from './ui/back-button/back-button.component';
 import { NmPushedHeader } from './ui/pushed-header/pushed-header.component';
+import { NmField } from './ui/field/field.component';
+import { NmFieldValue } from './ui/field/field-value.directive';
 import { CUSTOMER_MVP_CATEGORIES, categoryIcon } from './format/category';
 import { NmIcon } from './ui/icon/icon.component';
 import { NM_ICONS } from './ui/icon/icons';
@@ -98,6 +100,115 @@ describe('NC§W9.16 #7 kit additions', () => {
       button.click();
       expect(fixture.componentInstance.backs).toHaveLength(1);
       expect(navigate).toHaveBeenCalledWith('/app/customer/home');
+    });
+  });
+
+  describe('nm-field place-field inputs and nmFieldValue updates (G7-9)', () => {
+    @Component({
+      imports: [NmField, NmFieldValue],
+      template: `
+        <nm-field class="plain" label="Plain" />
+        <nm-field
+          class="place"
+          label="Pick up from"
+          leadingIcon="location"
+          [busy]="busy()"
+          [role]="'combobox'"
+          [ariaAutocomplete]="'list'"
+          [ariaExpanded]="expanded()"
+          [ariaControls]="'list-1'"
+          [ariaActivedescendant]="active()"
+          [nmFieldValue]="value()"
+          (nmFieldValueChange)="emitted.push($event); value.set($event)"
+        />
+      `,
+    })
+    class Host {
+      readonly busy = signal(false);
+      readonly expanded = signal(false);
+      readonly active = signal<string | null>(null);
+      readonly value = signal('');
+      readonly emitted: string[] = [];
+    }
+
+    function setup() {
+      const fixture = TestBed.createComponent(Host);
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      return {
+        fixture,
+        host: fixture.componentInstance,
+        plain: root.querySelector('.plain input') as HTMLInputElement,
+        place: root.querySelector('.place input') as HTMLInputElement,
+        root,
+      };
+    }
+
+    it('NC§W9.16 field defaults. without the #7 inputs no icon, no spinner and no combobox or busy attribute', () => {
+      const { plain, root } = setup();
+      for (const attr of ['role', 'aria-autocomplete', 'aria-expanded', 'aria-controls', 'aria-activedescendant', 'aria-busy']) {
+        expect.soft(plain.hasAttribute(attr), attr).toBe(false);
+      }
+      expect(root.querySelector('.plain nm-icon')).toBeNull();
+      expect(root.querySelector('.plain .nm-field__spinner')).toBeNull();
+      expect(plain.classList.contains('nm-field__input--lead')).toBe(false);
+    });
+
+    it('NC§W9.16 field leadingIcon. an 18px slate-600 icon on the left and 40px input padding', () => {
+      const { place, root } = setup();
+      const icon = root.querySelector('.place nm-icon') as HTMLElement;
+      expect(icon.getAttribute('data-icon')).toBe('location');
+      expect(icon.querySelector('svg')?.getAttribute('width')).toBe('18');
+      expect(declared('.nm-field__lead', 'color')).toEqual(['var(--nitume-slate-600)']);
+      expect(place.classList.contains('nm-field__input--lead')).toBe(true);
+      expect(declared('.nm-field__input--lead', 'padding-left')).toEqual(['40px']);
+    });
+
+    it('NC§W9.16 field busy. aria-hidden spinner, aria-busy on the input, no spin under reduced motion', () => {
+      const { fixture, host, place, root } = setup();
+      host.busy.set(true);
+      fixture.detectChanges();
+      const spinner = root.querySelector('.place .nm-field__spinner') as HTMLElement;
+      expect(spinner.getAttribute('aria-hidden')).toBe('true');
+      expect(place.getAttribute('aria-busy')).toBe('true');
+      expect(declared('.nm-field__spinner', 'width')).toEqual(['16px']);
+      expect(declared('.nm-field__spinner', 'animation')).toContain('none');
+      host.busy.set(false);
+      fixture.detectChanges();
+      expect(place.hasAttribute('aria-busy')).toBe(false);
+      expect(root.querySelector('.place .nm-field__spinner')).toBeNull();
+    });
+
+    it('NC§W9.16 field combobox. role, aria-autocomplete, aria-expanded, aria-controls and aria-activedescendant on the native input', () => {
+      const { fixture, host, place } = setup();
+      expect(place.getAttribute('role')).toBe('combobox');
+      expect(place.getAttribute('aria-autocomplete')).toBe('list');
+      expect(place.getAttribute('aria-expanded')).toBe('false');
+      expect(place.getAttribute('aria-controls')).toBe('list-1');
+      expect(place.hasAttribute('aria-activedescendant')).toBe(false);
+      host.expanded.set(true);
+      host.active.set('opt-2');
+      fixture.detectChanges();
+      expect(place.getAttribute('aria-expanded')).toBe('true');
+      expect(place.getAttribute('aria-activedescendant')).toBe('opt-2');
+    });
+
+    it('NC§W9.16 nmFieldValue. writes a changed input after init and never writes back the value the control just emitted', () => {
+      const { fixture, host, place } = setup();
+      const write = vi.spyOn(NmField.prototype, 'writeValue');
+      place.value = 'Sar';
+      place.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(host.emitted).toEqual(['Sar']);
+      expect(write).not.toHaveBeenCalled(); // typing round-trips without a write
+      host.value.set('Sarit Centre, Westlands, Nairobi');
+      fixture.detectChanges();
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(place.value).toBe('Sarit Centre, Westlands, Nairobi');
+      host.value.set('');
+      fixture.detectChanges();
+      expect(place.value).toBe('');
+      write.mockRestore();
     });
   });
 });
