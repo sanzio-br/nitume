@@ -57,3 +57,24 @@ describe('StatusChipComponent', () => {
     expect(chip.classList).toContain('chip-pending');
   });
 });
+
+describe('account chip (issue #24, spec §4, owner SQ-1)', () => {
+  const cases: [string, string, string][] = [
+    ['active', 'Active', 'chip-info'],
+    ['suspended', 'Suspended', 'chip-pending'],
+    ['banned', 'Banned', 'chip-danger'],
+  ];
+
+  for (const [status, label, cls] of cases) {
+    it(`renders ${status} as ${label} with ${cls}`, () => {
+      const fixture = TestBed.createComponent(StatusChipComponent);
+      fixture.componentRef.setInput('status', status);
+      fixture.componentRef.setInput('kind', 'account');
+      fixture.detectChanges();
+      const chip = fixture.nativeElement.querySelector('.chip') as HTMLElement;
+      expect(chip.textContent?.trim()).toBe(label);
+      expect(chip.classList).toContain(cls);
+      expect(chip.classList).not.toContain('chip-success');
+    });
+  }
+});
