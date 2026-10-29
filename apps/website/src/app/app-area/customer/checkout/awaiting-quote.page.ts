@@ -20,6 +20,7 @@ import { NmFixedCta, NmFixedCtaOffset } from '../../../shared/ui/fixed-cta/fixed
 import { followInAppLink } from '../../../shared/ui/links';
 import { NmNotice } from '../../../shared/ui/notice/notice.component';
 import { NmDialogService } from '../../../shared/ui/overlay/dialog.service';
+import { NmOverlayRef } from '../../../shared/ui/overlay/overlay-ref';
 import { NmPanelService } from '../../../shared/ui/overlay/panel.service';
 import { NmToastService } from '../../../shared/ui/overlay/toast.service';
 import { NmPaymentMethodCard } from '../../../shared/ui/payment-method-card/payment-method-card.component';
@@ -137,7 +138,9 @@ export class AwaitingQuotePage {
   private readonly now = inject(CUSTOMER_NOW);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
-  protected readonly id: string = inject(ActivatedRoute).snapshot.paramMap.get('errandId') ?? '';
+  private readonly activatedRoute = inject(ActivatedRoute);
+  /** The current errand; follows `paramMap` (A§1 "Same route, another errand"). */
+  protected id = '';
   protected readonly copy = QUOTE_COPY;
   protected readonly links = customerLinks;
 
@@ -245,14 +248,10 @@ export class AwaitingQuotePage {
 
   private sequence = 0;
   private dropped = false;
+  private panelRef: NmOverlayRef<DeadlinePanelResult> | null = null;
 
   constructor() {
-    const state = this.router.currentNavigation()?.extras.state as { quoteExpired?: unknown; deadlinePassed?: unknown } | undefined;
-    if (state?.quoteExpired === true) this.expiredFlag.set(true);
-    if (state?.deadlinePassed === true) this.deadlineFlag.set(true);
-
     const destroyRef = inject(DestroyRef);
-    void this.realtime.joinErrand(this.id);
     const mine = <T extends { errandId: string }>(event: T) => event.errandId === this.id;
     this.realtime.statusChanges$.pipe(takeUntilDestroyed()).subscribe((e) => mine(e) && void this.load());
     this.realtime.quoteReissues$.pipe(takeUntilDestroyed()).subscribe((e) => {
@@ -280,9 +279,36 @@ export class AwaitingQuotePage {
     destroyRef.onDestroy(() => {
       poll.stop();
       tick.stop();
-      this.realtime.leaveErrand(this.id);
+      this.panelRef?.close(undefined);
+      if (this.id) this.realtime.leaveErrand(this.id);
     });
 
+    // A§1: the page is reused when only `:errandId` changes; start over for each id.
+    this.activatedRoute.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => this.startFor(params.get('errandId') ?? ''));
+  }
+
+  /** Leaves the previous errand (room, panel, in-flight answers), clears the view, then reads the new one. */
+  private startFor(id: string): void {
+    if (id === this.id) return;
+    if (this.id) this.realtime.leaveErrand(this.id);
+    this.panelRef?.close(undefined);
+    this.panelRef = null;
+    this.id = id;
+    this.sequence++;
+    this.loaded.set(null);
+    this.failed.set(false);
+    this.route.set(null);
+    this.accepting.set(false);
+    this.requesting.set(false);
+    this.cancelling.set(false);
+    this.panelOpen.set(false);
+    this.announcement.set('');
+    this.fade.set(false);
+    this.clock.set(this.now());
+    const state = this.router.currentNavigation()?.extras.state as { quoteExpired?: unknown; deadlinePassed?: unknown } | undefined;
+    this.expiredFlag.set(state?.quoteExpired === true);
+    this.deadlineFlag.set(state?.deadlinePassed === true);
+    void this.realtime.joinErrand(id);
     void this.load();
   }
 
@@ -342,12 +368,14 @@ export class AwaitingQuotePage {
   protected async confirm(): Promise<void> {
     const loaded = this.loaded();
     if (!loaded || this.busy() || this.expired() || this.deadlinePassed()) return;
+    const id = this.id;
     this.accepting.set(true);
     try {
       if (loaded.status === 'QUOTED' || (loaded.status === 'ACCEPTED' && loaded.errand.quoteAcceptanceRequired)) {
-        await this.api.acceptQuote(this.id);
+        await this.api.acceptQuote(id);
       }
     } catch (err) {
+      if (id !== this.id) return;
       this.accepting.set(false);
       const e = apiErrorOf(err);
       if (e.code === 'quote_expired') this.expiredFlag.set(true);
@@ -355,6 +383,7 @@ export class AwaitingQuotePage {
       else this.showToast(QUOTE_COPY.acceptFailed);
       return;
     }
+    if (id !== this.id) return;
     const method = this.method();
     const route = this.itemAmount() !== null ? this.route() : null;
     const payer = method ? method.phoneNumber : (this.session.user()?.phone ?? null);
@@ -369,11 +398,13 @@ export class AwaitingQuotePage {
 
   protected async requestNewQuote(): Promise<void> {
     if (this.busy()) return;
+    const id = this.id;
     this.requesting.set(true);
     try {
-      await this.api.requestQuote(this.id);
-      this.onRequested();
+      await this.api.requestQuote(id);
+      if (id === this.id) this.onRequested();
     } catch (err) {
+      if (id !== this.id) return;
       const code = apiErrorOf(err).code;
       if (code === 'quote_request_pending') this.onRequested();
       else if (code === 'quote_still_valid') {
@@ -382,7 +413,7 @@ export class AwaitingQuotePage {
       } else if (code === 'quote_request_not_allowed') void this.load();
       else this.showToast(QUOTE_COPY.requestFailed);
     } finally {
-      this.requesting.set(false);
+      if (id === this.id) this.requesting.set(false);
     }
   }
 
@@ -392,7 +423,11 @@ export class AwaitingQuotePage {
     this.panelOpen.set(true);
     const data: DeadlinePanelData = { errandId: this.id, deadlineAt: errand.deadlineAt };
     const ref = this.panels.open<DeadlinePanelResult>(DeadlinePanelComponent, { title: 'Deadline', data });
+    this.panelRef = ref;
+    const id = this.id;
     const result = await ref.closed;
+    if (id !== this.id) return;
+    this.panelRef = null;
     this.panelOpen.set(false);
     if (result === 'saved') {
       this.deadlineFlag.set(false);
@@ -402,6 +437,7 @@ export class AwaitingQuotePage {
 
   protected async cancel(): Promise<void> {
     if (this.busy()) return;
+    const id = this.id;
     const ok = await this.dialogs.confirm({
       title: QUOTE_COPY.cancelTitle,
       body: QUOTE_COPY.cancelBody,
@@ -409,17 +445,18 @@ export class AwaitingQuotePage {
       cancelLabel: QUOTE_COPY.keepTask,
       destructive: true,
     });
-    if (!ok) return;
+    if (!ok || id !== this.id) return;
     this.cancelling.set(true);
     try {
-      await this.api.cancel(this.id);
+      await this.api.cancel(id);
       this.toast.show(QUOTE_COPY.cancelled);
       void this.router.navigateByUrl(customerLinks.home(), { replaceUrl: true });
     } catch (err) {
+      if (id !== this.id) return;
       if (apiErrorOf(err).code === 'illegal_transition') void this.load();
       else this.showToast(QUOTE_COPY.cancelFailed);
     } finally {
-      this.cancelling.set(false);
+      if (id === this.id) this.cancelling.set(false);
     }
   }
 

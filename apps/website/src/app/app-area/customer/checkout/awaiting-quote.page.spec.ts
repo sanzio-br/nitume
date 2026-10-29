@@ -637,4 +637,41 @@ describe('customer x-awaiting-quote (#8)', () => {
     for (const v of Object.values(leaky)) expect.soft(all, v).not.toContain(v);
     expect(FEES.feeTotal).toBe('1100.00');
   });
+  it('XQ T24. same route, another errand (A§1): /tasks/e-1/quote → /tasks/e-2/quote shows e-2, switches rooms, closes the open panel, ignores e-1 events and polls e-2; back to e-1 re-reads e-1', async () => {
+    const { h, rig } = await openQuote({ errand: { reference: 'NT-1' } });
+    button(h, '.nm-deadline-line__change').click();
+    await flushGet('/errands/defaults', { defaultDeadlineHours: 24, defaultDeadlineStartsAt: 'payment_confirmed' });
+    await h.detect();
+    expect(document.querySelector('nm-panel')).not.toBeNull();
+
+    void h.router.navigateByUrl('/app/customer/tasks/e-2/quote');
+    await answer(h, checkoutErrand({ id: 'e-2', reference: 'NT-2', feeTotal: '2200.00' }), { quote: { total: '2200.00' } });
+    await routedTo(h, '/app/customer/tasks/e-2/quote');
+    expect(document.querySelector('nm-panel')).toBeNull();
+    expect(rig.realtime.leaveErrand).toHaveBeenCalledWith('e-1');
+    expect(rig.realtime.joinErrand).toHaveBeenLastCalledWith('e-2');
+    expect(text(page(h).querySelector('.nm-task-summary__meta'))).toMatch(/^#NT-2 /);
+    expect(text(page(h).querySelector('.quote__final .nm-receipt-row__amount'))).toBe('KSh 2,200');
+    expect(text(page(h))).not.toContain('NT-1');
+
+    rig.realtime.status('e-1', 'CANCELLED');
+    await h.detect();
+    expect(requests('/errands/e-1')).toHaveLength(0);
+    expect(requests('/errands/e-2')).toHaveLength(0);
+    rig.realtime.set('reconnecting');
+    rig.timers.advance(QUOTE_POLL_MS);
+    await h.detect();
+    expect(requests('/errands/e-1')).toHaveLength(0);
+    await flushGet('/errands/e-2', checkoutErrand({ id: 'e-2', reference: 'NT-2', feeTotal: '2200.00' }));
+    await flushGet('/errands/e-2/quote', quoteJson({ total: '2200.00' }));
+    await flushGet('/customers/me/payment-methods', []);
+    rig.realtime.state.set('connected');
+
+    void h.router.navigateByUrl('/app/customer/tasks/e-1/quote');
+    await answer(h, checkoutErrand({ reference: 'NT-1' }));
+    await routedTo(h, '/app/customer/tasks/e-1/quote');
+    expect(rig.realtime.joinErrand).toHaveBeenLastCalledWith('e-1');
+    expect(text(page(h).querySelector('.nm-task-summary__meta'))).toMatch(/^#NT-1 /);
+    expect(text(page(h).querySelector('.quote__final .nm-receipt-row__amount'))).toBe('KSh 1,100');
+  });
 });
