@@ -107,7 +107,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/suspended-access (issue #23) | merged (PR #25, 28a0c42) | — | feat/api-suspended-access (stacked on #22 → #20; worktree ../nitume-feat-api-suspended-access) | none | 8eb934d, 2e70401, 5b49108, e095f15, e187481; unit 960/960, e2e 187/187; each commit compiles |
 | admin/user-status-actions (issue #24) | merged (PR #32, be0229f) | api-contract | feat/api-user-status-audit (stacked on feat/api-suspended-access; worktree ../nitume-feat-api-user-status-audit) | #23 | schema WQ-23 approved; then design-auditor admin drawer spec, web-parity build |
 | website/customer/create-task (issue #7) | merged (PR #42, 81aa065; merge commit, not squash) | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
-| website/customer/checkout (issue #8) | building (gap G8-1…G8-41, 4e9ff70; main merged 7d0b81e) | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
+| website/customer/checkout (issue #8) | built (03b4a8e…a690870; 749 tests, 354.59 kB) → re-audit | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
 | api/merchant-details-privacy (issue #28) | merged (PR #29, 5f0ab08) | api-contract | fix/api-merchant-details-privacy (off main; worktree ../nitume-fix-api-merchant-details-privacy) | none | found while speccing #8 |
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
 | api+web+core/socket-revoked-token (issue #30) | unaudited | — | — | #24, #6 | from the #6 review |
@@ -910,3 +910,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | web-parity #36 admin built: G36-1…9, 38 files / 458 tests (twice), initial 498.90 kB; runner drawer deferred for budget; AuthStore.isExpiringSoon bug fixed (efa1e5c). The builder's check script uses the shared git stash (it restored everything). design-auditor re-audit dispatched. |
 | 2026-10-29 | design-auditor #36 admin re-audit PASS (4ef049d): G36-1…9 closed, rulings 1–6 PASS; admin bundle headroom now 1.1 kB. Sent to reviewer (API + admin). |
 | 2026-10-29 | reviewer #36 READY → PR opened (squash). Known limits: single instance, no Socket.IO Redis adapter; admin bundle headroom 1.1 kB. |
+| 2026-10-29 | web-parity #8 built: G8-1…41, 87 files / 749 tests (twice), initial 354.59 kB; WQ-27 mutations caught. To rule on: same-route page reuse, price-change dialog aria-describedby. design-auditor re-audit dispatched. |
