@@ -1,0 +1,56 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-radio-row {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 10px 16px;
+  background-color: var(--nitume-slate);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-pill);
+  cursor: pointer;
+
+  &:has(.nm-radio-row__input:focus-visible) {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-radio-row__input {
+  @include nm-visually-hidden;
+}
+
+.nm-radio-row__label {
+  @include nm-type(chip);
+}
+
+.nm-radio-row__subtitle {
+  @include nm-type(muted-sm);
+  overflow-wrap: anywhere;
+}
+
+.nm-radio-row--selected {
+  background-color: var(--nitume-blue);
+  border-color: var(--nitume-blue);
+
+  .nm-radio-row__label,
+  .nm-radio-row__subtitle {
+    color: var(--nitume-white);
+  }
+}
+
+.nm-radio-row--disabled {
+  cursor: default;
+
+  .nm-radio-row__label,
+  .nm-radio-row__subtitle {
+    color: var(--nitume-slate-400);
+  }
+}
