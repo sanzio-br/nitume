@@ -32,6 +32,8 @@
   background-color: var(--nitume-white);
   border: 1px solid var(--nitume-slate-line);
   border-radius: var(--nitume-r-s);
+  // #7: clear of a fixed bottom CTA when focused (set by nm-wizard-frame).
+  scroll-margin-bottom: var(--nm-cta-scroll-margin, 0px);
 
   &::placeholder {
     color: var(--nitume-slate-400);

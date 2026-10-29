@@ -170,6 +170,8 @@ describe('NC§W9.16 #7 kit additions', () => {
       expect(declared('.nm-field__lead', 'color')).toEqual(['var(--nitume-slate-600)']);
       expect(place.classList.contains('nm-field__input--lead')).toBe(true);
       expect(declared('.nm-field__input--lead', 'padding-left')).toEqual(['40px']);
+      // nm-wizard-frame sets the variable: a focused field stays clear of the fixed CTA.
+      expect(declared('.nm-field__input', 'scroll-margin-bottom')).toEqual(['var(--nm-cta-scroll-margin, 0px)']);
     });
 
     it('NC§W9.16 field busy. aria-hidden spinner, aria-busy on the input, no spin under reduced motion', () => {
