@@ -46,6 +46,7 @@ describe('customerLinks (NC§W9.11)', () => {
       customerLinks.home(),
       customerLinks.awaitingQuote('e-1'),
       customerLinks.payment('e-1'),
+      customerLinks.itemPayment('e-1'), // #8
       customerLinks.track(),
       customerLinks.track('e-1'),
       customerLinks.taskDetail('e-1'),

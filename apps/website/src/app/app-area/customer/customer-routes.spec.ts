@@ -2,6 +2,9 @@
 import { Route } from '@angular/router';
 import { draftOf, openCustomer } from '../../../testing/customer';
 import { CUSTOMER_ROUTES } from '../customer.routes';
+import { AwaitingQuotePage } from './checkout/awaiting-quote.page';
+import { MerchantPaymentPage } from './checkout/merchant-payment.page';
+import { PaymentPage } from './checkout/payment.page';
 import { HomePage } from './home/home.page';
 import { NewCategoryPage } from './new-task/new-category.page';
 import { NewDetailsPage } from './new-task/new-details.page';
@@ -55,5 +58,30 @@ describe('customer routes (NC§W9.1)', () => {
     expect(document.title).toBe('Home · Nitume');
     expect(h.root().querySelector('app-home-page')).not.toBeNull();
     expect(h.root().querySelector('app-view-stub')).toBeNull();
+  });
+  it('A.T1 (#8). quote, payment and item-payment load their pages lazily with the A§1 titles, navKey and pushed; the #9/#10/#11 stubs are unchanged', async () => {
+    const cases: [string, unknown, string, string][] = [
+      ['tasks/:errandId/quote', AwaitingQuotePage, 'Your quote · Nitume', 'home'],
+      ['tasks/:errandId/payment', PaymentPage, 'Payment · Nitume', 'home'],
+      ['tasks/:errandId/item-payment', MerchantPaymentPage, 'Pay the item amount · Nitume', 'track'],
+    ];
+    for (const [path, page, title, navKey] of cases) {
+      const route = child(path);
+      expect.soft(route.component, path).toBeUndefined();
+      expect.soft(route.title, path).toBe(title);
+      expect.soft(route.data, path).toEqual({ role: 'customer', navKey, pushed: true });
+      expect.soft(await load(route), path).toBe(page);
+    }
+    for (const path of ['tasks/:errandId', 'tasks/:errandId/evidence', 'notifications']) {
+      const component = (await load(child(path))) as { name: string };
+      expect.soft(component.name, path).toMatch(/ViewStubComponent/);
+      expect.soft(child(path).data, path).toEqual({ role: 'customer', navKey: 'home', pushed: true });
+    }
+    const h = await openCustomer('/app/customer/tasks/e-1/quote');
+    expect(document.title).toBe('Your quote · Nitume');
+    await h.harness.navigateByUrl('/app/customer/tasks/e-1/payment');
+    expect(document.title).toBe('Payment · Nitume');
+    await h.harness.navigateByUrl('/app/customer/tasks/e-1/item-payment');
+    expect(document.title).toBe('Pay the item amount · Nitume');
   });
 });

@@ -288,6 +288,8 @@ describe('customer v-payment (#8)', () => {
       [{ merchantAmount: '0.00', paymentFlow: 'platform_only' }, 'KSh 1,100', null],
       [{ merchantAmount: '40000.00', paymentFlow: 'customer_to_runner' }, 'KSh 41,100', "Includes KSh 40,000 for your runner's purchase."],
       [{ merchantAmount: '40000.00', paymentFlow: 'merchant_direct' }, 'KSh 1,100', null],
+      // Exact in cents (a float sum would drift to 41,100.29).
+      [{ serviceFee: '440.10', runnerFee: '660.00', merchantAmount: '40000.20', paymentFlow: 'customer_to_runner' }, 'KSh 41,100.30', "Includes KSh 40,000.20 for your runner's purchase."],
     ];
     for (const [payment, amount, includes] of cases) {
       const { h } = await openPayment({ summary: { payment: paymentJson(payment), stkStatus: 'PENDING' } });
@@ -295,7 +297,7 @@ describe('customer v-payment (#8)', () => {
       expect.soft(text(el), payment.paymentFlow).toBe(amount);
       expect.soft(el.classList.contains('nm-num--amount-lg'), payment.paymentFlow).toBe(true);
       expect.soft(text(page(h).querySelector('.nm-stk__includes')) || null, payment.paymentFlow).toBe(includes);
-      if (includes) expect.soft(page(h).querySelector('.nm-stk__includes [nmNum]')?.textContent).toBe('KSh 40,000');
+      if (includes) expect.soft(page(h).querySelector('.nm-stk__includes [nmNum]')?.textContent).toBe(includes.slice(9, includes.indexOf(' for')));
       expect.soft(text(page(h)), payment.paymentFlow).not.toMatch(/Service fee|Runner fee|KSh 40,440|KSh 40,660/);
     }
   });
