@@ -112,8 +112,8 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
 | api+web+core/socket-revoked-token (issue #30) | unaudited | — | — | #24, #6 | from the #6 review |
 | api/refresh-cutoff (issue #33) | built (bef7a00, 6e5d97e; unit 1114, e2e 251) → in review | api-contract | fix/api-refresh-cutoff (off main; worktree ../nitume-fix-api-refresh-cutoff) | — | — | #24 | WQ-39 |
-| website/runner/onboarding (issue #13) | spec in progress | design-auditor | feat/website-runner-onboarding (off main) | — | Q-W1 selfie live-only |
-| website/runner/earnings (issue #17) | spec in progress | design-auditor | feat/website-runner-earnings (off main) | — | specs only |
+| website/runner/onboarding (issue #13) | specced (d9154a1; Q13-1..4 answered); gap report + build after #7 (shared nm-fixed-cta, card/dialog conversions) | design-auditor | feat/website-runner-onboarding (off main) | — | Q-W1 selfie live-only |
+| website/runner/earnings (issue #17) | specced (59484f3; Q17-1..3 answered); gap report + build after #7 | design-auditor | feat/website-runner-earnings (off main) | — | specs only |
 | website/customer + runner parity (issues #9–#12, #14–#16, #18) | unaudited | — | — | #5, #6 | 14 feature-group issues on GitHub (owner request 2026-10-28); one PR per issue with `Closes #N` |
 | admin/p-runners-verification-documents (verification inbox) | awaiting-owner (row 278 table + drawer reviewed READY, matches-design) | web-parity + api-contract (A-9) | fix/admin-verification-inbox (stacked on docs/admin-verification-audit; worktree ../nitume-fix-admin-verification) + fix/api-verification-review (worktree ../nitume-fix-api-verification-review) | AQ-35..37 (rows 260–262); api A-1..A-7 | Audit 2026-10-21 FAIL (admin-gap-report "Audit 2026-10-21: verification inbox", findings 34–49, supersede 18, 19, 20, 22, 23, 28): f642187, 73fc96d, d5ef069. Owner-seen symptoms: Approve/Reject 404 (client PATCH /runners/verifications/{id}; API route is /runners/:runnerId/verifications/:verificationId); NaN date (reads submittedAt, API sends createdAt); no Front/Back (side ignored); no View image (reads documentKey, API sends hasDocument); 5 items counts approved phone check (AQ-35); raw type labels; false "runner level upgrades" copy (AQ-36); initials from profile UUID (needs api A-5). Blockers 34, 35, 36, 37, 45, 48. Do now (no owner input): 34, 35, 36, 39, 41, 42, 43, 44, 45, 47, 48, 49; after AQ-35 + A-5: 37, 38, 40, 46 |
 
@@ -591,6 +591,8 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | WQ-2 | design-auditor (#5) | Customer times on the web | ANSWERED 2026-10-29: like the app (activity times local, deadlines EAT and labelled) |
 | WQ-39 | reviewer (#24) | Refresh session surviving a double Redis loss | ANSWERED: close it, issue #33 |
 | WQ-40 | reviewer (#24) | DB CHECK on reason length | ANSWERED: API only |
+| WQ-41 | design-auditor (#17, Q17-1..3) | Earnings copy; requestable vs available; new strings | ANSWERED 2026-10-29: copy approved; explain on the card: "KSh {amount} is waiting to be re-sent, so you can request up to KSh {requestable} now."; five strings approved |
+| WQ-42 | design-auditor (#13, Q13-1..4) | Camera copy; "Upload a photo"; rejected/re-review; upload progress | ANSWERED: copy approved; label approved; the reviewer note is never shown (row 262); spinner |
 
 ## Session log
 
@@ -861,3 +863,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | reviewer #6 READY → T1 flake fixed (ed8f7b5) → PR #31 (base main; #26 merged). reviewer #24 READY → PR #32. Issues #30 (socket cycle with a revoked token) and #33 (refresh cut-off, WQ-39) opened. Owner: WQ-2, WQ-39, WQ-40. design-auditor #7 gap report G7-1…40 (8feae7e, 7ecf374); web-parity building #7. |
 | 2026-10-29 | Owner merged PR #29 (5f0ab08), #31 (a0caeee), #32 (be0229f); issues #6, #24, #28 closed. Dispatched api-contract #33, design-auditor #13 and #17 specs (worktrees off main). #7 building; #8 waits for #7 (shared components). |
 | 2026-10-29 | api-contract HANDOFF #33: built. The refresh check always reads user_status_history (max with Redis) because the #24 Redis cut-off lives ~20 min against 30-day sessions. Applied migration 1790103600000 to nitume_test. The agent rebuilt its own unpushed commit (reset --soft/amend); flagged to the owner. Sent to reviewer. |
+| 2026-10-29 | design-auditor #13 (d9154a1) and #17 (59484f3) specced; owner answered WQ-41/42 (row 262 checked before recording). Both builds wait for #7's shared components. |
