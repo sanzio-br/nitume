@@ -19,7 +19,13 @@ export interface TestSocket {
   close(): void;
 }
 
-export const connectSocket = (baseUrl: string, token: string | null, settleMs = 150): Promise<TestSocket> =>
+/** `auth` adds handshake fields next to `token` (e.g. `{ client: 'web' }`, issue #36). */
+export const connectSocket = (
+  baseUrl: string,
+  token: string | null,
+  settleMs = 150,
+  auth: Record<string, unknown> = {},
+): Promise<TestSocket> =>
   new Promise((resolve, reject) => {
     const url = `${baseUrl.replace(/^http/, 'ws')}/socket.io/?EIO=4&transport=websocket`;
     const ws = new WebSocket(url);
@@ -76,7 +82,7 @@ export const connectSocket = (baseUrl: string, token: string | null, settleMs = 
     ws.on('message', (raw: WebSocket.RawData) => {
       const msg = (Array.isArray(raw) ? Buffer.concat(raw) : Buffer.from(raw as ArrayBuffer)).toString('utf-8');
       if (msg.startsWith('0')) {
-        ws.send(`40${JSON.stringify(token ? { token } : {})}`);
+        ws.send(`40${JSON.stringify(token ? { ...auth, token } : auth)}`);
       } else if (msg === '2') {
         ws.send('3');
       } else if (msg.startsWith('40')) {
