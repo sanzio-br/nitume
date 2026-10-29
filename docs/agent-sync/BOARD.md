@@ -111,7 +111,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/merchant-details-privacy (issue #28) | merged (PR #29, 5f0ab08) | api-contract | fix/api-merchant-details-privacy (off main; worktree ../nitume-fix-api-merchant-details-privacy) | none | found while speccing #8 |
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
 | api+web+core/socket-revoked-token (issue #30) | unaudited | — | — | #24, #6 | from the #6 review |
-| api/refresh-cutoff (issue #33) | built (bef7a00, 6e5d97e; unit 1114, e2e 251) → in review | api-contract | fix/api-refresh-cutoff (off main; worktree ../nitume-fix-api-refresh-cutoff) | — | — | #24 | WQ-39 |
+| api/refresh-cutoff (issue #33) | awaiting-owner (PR #34; reviewer READY, unit 1114, e2e 251) | api-contract | fix/api-refresh-cutoff (off main; worktree ../nitume-fix-api-refresh-cutoff) | — | — | #24 | WQ-39 |
 | website/runner/onboarding (issue #13) | specced (d9154a1; Q13-1..4 answered); gap report + build after #7 (shared nm-fixed-cta, card/dialog conversions) | design-auditor | feat/website-runner-onboarding (off main) | — | Q-W1 selfie live-only |
 | website/runner/earnings (issue #17) | specced (59484f3; Q17-1..3 answered); gap report + build after #7 | design-auditor | feat/website-runner-earnings (off main) | — | specs only |
 | website/customer + runner parity (issues #9–#12, #14–#16, #18) | unaudited | — | — | #5, #6 | 14 feature-group issues on GitHub (owner request 2026-10-28); one PR per issue with `Closes #N` |
@@ -864,3 +864,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | Owner merged PR #29 (5f0ab08), #31 (a0caeee), #32 (be0229f); issues #6, #24, #28 closed. Dispatched api-contract #33, design-auditor #13 and #17 specs (worktrees off main). #7 building; #8 waits for #7 (shared components). |
 | 2026-10-29 | api-contract HANDOFF #33: built. The refresh check always reads user_status_history (max with Redis) because the #24 Redis cut-off lives ~20 min against 30-day sessions. Applied migration 1790103600000 to nitume_test. The agent rebuilt its own unpushed commit (reset --soft/amend); flagged to the owner. Sent to reviewer. |
 | 2026-10-29 | design-auditor #13 (d9154a1) and #17 (59484f3) specced; owner answered WQ-41/42 (row 262 checked before recording). Both builds wait for #7's shared components. |
+| 2026-10-29 | reviewer #33 READY → PR #34. Minors: web cookie cleared on a DB blip (existing behaviour); setStatus writes no history (no production callers). |
