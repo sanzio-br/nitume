@@ -9,20 +9,24 @@ import { Router } from '@angular/router';
 import { categoryIcon, categoryName } from '../../format/category';
 import { NmIcon } from '../icon/icon.component';
 import { followInAppLink } from '../links';
+import { NmTemplateOutlet } from '../template-outlet.directive';
 
 export type NmCategoryMode = 'select' | 'link';
 
 @Component({
   selector: 'nm-category-tile',
-  imports: [NmIcon],
+  imports: [NmIcon, NmTemplateOutlet],
   template: `
+    <ng-template #content>
+      @if (icon(); as name) {
+        <span class="nm-category-tile__icon"><nm-icon [name]="name" [size]="16" /></span>
+      }
+      <span class="nm-category-tile__label">{{ name() }}</span>
+    </ng-template>
     @if (mode() === 'link') {
-      <a class="nm-category-tile" [attr.href]="href()" (click)="follow($event)">
-        @if (icon(); as name) {
-          <span class="nm-category-tile__icon"><nm-icon [name]="name" [size]="16" /></span>
-        }
-        <span class="nm-category-tile__label">{{ name() }}</span>
-      </a>
+      <a class="nm-category-tile" [attr.href]="href()" (click)="follow($event)"
+        ><ng-container [nmTemplateOutlet]="content"
+      /></a>
     } @else {
       <button
         type="button"
@@ -35,10 +39,7 @@ export type NmCategoryMode = 'select' | 'link';
         [attr.tabindex]="tabIndex()"
         (click)="pressed.emit()"
       >
-        @if (icon(); as name) {
-          <span class="nm-category-tile__icon"><nm-icon [name]="name" [size]="16" /></span>
-        }
-        <span class="nm-category-tile__label">{{ name() }}</span>
+        <ng-container [nmTemplateOutlet]="content" />
       </button>
     }
   `,
