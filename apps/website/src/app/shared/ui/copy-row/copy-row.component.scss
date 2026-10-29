@@ -1,0 +1,41 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.nm-copy-row__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nm-copy-row__label {
+  @include nm-type(field-label, $weight: 400);
+}
+
+.nm-copy-row__value {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.nm-copy-row__value--number {
+  @include nm-type(num, 16px, 600);
+}
+
+.nm-copy-row__value--text {
+  @include nm-type(body-lg, $weight: 600);
+}
+
+.nm-copy-row__copy {
+  flex: none;
+}

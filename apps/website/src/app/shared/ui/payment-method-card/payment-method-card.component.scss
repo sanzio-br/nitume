@@ -1,0 +1,53 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-payment-method-card {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 15px;
+  background-color: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-m);
+}
+
+.nm-payment-method-card__badge {
+  @include nm-type(tag);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 26px;
+  background-color: var(--nitume-green);
+  border-radius: 5px;
+  color: var(--nitume-white);
+}
+
+.nm-payment-method-card__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nm-payment-method-card__label {
+  @include nm-type(row-title);
+}
+
+.nm-payment-method-card__detail {
+  overflow-wrap: anywhere;
+}
+
+.nm-payment-method-card__trailing {
+  flex: none;
+
+  &:empty {
+    display: none;
+  }
+}
