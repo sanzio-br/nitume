@@ -103,7 +103,13 @@ export const CUSTOMER_ROUTES: Routes = [
       // #7 stubs for the targets of Home and the wizard (customerLinks,
       // customer-v-new-category §W1). Each owning issue replaces its stub.
       { path: 'tasks/:errandId', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #9
-      { path: 'tasks/:errandId/quote', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #8
+      // #8 (customer-x-awaiting-quote A§1).
+      {
+        path: 'tasks/:errandId/quote',
+        title: 'Your quote · Nitume',
+        data: { role, navKey: 'home', pushed: true },
+        loadComponent: () => import('./customer/checkout/awaiting-quote.page').then((m) => m.AwaitingQuotePage),
+      },
       { path: 'tasks/:errandId/payment', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #8
       { path: 'tasks/:errandId/evidence', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #10
       { path: 'notifications', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #11

@@ -27,8 +27,9 @@ describe('customerLinks (NC§W9.11)', () => {
     expect(customerLinks.profile()).toBe('/app/customer/profile');
   });
 
-  it('NC§W9.11 stubs. the five #7 stub routes use ViewStubComponent, pushed, navKey home, no stubLabel and no title', async () => {
-    const paths = ['tasks/:errandId', 'tasks/:errandId/quote', 'tasks/:errandId/payment', 'tasks/:errandId/evidence', 'notifications'];
+  it('NC§W9.11 stubs. the #7 stub routes still owned by later issues use ViewStubComponent, pushed, navKey home, no stubLabel and no title', async () => {
+    // #8 replaced the quote and payment stubs (A.T1, customer-routes.spec.ts).
+    const paths = ['tasks/:errandId', 'tasks/:errandId/evidence', 'notifications'];
     for (const path of paths) {
       const route = shellChildren().find((r) => r.path === path);
       expect.soft(route, path).toBeDefined();
