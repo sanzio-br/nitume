@@ -3,7 +3,8 @@
 - Issue: GitHub #7. Builder: `web-parity`. Branch: `feat/website-customer-create-task`.
 - Route: `/app/customer/new/review` (`wizardStepGuard(3)`, `wizardLeaveGuard`; NC§W1). Shared: wizard foundation NC§W1–§W9a (`customer-v-new-category.md`), details ND (`customer-v-new-details.md`), `auth-foundation.md` (F§n), kit `ui-kit.md` (K§n).
 - Sources: mobile spec `docs/specs/customer/v-new-review.md` (matches-design, round 14); Flutter `apps/customer_app/lib/src/screens/wizard/review_screen.dart`; core `widgets/receipt_card.dart`; mockup `nitume_customer_app.html` lines 172–173, 386–408; owner answers OA-3, OA-4, OA-5, OA-9, rows 34, 45, 47, 76, 233; `_shared.md` §8; API on `origin/main` (`errands.controller.ts` `create`, `submit`, `transition`; `errands.service.ts` `assertInServiceArea`).
-- Implementation: none. Status: **missing**.
+- **Updated 2026-10-29** for the #6 build (NC§W0: back button `backDisabled`, toasts with the CTA offset) and the #8 spec: the receipt parts and `nm-fixed-cta` are the ones `customer-x-awaiting-quote.md` §Components describes, built here once; the success target is the #8 route `/app/customer/tasks/:errandId/quote` (a #7 stub until #8 lands, NC§W1).
+- Implementation: none (the #6 `new` stub has no `review` child). Status: **missing**.
 
 ## Purpose
 Submit the task for its authoritative quote. A price **estimate**, clearly labelled as one (OA-3), appears only once real pricing rates exist (row 47); until then no price is shown. Nothing is paid here: payment happens after the customer accepts the final quote on `x-awaiting-quote` (#8).
@@ -14,7 +15,7 @@ Mockup: instant quote → payment route → `Confirm & pay` → STK. Now: (estim
 ## Entry / exit
 - Entry: valid `Continue →` on step 2.
 - Back (header or browser) → step 2, values kept. Disabled while submitting.
-- `Submit task →` success → `router.navigateByUrl(customerLinks.awaitingQuote(id), { replaceUrl: true })`, after setting `submitted = true` (the leave guard then allows it, NC§W3). Browser Back from there hits the step guard and lands on `openerUrl` (normally Home), matching the app's "Back goes to the screen that opened the wizard". After the navigation succeeds the store calls `finish()` (empty draft, `submitted` and `openerUrl` kept, NC§W2).
+- `Submit task →` success → `router.navigateByUrl(customerLinks.awaitingQuote(id), { replaceUrl: true })` (`/app/customer/tasks/<id>/quote`, #8 A§1), after setting `submitted = true` (the leave guard then allows it, NC§W3). Browser Back from there hits the step guard and lands on `openerUrl` (normally Home), matching the app's "Back goes to the screen that opened the wizard". After the navigation succeeds the store calls `finish()` (empty draft, `submitted` and `openerUrl` kept, NC§W2).
 - `Change location` (service-area refusal) → step 2 with `focusOnReturn` set (ND).
 
 ## Task states
@@ -35,11 +36,15 @@ Wizard frame NC§W4 (`Review`, step 3). Body, one of two variants:
    - Estimate unavailable (request failed, no price, or no estimate endpoint): `nm-notice` `We couldn't estimate the price right now. You can still submit; we'll send you the final quote.` This copy never appears in variant A.
    - Budget > 0: a separate group under a 1px slate-line hairline (10px above, 4px padding): row `Item budget` — amount, and the caption `Paid separately from the fees. You choose how after your quote is ready.` The item budget is **never** added to the total (`_shared.md` §8).
 
-Then, only while the location is refused (service-area state): `nm-notice` `We don't cover this location yet. Choose a place inside the areas we serve.` and 10px below it an outline `nm-button` `Change location`, placed **above the CTA** (frame slot `[nmWizardAbove]`, 14px below the cards).
+Then, only while the location is refused (service-area state): `nm-notice` `We don't cover this location yet. Choose a place inside the areas we serve.` and 10px below it an outline `nm-button` `Change location`, placed **above the CTA** (frame slot `[nmWizardAbove]` → the `nm-fixed-cta` `above` slot, 10px above the button).
 
-Sticky CTA `Submit task →` (primary, `expand`).
+CTA `Submit task →` (primary, `expand`) in `nm-fixed-cta` (NC§W4).
 
-Receipt row (port of `ReceiptRow`, **NEW (#7)** `nm-receipt-row`, reused and extended by #8's receipt card): flex row, baseline-aligned, padding 6px 0; label `receipt` (13/400 blue; `receipt-total` 13/700 for the total, which also gets a 1px slate-line top border, 6px margin-top, 10px padding-top); 12px gap; amount `formatKesOrDash` in `nmNum` with `num-receipt` / `num-receipt-total`. Caption (`nm-receipt-caption`, `caption` type, 8px top) and separate group (`nm-receipt-group`) are part of the same kit folder.
+Receipt parts (port of `ReceiptRow` / `ReceiptCaption`, **NEW (#7)** in `shared/ui/receipt/`, built here once with the values `customer-x-awaiting-quote.md` §Components gives, so #8 reuses them unchanged and #9/#10 build the receipt card on them):
+- `nm-receipt-row` inputs `label`, `amount` (`Amount | null`), `isTotal`, `amountLabel` (accessible name, e.g. `kesSpoken`): flex row, baseline-aligned, padding `6px 0`; label `nm-type(body, 13px)` (13/400 blue) left, 12px gap, amount right as `formatKesOrDash(amount)` in `<span nmNum>` (family only: inherits 13px and blue). `isTotal`: weight 700 for label and amount, 1px slate-line top border, margin-top 6px, padding `10px 0 6px`. Long labels wrap before the amount.
+- `nm-receipt-caption`: `nm-type(greeting)` (Sans 12/400 slate-600), padding-top 8px; numbers inside it in `<span nmNum>` (the #8 `Valid until` time).
+- `nm-receipt-group`: the separate item group, 1px slate-line top hairline, 10px margin-top, 4px padding-top.
+- No new type style (NC§W9a).
 
 Responsive (web adaptation): one column, max 640px from 768px (NC§W4). Amounts stay right-aligned in the card at every width; long labels wrap before the amount. No horizontal scroll at 360px.
 
@@ -47,13 +52,15 @@ Responsive (web adaptation): one column, max 640px from 768px (NC§W4). Amounts 
 
 | Element | Component | Status |
 |---|---|---|
-| Frame / header / stepper / sticky CTA | `nm-wizard-frame` (NC§W4) | NEW (#7) |
+| Frame / header / stepper / CTA bar | `nm-wizard-frame` (NC§W4) | NEW (#7) |
 | Notices | `nm-notice` | kit |
 | Item budget card / estimate card | `nm-form-card` | kit |
-| Receipt row, caption, separate group | `nm-receipt-row`, `nm-receipt-caption`, `nm-receipt-group` (C-18 parts) | **NEW (#7)**; #8 builds the receipt card on them |
+| Receipt row, caption, separate group | `nm-receipt-row`, `nm-receipt-caption`, `nm-receipt-group` (C-18 parts) | **NEW (#7)**, built here once; #8 reuses them; #9/#10 build the receipt card on them |
+| CTA bar | `nm-fixed-cta` (inside `nm-wizard-frame`) | **NEW (#7)**, shared with #8 |
+| Header back while submitting | `nm-pushed-header` `backDisabled` → `nm-back-button` `disabled` | #6 component + NC§W9a addition |
 | Loading rows (variant B) | `nm-skeleton-card` | kit |
 | Submit / Change location | `nm-button` primary (`loading`) / outline | kit |
-| Toasts | `NmToastService` | kit |
+| Toasts | `NmToastService.show(message, { offset })` with the `nm-fixed-cta` bar height below 768px (K§4.10) | exists (#5) |
 | Estimate | `QUOTE_ESTIMATE` service (Data) | **NEW (#7)** |
 
 ## Copy (exact)
@@ -75,7 +82,7 @@ Responsive (web adaptation): one column, max 640px from 768px (NC§W4). Amounts 
 | Variant B estimating | Skeletons in the card; CTA enabled |
 | Variant B estimate shown | Total row + caption (+ item group) |
 | Variant B unavailable | Unavailable notice in the card (+ item group); CTA enabled |
-| Submitting | CTA `loading` (white spinner, `aria-busy`), repeated clicks ignored; header Back `disabled`; `wizardLeaveGuard` blocks every navigation; `beforeunload` stays armed |
+| Submitting | `submitting` true in the store; CTA `loading` (white spinner, `aria-busy`), repeated clicks ignored; header Back `disabled` (`backDisabled`); `wizardLeaveGuard` blocks every navigation; `beforeunload` stays armed |
 | Success | NC§W3 / Entry-exit: `submitted = true`, replace-navigate to `x-awaiting-quote` for the new id, then `finish()` |
 | Network or server error (any status not listed below) | Toast `Couldn't send your task. Try again.`; CTA enabled again. If the DRAFT was created, the next tap only calls `POST /errands/:id/submit` with the same id (never a second create) |
 | 400 on create (no DRAFT yet), e.g. `deadline_in_past`, `budget_required`, `budget_not_applicable`, `locations_pickup_dropoff_required`, DTO validation | Toast with the API `message` (first string when it is an array; `Something went wrong. Please try again.` when there is none), then navigate back to step 2 (as the app's `navigator.pop()`) |
@@ -103,7 +110,7 @@ The `Today` chip after 23:59 local makes a deadline in the past: the API answers
 - The variant B caption is inside the card's text flow right after the total, so screen readers hear "estimate" with the total; the total row's amount gets `nmNumLabel` = `kesSpoken(total)`.
 - The service-area notice is `role="alert"` when it appears; focus moves to `Change location`.
 - The submitting CTA keeps its accessible name `Submit task →` with `aria-busy="true"`.
-- CTA above the bottom safe area (sticky bar, NC§W4); the toast sits above the CTA bar.
+- CTA above the bottom safe area (`nm-fixed-cta`, NC§W4); below 768px the toast sits above the CTA bar.
 
 ## Required tests (Vitest)
 1. Header `Review`, `Step 3 of 3` in `nmNum`, all three stepper segments done.
@@ -112,8 +119,8 @@ The `Today` chip after 23:59 local makes a deadline in the past: the API answers
 4. Variant B (`quotePreviewEnabled: true`, fake estimate): called once with the request body; skeletons while pending with the CTA enabled; resolved `{ total: '2200.00' }` → `Estimated total (service + runner fee)` / `KSh 2,200` + estimate caption; resolved `null` or rejected → unavailable notice; budget > 0 adds the separate item group and the total is unchanged (never total + budget).
 5. Default `QUOTE_ESTIMATE` implementation returns `null` and makes no HTTP request (`HttpTestingController.verify()`).
 6. Submit success: `POST /errands` with the exact body, then `POST /errands/:id/submit`; navigates with `replaceUrl` to `/app/customer/tasks/:id/quote`; store `finish()`ed; browser Back to `/app/customer/new/details` then redirects to `openerUrl`; `wizardLeaveGuard` did not prompt.
-7. Submitting: spinner + `aria-busy`, second click sends nothing, header Back disabled, a router navigation attempt is blocked.
-8. Network error on create → toast `Couldn't send your task. Try again.`, CTA re-enabled, still on step 3.
+7. Submitting: spinner + `aria-busy`, second click sends nothing, header Back has `disabled` + `aria-disabled` and clicking it does not navigate, a router navigation attempt (side-nav link) is blocked without a dialog.
+8. Network error on create → toast `Couldn't send your task. Try again.` (shown with the CTA-bar offset below 768px), CTA re-enabled, still on step 3.
 9. Create OK, submit fails (500) → generic toast; retry calls only `POST /errands/:id/submit` with the same id (create called once in total).
 10. 400 on create with `{ code: 'deadline_in_past', message: 'The deadline must be in the future' }` → that message as the toast, back on `/app/customer/new/details`; array `message` → first entry; no message → `Something went wrong. Please try again.`
 11. 400 on submit after a DRAFT → generic toast, stays.
@@ -121,10 +128,11 @@ The `Today` chip after 23:59 local makes a deadline in the past: the API answers
 13. 422 on submit after a created DRAFT → `PATCH /errands/:id/status { to: 'CANCELLED' }` sent, `createdErrandId` cleared; after re-picking a place on step 2 the CTA enables and the next submit calls `POST /errands` again.
 14. `Change location` with `pointType: 'dropoff'` on Get It For Me sets `focusOnReturn: 'dropoff'` and returns to step 2; `task_site` → `first`.
 15. Leaving the wizard after a failed submit with a DRAFT cancels it (NC§W8).
-16. No copy on this screen contains `wallet`, `escrow`, `balance`, `hold`, `release` or `KES`; no mockup fee lines (`Base fee`, `Transport`, `Report & evidence`) or route options render.
+16. Receipt parts: `nm-receipt-row` label in Sans 13 blue, amount in `nmNum`, `isTotal` adds weight 700 and the top border (custom-property names only); `nm-receipt-caption` uses the `greeting` values; `nm-receipt-group` hairline; `amountLabel` becomes the amount's accessible name.
+17. No copy on this screen contains `wallet`, `escrow`, `balance`, `hold`, `release` or `KES`; no mockup fee lines (`Base fee`, `Transport`, `Report & evidence`) or route options render.
 
 ## Current vs design
-No review step on the website. The web adds an `QUOTE_ESTIMATE` seam that the app does not have (the app's variant B shows the unavailable notice without any service); with the default implementation the behaviour is identical (no call, unavailable state).
+No review step on the website; the #6 `new` stub has no `review` child. The web adds an `QUOTE_ESTIMATE` seam that the app does not have (the app's variant B shows the unavailable notice without any service); with the default implementation the behaviour is identical (no call, unavailable state).
 
 ## Questions
 None new. Settled by owner answers: OA-3 (preview vs authoritative quote), OA-4 / row 34 (only the total line, and only once rates exist), row 47 (preview hidden until pricing rates exist), OA-5 (route choice at checkout), row 233 (refuse at create with a clear message).
