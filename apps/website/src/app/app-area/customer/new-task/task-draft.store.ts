@@ -3,13 +3,16 @@
 // three steps. Signals only, memory only: a reload loses the draft, as
 // killing the app does.
 import { Injectable, computed, signal } from '@angular/core';
-import { eatDayKey } from '../../../shared/format/formatters';
 import type { PlaceDetails } from '../../../shared/places/place-search';
 import type { CreatableCategory, CreateErrandBody, PointType } from '../data/errands.api';
 import { customerLinks } from '../customer-links';
+import { DeadlineChoice, deadlineAt } from '../deadline';
+
+// Moved to `app-area/customer/deadline.ts` (#8 A§8); re-exported here.
+export { deadlineAt };
+export type { DeadlineChoice };
 
 export type WizardCategory = CreatableCategory;
-export type DeadlineChoice = 'today' | 'tomorrow' | 'flexible';
 /** `placeId` is null for a saved address. */
 export type DraftPlace = PlaceDetails;
 
@@ -40,18 +43,6 @@ export function isWizardCategory(value: unknown): value is WizardCategory {
 
 const TWO_POINTS: readonly WizardCategory[] = ['pickup_delivery', 'buy_for_me'];
 const emptyItems = (): DraftItem[] => [{ name: '', quantity: 1 }];
-
-/**
- * `Today` / `Tomorrow` end at 23:59 EAT of the EAT calendar date (owner
- * WQ-2: deadlines use EAT, whatever the browser's zone), sent as UTC. The
- * EAT date comes from the kit helper; EAT has no daylight saving.
- */
-export function deadlineAt(choice: DeadlineChoice, now: Date): string | null {
-  if (choice === 'flexible') return null;
-  const endOfEatDay = new Date(`${eatDayKey(now)}T23:59:00.000+03:00`);
-  const days = choice === 'today' ? 0 : 1;
-  return new Date(endOfEatDay.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
-}
 
 @Injectable()
 export class TaskDraftStore {
