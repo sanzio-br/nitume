@@ -110,7 +110,12 @@ export const CUSTOMER_ROUTES: Routes = [
         data: { role, navKey: 'home', pushed: true },
         loadComponent: () => import('./customer/checkout/awaiting-quote.page').then((m) => m.AwaitingQuotePage),
       },
-      { path: 'tasks/:errandId/payment', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #8
+      {
+        path: 'tasks/:errandId/payment',
+        title: 'Payment · Nitume',
+        data: { role, navKey: 'home', pushed: true },
+        loadComponent: () => import('./customer/checkout/payment.page').then((m) => m.PaymentPage),
+      },
       { path: 'tasks/:errandId/evidence', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #10
       { path: 'notifications', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #11
     ],
