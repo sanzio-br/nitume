@@ -117,7 +117,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/customer/tracking (issue #9) | specced (4d1f5fa; WQ-43/44 answered); build after #7 + #8 | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
 | website/runner/jobs (issue #14) | specced (75578f3; Q14-1..10 answered); build after #7 + #13/#17 shared pieces | design-auditor | feat/website-runner-jobs (off main) | — | Q-W2 browser location; web-runner flag check |
 | api/history-privacy (issue #35) | merged (PR #37, 380be22) | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
-| api+admin/web-runner-presence (issue #36) | audited-pass (4ef049d) → in review | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
+| api+admin/web-runner-presence (issue #36) | awaiting-owner (PR open, squash; reviewer READY: API 1138/252, admin 458, 498.90 kB) | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
 | website/runner/active (issue #15) | specced (2e17a0a; Q15-1..6 answered) | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
 | website/customer/evidence (issue #10) | specced (6e00e0f; WQ-10-1..4 answered) | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
 | api/dispute-party-ids (issue #38) | unaudited | — | — | — | found during #35 |
@@ -909,3 +909,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | design-auditor #8 gap report G8-1…41 (8b12d91, 4e9ff70). Merged origin/main into the #8 branch (7d0b81e; #7 and PR #29 present). Owner Q8-3 → WQ-55. web-parity building #8. Owner: only #36 and #8 for now. |
 | 2026-10-29 | web-parity #36 admin built: G36-1…9, 38 files / 458 tests (twice), initial 498.90 kB; runner drawer deferred for budget; AuthStore.isExpiringSoon bug fixed (efa1e5c). The builder's check script uses the shared git stash (it restored everything). design-auditor re-audit dispatched. |
 | 2026-10-29 | design-auditor #36 admin re-audit PASS (4ef049d): G36-1…9 closed, rulings 1–6 PASS; admin bundle headroom now 1.1 kB. Sent to reviewer (API + admin). |
+| 2026-10-29 | reviewer #36 READY → PR opened (squash). Known limits: single instance, no Socket.IO Redis adapter; admin bundle headroom 1.1 kB. |

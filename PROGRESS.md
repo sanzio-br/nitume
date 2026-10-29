@@ -529,3 +529,4 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 - 2026-10-29: #7 (customer home + create-task wizard on the web: Places via the browser key, EAT deadlines, 13 shared kit components) reviewed READY, PR open (squash). 615 website tests; marketing bundle 354.17 kB. PR #37 (#35) merged. #6 note: merged as PR #31 (sign-in, roles, shell; 412 tests).
 - 2026-10-29: #39 (only the assigned runner may upload task evidence; security) reviewed READY, PR open.
 - 2026-10-29: owner merged PR #42 (#7) and PR #43 (#39).
+- 2026-10-29: #36 (web runner presence: Redis flag after 90 s, auto-offline of idle web runners after 5 min via the queue; admin live socket, chips, drawer, map) reviewed READY, PR open (squash). API 1138/252, admin 458, admin bundle 498.90 kB. Follow-up #44 on hold.
