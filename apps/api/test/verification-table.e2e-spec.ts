@@ -330,7 +330,11 @@ describe('Verification table (row 278, e2e)', () => {
       const { admin, a } = await world();
       const inQueue = await queue(admin, { status: 'all', q: `Amani Kip${tag}` }).expect(200);
       const one = await http().get(`/api/v1/runners/${a.profileId}/verifications`).set(bearer(admin.token)).expect(200);
-      expect(one.body).toEqual(inQueue.body.items[0]);
+      // Issue #36: the runner detail adds `presence` (never on the queue list).
+      const { presence, ...item } = one.body as { presence: unknown };
+      expect(item).toEqual(inQueue.body.items[0]);
+      expect(presence).toEqual({ client: null, lastPingAt: null, webPingsStoppedAt: null });
+      expect(inQueue.body.items[0].presence).toBeUndefined();
       expect(one.body.checks).toHaveLength(3);
       expect(JSON.stringify(one.body)).not.toMatch(/documentS3Key|"url"/);
     });

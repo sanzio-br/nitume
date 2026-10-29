@@ -397,7 +397,7 @@ describe('Web runner presence (e2e, issue #36)', () => {
     expect(await availabilityOf(web)).toBe('online');
   }, 30_000);
 
-  it('flags a busy web runner (on an active job) but never sets them offline, and leaves the task as it is', async () => {
+  it('busy web runner: job pings keep the flag off; when they stop it is flagged, stays busy, and the task is untouched', async () => {
     const admin = await makeUser(UserRole.ADMIN);
     const customer = await makeUser(UserRole.CUSTOMER);
     const adminSocket = await connectSocket(baseUrl, admin.token);
@@ -410,7 +410,20 @@ describe('Web runner presence (e2e, issue #36)', () => {
     await http().post(`/api/v1/errands/${errandId}/accept`).set(bearer(web.token)).expect(200);
     expect(await availabilityOf(web)).toBe('busy');
     const status = (await http().get(`/api/v1/errands/${errandId}`).set(bearer(admin.token)).expect(200)).body.status as string;
+    expect(status).toBe('RUNNER_EN_ROUTE');
 
+    // #15 (A§): a busy web runner sends job pings (with errandId); they keep the presence fresh: no flag.
+    await age(web, 3600);
+    const before = Date.now();
+    expect(await ping(webSocket, { lat: SITE.lat + 0.05, lng: SITE.lng, errandId })).toEqual({ ok: true, status: 'RUNNER_EN_ROUTE' });
+    const hash = await presenceHash(web);
+    expect(hash.client).toBe('web');
+    expect(Number(hash.lastPingAt)).toBeGreaterThanOrEqual(before);
+    await sweep();
+    await sleep(100);
+    expect(events(adminSocket, 'runner:web_pings_stopped', web)).toEqual([]);
+
+    // The job pings stop: flagged, still busy (never forced offline mid-job).
     await age(web, 3600);
     await sweep();
     await adminSocket.waitFor('runner:web_pings_stopped', (d: { runnerProfileId: string }) => d.runnerProfileId === web.profileId);
