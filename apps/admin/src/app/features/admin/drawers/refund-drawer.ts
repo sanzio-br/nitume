@@ -19,7 +19,7 @@ import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice.component';
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
-import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
+import { AdminDataService, categoryLabel, maskedId, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
 import { adminLabel, refundChipStatus, refundTriggerLabel, reviewCeiling } from '../refund-labels';
 import { PayoutCorrectionCardComponent } from '../payouts/payout-correction-card';
@@ -161,6 +161,18 @@ type Dialog =
               </button>
             </span>
           </div>
+          @if (r.customer?.userId) {
+            <!-- drawer-user-status §2 (SQ-3): the customer's account. -->
+            <div class="drawer-row">
+              <span>Customer</span>
+              <span class="row-inline">
+                <b class="txt">{{ customerName() }}</b>
+                <button type="button" class="btn btn-text btn-sm" (click)="openCustomer()">
+                  Open customer
+                </button>
+              </span>
+            </div>
+          }
           @if (taskStatus(); as ts) {
             <div class="drawer-row"><span>Task status</span><app-status-chip [status]="ts" /></div>
           }
@@ -798,6 +810,19 @@ export class RefundDrawerComponent implements OnInit {
   protected openTask(): void {
     const r = this.review();
     if (r) this.nav.open('task', r.errandId);
+  }
+
+  /** Customer drawer (SQ-3), by the customer's user id. */
+  protected openCustomer(): void {
+    const id = this.review()?.customer?.userId;
+    if (id) this.nav.open('customer', id);
+  }
+
+  /** Short name, else the display name, else the masked user id. */
+  protected customerName(): string {
+    const c = this.review()?.customer;
+    if (!c) return '—';
+    return c.shortName ?? c.displayName ?? maskedId(c.userId);
   }
 
   protected submitCorrection(): void {

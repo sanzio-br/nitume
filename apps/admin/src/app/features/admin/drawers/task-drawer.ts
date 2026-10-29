@@ -15,6 +15,7 @@ import { RefundLinkSectionComponent } from './refund-link.section';
 import { RunnerPayoutsLinkSectionComponent } from '../payouts/runner-payouts-link.section';
 import { TaskOfferSectionComponent } from './task-offer.section';
 import { RunnerPickerComponent } from './runner-picker';
+import { DrawerNavService } from '../drawer-nav.service';
 
 /**
  * Admin actions by state (§3.3): the first quote only from REQUESTED; a
@@ -104,7 +105,18 @@ export function deadlineRow(
             <span>Category</span><b class="txt">{{ categoryLabel(d.category) }}</b>
           </div>
           <div class="drawer-row">
-            <span>Customer</span><b>{{ maskedId(d.customerId) }}</b>
+            <span>Customer</span>
+            @if (d.customerUserId; as cu) {
+              <!-- drawer-user-status §2 (SQ-3, U-2): the customer's account. -->
+              <span class="row-inline">
+                <b>{{ maskedId(d.customerId) }}</b>
+                <button type="button" class="btn btn-text btn-sm" (click)="openCustomer(cu)">
+                  Open customer
+                </button>
+              </span>
+            } @else {
+              <b>{{ maskedId(d.customerId) }}</b>
+            }
           </div>
           <div class="drawer-row">
             <span>Budget</span><b>{{ formatKsh(d.budget) }}</b>
@@ -284,6 +296,7 @@ export function deadlineRow(
 })
 export class TaskDrawerComponent implements OnInit {
   protected readonly s = inject(AdminDataService);
+  private readonly nav = inject(DrawerNavService);
 
   readonly errandId = input.required<string>();
 
@@ -302,6 +315,11 @@ export class TaskDrawerComponent implements OnInit {
 
   ngOnInit(): void {
     void this.s.loadErrandDetail(this.errandId());
+  }
+
+  /** Customer drawer (SQ-3) by the customer's user id (U-2). */
+  protected openCustomer(userId: string): void {
+    this.nav.open('customer', userId);
   }
 
   protected reload(): void {
