@@ -1,6 +1,13 @@
 import { Injectable, signal, computed } from '@angular/core';
 import { jwtDecode } from 'jwt-decode';
-import type { ActingRole, AuthState, AuthTokens, OtpVerifyResult, TokenPair, UserMe } from '../api-types';
+import type {
+  ActingRole,
+  AuthState,
+  AuthTokens,
+  OtpVerifyResult,
+  TokenPair,
+  UserMe,
+} from '../api-types';
 
 const LS_TOKENS = 'nitume:admin:tokens';
 const LS_USER = 'nitume:admin:user';
@@ -50,8 +57,13 @@ export class AuthStore {
     }
   });
 
-  /** True if the decoded access token's exp is within this horizon (s). */
-  readonly isExpiringSoon = computed(() => {
+  /**
+   * True if the decoded access token's exp is within this horizon (s).
+   * A method, not a `computed`: it reads the clock, so a memoised value
+   * would go stale while the token ages (the realtime socket asks it
+   * before every attempt).
+   */
+  isExpiringSoon(): boolean {
     const tokens = this.#state().tokens;
     if (!tokens?.accessToken) return false;
     try {
@@ -62,7 +74,7 @@ export class AuthStore {
     } catch {
       return false;
     }
-  });
+  }
 
   constructor() {
     this.#hydrate();
