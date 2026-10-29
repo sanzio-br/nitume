@@ -526,3 +526,4 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 - 2026-10-29: #33 (refresh sessions issued before a suspension refused; always reads user_status_history) reviewed READY, PR #34. Specs done for #13 (runner onboarding) and #17 (runner earnings); builds wait for #7.
 - 2026-10-29: owner merged PR #34 (#33, refresh cut-off).
 - 2026-10-29: #35 (history notes and actor ids hidden from customers/runners) reviewed READY, PR #37. Follow-up #38 (dispute party ids).
+- 2026-10-29: #7 (customer home + create-task wizard on the web: Places via the browser key, EAT deadlines, 13 shared kit components) reviewed READY, PR open (squash). 615 website tests; marketing bundle 354.17 kB. PR #37 (#35) merged. #6 note: merged as PR #31 (sign-in, roles, shell; 412 tests).

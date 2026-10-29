@@ -106,7 +106,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/refresh-suspended (issue #21) | merged (PR #22, c4b90a9; merge commit, not squash) | api-contract | fix/api-refresh-suspended (stacked on #20; worktree ../nitume-fix-api-refresh-suspended) | owner chose squash on merge | unit 929/929, e2e 178/178, lint/build clean at tip; 3815dc4, cba0781, 743fcd5 fail tsc alone |
 | api/suspended-access (issue #23) | merged (PR #25, 28a0c42) | — | feat/api-suspended-access (stacked on #22 → #20; worktree ../nitume-feat-api-suspended-access) | none | 8eb934d, 2e70401, 5b49108, e095f15, e187481; unit 960/960, e2e 187/187; each commit compiles |
 | admin/user-status-actions (issue #24) | merged (PR #32, be0229f) | api-contract | feat/api-user-status-audit (stacked on feat/api-suspended-access; worktree ../nitume-feat-api-user-status-audit) | #23 | schema WQ-23 approved; then design-auditor admin drawer spec, web-parity build |
-| website/customer/create-task (issue #7) | audited-pass (re-audit 2, cc0e1b1; 615 tests, 354.17 kB) → in review | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
+| website/customer/create-task (issue #7) | awaiting-owner (PR open, squash; reviewer READY: 615 tests, 354.17 kB) | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
 | website/customer/checkout (issue #8) | specced → gap report (#7 merged in 528ed46; align to app-area/customer, EAT deadline) | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
 | api/merchant-details-privacy (issue #28) | merged (PR #29, 5f0ab08) | api-contract | fix/api-merchant-details-privacy (off main; worktree ../nitume-fix-api-merchant-details-privacy) | none | found while speccing #8 |
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
@@ -116,7 +116,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/runner/earnings (issue #17) | specced (59484f3; Q17-1..3 answered); gap report + build after #7 | design-auditor | feat/website-runner-earnings (off main) | — | specs only |
 | website/customer/tracking (issue #9) | specced (4d1f5fa; WQ-43/44 answered); build after #7 + #8 | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
 | website/runner/jobs (issue #14) | specced (75578f3; Q14-1..10 answered); build after #7 + #13/#17 shared pieces | design-auditor | feat/website-runner-jobs (off main) | — | Q-W2 browser location; web-runner flag check |
-| api/history-privacy (issue #35) | awaiting-owner (PR #37, squash; reviewer READY: unit 1104, e2e 246) | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
+| api/history-privacy (issue #35) | merged (PR #37, 380be22) | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
 | api+admin/web-runner-presence (issue #36) | API complete (…dd14084; unit 1138, e2e 252; runner:availability_changed added) → admin spec | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
 | website/runner/active (issue #15) | specced (2e17a0a; Q15-1..6 answered) | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
 | website/customer/evidence (issue #10) | specced (6e00e0f; WQ-10-1..4 answered) | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
@@ -898,3 +898,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | design-auditor #7 re-audit 2 PASS (cc0e1b1, e059d16): all 40 items, rows matches-design; mutation check on deadlineAt. Follow-up: the #8 deadline panel spec says '23:59 local' → must be EAT (WQ-2/53). api-contract #36 dd14084 runner-room event. reviewer #7 and design-auditor #36 admin spec dispatched. |
 | 2026-10-29 | #7 merged into the #8 branch (528ed46); design-auditor writing the #8 gap report. |
 | 2026-10-29 | api-contract #39 built: customers and non-assigned runners get 403 evidence_upload_forbidden; no client change. Sent to reviewer. |
+| 2026-10-29 | reviewer #7 READY; PR opened (squash). PR #37 merged (380be22) per the review's origin/main check. |
