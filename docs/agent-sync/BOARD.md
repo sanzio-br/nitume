@@ -117,7 +117,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/customer/tracking (issue #9) | specced (4d1f5fa; WQ-43/44 answered); build after #7 + #8 | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
 | website/runner/jobs (issue #14) | specced (75578f3; Q14-1..10 answered); build after #7 + #13/#17 shared pieces | design-auditor | feat/website-runner-jobs (off main) | — | Q-W2 browser location; web-runner flag check |
 | api/history-privacy (issue #35) | merged (PR #37, 380be22) | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
-| api+admin/web-runner-presence (issue #36) | awaiting-owner (PR open, squash; reviewer READY: API 1138/252, admin 458, 498.90 kB) | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
+| api+admin/web-runner-presence (issue #36) | merged (PR #45) | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
 | website/runner/active (issue #15) | specced (2e17a0a; Q15-1..6 answered) | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
 | website/customer/evidence (issue #10) | specced (6e00e0f; WQ-10-1..4 answered) | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
 | api/dispute-party-ids (issue #38) | unaudited | — | — | — | found during #35 |
@@ -911,3 +911,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | design-auditor #36 admin re-audit PASS (4ef049d): G36-1…9 closed, rulings 1–6 PASS; admin bundle headroom now 1.1 kB. Sent to reviewer (API + admin). |
 | 2026-10-29 | reviewer #36 READY → PR opened (squash). Known limits: single instance, no Socket.IO Redis adapter; admin bundle headroom 1.1 kB. |
 | 2026-10-29 | web-parity #8 built: G8-1…41, 87 files / 749 tests (twice), initial 354.59 kB; WQ-27 mutations caught. To rule on: same-route page reuse, price-change dialog aria-describedby. design-auditor re-audit dispatched. |
+| 2026-10-29 | Owner merged PR #45 (#36). Remaining in flight: #8 re-audit. |
