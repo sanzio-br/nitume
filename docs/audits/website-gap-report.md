@@ -975,13 +975,58 @@ Each item gives the **current** state, the **target** (spec section) and the **e
 
 ## Issue #7 — customer home and create-task wizard
 
-- Specs: `docs/specs/website/customer-v-home.md` (cited H), `customer-v-new-category.md` (NC; it also holds the wizard foundation NC§W0–§W10), `customer-v-new-details.md` (ND), `customer-v-new-review.md` (NR). First written in `cae824c`; updated in `8feae7e` for the owner decisions and the #6 build. The baseline audits against `8feae7e`; re-audit 1 (2026-10-29) audits the build at `dd95c1a` against `b98ca6e` (owner WQ-2, attribution clear space, Places Details session).
+- Specs: `docs/specs/website/customer-v-home.md` (cited H), `customer-v-new-category.md` (NC; it also holds the wizard foundation NC§W0–§W10), `customer-v-new-details.md` (ND), `customer-v-new-review.md` (NR). First written in `cae824c`; updated in `8feae7e` for the owner decisions and the #6 build. The baseline audits against `8feae7e`; re-audit 1 (2026-10-29) audits the build at `dd95c1a` against `b98ca6e` (owner WQ-2, attribution clear space, Places Details session). Re-audit 2 (2026-10-29) audits `6338a75` against `e059d16` (owner WQ-53 caption copy).
 - Baseline audited: `apps/website` on `feat/website-customer-create-task` at `8feae7e`. Its website code is identical to the #6 PASS tip `32ea1a1`: `git diff --stat 32ea1a1 55af009 -- apps/` is empty. It includes the #5 kit. No #7 code exists yet.
 - Builder: `web-parity`, branch `feat/website-customer-create-task`, commit scope `angular-website`.
 - Every item G7-1 … G7-40 is **approved extension, W-Q0**.
 - Views: customer `v-home`, `v-new-category`, `v-new-details`, `v-new-review` (SCREEN_MAP #7 rows).
 
-### Verdict: FAIL (re-audit 1, 2026-10-29, `feat/website-customer-create-task` at `dd95c1a`): 2 blockers, 1 minor
+### Verdict: PASS (re-audit 2, 2026-10-29, `feat/website-customer-create-task` at `6338a75`)
+
+This is the second round after one FAIL. The builder fixed forward in three commits.
+
+**What changed since re-audit 1.** `git diff --stat 2a80add 6338a75` touches 7 files under `apps/website/src/app/` and nothing else: `new-details.page.{html,spec.ts}`, `task-draft.store{,.spec}.ts`, `shared/places/{google-place-search,places.spec}.ts`, `shared/ui/place-field/places-attribution.component.ts`. Every hunk belongs to one of the three findings. No other file, spec, config, marketing path or kit file changed.
+
+**Owner WQ-53 (was Q7-5, approved 2026-10-29):** the caption is exactly `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` This is recorded as decided in `customer-v-new-details.md` (`e059d16`). The built copy matches it character for character (`new-details.page.html:86,88`).
+
+**Auditor re-run in the worktree:**
+- `npx ng test --watch=false` → **73 files, 615 tests, 0 failures** (re-audit 1: 612; +3 new cases). This matches the builder.
+- `npx ng build --stats-json` → succeeds. Initial total **354.17 kB raw** / 96.92 kB transfer, ≤ 360.00 (WQ-34). The initial chunks (`main-3FKVNIG4.js`, `chunk-RDpGQkek.js`, `polyfills`) have no `core/auth`, `core/realtime`, `app-area`, `shared/ui`, `shared/places` or `shared/map` input, and no `@angular/google-maps`, `@angular/forms` or `socket.io` input. **G7-39 stays closed.**
+
+**Finding 1: closed (WQ-2, `d525420`).**
+- Code:
+  - `task-draft.store.ts:50-54` takes the EAT calendar date from the kit `eatDayKey(now)`, a UTC-based wall clock that does not depend on the browser zone.
+  - It builds `<date>T23:59:00.000+03:00`, adding one day for `Tomorrow`, and sends it as UTC ISO.
+  - The `+03:00` literal sits in the store, not a view, and EAT has no daylight saving. The kit helper uses the same fixed offset. The ND rule (no hand-written offset *in the view*) is met.
+  - The caption renders while `Today` / `Tomorrow` is selected: `details__caption` = `nm-type(greeting)`, 10px above, `23:59` in `nmNum`. `Flexible` keeps only its own caption.
+- Tests:
+  - ND T17 now runs under `Europe/London` and `Africa/Nairobi`. It includes 22:30 London on 1 Nov → `2026-11-02T20:59:00.000Z`, and `Tomorrow` → `2026-11-03T20:59:00.000Z`.
+  - ND T21a covers the caption copy, `nmNum`, the 12px size and the Flexible-only case, in both zones.
+- **Mutation check:** in a detached scratch worktree at `6338a75`, with only `deadlineAt()` reverted to the old local-zone code, `task-draft.store.spec.ts` gives **3 failed, 6 passed**. For example, `Europe/London: expected '2026-11-01T23:59:00.000Z' to be '2026-11-01T20:59:00.000Z'`. The scratch worktree was removed afterwards. With the fix, all pass.
+- Amended G7-33 grep (EAT names in `app-area/customer`, non-spec) hits only `task-draft.store.ts` (`deadlineAt`) and the two caption lines in `new-details.page.html`.
+
+**Finding 2: closed (`1527870`).**
+- `nm-places-attribution` wraps the image in `.nm-places-attribution { padding: 10px 10px 5px }`. Inside the panel's `0 4px`, that gives 14px left and right, 10px top and 5px below. This meets Google's minimum (≥ 10 left, right and top, ≥ 5 below).
+- The inline styles use no mixin, so F9.60 still holds.
+- ND T22 asserts both declared paddings through `declared()` and that the image sits inside `.nm-places-attribution`.
+
+**Finding 3: closed (`6338a75`).**
+- `GooglePlaceSearch` keeps each Google suggestion's `placePrediction` in the per-session cache entry (`CachedAnswer`; memory only, same 200 cap, dropped with the session after Details).
+- `details()` calls `prediction.toPlace().fetchFields({ fields: ['id','displayName','formattedAddress','location'] })`. It falls back to `new Place({ id })` only when no prediction is held for that session.
+- `PlacesLibrary.Place` no longer accepts `sessionToken`.
+- Tests:
+  - ND T11 details: `toPlace()` was called on `pid-Sarit`, `fetchFields` came via `toPlace` with exactly the four fields, and no `Place` was constructed.
+  - ND T11 fallback: `new Place({ id: 'pid-x' })` with no `sessionToken` key.
+  - ND T7 (place-field level): `toPlaceTokens` equals the session's token, `constructed` is empty, and a new token follows the pick.
+- This still cannot be run against Google without a key (WQ-1). The mechanism is now the documented one.
+
+**Per-commit health (noted, not failed, per the orchestrator):** the old history keeps the known failures: `1ae2dae` … `db87eba` fail `tokens.spec` case 2, and `eec45ba` does not compile. These go away in the squash merge. The three fix commits were not run one by one. The tip is green.
+
+**Item status:** G7-1 … G7-40 **all closed**. G7-3, G7-25, G7-26, G7-31, G7-33 and G7-37, which were open at re-audit 1, are closed by the three fixes and their tests. SCREEN_MAP #7 rows → `matches-design`. Merge still waits for #6 and its preconditions (PR #20, #22, #25, #26).
+
+**For #8 (not a #7 item):** #8's deadline panel should follow WQ-2 and WQ-53: 23:59 EAT and the EAT wording. Its spec still says "23:59 local".
+
+### Re-audit 1 (2026-10-29, `feat/website-customer-create-task` at `dd95c1a`): 2 blockers, 1 minor (all closed at re-audit 2)
 
 Built by `web-parity` in 34 commits `303c0b6` … `dd95c1a` on top of the spec/audit commits. The branch also carries the #6 tip `ed8f7b5` through merge `a0db2db`. That commit is a #6 test-only change: it freezes the clock in `auth-otp.page.spec.ts` and makes T12 and T13 assert exact values, so it strengthens #6 assertions and is not a #7 matter. Specs re-audited against `b98ca6e` (this re-audit's spec update, see "Spec updates at re-audit 1").
 
@@ -1103,7 +1148,7 @@ None of the four views exists. `/app/customer/home` and `/app/customer/new` are 
 | WQ-33 | — | (#6) Session layer lazy. The framework-feature rules from the #6 re-audit 2 note apply to every later issue | G7-14, G7-38 |
 | WQ-15, WQ-16 | — | (#6) Side nav kept on pushed routes from 768px, and white | G7-1 (route data) |
 
-**WQ-2** was open at the baseline. **Answered by the owner on 2026-10-29** (#7 issue comment): activity times (greeting, Recent) use the browser's local time; deadlines use EAT and are labelled as EAT. Applied at re-audit 1 (G7-33 amended, finding 1). Still open: **Q7-5** (EAT label words; build default = the proposed caption).
+**WQ-2** was open at the baseline. **Answered by the owner on 2026-10-29** (#7 issue comment): activity times (greeting, Recent) use the browser's local time; deadlines use EAT and are labelled as EAT. Applied at re-audit 1 (G7-33 amended, finding 1). **Q7-5** answered by the owner on 2026-10-29 as **WQ-53**: the caption is exactly `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` (met at re-audit 2).
 
 ### Current-state evidence (baseline)
 
