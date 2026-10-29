@@ -4,6 +4,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/enums';
 import { AuditedStatusChange } from '../users/user-access.service';
 import { StatusHistoryPage } from '../users/user-status.store';
+import { AdminUserSummary } from '../users/users.service';
 import { ChangeUserStatusDto, UserStatusHistoryQueryDto } from './dto/user-status.dto';
 import { UserStatusService } from './user-status.service';
 
@@ -12,6 +13,18 @@ import { UserStatusService } from './user-status.service';
 @Roles(UserRole.ADMIN)
 export class AdminUsersController {
   constructor(private readonly statuses: UserStatusService) {}
+
+  /**
+   * U-1 (issue #24, owner 2026-10-29): the account for the admin Customer
+   * drawer. 200 `{ id, role, status, displayName, phone }` (`displayName`
+   * null until set; `phone` is the full sign-in number). Any role, admins
+   * included. Errors: 400 (id not a UUID); 403 for a non-admin; 404
+   * user_not_found.
+   */
+  @Get(':id')
+  summary(@Param('id', ParseUUIDPipe) id: string): Promise<AdminUserSummary> {
+    return this.statuses.summary(id);
+  }
 
   /**
    * Suspend, ban or reactivate a customer, runner or business account.

@@ -19,7 +19,7 @@ const change = (from: UserStatus, to: UserStatus) => ({
   },
 });
 
-const build = (opts: { revokeFails?: boolean; changeFails?: Error; page?: unknown } = {}) => {
+const build = (opts: { revokeFails?: boolean; changeFails?: Error; page?: unknown; summary?: unknown } = {}) => {
   const order: string[] = [];
   const access = {
     changeStatus: vi.fn((input: { status: UserStatus }) => {
@@ -34,8 +34,9 @@ const build = (opts: { revokeFails?: boolean; changeFails?: Error; page?: unknow
       return opts.revokeFails ? Promise.reject(new Error('redis down')) : Promise.resolve(2);
     }),
   };
-  const service = new UserStatusService(access as never, store as never, tokens as never);
-  return { service, access, store, tokens, order };
+  const users = { summaryOf: vi.fn(() => Promise.resolve(opts.summary === undefined ? null : opts.summary)) };
+  const service = new UserStatusService(access as never, store as never, tokens as never, users as never);
+  return { service, access, store, tokens, users, order };
 };
 
 describe('UserStatusService.change (issue #24)', () => {
@@ -92,13 +93,29 @@ describe('UserStatusService.history (issue #24)', () => {
   });
 });
 
+describe('UserStatusService.summary (issue #24, U-1)', () => {
+  it('returns the account summary', async () => {
+    const summary = { id: 'u-1', role: UserRole.CUSTOMER, status: UserStatus.ACTIVE, displayName: null, phone: '+254712345678' };
+    const { service, users } = build({ summary });
+    expect(await service.summary('u-1')).toBe(summary);
+    expect(users.summaryOf).toHaveBeenCalledWith('u-1');
+  });
+
+  it('404 user_not_found for a missing user', async () => {
+    const { service } = build();
+    const err = (await service.summary('nope').catch((e: unknown) => e)) as ApiError;
+    expect(err.getStatus()).toBe(404);
+    expect((err.getResponse() as { code: string }).code).toBe('user_not_found');
+  });
+});
+
 describe('AdminUsersController (issue #24)', () => {
   it('is admin-only on the class, and no route overrides it (owner WQ-22)', () => {
     const reflector = new Reflector();
     expect(reflector.get<UserRole[]>(ROLES_KEY, AdminUsersController)).toEqual([UserRole.ADMIN]);
     const descriptor = (name: string) =>
       Object.getOwnPropertyDescriptor(AdminUsersController.prototype, name)?.value as () => unknown;
-    for (const route of ['changeStatus', 'statusHistory']) {
+    for (const route of ['summary', 'changeStatus', 'statusHistory']) {
       expect(reflector.get<UserRole[] | undefined>(ROLES_KEY, descriptor(route))).toBeUndefined();
     }
   });
