@@ -1,0 +1,55 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 20px;
+  text-align: center;
+}
+
+.nm-state__title {
+  @include nm-type(card-title);
+  margin: 0 0 6px;
+}
+
+.nm-state__message {
+  @include nm-type(muted);
+  margin: 0;
+}
+
+.nm-state__action {
+  margin-top: 16px;
+}
+
+.nm-skeleton {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 14px 15px;
+  background-color: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-m);
+}
+
+.nm-skeleton__bar {
+  display: block;
+  border-radius: 4px;
+  background-color: var(--nitume-slate);
+}
+
+.nm-skeleton__bar--title {
+  width: 60%;
+  height: 12px;
+}
+
+.nm-skeleton__bar--meta {
+  width: 35%;
+  height: 10px;
+}

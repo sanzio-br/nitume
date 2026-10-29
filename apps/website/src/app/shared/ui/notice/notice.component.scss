@@ -1,0 +1,42 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-notice {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  background-color: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-m);
+}
+
+.nm-notice__icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-right: 10px;
+  color: var(--nitume-slate-600);
+}
+
+.nm-notice--danger .nm-notice__icon {
+  color: var(--nitume-red);
+}
+
+.nm-notice__text {
+  @include nm-type(muted);
+  flex: 1;
+  min-width: 0;
+}
+
+.nm-notice__action {
+  flex: 0 0 auto;
+  margin-left: 10px;
+
+  &:empty {
+    display: none;
+  }
+}

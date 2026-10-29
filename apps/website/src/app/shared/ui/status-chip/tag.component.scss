@@ -1,0 +1,19 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.nm-tag {
+  @include nm-type(chip, $size: 11px);
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 11px;
+  border-radius: var(--nitume-r-pill);
+  background-color: var(--nitume-blue-050);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

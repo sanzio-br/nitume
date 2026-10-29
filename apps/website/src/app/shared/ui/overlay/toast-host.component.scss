@@ -1,0 +1,38 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: contents;
+}
+
+.nm-toast-region {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(16px + env(safe-area-inset-bottom) + var(--nm-toast-offset, 0px));
+  z-index: 1100;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.nm-toast {
+  @include nm-type(body, $color: white);
+  box-sizing: border-box;
+  width: calc(100% - 40px);
+  max-width: 560px;
+  padding: 14px 16px;
+  background-color: var(--nitume-blue-700);
+  border-radius: var(--nitume-r-s);
+  pointer-events: auto;
+  animation: nm-toast-in 150ms ease-out;
+
+  @include nm-reduced-motion {
+    animation: none;
+  }
+}
+
+@keyframes nm-toast-in {
+  from {
+    opacity: 0;
+  }
+}

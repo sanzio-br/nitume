@@ -1,0 +1,76 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-flex;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.nm-chip {
+  @include nm-type(chip);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 5px 11px;
+  border-radius: var(--nitume-r-pill);
+  white-space: nowrap;
+}
+
+.nm-chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nm-chip__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+// Tones: tinted background, blue label (row 33), tone-coloured dot.
+.nm-chip--success {
+  background-color: var(--nitume-green-050);
+
+  .nm-chip__dot {
+    background-color: var(--nitume-green-700);
+  }
+}
+
+.nm-chip--info {
+  background-color: var(--nitume-blue-050);
+
+  .nm-chip__dot {
+    background-color: var(--nitume-blue);
+  }
+}
+
+.nm-chip--pending {
+  background-color: var(--nitume-amber-050);
+
+  .nm-chip__dot {
+    background-color: var(--nitume-amber);
+  }
+}
+
+.nm-chip--danger {
+  background-color: var(--nitume-red-050);
+
+  .nm-chip__dot {
+    background-color: var(--nitume-red);
+  }
+}
+
+// Sizes
+.nm-chip--compact {
+  @include nm-type(chip, $size: 11px, $weight: 700);
+  padding: 4px 9px;
+}
+
+.nm-chip--tag {
+  @include nm-type(tag, $color: blue);
+  padding: 3px 8px;
+}

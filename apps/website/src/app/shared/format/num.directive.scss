@@ -1,0 +1,41 @@
+@use '../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  @include nm-num-family;
+}
+
+:host(.nm-num--amount-lg) {
+  @include nm-type(num-amount-lg);
+}
+
+:host(.nm-num--amount) {
+  @include nm-type(num-amount);
+}
+
+:host(.nm-num--num) {
+  @include nm-type(num);
+}
+
+:host(.nm-num--sm) {
+  @include nm-type(num-sm);
+}
+
+:host(.nm-num--meta-lg) {
+  @include nm-type(num-meta-lg);
+}
+
+:host(.nm-num--meta) {
+  @include nm-type(num-meta);
+}
+
+:host(.nm-num--progress) {
+  @include nm-type(num-progress);
+}
+
+:host(.nm-num--otp) {
+  @include nm-type(num-otp);
+}
+
+:host(.nm-num--resend) {
+  @include nm-type(num-resend);
+}

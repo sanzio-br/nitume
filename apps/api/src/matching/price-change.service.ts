@@ -226,7 +226,7 @@ export class PriceChangeService {
     // The STK charge for a send_to_runner difference goes out only after the
     // approval has committed (rows 44, 48).
     const differencePayment = decided.recorded
-      ? await this.payments.chargeDifference(decided.recorded.paymentId)
+      ? await this.payments.chargeDifference(decided.recorded.paymentId, actor)
       : null;
     return Object.assign(decided.saved, {
       differencePayment,

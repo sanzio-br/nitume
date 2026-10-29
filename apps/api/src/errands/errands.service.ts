@@ -703,12 +703,30 @@ export type AdminExpiryFrom = ErrandStatus.RUNNER_ASSIGNED | ErrandStatus.PAYMEN
  */
 export type EligibleRemainingCounter = (manager: EntityManager | undefined, errandId: string) => Promise<number>;
 
+/**
+ * Issue #28 (owner, 2026-10-29): the errands among `errandIds` whose fee
+ * payment has completed, registered by the payments module (its primary
+ * payment is `completed`, the condition the apps use to show the Till/Paybill).
+ */
+export type FeesPaidLookup = (errandIds: string[]) => Promise<Set<string>>;
+
+/** The merchant account numbers a customer may only see once the fees are paid (issue #28). */
+export type MerchantNumbers = Pick<
+  Errand,
+  'id' | 'merchantTillNumber' | 'merchantPaybillNumber' | 'merchantAccountReference'
+> & { merchantDetailsAvailable?: boolean };
+
+/** True when the viewer role sees merchant numbers without the fee check (runner, admin). */
+const seesMerchantNumbersAlways = (role: string): boolean =>
+  role === UserRole.RUNNER || role === UserRole.ADMIN;
+
 @Injectable()
 export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
   /** Other domain events queued inside a transaction, emitted after it commits (see inTx). */
   private readonly afterCommitEvents = new WeakMap<EntityManager, { name: string; payload: unknown }[]>();
   private eligibleCounter: EligibleRemainingCounter | null = null;
+  private feesPaidLookup: FeesPaidLookup | null = null;
   private readonly terminationHooks: TerminationHook[] = [];
   private readonly confirmationHooks: ConfirmationHook[] = [];
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
@@ -1067,6 +1085,69 @@ export class ErrandsService {
   /** Registers the matching module's eligible-online-runner count (see `EligibleRemainingCounter`). */
   onEligibleRemaining(counter: EligibleRemainingCounter): void {
     this.eligibleCounter = counter;
+  }
+
+  /** Registers the payments module's fee-paid lookup (see `FeesPaidLookup`, issue #28). */
+  onFeesPaidLookup(lookup: FeesPaidLookup): void {
+    this.feesPaidLookup = lookup;
+  }
+
+  /**
+   * Issue #28: the errands among `errandIds` whose fee payment has
+   * completed. Empty without the payments module (fails closed: the
+   * customer then sees no merchant numbers).
+   */
+  async feesPaidAmong(errandIds: string[]): Promise<Set<string>> {
+    const ids = [...new Set(errandIds)];
+    if (!this.feesPaidLookup || ids.length === 0) {
+      return new Set();
+    }
+    return this.feesPaidLookup(ids);
+  }
+
+  /**
+   * Issue #28 (owner, 2026-10-29): whether `role` may see the merchant's
+   * Till/Paybill/account numbers on this errand now. Runner and admin
+   * always; a customer only once the fee payment has completed.
+   */
+  async merchantNumbersVisibleTo(role: string, errandId: string): Promise<boolean> {
+    if (seesMerchantNumbersAlways(role)) {
+      return true;
+    }
+    return (await this.feesPaidAmong([errandId])).has(errandId);
+  }
+
+  /**
+   * Issue #28 (owner, 2026-10-29): for a customer viewer, clears
+   * `merchantTillNumber`, `merchantPaybillNumber` and
+   * `merchantAccountReference` (set to null, keys kept) on every errand whose
+   * fee payment has not completed. `merchantName`,
+   * `merchantDetailsUpdatedAt` and `merchantDetailsAvailable` stay; the
+   * flag is added when the view lacks it, so clients that derive it from
+   * the numbers still see `true`. Runner and admin views, and paid errands,
+   * are returned unchanged. Mutates and returns `views`.
+   */
+  async hideMerchantNumbersFor<T extends MerchantNumbers>(viewer: Pick<ViewerContext, 'role'>, views: T[]): Promise<T[]> {
+    if (seesMerchantNumbersAlways(viewer.role)) {
+      return views;
+    }
+    const withNumbers = views.filter(
+      (v) => v.merchantTillNumber || v.merchantPaybillNumber || v.merchantAccountReference,
+    );
+    if (withNumbers.length === 0) {
+      return views;
+    }
+    const paid = await this.feesPaidAmong(withNumbers.map((v) => v.id));
+    for (const view of withNumbers) {
+      if (paid.has(view.id)) {
+        continue;
+      }
+      view.merchantDetailsAvailable ??= Boolean(view.merchantTillNumber || view.merchantPaybillNumber);
+      view.merchantTillNumber = null;
+      view.merchantPaybillNumber = null;
+      view.merchantAccountReference = null;
+    }
+    return views;
   }
 
   /** Every assignment of an errand, newest first (no access check). */

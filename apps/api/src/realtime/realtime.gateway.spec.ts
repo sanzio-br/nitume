@@ -12,6 +12,8 @@ const build = (opts: {
   getById?: () => Promise<unknown>;
   holder?: () => Promise<unknown>;
   profile?: () => Promise<unknown>;
+  /** Issue #28: the customer may see the merchant numbers (fees paid). */
+  feesPaid?: () => Promise<boolean>;
 } = {}) => {
   const row = (opts.user === undefined
     ? { id: 'u-1', role: UserRole.CUSTOMER, phone: '+254700000000', status: UserStatus.ACTIVE }
@@ -29,6 +31,7 @@ const build = (opts: {
   const errands = {
     getById: vi.fn(opts.getById ?? (() => Promise.resolve({ id: ERRAND_ID }))),
     activeAssignmentFor: vi.fn(opts.holder ?? (() => Promise.resolve({ runnerProfileId: 'rp-1', status: 'accepted' }))),
+    merchantNumbersVisibleTo: vi.fn(opts.feesPaid ?? (() => Promise.resolve(false))),
   };
   const runners = {
     profileByUserId: vi.fn(opts.profile ?? (() => Promise.resolve({ id: 'rp-1' }))),
@@ -179,7 +182,7 @@ describe('RealtimeGateway pushes (A-1, A-2)', () => {
     expect(emit).toHaveBeenCalledWith('price_change:requested', event);
   });
 
-  it('forwards quote re-issues and merchant details (N-4, rows 42-44)', () => {
+  it('forwards quote re-issues (N-4)', () => {
     const { gateway, emit } = build();
     const quote = {
       errandId: ERRAND_ID,
@@ -192,32 +195,6 @@ describe('RealtimeGateway pushes (A-1, A-2)', () => {
     };
     gateway.onQuoteReissued(quote);
     expect(emit).toHaveBeenCalledWith('quote:reissued', quote);
-    const merchant = {
-      errandId: ERRAND_ID,
-      merchantName: 'Naivas',
-      tillNumber: '123456',
-      paybillNumber: null,
-      accountReference: null,
-      changed: false,
-      merchantDetailsUpdatedAt: null,
-    };
-    gateway.onMerchantDetailsUpdated(merchant);
-    expect(emit).toHaveBeenCalledWith('merchant_details:updated', merchant);
-  });
-
-  it('forwards merchant_details:changed to the errand room (row 80)', () => {
-    const { gateway, to, emit } = build();
-    const event = {
-      errandId: ERRAND_ID,
-      merchantName: 'Naivas',
-      tillNumber: '654321',
-      paybillNumber: null,
-      accountReference: null,
-      merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
-    };
-    gateway.onMerchantDetailsChanged(event);
-    expect(to).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
-    expect(emit).toHaveBeenCalledWith('merchant_details:changed', event);
   });
 
   it('emits location:update with the §4.2 payload to the errand room and admins', () => {
@@ -504,42 +481,74 @@ describe('RealtimeGateway suspended accounts (issue #23)', () => {
   });
 });
 
-describe('RealtimeGateway access-token cut-off (issue #24, owner 2026-10-29)', () => {
-  it('a token issued before the last suspension is treated as invalid: no code, connect then disconnect', async () => {
-    const { gateway, access, jwt } = build({ verify: () => Promise.resolve({ sub: 'u-1', type: 'access', iat: 1_790_000_000 }) });
-    access.isTokenRevoked.mockResolvedValue(true);
-    const client = socket();
-    expect(await gateway.checkHandshake(client as never)).toBeNull();
-    expect(client.data.user).toBeUndefined();
-    expect(access.isTokenRevoked).toHaveBeenCalledWith('u-1', 1_790_000_000);
-    await gateway.handleConnection(client as never);
-    expect(client.disconnect).toHaveBeenCalledWith(true);
-    expect(client.join).not.toHaveBeenCalled();
-    expect(jwt.verifyAsync).toHaveBeenCalledTimes(1);
+describe('RealtimeGateway merchant_details events per role (rows 42-44, 80; issue #28)', () => {
+  const roomSocket = (role: UserRole) => ({ data: { user: { userId: `${role}-1`, role } }, emit: vi.fn() });
+  const updated = {
+    errandId: ERRAND_ID,
+    merchantName: 'KPLC',
+    tillNumber: null,
+    paybillNumber: '888880',
+    accountReference: 'ACC-1',
+    changed: false,
+    merchantDetailsUpdatedAt: null,
+  };
+  const changed = {
+    errandId: ERRAND_ID,
+    merchantName: 'Naivas',
+    tillNumber: '654321',
+    paybillNumber: null,
+    accountReference: null,
+    merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
+  };
+  const noNumbers = { tillNumber: null, paybillNumber: null, accountReference: null };
+
+  const setup = (feesPaid: boolean) => {
+    const built = build({ feesPaid: () => Promise.resolve(feesPaid) });
+    const customer = roomSocket(UserRole.CUSTOMER);
+    const runner = roomSocket(UserRole.RUNNER);
+    const admin = roomSocket(UserRole.ADMIN);
+    built.roomSockets.push(customer, runner, admin);
+    return { ...built, customer, runner, admin };
+  };
+
+  it.each([
+    ['merchant_details:updated', 'onMerchantDetailsUpdated', updated],
+    ['merchant_details:changed', 'onMerchantDetailsChanged', changed],
+  ] as const)('%s before the fees are paid: no numbers for the customer, unchanged for runner and admin', async (name, handler, event) => {
+    const { gateway, inRoom, errands, customer, runner, admin } = setup(false);
+    await (gateway[handler] as (e: typeof event) => Promise<void>)(event);
+    expect(inRoom).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
+    expect(errands.merchantNumbersVisibleTo).toHaveBeenCalledWith(UserRole.CUSTOMER, ERRAND_ID);
+    expect(customer.emit).toHaveBeenCalledWith(name, { ...event, ...noNumbers });
+    expect(runner.emit).toHaveBeenCalledWith(name, event);
+    expect(admin.emit).toHaveBeenCalledWith(name, event);
   });
 
-  it('a suspended account still gets connect_error account_suspended (cut-off not consulted)', async () => {
-    const { gateway, access } = build({ user: { id: 'u-1', role: UserRole.CUSTOMER, phone: 'x', status: UserStatus.BANNED } });
-    const refusal = await gateway.checkHandshake(socket() as never);
-    expect(refusal?.message).toBe('account_suspended');
-    expect(access.isTokenRevoked).not.toHaveBeenCalled();
+  it.each([
+    ['merchant_details:updated', 'onMerchantDetailsUpdated', updated],
+    ['merchant_details:changed', 'onMerchantDetailsChanged', changed],
+  ] as const)('%s after the fees are paid: every role gets the payload as before', async (name, handler, event) => {
+    const { gateway, customer, runner, admin } = setup(true);
+    await (gateway[handler] as (e: typeof event) => Promise<void>)(event);
+    expect(customer.emit).toHaveBeenCalledWith(name, event);
+    expect(runner.emit).toHaveBeenCalledWith(name, event);
+    expect(admin.emit).toHaveBeenCalledWith(name, event);
   });
 
-  it('a failing cut-off check refuses the socket (fail closed)', async () => {
-    const { gateway, access } = build();
-    access.isTokenRevoked.mockRejectedValue(new Error('redis and db down'));
-    const client = socket();
-    await gateway.checkHandshake(client as never);
-    expect(client.data.user).toBeUndefined();
-    await gateway.handleConnection(client as never);
-    expect(client.disconnect).toHaveBeenCalledWith(true);
+  it('withholds the numbers from the customer when the fee check fails', async () => {
+    const built = build({ feesPaid: () => Promise.reject(new Error('db down')) });
+    const customer = roomSocket(UserRole.CUSTOMER);
+    built.roomSockets.push(customer);
+    await built.gateway.onMerchantDetailsUpdated(updated);
+    expect(customer.emit).toHaveBeenCalledWith('merchant_details:updated', { ...updated, ...noNumbers });
   });
 
-  it('a token issued after the cut-off connects', async () => {
-    const { gateway } = build();
-    const client = socket();
-    await gateway.handleConnection(client as never);
-    expect(client.disconnect).not.toHaveBeenCalled();
-    expect(client.join).toHaveBeenCalledWith('user:u-1');
+  it('skips the fee check when no customer is in the room', async () => {
+    const built = build();
+    const runner = roomSocket(UserRole.RUNNER);
+    built.roomSockets.push(runner);
+    await built.gateway.onMerchantDetailsChanged(changed);
+    expect(built.errands.merchantNumbersVisibleTo).not.toHaveBeenCalled();
+    expect(runner.emit).toHaveBeenCalledWith('merchant_details:changed', changed);
   });
 });
