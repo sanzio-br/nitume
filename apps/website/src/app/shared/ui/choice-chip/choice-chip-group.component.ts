@@ -14,7 +14,7 @@ export interface NmChoiceOption<T extends string = string> {
   selector: 'nm-choice-chip-group',
   imports: [NmChoiceChip],
   template: `
-    <div class="nm-choice-chip-group" role="radiogroup" [attr.aria-labelledby]="labelledBy()" (keydown)="onKeydown($event)">
+    <div class="nm-choice-chip-group" role="radiogroup" [attr.aria-labelledby]="labelledBy()" [attr.aria-label]="labelledBy() ? null : ariaLabel()" (keydown)="onKeydown($event)">
       @for (option of options(); track option.value; let i = $index) {
         <nm-choice-chip
           [label]="option.label"
@@ -33,6 +33,8 @@ export class NmChoiceChipGroup {
   readonly options = input.required<readonly NmChoiceOption[]>();
   readonly selected = input<string | null>(null);
   readonly labelledBy = input<string | null>(null);
+  /** Name when there is no element to point at (e.g. an `nm-form-card` heading). */
+  readonly ariaLabel = input<string | null>(null);
   /** Every chip disabled (#8 saving). */
   readonly disabled = input(false);
 

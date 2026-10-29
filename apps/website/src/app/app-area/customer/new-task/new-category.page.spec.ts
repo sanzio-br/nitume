@@ -112,6 +112,16 @@ describe('customer v-new-category (#7)', () => {
     expect(declared('.nm-category-tile__icon', 'background-color')).toEqual(['var(--nitume-green-050)']);
   });
 
+  it('NC T8. Continue → navigates to /app/customer/new/details and the store holds the category', async () => {
+    const h = await openCustomer('/app/customer/new');
+    const store = draftOf(h, NewCategoryPage);
+    radios(h)[3].click();
+    await h.detect();
+    cta(h).click();
+    await vi.waitFor(() => expect(h.router.url).toBe('/app/customer/new/details'));
+    expect(store.category()).toBe('representation');
+  });
+
   it('NC T9 empty. Back with an empty draft leaves without a dialog', async () => {
     const h = await openCustomer('/app/customer/new');
     (h.root().querySelector('button[aria-label="Back"]') as HTMLButtonElement).click();

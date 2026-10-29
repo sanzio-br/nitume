@@ -10,7 +10,7 @@ import {
   roleGuard,
 } from '../core/auth/guards';
 import { TaskDraftStore } from './customer/new-task/task-draft.store';
-import { wizardEntryGuard, wizardLeaveGuard } from './customer/new-task/wizard.guards';
+import { wizardEntryGuard, wizardLeaveGuard, wizardStepGuard } from './customer/new-task/wizard.guards';
 
 const role = 'customer';
 const stub = () => import('./view-stub.component').then((m) => m.ViewStubComponent);
@@ -59,6 +59,13 @@ export const CUSTOMER_ROUTES: Routes = [
             title: 'New task · Nitume',
             canDeactivate: [wizardLeaveGuard],
             loadComponent: () => import('./customer/new-task/new-category.page').then((m) => m.NewCategoryPage),
+          },
+          {
+            path: 'details',
+            title: 'Task details · Nitume',
+            canActivate: [wizardStepGuard(2)],
+            canDeactivate: [wizardLeaveGuard],
+            loadComponent: () => import('./customer/new-task/new-details.page').then((m) => m.NewDetailsPage),
           },
         ],
       },

@@ -1,0 +1,108 @@
+<nm-wizard-frame title="Task details" [step]="2" [backFallback]="stepOne" [unloadGuard]="unloadGuard">
+  <form class="details" novalidate (submit)="$event.preventDefault()">
+    <nm-form-card [label]="copy.titleHeading">
+      <nm-field
+        data-field="title"
+        [label]="copy.titleHeading"
+        [hideLabel]="true"
+        [placeholder]="copy.titlePlaceholder"
+        [error]="errors().title ?? null"
+        [nmFieldValue]="store.title()"
+        (nmFieldValueChange)="store.title.set($event)"
+      />
+    </nm-form-card>
+
+    <nm-form-card [label]="copy.descriptionHeading">
+      <nm-field
+        data-field="description"
+        kind="multiline"
+        [label]="copy.descriptionHeading"
+        [hideLabel]="true"
+        [placeholder]="copy.descriptionPlaceholder"
+        [error]="errors().description ?? null"
+        [nmFieldValue]="store.description()"
+        (nmFieldValueChange)="store.description.set($event)"
+      />
+    </nm-form-card>
+
+    <div class="details__location">
+      @if (store.twoPoints()) {
+        <nm-card>
+          <nm-place-field
+            data-field="first"
+            [label]="firstLabel()"
+            [value]="store.first()"
+            [error]="errors().first ?? null"
+            [savedAddresses]="saved()"
+            (placeSelected)="onFirstPicked($event)"
+            (selectionCleared)="store.first.set(null)"
+            (textChange)="onFirstText($event)"
+          />
+          <nm-place-field
+            class="details__second-place"
+            data-field="dropoff"
+            [label]="copy.dropoffLabel"
+            [value]="store.dropoff()"
+            [error]="errors().dropoff ?? null"
+            [savedAddresses]="saved()"
+            (placeSelected)="onDropoffPicked($event)"
+            (selectionCleared)="store.dropoff.set(null)"
+            (textChange)="onDropoffText($event)"
+          />
+        </nm-card>
+      } @else {
+        <nm-form-card [label]="copy.locationHeading">
+          <nm-place-field
+            data-field="first"
+            [ariaLabel]="copy.locationHeading"
+            [value]="store.first()"
+            [error]="errors().first ?? null"
+            [savedAddresses]="saved()"
+            (placeSelected)="onFirstPicked($event)"
+            (selectionCleared)="store.first.set(null)"
+            (textChange)="onFirstText($event)"
+          />
+        </nm-form-card>
+      }
+      @if (noKey) {
+        <nm-notice class="details__notice">{{ copy.noKeyNotice }}</nm-notice>
+      }
+    </div>
+
+    @if (store.isBuy()) {
+      <nm-form-card [label]="copy.listHeading">
+        <nm-shopping-list data-field="items" [items]="store.items()" [error]="errors().items ?? null" (itemsChange)="onItems($event)" />
+      </nm-form-card>
+    }
+
+    <nm-form-card [label]="copy.deadlineHeading">
+      <nm-choice-chip-group
+        [options]="deadlines"
+        [selected]="store.deadline()"
+        [ariaLabel]="copy.deadlineHeading"
+        (selectedChange)="onDeadline($event)"
+      />
+      @if (flexibleDuration(); as duration) {
+        <p class="details__caption">
+          No fixed time. Your task's deadline is <span nmNum>{{ duration }}</span> after your payment is confirmed.
+        </p>
+      }
+    </nm-form-card>
+
+    @if (store.hasBudget()) {
+      <nm-form-card [label]="copy.budgetHeading">
+        <nm-field
+          data-field="budget"
+          kind="money"
+          [label]="copy.budgetHeading"
+          [hideLabel]="true"
+          placeholder="0"
+          [error]="errors().budget ?? null"
+          [nmFieldValue]="budgetText()"
+          (nmFieldValueChange)="onBudget($event)"
+        />
+      </nm-form-card>
+    }
+  </form>
+  <nm-button nmWizardCta type="button" [expand]="true" (pressed)="continue()">Continue →</nm-button>
+</nm-wizard-frame>
