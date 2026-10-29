@@ -524,3 +524,4 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 - 2026-10-29: #5 merged (PR #26). #6 (web sign-in, roles, app shell) reviewed READY, PR #31: 412 website tests, marketing bundle 351.44 kB (lazy session layer, WQ-33). #24 (admin suspend/ban/reactivate with an audit history; new table user_status_history, WQ-23) reviewed READY, PR #32: API unit 1079 / e2e 242, admin 409. Deferred: #30 (socket cycle with a revoked token), #33 (refresh cut-off), multi-instance Socket.IO adapter. #7 building.
 - 2026-10-29: owner merged PR #29 (#28), PR #31 (#6) and PR #32 (#24). Website sign-in, roles and shell, and admin user status actions, are on main.
 - 2026-10-29: #33 (refresh sessions issued before a suspension refused; always reads user_status_history) reviewed READY, PR #34. Specs done for #13 (runner onboarding) and #17 (runner earnings); builds wait for #7.
+- 2026-10-29: owner merged PR #34 (#33, refresh cut-off).

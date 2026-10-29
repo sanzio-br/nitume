@@ -111,7 +111,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/merchant-details-privacy (issue #28) | merged (PR #29, 5f0ab08) | api-contract | fix/api-merchant-details-privacy (off main; worktree ../nitume-fix-api-merchant-details-privacy) | none | found while speccing #8 |
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
 | api+web+core/socket-revoked-token (issue #30) | unaudited | — | — | #24, #6 | from the #6 review |
-| api/refresh-cutoff (issue #33) | awaiting-owner (PR #34; reviewer READY, unit 1114, e2e 251) | api-contract | fix/api-refresh-cutoff (off main; worktree ../nitume-fix-api-refresh-cutoff) | — | — | #24 | WQ-39 |
+| api/refresh-cutoff (issue #33) | merged (PR #34) | api-contract | fix/api-refresh-cutoff (off main; worktree ../nitume-fix-api-refresh-cutoff) | — | — | #24 | WQ-39 |
 | website/runner/onboarding (issue #13) | specced (d9154a1; Q13-1..4 answered); gap report + build after #7 (shared nm-fixed-cta, card/dialog conversions) | design-auditor | feat/website-runner-onboarding (off main) | — | Q-W1 selfie live-only |
 | website/runner/earnings (issue #17) | specced (59484f3; Q17-1..3 answered); gap report + build after #7 | design-auditor | feat/website-runner-earnings (off main) | — | specs only |
 | website/customer/tracking (issue #9) | specced (4d1f5fa; WQ-43/44 answered); build after #7 + #8 | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
@@ -878,3 +878,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | Dispatched design-auditor for the #9 and #14 web specs (worktrees off main). |
 | 2026-10-29 | design-auditor #9 specced (4d1f5fa). Orchestrator note: #7 uses app-area/customer/, #8's spec used features/customer/; align #8 to app-area/customer/ in its gap report. Issue #35 opened; api-contract dispatched. |
 | 2026-10-29 | design-auditor #14 specced (75578f3). Owner answered WQ-45..48. Issue #36 (web runner presence + auto-offline, API + admin) opened; api-contract building the API part. |
+| 2026-10-29 | Owner merged PR #34 (#33). |
