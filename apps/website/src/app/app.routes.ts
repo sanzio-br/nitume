@@ -9,6 +9,8 @@ export const routes: Routes = [
   {
     path: '',
     component: MarketingLayoutComponent,
+    // The index.html title, restored after leaving /auth or /app.
+    title: "Nitume — Someone there, when you can't be.",
     children: [
       { path: '', pathMatch: 'full', component: HomeComponent },
       { path: 'business', component: BusinessComponent },

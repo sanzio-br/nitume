@@ -126,4 +126,17 @@ describe('app routes and frame (#6)', () => {
     (await expectRequest(`${API}/users/me`)).flush(userJson({ role: 'runner' }));
     await vi.waitFor(() => expect(h.router.url).toBe('/app/runner/earnings'));
   });
+
+  it('F9.66. leaving /auth or /app for a marketing page restores the index.html title', async () => {
+    const marketing = "Nitume — Someone there, when you can't be.";
+    let h = await openApp('/auth');
+    expect(TestBed.inject(Title).getTitle()).toBe('Sign in · Nitume');
+    await h.harness.navigateByUrl('/');
+    expect(TestBed.inject(Title).getTitle()).toBe(marketing);
+    h = await openApp('/app/customer/sign-in');
+    expect(TestBed.inject(Title).getTitle()).toBe('Sign in · Nitume');
+    await h.harness.navigateByUrl('/business');
+    expect(TestBed.inject(Title).getTitle()).toBe(marketing);
+  });
 });
+
