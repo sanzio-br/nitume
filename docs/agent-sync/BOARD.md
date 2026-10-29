@@ -117,13 +117,14 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/customer/tracking (issue #9) | specced (4d1f5fa; WQ-43/44 answered); build after #7 + #8 | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
 | website/runner/jobs (issue #14) | specced (75578f3; Q14-1..10 answered); build after #7 + #13/#17 shared pieces | design-auditor | feat/website-runner-jobs (off main) | — | Q-W2 browser location; web-runner flag check |
 | api/history-privacy (issue #35) | merged (PR #37, 380be22) | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
-| api+admin/web-runner-presence (issue #36) | API complete (…dd14084; unit 1138, e2e 252; runner:availability_changed added) → admin spec | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
+| api+admin/web-runner-presence (issue #36) | API complete; admin spec dcfbd69 + gap G36-1…9 (87dd7cb) → admin building | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
 | website/runner/active (issue #15) | specced (2e17a0a; Q15-1..6 answered) | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
 | website/customer/evidence (issue #10) | specced (6e00e0f; WQ-10-1..4 answered) | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
 | api/dispute-party-ids (issue #38) | unaudited | — | — | — | found during #35 |
 | api/evidence-upload-guard (issue #39) | awaiting-owner (PR open; reviewer READY: unit 1120, e2e 256) | api-contract | fix/api-evidence-upload-guard (off main) | — | SECURITY, found speccing #10 |
 | api/evidence-retention (issue #40) | unaudited | — | — | — | 1 year after close; dispute hold |
 | runner-app/active-fixes (issue #41) | unaudited | — | — | — | rows 251/258, destination, Fira Code (found speccing #15) |
+| api+admin/availability-event (issue #44) | ON HOLD (owner approval needed) | — | — | #36 | Q36-9 follow-up |
 | website/customer + runner parity (issues #11, #12, #16, #18) | unaudited | — | — | #5, #6 | 14 feature-group issues on GitHub (owner request 2026-10-28); one PR per issue with `Closes #N` |
 | admin/p-runners-verification-documents (verification inbox) | awaiting-owner (row 278 table + drawer reviewed READY, matches-design) | web-parity + api-contract (A-9) | fix/admin-verification-inbox (stacked on docs/admin-verification-audit; worktree ../nitume-fix-admin-verification) + fix/api-verification-review (worktree ../nitume-fix-api-verification-review) | AQ-35..37 (rows 260–262); api A-1..A-7 | Audit 2026-10-21 FAIL (admin-gap-report "Audit 2026-10-21: verification inbox", findings 34–49, supersede 18, 19, 20, 22, 23, 28): f642187, 73fc96d, d5ef069. Owner-seen symptoms: Approve/Reject 404 (client PATCH /runners/verifications/{id}; API route is /runners/:runnerId/verifications/:verificationId); NaN date (reads submittedAt, API sends createdAt); no Front/Back (side ignored); no View image (reads documentKey, API sends hasDocument); 5 items counts approved phone check (AQ-35); raw type labels; false "runner level upgrades" copy (AQ-36); initials from profile UUID (needs api A-5). Blockers 34, 35, 36, 37, 45, 48. Do now (no owner input): 34, 35, 36, 39, 41, 42, 43, 44, 45, 47, 48, 49; after AQ-35 + A-5: 37, 38, 40, 46 |
 
@@ -614,6 +615,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | WQ-51 | design-auditor (#10, WQ-10-1..4) | Video, report photos, customer evidence uploads, retention | ANSWERED: match the app (no playback); text only; restrict uploads (#39); keep 1 year after close (#40) |
 | WQ-52 | api-contract (#36 Q1..4) | Blocked vs closed tab; open offer; events | ANSWERED: auto-offline applies; flag only until the offer ends; admin event + runner-room event |
 | WQ-53 | design-auditor (#7, Q7-5) | EAT deadline label | ANSWERED: "Due today, 23:59 EAT." / "Due tomorrow, 23:59 EAT." |
+| WQ-54 | design-auditor (#36 admin, Q36-1..11) | Admin presence copy, markers, socket client, manual-offline event | ANSWERED 2026-10-29: all recommendations approved; socket.io-client in admin (lazy); manual-offline event = #44 (on hold) |
 
 ## Session log
 
@@ -901,3 +903,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | reviewer #7 READY; PR opened (squash). PR #37 merged (380be22) per the review's origin/main check. |
 | 2026-10-29 | OWNER INSTRUCTION: finish only the in-flight issues (#39 review→PR, #36 admin spec→build→PR, #8 gap report→build→PR); do NOT start any other issue until the owner approves. On hold: specced #9, #10, #13, #14, #15, #17; not started #11, #12, #16, #18, #27, #30, #38, #40, #41. Owner confirmed PR #37 merged. |
 | 2026-10-29 | reviewer #39 READY → PR opened. Deploy note: delete idem:evidence-upload:* keys to close the 24 h replay window. |
+| 2026-10-29 | design-auditor #36 admin spec (dcfbd69, 87dd7cb). Owner WQ-54. Issue #44 opened ON HOLD. web-parity building the #36 admin UI (in-flight issue). |
