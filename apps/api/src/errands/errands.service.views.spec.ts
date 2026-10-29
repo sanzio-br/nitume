@@ -8,7 +8,7 @@ import {
 import { ErrandAssignment } from './errand-assignment.entity';
 import { Errand } from './errand.entity';
 import { ForbiddenException } from '@nestjs/common';
-import { ErrandsService, withoutCustomerPricing } from './errands.service';
+import { ErrandsService, withHistoryFor, withoutCustomerPricing } from './errands.service';
 
 const errand = (id: string): Errand =>
   ({
@@ -488,13 +488,18 @@ describe('runner views carry no customer pricing (RA-2)', () => {
   });
 });
 
-describe('history actors are admin-only (reviewer B2)', () => {
+describe('history actors are admin-only (reviewer B2, issue #35)', () => {
+  const at1 = new Date('2026-10-29T07:00:00.000Z');
+  const at2 = new Date('2026-10-29T09:00:00.000Z');
   const build = () => {
     const rows = [
-      { id: 'h-1', actorType: 'customer', actorId: 'u-cust', toStatus: 'REQUESTED' },
-      { id: 'h-2', actorType: 'system', actorId: null, toStatus: 'EXPIRED' },
+      { id: 'h-1', errandId: 'e-1', fromStatus: 'DRAFT', toStatus: 'REQUESTED', actorType: 'customer', actorId: 'u-cust', note: null, createdAt: at1 },
+      { id: 'h-2', errandId: 'e-1', fromStatus: 'PAYMENT_CONFIRMED', toStatus: 'EXPIRED', actorType: 'admin', actorId: 'u-admin', note: 'Customer asked us to stop the task.', createdAt: at2 },
+      { id: 'h-3', errandId: 'e-1', fromStatus: null, toStatus: 'EXPIRED', actorType: 'system', actorId: null, note: 'Customer deadline passed', createdAt: at2 },
     ];
-    const users = { displayNames: vi.fn(() => Promise.resolve(new Map([['u-cust', 'Achieng Otieno']]))) };
+    const users = {
+      displayNames: vi.fn(() => Promise.resolve(new Map([['u-cust', 'Achieng Otieno'], ['u-admin', 'Ops Wanjiru']]))),
+    };
     const service = new ErrandsService(
       {} as never,
       {} as never,
@@ -513,19 +518,71 @@ describe('history actors are admin-only (reviewer B2)', () => {
     return { service, users };
   };
 
-  it('adds actor { id, displayName } for an admin viewer', async () => {
+  it('admin viewers get the rows unchanged (note, actorId) plus actor { id, displayName }', async () => {
     const { service } = build();
-    const out = (await service.historyViewsFor('e-1', { role: 'admin', userId: 'a-1' })) as { actor: unknown }[];
-    expect(out.map((r) => r.actor)).toEqual([{ id: 'u-cust', displayName: 'Achieng Otieno' }, null]);
+    const out = (await service.historyViewsFor('e-1', { role: 'admin', userId: 'a-1' })) as Record<string, unknown>[];
+    expect(out.map((r) => r.actor)).toEqual([
+      { id: 'u-cust', displayName: 'Achieng Otieno' },
+      { id: 'u-admin', displayName: 'Ops Wanjiru' },
+      null,
+    ]);
+    expect(out[1]).toMatchObject({ actorId: 'u-admin', note: 'Customer asked us to stop the task.', actorType: 'admin' });
+    expect(out[2]).toMatchObject({ actorId: null, note: 'Customer deadline passed' });
   });
 
-  it('returns plain rows without names to customers and runners', async () => {
+  it('customers and runners get only id, errandId, fromStatus, toStatus, actorType, createdAt (no note, actorId, actor)', async () => {
     for (const role of ['customer', 'runner']) {
       const { service, users } = build();
-      const out = (await service.historyViewsFor('e-1', { role, userId: 'u-1' })) as object[];
-      expect(out.every((r) => !('actor' in r))).toBe(true);
+      const out = (await service.historyViewsFor('e-1', { role, userId: 'u-1' })) as Record<string, unknown>[];
+      expect(out).toEqual([
+        { id: 'h-1', errandId: 'e-1', fromStatus: 'DRAFT', toStatus: 'REQUESTED', actorType: 'customer', createdAt: at1 },
+        { id: 'h-2', errandId: 'e-1', fromStatus: 'PAYMENT_CONFIRMED', toStatus: 'EXPIRED', actorType: 'admin', createdAt: at2 },
+        { id: 'h-3', errandId: 'e-1', fromStatus: null, toStatus: 'EXPIRED', actorType: 'system', createdAt: at2 },
+      ]);
+      for (const row of out) {
+        expect(Object.keys(row).sort()).toEqual(['actorType', 'createdAt', 'errandId', 'fromStatus', 'id', 'toStatus']);
+      }
+      expect(JSON.stringify(out)).not.toContain('Customer asked us to stop');
       expect(users.displayNames).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('withHistoryFor: transition results (issue #35)', () => {
+  const history = {
+    id: 'h-9',
+    errandId: 'e-1',
+    fromStatus: 'IN_PROGRESS',
+    toStatus: 'AWAITING_CUSTOMER',
+    actorType: 'runner',
+    actorId: 'u-run',
+    note: 'Left at the gate',
+    createdAt: new Date(7),
+  } as never;
+  const result = { errand: { id: 'e-1' } as never, history };
+
+  it('admins get the result unchanged', () => {
+    expect(withHistoryFor({ role: 'admin' }, result)).toBe(result);
+  });
+
+  it('customers and runners get the history row without note or actorId', () => {
+    for (const role of ['customer', 'runner']) {
+      const out = withHistoryFor({ role }, result);
+      expect(out.errand).toBe(result.errand);
+      expect(out.history).toEqual({
+        id: 'h-9',
+        errandId: 'e-1',
+        fromStatus: 'IN_PROGRESS',
+        toStatus: 'AWAITING_CUSTOMER',
+        actorType: 'runner',
+        createdAt: new Date(7),
+      });
+    }
+  });
+
+  it('a null history row stays null', () => {
+    const none = { errand: { id: 'e-1' } as never, history: null };
+    expect(withHistoryFor({ role: 'customer' }, none).history).toBeNull();
   });
 });
 

@@ -83,6 +83,15 @@ export interface ErrandResult {
   history: ErrandStatusHistory;
 }
 
+/**
+ * `ErrandResult` as a response: admins get the full history row, customers
+ * and runners an `ErrandHistoryPartyView` (issue #35).
+ */
+export interface ErrandResultView {
+  errand: Errand;
+  history: ErrandStatusHistory | ErrandHistoryPartyView;
+}
+
 export interface ListErrandsResponse {
   items: Errand[];
   nextCursor: string | null;
@@ -439,6 +448,39 @@ export interface ErrandExpiryView {
 
 /** History row with its actor's display name (round-11 item 6). */
 export type ErrandHistoryView = ErrandStatusHistory & { actor: { id: string; displayName: string | null } | null };
+
+/**
+ * A history row as a customer or runner sees it (issue #35, owner WQ-43):
+ * only the fields the apps and the website read. `note` (internal ops notes
+ * such as an admin's expiry reason) and `actorId` (the acting user, possibly
+ * an admin) are left out; `actorType` stays (the runner app shows "GPS" for a
+ * `system` arrival, and nitume_core requires it).
+ */
+export type ErrandHistoryPartyView = Pick<
+  ErrandStatusHistory,
+  'id' | 'errandId' | 'fromStatus' | 'toStatus' | 'actorType' | 'createdAt'
+>;
+
+/** Projects a history row onto {@link ErrandHistoryPartyView} (an allowlist: new columns stay hidden). */
+export const toHistoryPartyView = (row: ErrandStatusHistory): ErrandHistoryPartyView => ({
+  id: row.id,
+  errandId: row.errandId,
+  fromStatus: row.fromStatus ?? null,
+  toStatus: row.toStatus,
+  actorType: row.actorType,
+  createdAt: row.createdAt,
+});
+
+/**
+ * A transition result (`{ ..., history }`) for `viewer`: unchanged for an
+ * admin, the history row projected by {@link toHistoryPartyView} for
+ * everyone else (issue #35).
+ */
+export const withHistoryFor = <R extends { history: ErrandStatusHistory | null }>(
+  viewer: { role: string },
+  result: R,
+): Omit<R, 'history'> & { history: R['history'] | ErrandHistoryPartyView } =>
+  viewer.role === UserRole.ADMIN || !result.history ? result : { ...result, history: toHistoryPartyView(result.history) };
 
 /** Row 157: the offer-expiry job expired an admin offer; the task waits for a new runner. */
 export const ASSIGNMENT_EXPIRED_EVENT = 'assignment.expired';
@@ -1183,12 +1225,16 @@ export class ErrandsService {
   /**
    * `GET /errands/:id/history` (round-11 item 6). Admin viewers get each
    * row's `actor { id, displayName }` (null for system rows). Customers and
-   * runners get the plain rows: no actor names (reviewer B2).
+   * runners get {@link ErrandHistoryPartyView} rows: no actor names (reviewer
+   * B2), no `note` and no `actorId` (issue #35, owner WQ-43).
    */
-  async historyViewsFor(errandId: string, viewer: ViewerContext): Promise<ErrandStatusHistory[] | ErrandHistoryView[]> {
+  async historyViewsFor(
+    errandId: string,
+    viewer: ViewerContext,
+  ): Promise<ErrandHistoryPartyView[] | ErrandHistoryView[]> {
     const rows = await this.historyFor(errandId);
     if (viewer.role !== UserRole.ADMIN) {
-      return rows;
+      return rows.map(toHistoryPartyView);
     }
     const ids = [...new Set(rows.map((r) => r.actorId).filter((v): v is string => !!v))];
     const names = ids.length > 0 && this.users ? await this.users.displayNames(ids) : new Map<string, string>();
