@@ -12,23 +12,26 @@ const build = (opts: {
   getById?: () => Promise<unknown>;
   holder?: () => Promise<unknown>;
   profile?: () => Promise<unknown>;
+  /** Issue #28: the customer may see the merchant numbers (fees paid). */
+  feesPaid?: () => Promise<boolean>;
 } = {}) => {
+  const row = (opts.user === undefined
+    ? { id: 'u-1', role: UserRole.CUSTOMER, phone: '+254700000000', status: UserStatus.ACTIVE }
+    : opts.user) as { id?: string; role?: UserRole; phone?: string; status?: UserStatus } | null;
   const jwt = {
-    verifyAsync: vi.fn(opts.verify ?? (() => Promise.resolve({ sub: 'u-1', type: 'access' }))),
+    verifyAsync: vi.fn(opts.verify ?? (() => Promise.resolve({ sub: row?.id ?? 'u-1', type: 'access' }))),
   };
   const config = { get: vi.fn(() => 'secret') };
-  const users = {
-    findById: vi.fn(() =>
-      Promise.resolve(
-        opts.user === undefined
-          ? { id: 'u-1', role: UserRole.CUSTOMER, phone: '+254700000000', status: UserStatus.ACTIVE }
-          : opts.user,
-      ),
+  const access = {
+    accessOf: vi.fn(() =>
+      Promise.resolve(row ? { status: row.status, role: row.role, phone: row.phone } : null),
     ),
+    isTokenRevoked: vi.fn(() => Promise.resolve(false)),
   };
   const errands = {
     getById: vi.fn(opts.getById ?? (() => Promise.resolve({ id: ERRAND_ID }))),
     activeAssignmentFor: vi.fn(opts.holder ?? (() => Promise.resolve({ runnerProfileId: 'rp-1', status: 'accepted' }))),
+    merchantNumbersVisibleTo: vi.fn(opts.feesPaid ?? (() => Promise.resolve(false))),
   };
   const runners = {
     profileByUserId: vi.fn(opts.profile ?? (() => Promise.resolve({ id: 'rp-1' }))),
@@ -37,7 +40,7 @@ const build = (opts: {
   const gateway = new RealtimeGateway(
     jwt as never,
     config as never,
-    users as never,
+    access as never,
     errands as never,
     runners as never,
     location as never,
@@ -48,7 +51,7 @@ const build = (opts: {
   const fetchSockets = vi.fn(() => Promise.resolve(roomSockets));
   const inRoom = vi.fn(() => ({ fetchSockets }));
   gateway.server = { to, in: inRoom } as never;
-  return { gateway, jwt, users, errands, runners, location, to, emit, roomSockets, inRoom };
+  return { gateway, jwt, access, errands, runners, location, to, emit, roomSockets, inRoom };
 };
 
 const socket = (auth: Record<string, unknown> = { token: 'abc' }, headers = {}) => ({
@@ -179,7 +182,7 @@ describe('RealtimeGateway pushes (A-1, A-2)', () => {
     expect(emit).toHaveBeenCalledWith('price_change:requested', event);
   });
 
-  it('forwards quote re-issues and merchant details (N-4, rows 42-44)', () => {
+  it('forwards quote re-issues (N-4)', () => {
     const { gateway, emit } = build();
     const quote = {
       errandId: ERRAND_ID,
@@ -192,32 +195,6 @@ describe('RealtimeGateway pushes (A-1, A-2)', () => {
     };
     gateway.onQuoteReissued(quote);
     expect(emit).toHaveBeenCalledWith('quote:reissued', quote);
-    const merchant = {
-      errandId: ERRAND_ID,
-      merchantName: 'Naivas',
-      tillNumber: '123456',
-      paybillNumber: null,
-      accountReference: null,
-      changed: false,
-      merchantDetailsUpdatedAt: null,
-    };
-    gateway.onMerchantDetailsUpdated(merchant);
-    expect(emit).toHaveBeenCalledWith('merchant_details:updated', merchant);
-  });
-
-  it('forwards merchant_details:changed to the errand room (row 80)', () => {
-    const { gateway, to, emit } = build();
-    const event = {
-      errandId: ERRAND_ID,
-      merchantName: 'Naivas',
-      tillNumber: '654321',
-      paybillNumber: null,
-      accountReference: null,
-      merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
-    };
-    gateway.onMerchantDetailsChanged(event);
-    expect(to).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
-    expect(emit).toHaveBeenCalledWith('merchant_details:changed', event);
   });
 
   it('emits location:update with the §4.2 payload to the errand room and admins', () => {
@@ -241,7 +218,7 @@ describe('RealtimeGateway admin room (row 68)', () => {
     const customer = build();
     const customerSocket = socket();
     await customer.gateway.handleConnection(customerSocket as never);
-    expect(customerSocket.join).not.toHaveBeenCalled();
+    expect(customerSocket.join).not.toHaveBeenCalledWith('admins');
   });
 
   it('pushes quote:requested to the admins and the errand room', () => {
@@ -329,7 +306,7 @@ describe('RealtimeGateway runner room (RA-5, row 139)', () => {
     const client = socket();
     await gateway.handleConnection(client as never);
     expect(client.disconnect).not.toHaveBeenCalled();
-    expect(client.join).not.toHaveBeenCalled();
+    expect(client.join).not.toHaveBeenCalledWith(expect.stringMatching(/^runner:/));
   });
 
   it('never puts customers or admins in a runner room', async () => {
@@ -411,5 +388,167 @@ describe('RealtimeGateway location:ping (RA-4)', () => {
     const body = { lat: -1.28, lng: 36.82 };
     await expect(gateway.locationPing(client as never, body)).resolves.toEqual({ ok: true });
     expect(location.ingest).toHaveBeenCalledWith({ userId: 'r-1', role: UserRole.RUNNER }, body);
+  });
+});
+
+describe('RealtimeGateway suspended accounts (issue #23)', () => {
+  const SUSPENDED = { id: 'u-1', role: UserRole.CUSTOMER, phone: '+254700000000', status: UserStatus.SUSPENDED };
+
+  it.each([UserStatus.SUSPENDED, UserStatus.BANNED])(
+    'refuses the handshake of a %s account with connect_error account_suspended',
+    async (status) => {
+      const { gateway } = build({ user: { ...SUSPENDED, status } });
+      const client = socket();
+      const refusal = await gateway.checkHandshake(client as never);
+      expect(refusal?.message).toBe('account_suspended');
+      expect(refusal?.data).toEqual({
+        statusCode: 401,
+        code: 'account_suspended',
+        message: 'Account is suspended or banned',
+      });
+      expect(client.data.user).toBeUndefined();
+    },
+  );
+
+  it('the handshake middleware passes the refusal to next() and lets others through', async () => {
+    const middlewares: ((s: unknown, next: (err?: Error) => void) => void)[] = [];
+    const server = { use: vi.fn((fn: (typeof middlewares)[number]) => middlewares.push(fn)) };
+
+    const suspended = build({ user: SUSPENDED });
+    suspended.gateway.afterInit(server as never);
+    const refused = await new Promise<Error | undefined>((res) => middlewares[0](socket(), res));
+    expect(refused?.message).toBe('account_suspended');
+
+    const active = build();
+    active.gateway.afterInit(server as never);
+    const client = socket();
+    expect(await new Promise<Error | undefined>((res) => middlewares[1](client, res))).toBeUndefined();
+    expect(client.data.user).toMatchObject({ userId: 'u-1', status: UserStatus.ACTIVE });
+
+    // A bad token is not refused here: handleConnection disconnects it as before.
+    const bad = build({ verify: () => Promise.reject(new Error('jwt')) });
+    bad.gateway.afterInit(server as never);
+    expect(await new Promise<Error | undefined>((res) => middlewares[2](socket(), res))).toBeUndefined();
+  });
+
+  it('does not check the token twice after the middleware ran', async () => {
+    const { gateway, jwt } = build();
+    const client = socket();
+    await gateway.checkHandshake(client as never);
+    await gateway.handleConnection(client as never);
+    expect(jwt.verifyAsync).toHaveBeenCalledTimes(1);
+    expect(client.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('joins the internal user:{id} room on connect', async () => {
+    const { gateway } = build();
+    const client = socket();
+    await gateway.handleConnection(client as never);
+    expect(client.join).toHaveBeenCalledWith('user:u-1');
+  });
+
+  it('disconnects when the account was suspended between the handshake and joining user:{id}', async () => {
+    const { gateway, access } = build();
+    const client = socket();
+    await gateway.checkHandshake(client as never);
+    access.accessOf.mockResolvedValueOnce({ status: UserStatus.SUSPENDED, role: UserRole.CUSTOMER, phone: 'x' } as never);
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it.each([UserStatus.SUSPENDED, UserStatus.BANNED])(
+    'disconnects every live socket of the user on user.status_changed to %s',
+    (status) => {
+      const { gateway, inRoom } = build();
+      const disconnectSockets = vi.fn();
+      inRoom.mockReturnValue({ disconnectSockets } as never);
+      gateway.onUserStatusChanged({ userId: 'u-9', status, from: UserStatus.ACTIVE });
+      expect(inRoom).toHaveBeenCalledWith('user:u-9');
+      expect(disconnectSockets).toHaveBeenCalledWith(true);
+    },
+  );
+
+  it('leaves sockets alone on reactivation and never throws', () => {
+    const { gateway, inRoom } = build();
+    gateway.onUserStatusChanged({ userId: 'u-9', status: UserStatus.ACTIVE, from: UserStatus.SUSPENDED });
+    expect(inRoom).not.toHaveBeenCalled();
+    inRoom.mockImplementation(() => {
+      throw new Error('adapter down');
+    });
+    expect(() =>
+      gateway.onUserStatusChanged({ userId: 'u-9', status: UserStatus.BANNED, from: UserStatus.ACTIVE }),
+    ).not.toThrow();
+  });
+});
+
+describe('RealtimeGateway merchant_details events per role (rows 42-44, 80; issue #28)', () => {
+  const roomSocket = (role: UserRole) => ({ data: { user: { userId: `${role}-1`, role } }, emit: vi.fn() });
+  const updated = {
+    errandId: ERRAND_ID,
+    merchantName: 'KPLC',
+    tillNumber: null,
+    paybillNumber: '888880',
+    accountReference: 'ACC-1',
+    changed: false,
+    merchantDetailsUpdatedAt: null,
+  };
+  const changed = {
+    errandId: ERRAND_ID,
+    merchantName: 'Naivas',
+    tillNumber: '654321',
+    paybillNumber: null,
+    accountReference: null,
+    merchantDetailsUpdatedAt: '2026-10-09T10:00:00.000Z',
+  };
+  const noNumbers = { tillNumber: null, paybillNumber: null, accountReference: null };
+
+  const setup = (feesPaid: boolean) => {
+    const built = build({ feesPaid: () => Promise.resolve(feesPaid) });
+    const customer = roomSocket(UserRole.CUSTOMER);
+    const runner = roomSocket(UserRole.RUNNER);
+    const admin = roomSocket(UserRole.ADMIN);
+    built.roomSockets.push(customer, runner, admin);
+    return { ...built, customer, runner, admin };
+  };
+
+  it.each([
+    ['merchant_details:updated', 'onMerchantDetailsUpdated', updated],
+    ['merchant_details:changed', 'onMerchantDetailsChanged', changed],
+  ] as const)('%s before the fees are paid: no numbers for the customer, unchanged for runner and admin', async (name, handler, event) => {
+    const { gateway, inRoom, errands, customer, runner, admin } = setup(false);
+    await (gateway[handler] as (e: typeof event) => Promise<void>)(event);
+    expect(inRoom).toHaveBeenCalledWith(`errand:${ERRAND_ID}`);
+    expect(errands.merchantNumbersVisibleTo).toHaveBeenCalledWith(UserRole.CUSTOMER, ERRAND_ID);
+    expect(customer.emit).toHaveBeenCalledWith(name, { ...event, ...noNumbers });
+    expect(runner.emit).toHaveBeenCalledWith(name, event);
+    expect(admin.emit).toHaveBeenCalledWith(name, event);
+  });
+
+  it.each([
+    ['merchant_details:updated', 'onMerchantDetailsUpdated', updated],
+    ['merchant_details:changed', 'onMerchantDetailsChanged', changed],
+  ] as const)('%s after the fees are paid: every role gets the payload as before', async (name, handler, event) => {
+    const { gateway, customer, runner, admin } = setup(true);
+    await (gateway[handler] as (e: typeof event) => Promise<void>)(event);
+    expect(customer.emit).toHaveBeenCalledWith(name, event);
+    expect(runner.emit).toHaveBeenCalledWith(name, event);
+    expect(admin.emit).toHaveBeenCalledWith(name, event);
+  });
+
+  it('withholds the numbers from the customer when the fee check fails', async () => {
+    const built = build({ feesPaid: () => Promise.reject(new Error('db down')) });
+    const customer = roomSocket(UserRole.CUSTOMER);
+    built.roomSockets.push(customer);
+    await built.gateway.onMerchantDetailsUpdated(updated);
+    expect(customer.emit).toHaveBeenCalledWith('merchant_details:updated', { ...updated, ...noNumbers });
+  });
+
+  it('skips the fee check when no customer is in the room', async () => {
+    const built = build();
+    const runner = roomSocket(UserRole.RUNNER);
+    built.roomSockets.push(runner);
+    await built.gateway.onMerchantDetailsChanged(changed);
+    expect(built.errands.merchantNumbersVisibleTo).not.toHaveBeenCalled();
+    expect(runner.emit).toHaveBeenCalledWith('merchant_details:changed', changed);
   });
 });

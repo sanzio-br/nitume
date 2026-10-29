@@ -19,8 +19,9 @@ import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice.component';
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
-import { AdminDataService, categoryLabel, shortId } from '../admin-data.service';
+import { AdminDataService, categoryLabel, maskedId, shortId } from '../admin-data.service';
 import { DrawerNavService } from '../drawer-nav.service';
+import { CustomerLinkComponent } from './customer-link';
 import { adminLabel, refundChipStatus, refundTriggerLabel, reviewCeiling } from '../refund-labels';
 import { PayoutCorrectionCardComponent } from '../payouts/payout-correction-card';
 import { CurrentPayoutCardComponent } from '../payouts/current-payout-card';
@@ -111,6 +112,7 @@ type Dialog =
     CurrentPayoutCardComponent,
     TaskExposureCardComponent,
     ExposureOverrideFieldComponent,
+    CustomerLinkComponent,
   ],
   template: `
     @if (loading()) {
@@ -161,6 +163,18 @@ type Dialog =
               </button>
             </span>
           </div>
+          @if (r.customer?.userId) {
+            <!-- drawer-user-status §2 (SQ-3): the customer's account. -->
+            <div class="drawer-row">
+              <span>Customer</span>
+              <span class="row-inline">
+                <b class="txt">{{ customerName() }}</b>
+                @defer (on immediate) {
+                  <app-customer-link [userId]="r.customer!.userId" />
+                }
+              </span>
+            </div>
+          }
           @if (taskStatus(); as ts) {
             <div class="drawer-row"><span>Task status</span><app-status-chip [status]="ts" /></div>
           }
@@ -798,6 +812,13 @@ export class RefundDrawerComponent implements OnInit {
   protected openTask(): void {
     const r = this.review();
     if (r) this.nav.open('task', r.errandId);
+  }
+
+  /** Short name, else the display name, else the masked user id. */
+  protected customerName(): string {
+    const c = this.review()?.customer;
+    if (!c) return '—';
+    return c.shortName ?? c.displayName ?? maskedId(c.userId);
   }
 
   protected submitCorrection(): void {

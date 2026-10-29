@@ -53,7 +53,7 @@ const build = (status: ErrandStatus, assignments: Partial<ErrandAssignment>[] = 
     {} as never,
     {} as never,
     assignmentRepo as never,
-    {} as never,
+    { findOne: vi.fn(() => Promise.resolve({ id: 'c-1', userId: 'u-c-1' })) } as never,
     {} as never,
     { emit } as never,
     {} as never,

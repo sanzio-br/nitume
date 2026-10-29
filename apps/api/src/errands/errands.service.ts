@@ -83,6 +83,15 @@ export interface ErrandResult {
   history: ErrandStatusHistory;
 }
 
+/**
+ * `ErrandResult` as a response: admins get the full history row, customers
+ * and runners an `ErrandHistoryPartyView` (issue #35).
+ */
+export interface ErrandResultView {
+  errand: Errand;
+  history: ErrandStatusHistory | ErrandHistoryPartyView;
+}
+
 export interface ListErrandsResponse {
   items: Errand[];
   nextCursor: string | null;
@@ -206,6 +215,13 @@ export type ErrandView = Errand & {
    *   PAYMENT_CONFIRMED and `deadlineAt` passed.
    */
   canExpire?: { noRunner: boolean; deadlinePassed: boolean };
+  /**
+   * Admin detail only (issue #24, U-2): the user id of the customer who owns
+   * the task (`customerId` is the customer profile id), so the admin drawer
+   * can open the Customer drawer (`GET /admin/users/:id`). Null if the
+   * profile is missing.
+   */
+  customerUserId?: string | null;
 };
 
 /** States in which the assigned runner may write `runnerNotes`. */
@@ -432,6 +448,39 @@ export interface ErrandExpiryView {
 
 /** History row with its actor's display name (round-11 item 6). */
 export type ErrandHistoryView = ErrandStatusHistory & { actor: { id: string; displayName: string | null } | null };
+
+/**
+ * A history row as a customer or runner sees it (issue #35, owner WQ-43):
+ * only the fields the apps and the website read. `note` (internal ops notes
+ * such as an admin's expiry reason) and `actorId` (the acting user, possibly
+ * an admin) are left out; `actorType` stays (the runner app shows "GPS" for a
+ * `system` arrival, and nitume_core requires it).
+ */
+export type ErrandHistoryPartyView = Pick<
+  ErrandStatusHistory,
+  'id' | 'errandId' | 'fromStatus' | 'toStatus' | 'actorType' | 'createdAt'
+>;
+
+/** Projects a history row onto {@link ErrandHistoryPartyView} (an allowlist: new columns stay hidden). */
+export const toHistoryPartyView = (row: ErrandStatusHistory): ErrandHistoryPartyView => ({
+  id: row.id,
+  errandId: row.errandId,
+  fromStatus: row.fromStatus ?? null,
+  toStatus: row.toStatus,
+  actorType: row.actorType,
+  createdAt: row.createdAt,
+});
+
+/**
+ * A transition result (`{ ..., history }`) for `viewer`: unchanged for an
+ * admin, the history row projected by {@link toHistoryPartyView} for
+ * everyone else (issue #35).
+ */
+export const withHistoryFor = <R extends { history: ErrandStatusHistory | null }>(
+  viewer: { role: string },
+  result: R,
+): Omit<R, 'history'> & { history: R['history'] | ErrandHistoryPartyView } =>
+  viewer.role === UserRole.ADMIN || !result.history ? result : { ...result, history: toHistoryPartyView(result.history) };
 
 /** Row 157: the offer-expiry job expired an admin offer; the task waits for a new runner. */
 export const ASSIGNMENT_EXPIRED_EVENT = 'assignment.expired';
@@ -696,12 +745,30 @@ export type AdminExpiryFrom = ErrandStatus.RUNNER_ASSIGNED | ErrandStatus.PAYMEN
  */
 export type EligibleRemainingCounter = (manager: EntityManager | undefined, errandId: string) => Promise<number>;
 
+/**
+ * Issue #28 (owner, 2026-10-29): the errands among `errandIds` whose fee
+ * payment has completed, registered by the payments module (its primary
+ * payment is `completed`, the condition the apps use to show the Till/Paybill).
+ */
+export type FeesPaidLookup = (errandIds: string[]) => Promise<Set<string>>;
+
+/** The merchant account numbers a customer may only see once the fees are paid (issue #28). */
+export type MerchantNumbers = Pick<
+  Errand,
+  'id' | 'merchantTillNumber' | 'merchantPaybillNumber' | 'merchantAccountReference'
+> & { merchantDetailsAvailable?: boolean };
+
+/** True when the viewer role sees merchant numbers without the fee check (runner, admin). */
+const seesMerchantNumbersAlways = (role: string): boolean =>
+  role === UserRole.RUNNER || role === UserRole.ADMIN;
+
 @Injectable()
 export class ErrandsService {
   private readonly afterCommit = new WeakMap<EntityManager, StatusChangedEvent[]>();
   /** Other domain events queued inside a transaction, emitted after it commits (see inTx). */
   private readonly afterCommitEvents = new WeakMap<EntityManager, { name: string; payload: unknown }[]>();
   private eligibleCounter: EligibleRemainingCounter | null = null;
+  private feesPaidLookup: FeesPaidLookup | null = null;
   private readonly terminationHooks: TerminationHook[] = [];
   private readonly confirmationHooks: ConfirmationHook[] = [];
   private readonly disputeResolutionHooks: DisputeResolutionHook[] = [];
@@ -936,8 +1003,15 @@ export class ErrandsService {
         noRunner: (await this.noRunnerExpiryBlocker(errand, all)) === null,
         deadlinePassed: paidExpiryBlocker(errand) === null,
       };
+      view.customerUserId = await this.customerUserIdOf(errand.customerId);
     }
     return view;
+  }
+
+  /** U-2: the user id behind a customer profile id, or null. */
+  private async customerUserIdOf(customerProfileId: string): Promise<string | null> {
+    const row = await this.customerProfiles.findOne({ where: { id: customerProfileId }, select: { id: true, userId: true } });
+    return row?.userId ?? null;
   }
 
   /**
@@ -1055,6 +1129,69 @@ export class ErrandsService {
     this.eligibleCounter = counter;
   }
 
+  /** Registers the payments module's fee-paid lookup (see `FeesPaidLookup`, issue #28). */
+  onFeesPaidLookup(lookup: FeesPaidLookup): void {
+    this.feesPaidLookup = lookup;
+  }
+
+  /**
+   * Issue #28: the errands among `errandIds` whose fee payment has
+   * completed. Empty without the payments module (fails closed: the
+   * customer then sees no merchant numbers).
+   */
+  async feesPaidAmong(errandIds: string[]): Promise<Set<string>> {
+    const ids = [...new Set(errandIds)];
+    if (!this.feesPaidLookup || ids.length === 0) {
+      return new Set();
+    }
+    return this.feesPaidLookup(ids);
+  }
+
+  /**
+   * Issue #28 (owner, 2026-10-29): whether `role` may see the merchant's
+   * Till/Paybill/account numbers on this errand now. Runner and admin
+   * always; a customer only once the fee payment has completed.
+   */
+  async merchantNumbersVisibleTo(role: string, errandId: string): Promise<boolean> {
+    if (seesMerchantNumbersAlways(role)) {
+      return true;
+    }
+    return (await this.feesPaidAmong([errandId])).has(errandId);
+  }
+
+  /**
+   * Issue #28 (owner, 2026-10-29): for a customer viewer, clears
+   * `merchantTillNumber`, `merchantPaybillNumber` and
+   * `merchantAccountReference` (set to null, keys kept) on every errand whose
+   * fee payment has not completed. `merchantName`,
+   * `merchantDetailsUpdatedAt` and `merchantDetailsAvailable` stay; the
+   * flag is added when the view lacks it, so clients that derive it from
+   * the numbers still see `true`. Runner and admin views, and paid errands,
+   * are returned unchanged. Mutates and returns `views`.
+   */
+  async hideMerchantNumbersFor<T extends MerchantNumbers>(viewer: Pick<ViewerContext, 'role'>, views: T[]): Promise<T[]> {
+    if (seesMerchantNumbersAlways(viewer.role)) {
+      return views;
+    }
+    const withNumbers = views.filter(
+      (v) => v.merchantTillNumber || v.merchantPaybillNumber || v.merchantAccountReference,
+    );
+    if (withNumbers.length === 0) {
+      return views;
+    }
+    const paid = await this.feesPaidAmong(withNumbers.map((v) => v.id));
+    for (const view of withNumbers) {
+      if (paid.has(view.id)) {
+        continue;
+      }
+      view.merchantDetailsAvailable ??= Boolean(view.merchantTillNumber || view.merchantPaybillNumber);
+      view.merchantTillNumber = null;
+      view.merchantPaybillNumber = null;
+      view.merchantAccountReference = null;
+    }
+    return views;
+  }
+
   /** Every assignment of an errand, newest first (no access check). */
   async assignmentsOf(errandId: string, manager?: EntityManager): Promise<ErrandAssignment[]> {
     const repo = manager ? manager.getRepository(ErrandAssignment) : this.assignments;
@@ -1088,12 +1225,16 @@ export class ErrandsService {
   /**
    * `GET /errands/:id/history` (round-11 item 6). Admin viewers get each
    * row's `actor { id, displayName }` (null for system rows). Customers and
-   * runners get the plain rows: no actor names (reviewer B2).
+   * runners get {@link ErrandHistoryPartyView} rows: no actor names (reviewer
+   * B2), no `note` and no `actorId` (issue #35, owner WQ-43).
    */
-  async historyViewsFor(errandId: string, viewer: ViewerContext): Promise<ErrandStatusHistory[] | ErrandHistoryView[]> {
+  async historyViewsFor(
+    errandId: string,
+    viewer: ViewerContext,
+  ): Promise<ErrandHistoryPartyView[] | ErrandHistoryView[]> {
     const rows = await this.historyFor(errandId);
     if (viewer.role !== UserRole.ADMIN) {
-      return rows;
+      return rows.map(toHistoryPartyView);
     }
     const ids = [...new Set(rows.map((r) => r.actorId).filter((v): v is string => !!v))];
     const names = ids.length > 0 && this.users ? await this.users.displayNames(ids) : new Map<string, string>();

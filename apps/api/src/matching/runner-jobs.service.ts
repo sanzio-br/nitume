@@ -5,11 +5,12 @@ import { AssignmentDeclineReason, AssignmentStatus, ErrandCategory, ErrandStatus
 import { ErrandAssignment } from '../errands/errand-assignment.entity';
 import { BUDGET_CATEGORIES } from '../errands/errand-rules';
 import { Errand } from '../errands/errand.entity';
-import { ErrandStatusHistory } from '../errands/errand-status-history.entity';
 import {
+  ErrandHistoryPartyView,
   ErrandItemView,
   ErrandLocationView,
   ErrandsService,
+  toHistoryPartyView,
   ViewerContext,
 } from '../errands/errands.service';
 import { MerchantRoute } from '../payments/payment-views';
@@ -197,9 +198,10 @@ export class RunnerJobsService {
   /**
    * `POST /errands/:id/accept` (system design §3.2): RUNNER_ASSIGNED ->
    * RUNNER_EN_ROUTE, assignment `accepted`, runner `busy`. Returns the
-   * runner projection and the history row.
+   * runner projection and the history row, without `note` and `actorId`
+   * (issue #35).
    */
-  async accept(userId: string, errandId: string): Promise<{ job: RunnerJobView; history: ErrandStatusHistory }> {
+  async accept(userId: string, errandId: string): Promise<{ job: RunnerJobView; history: ErrandHistoryPartyView }> {
     const { history } = await this.errands.transition(
       errandId,
       ErrandStatus.RUNNER_EN_ROUTE,
@@ -207,7 +209,7 @@ export class RunnerJobsService {
       undefined,
       { role: 'runner', userId },
     );
-    return { job: await this.job(userId, errandId), history };
+    return { job: await this.job(userId, errandId), history: toHistoryPartyView(history) };
   }
 
   /** `POST /errands/:id/decline` `{ reason? }` (rows 113, 134). */

@@ -5,7 +5,7 @@ import type { SignOptions } from 'jsonwebtoken';
 import { createHash, randomUUID } from 'node:crypto';
 import { UserRole } from '../common/enums';
 import { User } from '../users/user.entity';
-import { RedisService } from '../infra/redis/redis.service';
+import { escapeGlob, RedisService } from '../infra/redis/redis.service';
 
 export type TokenType = 'access' | 'refresh';
 
@@ -15,12 +15,17 @@ export interface JwtPayload {
   phone: string;
   type: TokenType;
   jti?: string;
+  /** Issued-at, whole seconds (set by jsonwebtoken on sign). */
+  iat?: number;
 }
 
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
+
+/** The 401 message of a refresh session that was rotated, revoked or expired. */
+export const REFRESH_REVOKED_MESSAGE = 'Refresh token revoked or expired';
 
 const refreshSessionKey = (userId: string, jti: string): string =>
   `refresh:${userId}:${jti}`;
@@ -76,8 +81,11 @@ export class TokenService {
     };
   }
 
-  /** Verify + rotate a refresh token; returns a fresh token pair. */
-  async rotate(refreshToken: string): Promise<TokenPair> {
+  /**
+   * Checks a refresh token is well-formed, signed and still a live session
+   * (not rotated or revoked) without consuming it. Returns its payload.
+   */
+  async verifyRefresh(refreshToken: string): Promise<JwtPayload & { jti: string }> {
     let payload: JwtPayload;
     try {
       payload = this.jwt.verify<JwtPayload>(refreshToken, {
@@ -91,8 +99,14 @@ export class TokenService {
     }
     const stored = await this.redis.get(refreshSessionKey(payload.sub, payload.jti));
     if (!stored || stored !== this.hashToken(refreshToken)) {
-      throw new UnauthorizedException('Refresh token revoked or expired');
+      throw new UnauthorizedException(REFRESH_REVOKED_MESSAGE);
     }
+    return { ...payload, jti: payload.jti };
+  }
+
+  /** Verify + rotate a refresh token; returns a fresh token pair. */
+  async rotate(refreshToken: string): Promise<TokenPair> {
+    const payload = await this.verifyRefresh(refreshToken);
     // Rotation: the used refresh token is single-use.
     await this.redis.del(refreshSessionKey(payload.sub, payload.jti));
     return this.issueTokenPair({
@@ -116,11 +130,25 @@ export class TokenService {
     }
   }
 
+  /**
+   * Issue #24 (owner WQ-23, 2026-10-28): revokes every refresh session of a
+   * user (mobile and web share the `refresh:{userId}:{jti}` store), so a
+   * suspended or banned account keeps no session and a reactivated one must
+   * sign in again with OTP. Returns how many sessions were revoked.
+   */
+  async revokeAllForUser(userId: string): Promise<number> {
+    if (!userId) {
+      return 0;
+    }
+    return this.redis.deleteMatching(refreshSessionKey(escapeGlob(userId), '*'));
+  }
+
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private refreshTtlSeconds(): number {
+  /** Refresh token lifetime (jwt.refreshTtl) in seconds; also the web cookie Max-Age. */
+  refreshTtlSeconds(): number {
     const ttl = this.config.get<string>('jwt.refreshTtl', '30d');
     const match = /^(\d+)([smhd])$/.exec(ttl);
     if (!match) {

@@ -30,6 +30,8 @@ const build = (opts: {
   merchant?: Record<string, string | null>;
   /** The errand's deadline (row 237). */
   deadlineAt?: Date | null;
+  /** The errand's fee payment has completed (issue #28). */
+  feesPaid?: boolean;
 } = {}) => {
   const payments = {
     findOne: vi.fn(({ where }: { where: Record<string, unknown> }) =>
@@ -40,6 +42,10 @@ const build = (opts: {
             ? (opts.active ?? null)
             : (opts.existing ?? null),
       ),
+    ),
+    // Issue #28 fee-paid lookup: completed primary payments of the errands.
+    find: vi.fn(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(where.status === PaymentStatus.COMPLETED && opts.feesPaid ? [{ errandId: 'e-1' }] : []),
     ),
     create: vi.fn((row: object) => row),
     save: vi.fn((row: object) =>
@@ -88,6 +94,7 @@ const build = (opts: {
           : Promise.resolve({ id: 'q-1', total: '1000.00', acceptedAt: new Date() }),
     ),
     onRequote: vi.fn(),
+    onFeesPaidLookup: vi.fn(),
   };
   const stk = { name: 'console', initiateStk: vi.fn(() => Promise.resolve({ checkoutRequestId: 'chk-1', transactionId: 't' })) };
   const config = { get: vi.fn((_k: string, d: unknown) => d) };
@@ -285,7 +292,7 @@ describe('PaymentsService.initiate', () => {
     ).toBe('merchant_details_missing');
   });
 
-  it('allows merchant_direct once Till/Paybill details are set and returns them', async () => {
+  it('allows merchant_direct once Till/Paybill details are set, without the numbers while the fees are unpaid (issue #28)', async () => {
     const { service, payments } = build({
       budget: '2500.00',
       merchant: { merchantName: 'Naivas', merchantTillNumber: '123456' },
@@ -294,14 +301,41 @@ describe('PaymentsService.initiate', () => {
     expect(payments.create).toHaveBeenCalledWith(
       expect.objectContaining({ paymentFlow: PaymentFlow.MERCHANT_DIRECT }),
     );
-    expect(res.merchantPayment).toMatchObject({
+    expect(res.merchantDetailsAvailable).toBe(true);
+    expect(res.merchantPayment).toEqual({
       route: 'merchant_direct',
       amount: '2500.00',
+      paidTo: 'merchant',
       merchantName: 'Naivas',
-      tillNumber: '123456',
+      tillNumber: null,
       paybillNumber: null,
+      accountReference: null,
       merchantDetailsUpdatedAt: null,
       merchantDetailsChangedAfterPayment: false,
+    });
+  });
+
+  it('returns the merchant numbers on a replay once the fee payment has completed (issue #28)', async () => {
+    const keyed = {
+      id: 'p-1',
+      errandId: 'e-1',
+      status: PaymentStatus.COMPLETED,
+      createdAt: new Date(),
+      paymentFlow: PaymentFlow.MERCHANT_DIRECT,
+      merchantAmount: '2500.00',
+    };
+    const { service } = build({
+      keyed,
+      feesPaid: true,
+      merchant: { merchantName: 'KPLC', merchantPaybillNumber: '888880', merchantAccountReference: 'ACC-1' },
+    });
+    const res = await service.initiate('e-1', user, { idempotencyKey: 'key-12345678' });
+    expect(res.merchantPayment).toMatchObject({
+      route: 'merchant_direct',
+      merchantName: 'KPLC',
+      tillNumber: null,
+      paybillNumber: '888880',
+      accountReference: 'ACC-1',
     });
   });
 
@@ -396,5 +430,72 @@ describe('PaymentsService re-quote on ACCEPTED (row 72)', () => {
     await expect(
       guard(managerWith({ id: 'p-1', status: PaymentStatus.PENDING }), 'e-1'),
     ).rejects.toMatchObject({ code: 'payment_in_progress' });
+  });
+});
+
+describe('Merchant numbers before the fees are paid (issue #28)', () => {
+  const admin = { userId: 'a-1', role: UserRole.ADMIN, phone: '+254700000099' } as never;
+  const merchant = { merchantName: 'KPLC', merchantPaybillNumber: '888880', merchantAccountReference: 'ACC-1' };
+  const directPayment = (status: PaymentStatus) => ({
+    id: 'p-1',
+    errandId: 'e-1',
+    status,
+    createdAt: new Date(),
+    paymentFlow: PaymentFlow.MERCHANT_DIRECT,
+    merchantAmount: '2500.00',
+  });
+  const numbersOf = (mp: unknown) => {
+    const v = mp as { tillNumber: string | null; paybillNumber: string | null; accountReference: string | null };
+    return { tillNumber: v.tillNumber, paybillNumber: v.paybillNumber, accountReference: v.accountReference };
+  };
+  const hidden = { tillNumber: null, paybillNumber: null, accountReference: null };
+  const shown = { tillNumber: null, paybillNumber: '888880', accountReference: 'ACC-1' };
+
+  it('feesPaidAmong reads completed primary payments only, in one query', async () => {
+    const { service, payments } = build({ feesPaid: true });
+    expect(await service.feesPaidAmong(['e-1', 'e-2'])).toEqual(new Set(['e-1']));
+    expect(payments.find).toHaveBeenCalledTimes(1);
+    const where = (payments.find.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0].where;
+    expect(where.status).toBe(PaymentStatus.COMPLETED);
+    expect(where.priceChangeRequestId).toEqual(expect.objectContaining({ _type: 'isNull' }));
+    expect(await service.feesPaid('e-1')).toBe(true);
+    expect(await build({ feesPaid: false }).service.feesPaid('e-1')).toBe(false);
+  });
+
+  it('feesPaidAmong makes no query for an empty list', async () => {
+    const { service, payments } = build();
+    expect(await service.feesPaidAmong([])).toEqual(new Set());
+    expect(payments.find).not.toHaveBeenCalled();
+  });
+
+  it('registers the fee-paid lookup with the errands module', async () => {
+    const { service, errands } = build({ feesPaid: true });
+    service.onModuleInit();
+    expect(errands.onFeesPaidLookup).toHaveBeenCalledTimes(1);
+    const lookup = errands.onFeesPaidLookup.mock.calls[0][0] as (ids: string[]) => Promise<Set<string>>;
+    expect(await lookup(['e-1'])).toEqual(new Set(['e-1']));
+  });
+
+  it('GET /payments/:errandId: a customer gets no numbers while the fee payment is pending', async () => {
+    const { service } = build({ existing: directPayment(PaymentStatus.PENDING), merchant, feesPaid: false });
+    const res = await service.listForErrand('e-1', user);
+    expect(res.merchantDetailsAvailable).toBe(true);
+    expect(res.merchantPayment).toMatchObject({ route: 'merchant_direct', merchantName: 'KPLC', amount: '2500.00' });
+    expect(numbersOf(res.merchantPayment)).toEqual(hidden);
+  });
+
+  it('GET /payments/:errandId: a customer gets the numbers once the fee payment has completed', async () => {
+    const { service } = build({ existing: directPayment(PaymentStatus.COMPLETED), merchant, feesPaid: true });
+    const res = await service.listForErrand('e-1', user);
+    expect(numbersOf(res.merchantPayment)).toEqual(shown);
+  });
+
+  it('GET /payments/:errandId: an admin gets the numbers before and after payment (unchanged)', async () => {
+    const before = await build({ existing: directPayment(PaymentStatus.PENDING), merchant, feesPaid: false })
+      .service.listForErrand('e-1', admin);
+    expect(numbersOf(before.merchantPayment)).toEqual(shown);
+    const after = await build({ existing: directPayment(PaymentStatus.COMPLETED), merchant, feesPaid: true })
+      .service.listForErrand('e-1', admin);
+    expect(numbersOf(after.merchantPayment)).toEqual(shown);
   });
 });

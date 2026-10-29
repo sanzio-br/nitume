@@ -1,6 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { AuthStore } from '../core/auth/auth.store';
 import type { Errand } from '../core/api-types';
 
 export const API = 'http://localhost:3000/api/v1';
@@ -11,6 +13,18 @@ export function setupHttp(): HttpTestingController {
     providers: [provideHttpClient(), provideHttpClientTesting()],
   });
   return TestBed.inject(HttpTestingController);
+}
+
+/**
+ * TestBed with a mocked HttpClient and an `AuthStore` stand-in (the real one
+ * reads `localStorage`, which the test runner doesn't provide). `meId` is the
+ * signed-in admin's user id from the token.
+ */
+export function setupHttpWithAuth(meId: string | null = null): HttpTestingController {
+  TestBed.configureTestingModule({
+    providers: [{ provide: AuthStore, useValue: { userId: signal(meId) } }],
+  });
+  return setupHttp();
 }
 
 /** Lets pending promises (store awaits) settle. */

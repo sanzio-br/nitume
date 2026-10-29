@@ -3,6 +3,7 @@ import { DrawerNavService } from '../drawer-nav.service';
 import { AdminDataService, shortId, timeAgo } from '../admin-data.service';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
 import { formatKsh } from '../shared-format';
+import { UserStatusSectionComponent } from './user-status.section';
 
 /**
  * Runner drawer: full profile row for a runner from the directory feed.
@@ -10,7 +11,7 @@ import { formatKsh } from '../shared-format';
  */
 @Component({
   selector: 'app-runner-drawer',
-  imports: [StatusChipComponent],
+  imports: [StatusChipComponent, UserStatusSectionComponent],
   template: `
     @if (runner(); as r) {
       <section class="drawer-section">
@@ -68,6 +69,10 @@ import { formatKsh } from '../shared-format';
           </button>
         </div>
       </section>
+      <!-- drawer-user-status: account status, actions and history, always last. -->
+      @defer (on immediate) {
+        <app-user-status-section [userId]="r.userId" audience="runner" />
+      }
     } @else {
       <div class="ops-empty">
         <b>Runner not found</b>This profile isn't in the current runners feed.

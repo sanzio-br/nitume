@@ -39,6 +39,17 @@ export class AuthStore {
   readonly isAuthenticated = computed(() => !!this.#state().tokens?.accessToken);
   readonly actingRole = computed(() => this.#state().actingRole);
 
+  /** The signed-in user's id (`sub` of the access token), or null. */
+  readonly userId = computed(() => {
+    const token = this.#state().tokens?.accessToken;
+    if (!token) return null;
+    try {
+      return jwtDecode<{ sub?: string }>(token).sub ?? null;
+    } catch {
+      return null;
+    }
+  });
+
   /** True if the decoded access token's exp is within this horizon (s). */
   readonly isExpiringSoon = computed(() => {
     const tokens = this.#state().tokens;
