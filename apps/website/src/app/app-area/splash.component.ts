@@ -13,13 +13,7 @@ import { NmWordmark } from '../shared/ui/wordmark/wordmark.component';
       <span class="status" role="status">Loading</span>
     </nm-auth-frame>
   `,
-  styles: `
-    @use '../../styles/tokens' as * with ($nm-emit-root: false);
-
-    .status {
-      @include nm-visually-hidden;
-    }
-  `,
+  styleUrl: './splash.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppSplashComponent {

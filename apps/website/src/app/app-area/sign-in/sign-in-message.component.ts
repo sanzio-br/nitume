@@ -38,22 +38,7 @@ export type SignInMessage =
       }
     }
   `,
-  styles: `
-    @use '../../../styles/tokens' as * with ($nm-emit-root: false);
-
-    :host {
-      display: block;
-    }
-
-    :host(.centered) {
-      text-align: center;
-    }
-
-    .message {
-      @include nm-type(error);
-      margin: 0;
-    }
-  `,
+  styleUrl: './sign-in-message.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SignInMessageComponent {
