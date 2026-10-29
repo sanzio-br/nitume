@@ -1,0 +1,16 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-section-label {
+  @include nm-type(section-label);
+  margin: 0;
+  padding: 6px 20px 10px;
+}
+
+.nm-section-label--flush {
+  padding-left: 0;
+  padding-right: 0;
+}

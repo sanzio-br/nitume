@@ -166,3 +166,21 @@ export function formatPhone(phone: string): string {
   const m = /^\+?254(\d{3})(\d{3})(\d{3})$/.exec(phone.replace(/\s/g, ''));
   return m ? `+254 ${m[1]} ${m[2]} ${m[3]}` : phone;
 }
+
+/** Who made a status change: the shape shared by task and account history items. */
+export interface HistoryActorRef {
+  actorType: string;
+  actor?: { id: string; displayName: string | null } | null;
+}
+
+/**
+ * `Status history` caption actor (task and account histories): `Admin ·
+ * {admin name}` when the API names the admin (`actor.displayName`), else the
+ * actor type (`Admin`, `System`, `Runner`, `Customer`).
+ */
+export function historyActor(entry: HistoryActorRef): string {
+  const type = entry.actorType.replace(/_/g, ' ');
+  const label = type.charAt(0).toUpperCase() + type.slice(1);
+  const name = entry.actor?.displayName?.trim();
+  return entry.actorType === 'admin' && name ? `${label} · ${name}` : label;
+}

@@ -460,7 +460,7 @@ describe('RefundDrawerComponent', () => {
     expect(el.querySelector('input, textarea')).toBeNull();
     // Changes go through an auditable correction (row 100), never an edit.
     const labels = Array.from(el.querySelectorAll('button'), (b) => b.textContent?.trim());
-    expect(labels).toEqual(['Open task', 'Record a correction']);
+    expect(labels).toEqual(['Open task', 'Open customer', 'Record a correction']);
     expect(el.textContent).toContain('SLK4H7XQ2P');
     expect(el.textContent).toContain('Refund sent');
     expect(el.textContent).not.toContain('Original payout');

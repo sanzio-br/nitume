@@ -1,0 +1,52 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+@use './overlay-frame';
+
+:host {
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+// Dialog stays 335px at every width (WQ-3). No shadow.
+.nm-dialog {
+  position: relative;
+  box-sizing: border-box;
+  width: calc(100% - 40px);
+  max-width: 335px;
+  max-height: calc(100% - 40px);
+  overflow-y: auto;
+  padding: 20px;
+  background-color: var(--nitume-white);
+  border-radius: var(--nitume-r-l);
+}
+
+.nm-dialog__title {
+  @include nm-type(dialog-title);
+  margin: 0;
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-dialog__body {
+  @include nm-type(body, $color: slate-600);
+  margin: 8px 0 0;
+}
+
+.nm-dialog__content {
+  margin-top: 4px;
+}
+
+.nm-dialog__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.nm-dialog__error {
+  @include nm-type(error);
+  margin: 10px 0 0;
+}

@@ -26,6 +26,13 @@
  */
 export const errandRoom = (errandId: string): string => `errand:${errandId}`;
 
+/**
+ * Internal room `user:{userId}`: every socket of one account, joined by the
+ * server on connect. Nothing is emitted to it; it is used to disconnect a
+ * user's sockets when the account is suspended or banned (issue #23).
+ */
+export const userRoom = (userId: string): string => `user:${userId}`;
+
 /** §4.2 `runner:{runnerId}:status`: one runner's own sockets (job offers). */
 export const runnerRoom = (runnerProfileId: string): string => `runner:${runnerProfileId}:status`;
 

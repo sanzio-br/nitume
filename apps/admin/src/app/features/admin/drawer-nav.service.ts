@@ -7,7 +7,9 @@ export type DrawerKind =
   | 'refund'
   | 'runner_payout'
   /** Verification documents (row 278); id = runner profile id. */
-  | 'runner_verification';
+  | 'runner_verification'
+  /** Customer account (issue #24, SQ-3); id = the customer's user id. */
+  | 'customer';
 
 export interface DrawerTarget {
   kind: DrawerKind;

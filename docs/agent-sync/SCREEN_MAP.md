@@ -174,6 +174,7 @@ Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced
 | p-runners-verification-table | Runner verification as a table (one row per runner) with status / service area / level / search filters, `View documents` per row (row 278) | replaces the `p-runners` verification card grid (`Network` → `Verifications`) | `docs/specs/admin/p-runners-verification-table.md` | `apps/admin/src/app/features/admin/panels/verifications.panel.ts` + `features/admin/verification-labels.ts` (table, on `feat/admin-verification-table` @ `784a4db`) | matches-design (**audited PASS 2026-10-21**: T-1 … T-6 closed; owner rows 279–284 applied; minor m-1 focus return to `View documents` on close, proposed, not built; tsc clean, 326 tests, build 498.26 kB / 500 kB; needs `feat/api-verification-queue-filters` (AV-1, AV-2, AV-5) and `feat/api-verification-answers` before `main`. Was: partial, specced 2026-10-21) |
 | drawer-runner-verification | Verification documents for one runner: card content (check rows, Approve / Reject, reject dialog, re-review, level line) with ID / selfie images rendered inline, full-size viewer (row 278) | new drawer kind `runner_verification`, opened from `p-runners-verification-table` | `docs/specs/admin/drawer-runner-verification.md` | `apps/admin/src/app/features/admin/drawers/runner-verification-drawer.ts`, `drawers/verification-document-preview.ts`, `shared/image-viewer.component.ts` (on `feat/admin-verification-table` @ `784a4db`, `f96da02`) | matches-design (**audited PASS 2026-10-21**: T-7, T-8, T-9 closed; rows 279 (load + log on open, drop on close, refetch on expiry / retry only), 280 (browser cache accepted), 281 (drawer), 283 (AV-3 API-side) applied; minor m-2 no ✕ focus when switching drawers while open (A-01 follow-up, optional). Was: missing, specced 2026-10-21) |
 | drawer-runner-purchase-limit | Per-runner `max_purchase_advance` edit with audit history (row 138) | section of `drawer-runner` | `docs/specs/admin/drawer-runner-purchase-limit.md` | — | missing (specced 2026-10-13, row 142 confirm copy 2026-10-16; API missing N-19) |
+| drawer-user-status | Account status of a runner or customer: suspend, ban, reactivate with a required internal reason (10–500), status history with actor, time and reason (issue #24, owner WQ-22/WQ-23); `Suspend runner` is drawn in the mockup runner drawer, the rest extends it | last section of `drawer-runner`; same section in a proposed new `customer` drawer (none exists, SQ-3) | `docs/specs/admin/drawer-user-status.md` | `apps/admin/src/app/features/admin/drawers/user-status.section.ts`, `user-status-dialog.ts`, `user-status.ts`, `customer-drawer.ts`, `customer-link.ts` (+ `runner-drawer.ts`, `refund-drawer.ts`, `task-drawer.ts` links) on `feat/api-user-status-audit` @ `c8a9474` | matches-design (re-audit PASS 2026-10-29; owner SQ-1 … SQ-6 answered 2026-10-29; one minor m-1, non-blocking; `docs/audits/admin-gap-report.md` #24) |
 
 ## Website — `docs/design/nitume_website.html` → `apps/website`
 
@@ -183,4 +184,75 @@ Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced
 | page-runner | Become a runner | | unaudited |
 | page-business | Business | | unaudited |
 | page-diaspora | Diaspora | | unaudited |
-| page-auth | Sign in / sign up | | unaudited |
+| page-auth | Sign in / sign up → **role chooser** (WQ-12, owner 2026-10-28) | `apps/website/src/app/pages/auth-chooser/auth-chooser.page.ts` (old `pages/auth/` deleted in `c4bbdf1`; branch `feat/website-auth-shell`); spec `auth-foundation.md` §6.7, G6-20; WQ-24 copy met; re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+
+## Website — signed-in app (parity, issues #5–#18)
+
+Owner decision 2026-10-28: every customer and runner app feature comes to `apps/website` as lazy-loaded, signed-in routes under `/app/customer/...` and `/app/runner/...` (auth + role guards from issue #6); the public marketing pages above stay unchanged. There are **no web mockups**: each web spec adapts the mobile mockup view, the built Flutter screen and the owner answers into a responsive layout, with identical content, copy, tokens and component patterns.
+
+| What | Path |
+|---|---|
+| Web specs | `docs/specs/website/<view-id>.md` (customer and runner views share one folder; where a view id exists on both surfaces the file is `customer-<view-id>.md` / `runner-<view-id>.md`) |
+| Shared web UI kit spec | `docs/specs/website/ui-kit.md` (token layer, components, formatting, `RealtimeService`, `LiveMapComponent`, required tests, questions WQ-1 … WQ-8) |
+| Web UI kit (built, #5) | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` |
+| Signed-in routes (built on `feat/website-auth-shell`, #6; re-audit 3 PASS; initial-bundle cap for #7–#18: 360 kB raw, WQ-34) | `/app/customer/...`, `/app/runner/...`; `/auth` role chooser (outside `/app`) |
+| Auth foundation spec (#6) | `docs/specs/website/auth-foundation.md` (routes, session WQ-8, web auth API `/api/v1/auth/web/*`, interceptor, guards, role routing, chooser, #6 components, Vitest 1–59, owner answers WQ-12…WQ-18, WQ-24 (Q6-1), WQ-33) |
+| Audits | `docs/audits/website-gap-report.md` |
+
+Status values as above. `unaudited` = no web spec yet. Mobile spec column: the source the web spec adapts.
+
+| Issue | Surface | View id | Mobile spec (source) | Web spec | Implementation file | Status |
+|---|---|---|---|---|---|---|
+| #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` (branch `feat/website-ui-kit` at `8d9c7e9`); re-audit 2 PASS, G5-1…G5-41 closed in `docs/audits/website-gap-report.md` | matches-design |
+| #6 | shared | auth-foundation | Flutter `services/session.dart` (both apps), `onboarding_routing.dart`, `nitume_core` `otp_policy.dart`; owner WQ-8, WQ-12…WQ-18 | `docs/specs/website/auth-foundation.md` | `apps/website/src/app/core/auth/` (session.store, auth-api, auth.interceptor, guards, role-routing, otp-policy), `src/app/app-area/` (lazy `/app` tree, `AppAreaComponent`, splash, offline page), `src/app/layout/marketing-layout.component.ts`, `src/app/core/realtime/realtime.session-tokens.ts` (branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | customer | v-auth-phone | `docs/specs/customer/v-auth-phone.md` | `docs/specs/website/customer-v-auth-phone.md` (+ `auth-foundation.md`) | `apps/website/src/app/app-area/sign-in/auth-phone.page.ts` (`/app/customer/sign-in`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | customer | v-auth-otp | `docs/specs/customer/v-auth-otp.md` | `docs/specs/website/customer-v-auth-otp.md` (+ `auth-foundation.md`) | `apps/website/src/app/app-area/sign-in/auth-otp.page.ts` + `shared/ui/otp-field`, `shared/ui/otp-resend-line` (`/app/customer/sign-in/code`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | customer | x-name-capture | `docs/specs/customer/x-name-capture.md` | `docs/specs/website/customer-x-name-capture.md` (+ `auth-foundation.md`) | `apps/website/src/app/app-area/sign-in/name-capture.page.ts` (`/app/customer/name`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | customer | shell | `docs/specs/customer/_shared.md` §1 (C-13) | `docs/specs/website/customer-shell.md` (+ `auth-foundation.md`) | `apps/website/src/app/app-area/shell/app-shell.page.ts` + `shared/ui/app-shell`, `shared/ui/app-nav` (`/app/customer`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | runner | v-auth-phone | `docs/specs/runner/v-auth-phone.md` | `docs/specs/website/runner-v-auth-phone.md` (+ `auth-foundation.md`) | `AuthPhonePage` with `data.role: runner` (`/app/runner/sign-in`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | runner | v-auth-otp | `docs/specs/runner/v-auth-otp.md` | `docs/specs/website/runner-v-auth-otp.md` (+ `auth-foundation.md`) | `AuthOtpPage` with `data.role: runner` (`/app/runner/sign-in/code`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | runner | x-name-capture | `docs/specs/runner/x-name-capture.md` | `docs/specs/website/runner-x-name-capture.md` (+ `auth-foundation.md`) | `NameCapturePage` with `data.role: runner` (`/app/runner/name`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #6 | runner | shell | `docs/specs/runner/_shared.md` §1 (C-13) | `docs/specs/website/runner-shell.md` (+ `auth-foundation.md`) | `AppShellPage` with `data.role: runner` (`/app/runner`, branch `feat/website-auth-shell`); re-audit 3 PASS (2026-10-29, `32ea1a1`) in `docs/audits/website-gap-report.md` #6 (G6-1…G6-46 closed; initial 351.44 kB raw ≤ 352.00, WQ-33); merge waits for PR #20, #22, #25, #26 | matches-design |
+| #7 | customer | v-home | `docs/specs/customer/v-home.md` | — | — | unaudited |
+| #7 | customer | v-new-category | `docs/specs/customer/v-new-category.md` | — | — | unaudited |
+| #7 | customer | v-new-details | `docs/specs/customer/v-new-details.md` | — | — | unaudited |
+| #7 | customer | v-new-review | `docs/specs/customer/v-new-review.md` | — | — | unaudited |
+| #8 | customer | x-awaiting-quote | `docs/specs/customer/x-awaiting-quote.md` | — | — | unaudited |
+| #8 | customer | v-payment | `docs/specs/customer/v-payment.md` | — | — | unaudited |
+| #8 | customer | v-price-auth | `docs/specs/customer/v-price-auth.md` | — | — | unaudited |
+| #8 | customer | x-merchant-payment | `docs/specs/customer/x-merchant-payment.md` | — | — | unaudited |
+| #9 | customer | v-track | `docs/specs/customer/v-track.md` | — | — | unaudited |
+| #9 | customer | v-task-detail | `docs/specs/customer/v-task-detail.md` | — | — | unaudited |
+| #10 | customer | v-evidence-confirm | `docs/specs/customer/v-evidence-confirm.md` | — | — | unaudited |
+| #10 | customer | x-evidence-viewer | `docs/specs/customer/x-evidence-viewer.md` | — | — | unaudited |
+| #10 | customer | v-rate | `docs/specs/customer/v-rate.md` | — | — | unaudited |
+| #10 | customer | x-report-problem | `docs/specs/customer/x-report-problem.md` | — | — | unaudited |
+| #11 | customer | v-history | `docs/specs/customer/v-history.md` | — | — | unaudited |
+| #11 | customer | v-notifications | `docs/specs/customer/v-notifications.md` | — | — | unaudited |
+| #12 | customer | v-profile | `docs/specs/customer/v-profile.md` | — | — | unaudited |
+| #12 | customer | v-addresses | `docs/specs/customer/v-addresses.md` | — | — | unaudited |
+| #12 | customer | x-address-form | `docs/specs/customer/x-address-form.md` | — | — | unaudited |
+| #12 | customer | v-payment-methods | `docs/specs/customer/v-payment-methods.md` | — | — | unaudited |
+| #12 | customer | x-payment-method-form | `docs/specs/customer/x-payment-method-form.md` | — | — | unaudited |
+| #12 | customer | x-support | `docs/specs/customer/x-support.md` | — | — | unaudited |
+| #12 | customer | x-legal | `docs/specs/customer/x-legal.md` | — | — | unaudited |
+| #13 | runner | v-onboard-id | `docs/specs/runner/v-onboard-id.md` | — | — | unaudited |
+| #13 | runner | v-onboard-selfie | `docs/specs/runner/v-onboard-selfie.md` | — | — | unaudited |
+| #13 | runner | v-onboard-pending | `docs/specs/runner/v-onboard-pending.md` | — | — | unaudited |
+| #14 | runner | v-jobs | `docs/specs/runner/v-jobs.md` | — | — | unaudited |
+| #14 | runner | v-job-detail | `docs/specs/runner/v-job-detail.md` | — | — | unaudited |
+| #14 | runner | x-location-disclosure | `docs/specs/runner/x-location-disclosure.md` | — | — | unaudited (owner WQ-6 first) |
+| #15 | runner | v-active | `docs/specs/runner/v-active.md` | — | — | unaudited (owner WQ-6 first) |
+| #16 | runner | v-evidence-capture | `docs/specs/runner/v-evidence-capture.md` | — | — | unaudited |
+| #16 | runner | v-price-request | `docs/specs/runner/v-price-request.md` | — | — | unaudited |
+| #16 | runner | v-job-summary | `docs/specs/runner/v-job-summary.md` | — | — | unaudited |
+| #17 | runner | v-earnings | `docs/specs/runner/v-earnings.md` | — | — | unaudited |
+| #17 | runner | v-payout | `docs/specs/runner/v-payout.md` | — | — | unaudited |
+| #17 | runner | x-payout-history | `docs/specs/runner/x-payout-history.md` | — | — | unaudited |
+| #18 | runner | v-profile | `docs/specs/runner/v-profile.md` | — | — | unaudited |
+| #18 | runner | v-edit-skills | `docs/specs/runner/v-edit-skills.md` | — | — | unaudited |
+| #18 | runner | v-notifications | `docs/specs/runner/v-notifications.md` | — | — | unaudited |
+| #18 | runner | x-support | `docs/specs/customer/x-support.md` (runner `AppConfig` URIs) | — | — | unaudited |
+| #18 | runner | x-legal | `docs/specs/customer/x-legal.md` (runner `AppConfig` URIs) | — | — | unaudited |
+
+Not mapped to an issue: none (every customer view and every runner view in the sections above, plus both shells, is covered by #6–#18; dropped `x-recurring-tasks` stays out of MVP).

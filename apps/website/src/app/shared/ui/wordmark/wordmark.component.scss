@@ -1,0 +1,43 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-block;
+}
+
+.nm-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  color: var(--nitume-blue);
+  text-decoration: none;
+}
+
+.nm-wordmark--link {
+  border-radius: var(--nitume-r-s);
+
+  &:hover {
+    text-decoration: none;
+  }
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-wordmark__dot {
+  align-self: center;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: var(--nitume-green);
+}
+
+.nm-wordmark__text {
+  @include nm-type(auth-heading);
+}
+
+.nm-wordmark__suffix {
+  @include nm-type(wordmark-suffix);
+  margin-left: -5px; // a space after `Nitume` (9px gap − 4px)
+}

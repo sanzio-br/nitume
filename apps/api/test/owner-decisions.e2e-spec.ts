@@ -542,18 +542,28 @@ describe('Owner decisions (e2e)', () => {
         .send({ merchantRoute: 'merchant_direct' })
         .expect(201);
       expect(ok.body.merchantDetailsAvailable).toBe(true);
+      // Issue #28: the fee payment is still pending, so no Till number yet.
       expect(ok.body.merchantPayment).toEqual({
         route: 'merchant_direct',
         amount: '2500.00',
         paidTo: 'merchant',
         merchantName: 'Naivas Nyali',
-        tillNumber: '123456',
+        tillNumber: null,
         paybillNumber: null,
         accountReference: null,
         merchantDetailsUpdatedAt: null,
         merchantDetailsChangedAfterPayment: false,
       });
       expect(ok.body.transactions).toHaveLength(2);
+      await http()
+        .post('/api/v1/payments/mpesa/callback')
+        .send({ reference: ok.body.reference, resultCode: 0 })
+        .expect(201);
+      const paid = await http()
+        .get(`/api/v1/payments/${errand.id}`)
+        .set(bearer(customer.token))
+        .expect(200);
+      expect(paid.body.merchantPayment).toMatchObject({ tillNumber: '123456', merchantName: 'Naivas Nyali' });
     });
   });
 

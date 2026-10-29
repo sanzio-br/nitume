@@ -1,0 +1,62 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-tl {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nm-tl__step {
+  position: relative;
+  display: flex;
+  padding-bottom: 18px;
+
+  &:last-child {
+    padding-bottom: 0;
+  }
+}
+
+.nm-tl__rail {
+  position: relative;
+  flex: 0 0 22px;
+  width: 22px;
+}
+
+.nm-tl__dot {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: var(--nitume-slate-400);
+}
+
+.nm-tl__dot--done {
+  background-color: var(--nitume-green);
+}
+
+// From 1px under the dot to the next step.
+.nm-tl__connector {
+  position: absolute;
+  top: 12px;
+  bottom: -18px;
+  left: 4px;
+  width: 1px;
+  background-color: var(--nitume-slate-line);
+}
+
+.nm-tl__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nm-tl__title {
+  @include nm-type(body, $size: 12.5px);
+}

@@ -1,0 +1,23 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-resend {
+  text-align: center;
+}
+
+.nm-resend__line {
+  @include nm-type(resend);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: var(--nitume-tap);
+  margin: 0;
+}
+
+.nm-resend__live {
+  @include nm-visually-hidden;
+}

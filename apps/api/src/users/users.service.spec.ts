@@ -122,3 +122,54 @@ describe('UsersService.idsMatching (row 278, AV-2)', () => {
     expect(h.calls[2]).toEqual({ kind: 'or', sql: 'strpos(u.phone, :digits) > 0', params: { digits: '712' } });
   });
 });
+
+describe('UsersService access and status (issue #23)', () => {
+  it('accessOf selects status, role and phone by primary key', async () => {
+    const repo = { findOne: vi.fn(() => Promise.resolve(user({ status: UserStatus.BANNED }))) };
+    const service = new UsersService(repo as never);
+    expect(await service.accessOf('u-1')).toEqual({
+      status: UserStatus.BANNED,
+      role: UserRole.CUSTOMER,
+      phone: '+254712345678',
+    });
+    expect(repo.findOne).toHaveBeenCalledWith({
+      where: { id: 'u-1' },
+      select: { id: true, status: true, role: true, phone: true },
+    });
+  });
+
+  it('accessOf is null for a missing user', async () => {
+    const service = new UsersService({ findOne: vi.fn(() => Promise.resolve(null)) } as never);
+    expect(await service.accessOf('nope')).toBeNull();
+  });
+});
+
+describe('UsersService.summaryOf (issue #24, U-1)', () => {
+  it('selects id, role, status, display name and phone by primary key', async () => {
+    const repo = {
+      findOne: vi.fn(() => Promise.resolve(user({ status: UserStatus.SUSPENDED, displayName: 'Amina W.' }))),
+    };
+    const service = new UsersService(repo as never);
+    expect(await service.summaryOf('u-1')).toEqual({
+      id: 'u-1',
+      role: UserRole.CUSTOMER,
+      status: UserStatus.SUSPENDED,
+      displayName: 'Amina W.',
+      phone: '+254712345678',
+    });
+    expect(repo.findOne).toHaveBeenCalledWith({
+      where: { id: 'u-1' },
+      select: { id: true, role: true, status: true, displayName: true, phone: true },
+    });
+  });
+
+  it('an unset or empty display name is null', async () => {
+    const service = new UsersService({ findOne: vi.fn(() => Promise.resolve(user({ displayName: '' }))) } as never);
+    expect((await service.summaryOf('u-1'))?.displayName).toBeNull();
+  });
+
+  it('is null for a missing user', async () => {
+    const service = new UsersService({ findOne: vi.fn(() => Promise.resolve(null)) } as never);
+    expect(await service.summaryOf('nope')).toBeNull();
+  });
+});

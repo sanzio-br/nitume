@@ -1,0 +1,43 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+@use './overlay-frame';
+
+:host {
+  align-items: flex-end;
+  justify-content: center;
+}
+
+// Below 768px: docked to the bottom edge, full width, top corners r-l.
+.nm-panel {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 16px 20px calc(10px + env(safe-area-inset-bottom));
+  background-color: var(--nitume-white);
+  border-radius: var(--nitume-r-l) var(--nitume-r-l) 0 0;
+}
+
+// From 768px (WQ-3): same panel, bottom-anchored, centred, max 560px.
+.nm-panel--centered {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.nm-panel__handle {
+  display: block;
+  width: 32px;
+  height: 4px;
+  margin: -8px auto 12px;
+  border-radius: 2px;
+  background-color: var(--nitume-slate-line);
+}
+
+.nm-panel__title {
+  @include nm-type(dialog-title);
+  margin: 0 0 12px;
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}

@@ -1,4 +1,5 @@
 import { parseServiceAreas } from '../runners/service-areas';
+import { webOriginsError } from './web-origins';
 
 /**
  * Fail-fast environment checks run by ConfigModule before any provider is
@@ -20,6 +21,11 @@ export const validateEnv = (env: Record<string, unknown>): Record<string, unknow
         'payment callbacks would be trusted. Set PAYMENTS_PROVIDER=payhero (or daraja) ' +
         'with its full configuration.',
     );
+  }
+  // WQ-8: credentialed CORS and the refresh cookie only for exact origins.
+  const webOrigins = webOriginsError(str(env.WEB_ORIGINS));
+  if (webOrigins) {
+    throw new Error(webOrigins);
   }
   // Row 224: an app Redis key prefix is a lowercase name ending in ':'.
   const keyPrefix = str(env.REDIS_KEY_PREFIX);

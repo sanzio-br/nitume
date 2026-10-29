@@ -1,0 +1,34 @@
+<ng-template #inner>
+  <span class="nm-btn__content">
+    <span class="nm-btn__icon"><ng-content select="[nmButtonIcon]" /></span>
+    <span class="nm-btn__label"><ng-content /></span>
+  </span>
+  @if (loading()) {
+    <span class="nm-btn__spinner" aria-hidden="true"></span>
+  }
+</ng-template>
+
+@if (href(); as link) {
+  <a
+    [class]="classes()"
+    [attr.href]="disabled() ? null : link"
+    [attr.target]="target()"
+    [attr.rel]="rel()"
+    [attr.aria-label]="ariaLabel()"
+    [attr.aria-disabled]="disabled() ? 'true' : null"
+    [attr.aria-busy]="loading() ? 'true' : null"
+    (click)="onClick($event)"
+    ><ng-container [nmTemplateOutlet]="inner"
+  /></a>
+} @else {
+  <button
+    [class]="classes()"
+    [attr.type]="type()"
+    [attr.aria-label]="ariaLabel()"
+    [disabled]="disabled()"
+    [attr.aria-busy]="loading() ? 'true' : null"
+    (click)="onClick($event)"
+  >
+    <ng-container [nmTemplateOutlet]="inner" />
+  </button>
+}

@@ -1,22 +1,17 @@
 import {
-  HttpStatus,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { ApiError, conflict } from '../common/api-error';
-import { UserRole } from '../common/enums';
+import { accountSuspended, conflict } from '../common/api-error';
+import { UserRole, UserStatus } from '../common/enums';
 import { CustomersService } from '../customers/customers.service';
 import { RunnersService } from '../runners/runners.service';
 import { PublicUser, toPublicUser, UsersService } from '../users/users.service';
 import { OtpService } from './otp.service';
 import { TokenPair, TokenService } from './token.service';
-
-/** 401 with machine-readable `account_suspended` (suspended or banned user). */
-const accountSuspended = (): ApiError =>
-  new ApiError(HttpStatus.UNAUTHORIZED, 'account_suspended', 'Account is suspended or banned');
 
 const LEGACY_BUSINESS_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.BUSINESS];
 
@@ -135,7 +130,22 @@ export class AuthService {
     return { user: toPublicUser(user), tokens };
   }
 
+  /**
+   * Shared by `/auth/refresh` (mobile) and `/auth/web/refresh` (website).
+   * Issue #21 (owner, 2026-10-28): a live session whose account is no longer
+   * active is revoked and answered with `account_suspended`, as OTP verify
+   * does. Revocation is final: reactivating the account does not revive it.
+   */
   async refresh(refreshToken: string): Promise<TokenPair> {
+    const session = await this.tokens.verifyRefresh(refreshToken);
+    const status = await this.users.statusOf(session.sub);
+    if (status !== UserStatus.ACTIVE) {
+      await this.tokens.revoke(refreshToken);
+      if (status === null) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+      throw accountSuspended();
+    }
     return this.tokens.rotate(refreshToken);
   }
 

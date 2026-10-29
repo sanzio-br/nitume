@@ -83,6 +83,11 @@ const build = (opts: {
       ),
     ),
   };
+  const customerProfilesRepo = {
+    findOne: vi.fn(({ where }: { where: { id: string } }) =>
+      Promise.resolve(where.id === 'cust-1' ? { id: 'cust-1', userId: 'user-cust-1' } : null),
+    ),
+  };
   const service = new ErrandsService(
     {} as never,
     errandsRepo as never,
@@ -90,13 +95,13 @@ const build = (opts: {
     itemsRepo as never,
     historyRepo as never,
     assignmentsRepo as never,
-    {} as never,
+    customerProfilesRepo as never,
     {} as never,
     { emit: vi.fn() } as never,
     runners as never,
     quotesRepo as never,
   );
-  return { service, assignmentsRepo, runners };
+  return { service, assignmentsRepo, runners, customerProfilesRepo };
 };
 
 const admin = { role: 'admin', userId: 'admin-1' };
@@ -521,5 +526,31 @@ describe('history actors are admin-only (reviewer B2)', () => {
       expect(out.every((r) => !('actor' in r))).toBe(true);
       expect(users.displayNames).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('admin detail customerUserId (issue #24, U-2)', () => {
+  it('the admin detail carries the user id behind the customer profile', async () => {
+    const { service, customerProfilesRepo } = build({ errands: [errand('e-1')], assignments: [] });
+    const view = await service.getDetail('e-1', admin);
+    expect(view.customerId).toBe('cust-1');
+    expect(view.customerUserId).toBe('user-cust-1');
+    expect(customerProfilesRepo.findOne).toHaveBeenCalledWith({ where: { id: 'cust-1' }, select: { id: true, userId: true } });
+  });
+
+  it('is null when the customer profile is missing', async () => {
+    const orphan = Object.assign(errand('e-2'), { customerId: 'cust-gone' });
+    const { service } = build({ errands: [orphan], assignments: [] });
+    expect((await service.getDetail('e-2', admin)).customerUserId).toBeNull();
+  });
+
+  it('is not part of a customer or runner view', async () => {
+    const { service, customerProfilesRepo } = build({ errands: [errand('e-1')], assignments: [] });
+    Object.assign(service, { canView: () => Promise.resolve(true) });
+    for (const role of ['customer', 'runner'] as const) {
+      const view = await service.getDetail('e-1', { role, userId: 'someone' });
+      expect(view).not.toHaveProperty('customerUserId');
+    }
+    expect(customerProfilesRepo.findOne).not.toHaveBeenCalledWith(expect.objectContaining({ select: { id: true, userId: true } }));
   });
 });

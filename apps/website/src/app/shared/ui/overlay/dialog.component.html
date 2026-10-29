@@ -1,0 +1,42 @@
+<div class="nm-overlay__scrim" (click)="onScrim()"></div>
+<div
+  #card
+  class="nm-dialog"
+  [attr.role]="config().role ?? 'dialog'"
+  aria-modal="true"
+  [attr.aria-labelledby]="config().title ? titleId : null"
+  [attr.aria-describedby]="config().body ? bodyId : null"
+>
+  @if (config().title; as title) {
+    <h2 #title class="nm-dialog__title" [id]="titleId" tabindex="-1">{{ title }}</h2>
+  }
+  @if (config().body; as body) {
+    <p class="nm-dialog__body" [id]="bodyId">{{ body }}</p>
+  }
+  @if (componentContent(); as type) {
+    <div class="nm-dialog__content">
+      <ng-container *ngComponentOutlet="type; injector: contentInjector() ?? undefined" />
+    </div>
+  }
+  @if (templateContent(); as tpl) {
+    <div class="nm-dialog__content">
+      <ng-container [ngTemplateOutlet]="tpl" [ngTemplateOutletContext]="{ $implicit: ref, data: config().data }" />
+    </div>
+  }
+  @if (config().actions?.length) {
+    <div class="nm-dialog__actions">
+      @for (action of config().actions; track $index) {
+        <nm-button
+          [variant]="action.variant ?? 'primary'"
+          [destructive]="!!action.destructive"
+          [expand]="true"
+          (pressed)="press(action)"
+          >{{ action.label }}</nm-button
+        >
+      }
+    </div>
+  }
+  @if (ref.error(); as error) {
+    <p class="nm-dialog__error" role="alert">{{ error }}</p>
+  }
+</div>

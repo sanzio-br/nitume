@@ -16,6 +16,26 @@ export interface PublicUser {
   createdAt: Date;
 }
 
+/** What an authenticated request needs from the account (issue #23). */
+export interface UserAccess {
+  status: UserStatus;
+  role: UserRole;
+  phone: string;
+}
+
+/**
+ * Issue #24 (U-1): what the admin Customer drawer shows of an account. The
+ * phone is the full sign-in number (admins only).
+ */
+export interface AdminUserSummary {
+  id: string;
+  role: UserRole;
+  status: UserStatus;
+  /** Null until the user sets it. */
+  displayName: string | null;
+  phone: string;
+}
+
 export const toPublicUser = (user: User): PublicUser => ({
   id: user.id,
   phone: user.phone,
@@ -51,6 +71,35 @@ export class UsersService {
 
   findById(id: string): Promise<User | null> {
     return this.users.findOne({ where: { id } });
+  }
+
+  /** Account status only (primary-key lookup, one column); null if no such user. */
+  async statusOf(id: string): Promise<UserStatus | null> {
+    const row = await this.users.findOne({ where: { id }, select: { id: true, status: true } });
+    return row?.status ?? null;
+  }
+
+  /**
+   * Status, role and phone only (primary-key lookup); null if no such user.
+   * Uncached: request auth reads it through `UserAccessService`.
+   */
+  async accessOf(id: string): Promise<UserAccess | null> {
+    const row = await this.users.findOne({
+      where: { id },
+      select: { id: true, status: true, role: true, phone: true },
+    });
+    return row ? { status: row.status, role: row.role, phone: row.phone } : null;
+  }
+
+  /** U-1 (issue #24): id, role, status, display name and phone; null if no such user. */
+  async summaryOf(id: string): Promise<AdminUserSummary | null> {
+    const row = await this.users.findOne({
+      where: { id },
+      select: { id: true, role: true, status: true, displayName: true, phone: true },
+    });
+    return row
+      ? { id: row.id, role: row.role, status: row.status, displayName: row.displayName || null, phone: row.phone }
+      : null;
   }
 
   findByPhone(phone: string): Promise<User | null> {
