@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { OTP_SENDER } from '../src/auth/otp-sender/otp-sender.provider';
 import { UserRole } from '../src/common/enums';
+import { CustomersService } from '../src/customers/customers.service';
 import { RedisService } from '../src/infra/redis/redis.service';
 import { userAccessCacheKey } from '../src/users/user-access.service';
 import { UsersService } from '../src/users/users.service';
@@ -16,7 +17,8 @@ import { withAppendOnlyGuardLifted } from './support/test-database';
 
 /**
  * Issue #24 follow-ups (owner, 2026-10-29): U-1 the admin account summary for
- * the Customer drawer. Every row is removed in afterAll by tracked id.
+ * the Customer drawer; U-2 the admin errand detail's `customerUserId`. Every
+ * row is removed in afterAll by tracked id.
  */
 describe('Admin user status follow-ups (issue #24, e2e)', () => {
   let app: INestApplication<App>;
@@ -25,6 +27,7 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
   let redis: RedisService;
   const codes = new Map<string, string>();
   const userIds: string[] = [];
+  const errandIds: string[] = [];
   let admin: { id: string; token: string; phone: string };
 
   const randomPhone = (): string => `+2547${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
@@ -67,6 +70,12 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
   });
 
   afterAll(async () => {
+    if (errandIds.length > 0) {
+      for (const table of ['errand_assignments', 'errand_status_history', 'errand_items', 'errand_locations', 'quotes', 'notification_log', 'notifications']) {
+        await ds.query(`DELETE FROM "${table}" WHERE "errandId" = ANY($1)`, [errandIds]);
+      }
+      await ds.query('DELETE FROM "errands" WHERE id = ANY($1)', [errandIds]);
+    }
     if (userIds.length > 0) {
       await redis.del(...userIds.map(userAccessCacheKey));
       await withAppendOnlyGuardLifted(ds, 'user_status_history', async (query) => {
@@ -121,4 +130,48 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
     });
   });
 
+  describe('U-2 customerUserId on the admin errand detail', () => {
+    const createErrand = async (token: string): Promise<{ id: string; customerId: string }> => {
+      const res = await request(baseUrl)
+        .post('/api/v1/errands')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          category: 'inspection',
+          description: 'Check the apartment in Nyali',
+          budget: 0,
+          locations: [{ pointType: 'task_site', lat: -4.04, lon: 39.7, addressText: 'Links Road, Nyali' }],
+        })
+        .expect(201);
+      errandIds.push(res.body.errand.id as string);
+      return res.body.errand as { id: string; customerId: string };
+    };
+
+    const makeCustomer = async () => {
+      const customer = await makeUser(UserRole.CUSTOMER);
+      const profileId = (await app.get(CustomersService).createForUser(customer.id)).id;
+      return { ...customer, profileId };
+    };
+
+    it("the admin detail carries the owning customer's user id, next to the profile id", async () => {
+      const owner = await makeCustomer();
+      await makeCustomer(); // another customer, so the id is not just any customer
+      const errand = await createErrand(owner.token);
+      const res = await request(baseUrl).get(`/api/v1/errands/${errand.id}`).set('Authorization', `Bearer ${admin.token}`).expect(200);
+      expect(res.body.customerId).toBe(owner.profileId);
+      expect(res.body.customerUserId).toBe(owner.id);
+      // ...and it opens the Customer drawer (U-1).
+      const summary = await request(baseUrl)
+        .get(`/api/v1/admin/users/${res.body.customerUserId as string}`)
+        .set('Authorization', `Bearer ${admin.token}`)
+        .expect(200);
+      expect(summary.body).toMatchObject({ id: owner.id, role: 'customer', phone: owner.phone });
+    });
+
+    it("the customer's own detail does not carry it (admin only, additive)", async () => {
+      const owner = await makeCustomer();
+      const errand = await createErrand(owner.token);
+      const res = await request(baseUrl).get(`/api/v1/errands/${errand.id}`).set('Authorization', `Bearer ${owner.token}`).expect(200);
+      expect(res.body).not.toHaveProperty('customerUserId');
+    });
+  });
 });
