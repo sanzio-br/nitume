@@ -29,8 +29,15 @@ describe('AdminDashboardComponent sidebar (row 77)', () => {
     const rt = TestBed.inject(AdminRealtimeService) as unknown as FakeRealtime;
     await flushAsync();
     expect(rt.connects).toBe(1);
+    // The store follows the socket: the map badge reads its state.
+    const data = TestBed.inject(AdminDataService);
+    rt.states.next('connected');
+    expect(data.liveState()).toBe('connected');
     fixture.destroy();
     expect(rt.disconnects).toBe(1);
+    expect(data.liveState()).toBe('disconnected');
+    rt.states.next('connected');
+    expect(data.liveState()).toBe('disconnected');
   });
 
   async function render() {
