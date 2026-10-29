@@ -302,7 +302,44 @@ export function formatDurationMin(seconds: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
+/**
+ * Port of `display.dart formatHours` (#7, §W9a): whole hours → `1 hour` /
+ * `24 hours`; otherwise `formatDurationMin` (`1 h 30 min`).
+ */
+export function formatHours(seconds: number): string {
+  const minutes = Math.trunc(Math.trunc(seconds) / 60);
+  if (minutes > 0 && minutes % 60 === 0) {
+    const h = minutes / 60;
+    return h === 1 ? '1 hour' : `${h} hours`;
+  }
+  return formatDurationMin(seconds);
+}
+
+/**
+ * Up to two upper-case initials from the first two words of `name`
+ * (`InitialsAvatar.initialsFor`): `Achieng Wanjiru` → `AW`; blank → ``.
+ */
+export function initialsFor(name: string | null | undefined): string {
+  return (name ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0)
+    .slice(0, 2)
+    .map((w) => (Array.from(w)[0] ?? '').toUpperCase())
+    .join('');
+}
+
 const KENYAN_PHONE = /^(?:\+?254|0)([17]\d{8})$/;
+
+/**
+ * Port of `KenyanPhone.normalize` (auth-foundation §7.1): spaces and
+ * hyphens stripped, then `+254` / `254` / `0` + `7XXXXXXXX` / `1XXXXXXXX`.
+ * Returns `+2547…` / `+2541…`, or `null` when it is not a Kenyan mobile.
+ */
+export function normalizeKenyanPhone(input: string): string | null {
+  const m = KENYAN_PHONE.exec(input.trim().replace(/[\s-]/g, ''));
+  return m ? `+254${m[1]}` : null;
+}
 
 /** `+254 712 345 678`; an unparseable number is returned unchanged. */
 export function formatPhoneIntl(phone: string): string {

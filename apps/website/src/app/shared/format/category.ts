@@ -1,6 +1,7 @@
 // Task categories (ui-kit spec §5.4, AGENTS.md, OA-1). Wire values stay in
 // API code; UI copy uses the display names only.
 import { Pipe, PipeTransform } from '@angular/core';
+import type { NmIconName } from '../ui/icon/icons';
 
 /** ERD enum values, in display order. */
 export const ERRAND_CATEGORIES = [
@@ -33,6 +34,22 @@ export function categoryName(wire: unknown): string {
   return typeof wire === 'string' && Object.prototype.hasOwnProperty.call(DISPLAY_NAMES, wire)
     ? DISPLAY_NAMES[wire as ErrandCategory]
     : '';
+}
+
+const ICONS: Record<ErrandCategory, NmIconName | null> = {
+  buy_for_me: 'shopping-bag',
+  pickup_delivery: 'local-shipping',
+  inspection: 'fact-check',
+  representation: 'location',
+  queue_admin: 'hourglass',
+  business: null, // Never rendered to customers (OA-18).
+};
+
+/** `nm-icon` name for a customer category (Flutter `categoryIcon`); else null. */
+export function categoryIcon(wire: unknown): NmIconName | null {
+  return typeof wire === 'string' && Object.prototype.hasOwnProperty.call(ICONS, wire)
+    ? ICONS[wire as ErrandCategory]
+    : null;
 }
 
 @Pipe({ name: 'categoryName' })

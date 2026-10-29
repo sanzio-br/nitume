@@ -1,0 +1,28 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-wizard-frame {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+// The app's pushed header sits 12px from the screen edge; the shell column
+// already has the 20px gutter.
+.nm-wizard-frame__header {
+  margin: 0 calc(-1 * var(--nitume-space-screen));
+}
+
+// From 768px (web adaptation): one centred 640px column.
+@include nm-up($nm-bp-md) {
+  .nm-wizard-frame {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .nm-wizard-frame__header {
+    margin: 0 calc(-1 * var(--nitume-space-screen)) 0 -12px;
+  }
+}

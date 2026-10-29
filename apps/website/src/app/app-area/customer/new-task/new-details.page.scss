@@ -1,0 +1,26 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+}
+
+.details__second-place {
+  margin-top: 12px;
+}
+
+.details__notice {
+  display: block;
+  margin-top: 14px;
+}
+
+.details__caption {
+  @include nm-type(greeting);
+  margin: 10px 0 0;
+}

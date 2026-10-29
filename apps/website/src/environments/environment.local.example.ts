@@ -12,9 +12,25 @@
 export interface Environment {
   apiBaseUrl: string;
   mapsApiKey: string;
+  quotePreviewEnabled: boolean;
+  links: {
+    customer: AppLinks;
+    runner: AppLinks;
+  };
+}
+
+export interface AppLinks {
+  termsUrl: string;
+  privacyUrl: string;
+  supportUrl: string;
 }
 
 export const environment: Environment = {
   apiBaseUrl: 'http://localhost:3000',
   mapsApiKey: '',
+  quotePreviewEnabled: false,
+  links: {
+    customer: { termsUrl: '', privacyUrl: '', supportUrl: '' },
+    runner: { termsUrl: '', privacyUrl: '', supportUrl: '' },
+  },
 };

@@ -63,3 +63,27 @@ export function accessibleText(el: Element): string {
   walk(el);
   return out.replace(/\s+/g, ' ').trim();
 }
+
+/**
+ * Raw text of every component stylesheet in the document, whitespace
+ * removed. For values jsdom's CSSOM drops (e.g. `env(safe-area-inset-*)`).
+ */
+export function rawStyles(): string {
+  return Array.from(document.querySelectorAll('style'))
+    .map((s) => s.textContent ?? '')
+    .join('\n')
+    .replace(/\s+/g, '');
+}
+
+/** Raw colour or shadow (the #5 scan, F9.48): kept here, outside src/app/. */
+export const RAW_COLOUR_OR_SHADOW = /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|box-shadow/;
+
+/** True when no component stylesheet in the document declares a shadow. */
+export function noShadow(): boolean {
+  return !rawStyles().includes('box-shadow');
+}
+
+/** True when the component stylesheets hold only custom-property colours (no hex, rgb(a), hsl(a) or shadow). */
+export function tokensOnly(): boolean {
+  return !RAW_COLOUR_OR_SHADOW.test(rawStyles());
+}

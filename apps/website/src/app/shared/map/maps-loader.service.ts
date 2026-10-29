@@ -70,6 +70,24 @@ export class MapsLoaderService {
     return this.pending;
   }
 
+  /**
+   * A further Maps JS library (#7 Places, customer-v-new-category §W9a,
+   * WQ-25): `load()` first; `null` when the API is unavailable (no key, the
+   * script failed) or the library import rejects (state left as it is).
+   * Never adds a script without a key.
+   */
+  async importLibrary(name: 'places'): Promise<unknown | null> {
+    if (!(await this.load())) return null;
+    const win = (this.document.defaultView ?? {}) as MapsWindow;
+    const importer = win.google?.maps?.importLibrary;
+    if (!importer) return null;
+    try {
+      return await importer(name);
+    } catch {
+      return null;
+    }
+  }
+
   /** Auth failure reported by the map (bad or restricted key). */
   markUnavailable(): void {
     this.state.set('unavailable');

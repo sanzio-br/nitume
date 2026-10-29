@@ -8,9 +8,36 @@ export interface Environment {
    * map shows its placeholder (WQ-1).
    */
   mapsApiKey: string;
+  /**
+   * Shows the price estimate on the wizard's review step (port of
+   * `AppConfig.quotePreviewEnabled`, customer-v-new-category §W6). `false`
+   * until the owner confirms pricing rates.
+   */
+  quotePreviewEnabled: boolean;
+  /**
+   * Terms, privacy and support links of the signed-in app (auth-foundation
+   * §8; the apps' NITUME_TERMS_URL, NITUME_PRIVACY_URL, NITUME_SUPPORT_URI).
+   * Empty in git; set per deployment. Empty → words as plain text / no
+   * `Contact support` link. Only http(s):, mailto: and tel: are rendered.
+   */
+  links: {
+    customer: AppLinks;
+    runner: AppLinks;
+  };
+}
+
+export interface AppLinks {
+  termsUrl: string;
+  privacyUrl: string;
+  supportUrl: string;
 }
 
 export const environment: Environment = {
   apiBaseUrl: 'http://localhost:3000',
   mapsApiKey: '',
+  quotePreviewEnabled: false,
+  links: {
+    customer: { termsUrl: '', privacyUrl: '', supportUrl: '' },
+    runner: { termsUrl: '', privacyUrl: '', supportUrl: '' },
+  },
 };

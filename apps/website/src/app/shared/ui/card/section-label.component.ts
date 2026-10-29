@@ -1,25 +1,26 @@
 // `nm-section-label` (ui-kit spec §4.4; Flutter SectionLabel C-08).
-// Uppercase through CSS only: the DOM keeps sentence case.
-import { NgTemplateOutlet } from '@angular/common';
+// Uppercase through CSS only: the DOM keeps sentence case. Text is
+// projected through `nmTemplateOutlet` (WQ-33, #7 §W9a).
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { NmTemplateOutlet } from '../template-outlet.directive';
 
 @Component({
   selector: 'nm-section-label',
-  imports: [NgTemplateOutlet],
+  imports: [NmTemplateOutlet],
   template: `
     <ng-template #text><ng-content /></ng-template>
     @switch (level()) {
       @case (1) {
-        <h1 class="nm-section-label" [class.nm-section-label--flush]="!inset()"><ng-container [ngTemplateOutlet]="text" /></h1>
+        <h1 class="nm-section-label" [class.nm-section-label--flush]="!inset()"><ng-container [nmTemplateOutlet]="text" /></h1>
       }
       @case (3) {
-        <h3 class="nm-section-label" [class.nm-section-label--flush]="!inset()"><ng-container [ngTemplateOutlet]="text" /></h3>
+        <h3 class="nm-section-label" [class.nm-section-label--flush]="!inset()"><ng-container [nmTemplateOutlet]="text" /></h3>
       }
       @case (4) {
-        <h4 class="nm-section-label" [class.nm-section-label--flush]="!inset()"><ng-container [ngTemplateOutlet]="text" /></h4>
+        <h4 class="nm-section-label" [class.nm-section-label--flush]="!inset()"><ng-container [nmTemplateOutlet]="text" /></h4>
       }
       @default {
-        <h2 class="nm-section-label" [class.nm-section-label--flush]="!inset()"><ng-container [ngTemplateOutlet]="text" /></h2>
+        <h2 class="nm-section-label" [class.nm-section-label--flush]="!inset()"><ng-container [nmTemplateOutlet]="text" /></h2>
       }
     }
   `,

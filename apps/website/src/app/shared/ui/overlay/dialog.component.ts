@@ -1,6 +1,7 @@
 // `nm-dialog` (ui-kit spec §4.8; Flutter NitumeDialog / showNitumeConfirmDialog
 // C-35). Created by `NmDialogService`; views never build their own overlay.
-import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
+// No view queries and no @angular/common template outlet (WQ-33, #7 §W9a).
+import { NgComponentOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -11,9 +12,9 @@ import {
   computed,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { NmButton } from '../button/button.component';
+import { NmTemplateOutlet } from '../template-outlet.directive';
 import { NmOverlayContainer, trapTab } from './overlay-host';
 import { NmOverlayRef } from './overlay-ref';
 
@@ -40,7 +41,7 @@ let nextId = 0;
 
 @Component({
   selector: 'nm-dialog',
-  imports: [NgComponentOutlet, NgTemplateOutlet, NmButton],
+  imports: [NgComponentOutlet, NmTemplateOutlet, NmButton],
   templateUrl: './dialog.component.html',
   styleUrl: './dialog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -70,16 +71,17 @@ export class NmDialog implements NmOverlayContainer {
   });
   protected readonly dismissible = computed(() => this.config().dismissible !== false);
 
-  private readonly card = viewChild<ElementRef<HTMLElement>>('card');
-  private readonly title = viewChild<ElementRef<HTMLElement>>('title');
+  // Element lookups instead of view queries (WQ-33, #7 §W9a), read at the
+  // same moments the queries were: on keydown and after the first render.
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   surface(): HTMLElement | null {
-    return this.card()?.nativeElement ?? null;
+    return this.host.querySelector<HTMLElement>('.nm-dialog');
   }
 
   initialFocus(): HTMLElement | null {
     return (
-      this.title()?.nativeElement ??
+      this.host.querySelector<HTMLElement>('.nm-dialog__title') ??
       this.surface()?.querySelector<HTMLElement>('button, a[href], input, textarea') ??
       null
     );

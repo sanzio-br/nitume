@@ -14,6 +14,10 @@
   @include nm-type(field-label);
 }
 
+.nm-field__label--hidden {
+  @include nm-visually-hidden;
+}
+
 .nm-field__control {
   position: relative;
 }
@@ -28,6 +32,8 @@
   background-color: var(--nitume-white);
   border: 1px solid var(--nitume-slate-line);
   border-radius: var(--nitume-r-s);
+  // #7: clear of a fixed bottom CTA when focused (set by nm-wizard-frame).
+  scroll-margin-bottom: var(--nm-cta-scroll-margin, 0px);
 
   &::placeholder {
     color: var(--nitume-slate-400);
@@ -63,6 +69,48 @@
 
 .nm-field__input--money {
   padding-left: calc(15px + 4ch);
+}
+
+// #7: leading icon (NitumeField prefixIcon) and busy spinner (suffixIcon).
+.nm-field__lead {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: var(--nitume-slate-600);
+  pointer-events: none;
+}
+
+.nm-field__input--lead {
+  padding-left: 40px;
+}
+
+.nm-field__input--busy {
+  padding-right: 40px;
+}
+
+.nm-field__spinner {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border: 2px solid var(--nitume-blue);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: nm-field-spin 800ms linear infinite;
+
+  @include nm-reduced-motion {
+    animation: none;
+  }
+}
+
+@keyframes nm-field-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .nm-field__input--error {

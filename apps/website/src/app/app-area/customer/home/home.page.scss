@@ -1,0 +1,73 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.home__hidden-heading {
+  @include nm-visually-hidden;
+}
+
+.home__search {
+  display: block;
+  margin: 4px 0 18px;
+}
+
+.home__categories {
+  display: block;
+  padding-bottom: 20px;
+}
+
+.home__loading {
+  padding-top: 6px;
+}
+
+.home__skeleton-card {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.home__skeleton-row {
+  display: block;
+
+  & + & {
+    margin-top: 10px;
+  }
+}
+
+.home__active nm-active-task-card {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.home__more {
+  display: inline-flex;
+  margin: 0 0 8px;
+}
+
+.home__row {
+  display: block;
+
+  & + & {
+    margin-top: 10px;
+  }
+}
+
+// 768–1023px (web adaptation): one 640px column, left-aligned.
+@include nm-up($nm-bp-md) {
+  .home__grid {
+    max-width: 640px;
+  }
+}
+
+// From 1024px: search + categories left, the tasks region right. CSS only;
+// the DOM order stays top bar → search → categories → tasks.
+@include nm-up($nm-bp-lg) {
+  .home__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    max-width: none;
+  }
+}

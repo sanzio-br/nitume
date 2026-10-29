@@ -1,0 +1,95 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-shopping-list__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+
+  & + & {
+    border-top: 1px solid var(--nitume-slate-line);
+  }
+}
+
+.nm-shopping-list__name {
+  flex: 1;
+  min-width: 0;
+}
+
+.nm-shopping-list__stepper {
+  display: flex;
+  flex: none;
+  align-items: center;
+  width: 112px;
+}
+
+.nm-shopping-list__step,
+.nm-shopping-list__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--nitume-tap);
+  height: var(--nitume-tap);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background-color: transparent;
+  cursor: pointer;
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+// The stepper's two 48px hit areas overlap the 16px value box.
+.nm-shopping-list__step {
+  @include nm-hit-area;
+  width: 44px;
+  color: var(--nitume-blue);
+
+  &[aria-disabled='true'] {
+    color: var(--nitume-slate-400);
+    cursor: default;
+  }
+}
+
+.nm-shopping-list__circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: 50%;
+  background-color: var(--nitume-white);
+}
+
+.nm-shopping-list__qty {
+  @include nm-type(row-title, 13px);
+  width: 24px;
+  text-align: center;
+}
+
+.nm-shopping-list__hidden {
+  @include nm-visually-hidden;
+}
+
+.nm-shopping-list__remove {
+  color: var(--nitume-slate-400);
+}
+
+.nm-shopping-list__add {
+  display: inline-flex;
+}
+
+.nm-shopping-list__error {
+  @include nm-type(error);
+  margin: 4px 0 0;
+}

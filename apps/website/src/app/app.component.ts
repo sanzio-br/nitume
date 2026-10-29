@@ -1,25 +1,12 @@
 import { Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { HeaderComponent } from './shared/header/header.component';
-import { FooterComponent } from './shared/footer/footer.component';
 
+/** Bare root: the marketing pages get their header and footer from
+ *  MarketingLayoutComponent; `/auth` and `/app/**` have their own frames. */
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, HeaderComponent, FooterComponent],
-  template: `
-    <app-header />
-    <main>
-      <router-outlet />
-    </main>
-    <app-footer />
-  `,
-  styles: [`
-    :host {
-      display: block;
-      min-height: 100vh;
-      background: var(--white);
-    }
-  `],
+  imports: [RouterOutlet],
+  template: `<router-outlet />`,
 })
 export class AppComponent {}

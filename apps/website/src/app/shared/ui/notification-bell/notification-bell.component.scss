@@ -1,0 +1,44 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-flex;
+}
+
+.nm-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--nitume-tap);
+  height: var(--nitume-tap);
+  border-radius: 50%;
+  color: var(--nitume-blue);
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-bell__circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: 50%;
+  background-color: var(--nitume-white);
+}
+
+.nm-bell__dot {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  box-sizing: content-box;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--nitume-white);
+  border-radius: 50%;
+  background-color: var(--nitume-red);
+}
