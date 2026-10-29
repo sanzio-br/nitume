@@ -21,6 +21,11 @@
   &:focus-visible {
     @include nm-focus-ring;
   }
+
+  &:disabled {
+    color: var(--nitume-slate-400);
+    cursor: default;
+  }
 }
 
 .nm-back__circle {
