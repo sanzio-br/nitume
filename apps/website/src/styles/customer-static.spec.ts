@@ -1,8 +1,8 @@
 // Static checks for the issue #7 code (customer-v-new-category §W10;
-// NC§W9.17 (a)–(f); gap report G7-34, G7-36, G7-38), extended to the #8
-// code (customer-x-awaiting-quote A§11 item 6, A.T14; gap report G8-39).
-// Outside src/app/ on purpose: the patterns below would trip the #5
-// raw-colour scan.
+// NC§W9.17 (a)–(f); gap report G7-34, G7-36, G7-38). Outside src/app/ on
+// purpose: the patterns below would trip the #5 raw-colour scan.
+// #8 extends the lists below and adds its own block at the end
+// (customer-x-awaiting-quote A§11 item 6, A.T14; gap report G8-39).
 //
 // "#7 code" = every file in a #7 folder, the kit files #7 changed, and every
 // file a #7 route component (or the customer route tree) reaches through
