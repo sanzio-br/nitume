@@ -477,7 +477,18 @@ Each item gives: **severity**, **current** state in `apps/website`, **target** (
 - Builder: `web-parity`, branch `feat/website-auth-shell`, commit scope `angular-website`.
 - Every item G6-1 … G6-46 is **approved extension, W-Q0**.
 
-### Verdict: FAIL (re-audit 2, 2026-10-29, `feat/website-auth-shell` at `2dcec7f`): 0 blockers, 1 minor (finding 5)
+### Verdict: PASS (re-audit 3, 2026-10-29, `feat/website-auth-shell` at `32ea1a1`)
+
+The owner allowed a third round after two FAILs. Fix audited: `32ea1a1` `fix(angular-website): restore the marketing title after leaving /auth or /app`. `git diff c1e7edd..32ea1a1` touches only `apps/website/src/app/app.routes.ts` (+2 lines) and `apps/website/src/app/app.routes.spec.ts` (+13 lines). Nothing else changed.
+
+- **Finding 5: closed.** The marketing parent route in `app.routes.ts:12` now has `title: "Nitume — Someone there, when you can't be."`. Its bytes are identical to `src/index.html:5` (em dash and straight apostrophe compared with `od -c`). No marketing component changed.
+- **F9.66** (`app.routes.spec.ts`): `/auth` → `/`, and `/app/customer/sign-in` → `/business`, each assert the `Sign in · Nitume` title and then the `index.html` title.
+- **Mutation check:** in a detached scratch worktree at `c1e7edd` (code without the fix) with only the new spec file applied, F9.66 **fails** (`expected 'Sign in · Nitume' to be 'Nitume — Someone there, when you can't be.'`; 1 failed, 7 passed). The scratch worktree was removed afterwards. With the fix it passes.
+- **Auditor re-run at `32ea1a1`:** `npx ng test --watch=false` → **48 files, 412 tests, 0 failures**. `npx ng build --stats-json` → succeeds, **initial total 351.44 kB raw** (≤ 352.00, WQ-33) / 96.31 kB transfer. The initial chunks (`main-UGHPN2MT.js`, `chunk-CpY1PwP9.js`, `polyfills-5CFQRCPP.js`) contain no `core/auth`, `core/realtime`, `app-area` or `shared/ui` input. Their packages are `@angular/{core,common,router,platform-browser}`, `rxjs`, `tslib`, `zone.js`.
+- G6-1 … G6-46 all closed; re-audit 1 findings 1–4 and re-audit 2 finding 5 all closed. SCREEN_MAP #6 rows → `matches-design`. Merge still waits for PR #20, #22, #25 and #26 (merge preconditions below).
+- **Owner WQ-34 (2026-10-29), for later sections:** issues #7–#18 have a **hard cap of 360 kB raw** on the website initial total. #6 stays under its own 352.00 kB limit (WQ-33). Every later section's build item checks the initial total against 360 kB raw and repeats the WQ-33 framework-weight and eager-graph checks (re-audit 2 note).
+
+### Re-audit 2 (2026-10-29, `feat/website-auth-shell` at `2dcec7f`): FAIL, 0 blockers, 1 minor (finding 5, closed at re-audit 3)
 
 Fixes audited: `c752f27`, `a6f5d7a`, `e69e1cf`, `7870511`, `2dcec7f`. Auditor re-run in the worktree:
 - `npx ng test --watch=false` → **48 files, 411 tests, 0 failures**.
@@ -534,7 +545,7 @@ Item status at re-audit 2: G6-1 … G6-46 closed except **G6-4** (titles, reopen
 
 Note for the orchestrator (not a #6 finding): WQ-33 holds only while later issues (#7–#18) stay off `effect()`, `afterNextRender`, `viewChild`, `NgTemplateOutlet`, reactive forms and `withComponentInputBinding`, and off static imports of session/kit code from the eager graph. esbuild keeps framework code used by lazy chunks in the shared Angular modules that `main` loads. The F9.50 static tests apply to #6 folders and the eager graph only, so each later issue needs the same checks.
 
-#### Re-audit 3 checklist
+#### Re-audit 3 checklist (done)
 
 1. Finding 5 fixed; F9.66 present and passing.
 2. Initial total still ≤ 352.00 kB raw; tests 0 failures.
