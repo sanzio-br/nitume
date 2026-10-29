@@ -1,9 +1,13 @@
 import { Component, inject, input } from '@angular/core';
 import { DrawerNavService } from '../drawer-nav.service';
-import { AdminDataService, shortId, timeAgo } from '../admin-data.service';
+import { AdminDataService, AutoOfflineNotice, shortId, timeAgo } from '../admin-data.service';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
-import { formatKsh } from '../shared-format';
+import { formatDateTime, formatDateTimeEat, formatKsh } from '../shared-format';
+import { InlineNoticeComponent } from '../../../shared/inline-notice.component';
+import { NumTextComponent } from '../../../shared/num-text.component';
+import { isFlagged, lastPing } from '../runner-presence';
 import { UserStatusSectionComponent } from './user-status.section';
+import type { RunnerListItem } from '../../../core/api-types';
 
 /**
  * Runner drawer: full profile row for a runner from the directory feed.
@@ -11,7 +15,12 @@ import { UserStatusSectionComponent } from './user-status.section';
  */
 @Component({
   selector: 'app-runner-drawer',
-  imports: [StatusChipComponent, UserStatusSectionComponent],
+  imports: [
+    StatusChipComponent,
+    UserStatusSectionComponent,
+    InlineNoticeComponent,
+    NumTextComponent,
+  ],
   template: `
     @if (runner(); as r) {
       <section class="drawer-section">
@@ -25,6 +34,32 @@ import { UserStatusSectionComponent } from './user-status.section';
           <div class="drawer-row">
             <span>Availability</span
             ><app-status-chip [status]="r.availability" kind="availability" />
+          </div>
+          <!-- #36: web runner presence (spec §3.2). -->
+          <div class="drawer-row">
+            <span>Client</span>
+            @switch (r.presence?.client) {
+              @case ('web') {
+                <app-status-chip label="Web" tone="neutral" />
+              }
+              @case ('app') {
+                <app-status-chip label="App" tone="neutral" />
+              }
+              @default {
+                <b>—</b>
+              }
+            }
+          </div>
+          @if (isFlagged(r)) {
+            <div class="drawer-row">
+              <span>Location pings</span><app-status-chip label="Pings stopped" tone="pending" />
+            </div>
+            <div class="drawer-row">
+              <span>Flagged</span><b>{{ formatDateTime(r.presence?.webPingsStoppedAt) }}</b>
+            </div>
+          }
+          <div class="drawer-row">
+            <span>Last ping</span><b>{{ formatDateTime(lastPing(r)) }}</b>
           </div>
           <div class="drawer-row">
             <span>Level</span><app-status-chip [status]="r.verificationLevel" kind="level" />
@@ -54,13 +89,26 @@ import { UserStatusSectionComponent } from './user-status.section';
             <span>Skills</span><b>{{ r.skillsCount ?? 0 }}</b>
           </div>
           <div class="drawer-row">
-            <span>Last ping</span><b>{{ r.lastPingAt ? timeAgo(r.lastPingAt) : '—' }}</b>
-          </div>
-          <div class="drawer-row">
             <span>Joined</span><b>{{ timeAgo(r.createdAt) }}</b>
           </div>
         </div>
       </section>
+      <!-- #36: flag note while flagged; auto-offline notice while offline. Never both. -->
+      @if (isFlagged(r)) {
+        <section class="drawer-section">
+          <app-inline-notice tone="info"><app-num-text [text]="flagNote(r)" /></app-inline-notice>
+        </section>
+      }
+      @if (autoOfflineNotice(r); as n) {
+        <section class="drawer-section">
+          <app-inline-notice
+            tone="info"
+            [dismissible]="true"
+            (dismissed)="s.dismissAutoOffline(r.id)"
+            ><app-num-text [text]="autoOfflineCopy(n)"
+          /></app-inline-notice>
+        </section>
+      }
       <!-- p-runner-payouts Entry: this runner's payout lines. -->
       <section class="drawer-section">
         <div class="drawer-actions">
@@ -97,6 +145,32 @@ export class RunnerDrawerComponent {
     return this.s.runners().find((r) => r.id === this.runnerId());
   }
 
+  /** Flag note copy (spec §3.2, §7): busy, online, and never-pinged variants. */
+  protected flagNote(r: RunnerListItem): string {
+    const first = r.presence?.lastPingAt
+      ? r.availability === 'busy'
+        ? 'On a task. The website stopped sending location; live tracking for this task may be out of date.'
+        : 'The website stopped sending location.'
+      : 'No location has arrived from the website since this runner went online.';
+    const tail =
+      r.availability === 'busy'
+        ? 'Nitume never sets a runner offline during a task.'
+        : 'Nitume sets this runner offline if it stays off.';
+    return `${first} ${tail}`;
+  }
+
+  /** The session's auto-offline notice, only while the runner is offline. */
+  protected autoOfflineNotice(r: RunnerListItem): AutoOfflineNotice | null {
+    return r.availability === 'offline' ? (this.s.autoOffline().get(r.id) ?? null) : null;
+  }
+
+  protected autoOfflineCopy(n: AutoOfflineNotice): string {
+    const since = n.lastPingAt
+      ? `No location from the website since ${formatDateTimeEat(n.lastPingAt)}.`
+      : 'No location arrived from the website.';
+    return `Set offline by Nitume at ${formatDateTimeEat(n.at)}. ${since}`;
+  }
+
   protected initials(id: string): string {
     return (
       id
@@ -125,4 +199,7 @@ export class RunnerDrawerComponent {
 
   protected readonly shortId = shortId;
   protected readonly timeAgo = timeAgo;
+  protected readonly formatDateTime = formatDateTime;
+  protected readonly isFlagged = isFlagged;
+  protected readonly lastPing = lastPing;
 }

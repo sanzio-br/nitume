@@ -302,6 +302,33 @@ export function formatDurationMin(seconds: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
+/**
+ * Port of `display.dart formatHours` (#7, §W9a): whole hours → `1 hour` /
+ * `24 hours`; otherwise `formatDurationMin` (`1 h 30 min`).
+ */
+export function formatHours(seconds: number): string {
+  const minutes = Math.trunc(Math.trunc(seconds) / 60);
+  if (minutes > 0 && minutes % 60 === 0) {
+    const h = minutes / 60;
+    return h === 1 ? '1 hour' : `${h} hours`;
+  }
+  return formatDurationMin(seconds);
+}
+
+/**
+ * Up to two upper-case initials from the first two words of `name`
+ * (`InitialsAvatar.initialsFor`): `Achieng Wanjiru` → `AW`; blank → ``.
+ */
+export function initialsFor(name: string | null | undefined): string {
+  return (name ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0)
+    .slice(0, 2)
+    .map((w) => (Array.from(w)[0] ?? '').toUpperCase())
+    .join('');
+}
+
 const KENYAN_PHONE = /^(?:\+?254|0)([17]\d{8})$/;
 
 /**

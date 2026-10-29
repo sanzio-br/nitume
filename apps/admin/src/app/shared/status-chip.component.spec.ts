@@ -56,6 +56,25 @@ describe('StatusChipComponent', () => {
     expect(chip.textContent?.trim()).toBe('Quote expired');
     expect(chip.classList).toContain('chip-pending');
   });
+
+  it('renders the Pings stopped flag amber at chip size only (#36)', () => {
+    const fixture = TestBed.createComponent(StatusChipComponent);
+    fixture.componentRef.setInput('label', 'Pings stopped');
+    fixture.componentRef.setInput('tone', 'pending');
+    fixture.detectChanges();
+    const chip = fixture.nativeElement.querySelector('.chip') as HTMLElement;
+    expect(chip.textContent?.trim()).toBe('Pings stopped');
+    expect(chip.className).toBe('chip chip-pending');
+  });
+
+  it('renders the Web marker neutral (#36)', () => {
+    const fixture = TestBed.createComponent(StatusChipComponent);
+    fixture.componentRef.setInput('label', 'Web');
+    fixture.componentRef.setInput('tone', 'neutral');
+    fixture.detectChanges();
+    const chip = fixture.nativeElement.querySelector('.chip') as HTMLElement;
+    expect(chip.className).toBe('chip chip-neutral');
+  });
 });
 
 describe('account chip (issue #24, spec §4, owner SQ-1)', () => {

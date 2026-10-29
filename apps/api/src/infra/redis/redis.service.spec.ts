@@ -72,3 +72,31 @@ describe('escapeGlob', () => {
     expect(escapeGlob('a*?[]\\z')).toBe('a\\*\\?\\[\\]\\\\z');
   });
 });
+
+describe('RedisService.hgetallMany (issue #36)', () => {
+  it('reads several hashes in one pipeline, in key order, {} for a missing key', async () => {
+    const queued: string[] = [];
+    const pipeline = {
+      hgetall: vi.fn((key: string) => {
+        queued.push(key);
+        return pipeline;
+      }),
+      exec: vi.fn(() => Promise.resolve([[null, { client: 'web' }], [null, {}]])),
+    };
+    const client = { options: {}, pipeline: vi.fn(() => pipeline) };
+    const redis = new RedisService(client as never);
+    await expect(redis.hgetallMany(['a', 'b'])).resolves.toEqual([{ client: 'web' }, {}]);
+    expect(queued).toEqual(['a', 'b']);
+    expect(client.pipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips Redis for no keys and throws when a command failed', async () => {
+    const pipeline = { hgetall: vi.fn(), exec: vi.fn(() => Promise.resolve([[new Error('boom'), null]])) };
+    pipeline.hgetall.mockReturnValue(pipeline);
+    const client = { options: {}, pipeline: vi.fn(() => pipeline) };
+    const redis = new RedisService(client as never);
+    await expect(redis.hgetallMany([])).resolves.toEqual([]);
+    expect(client.pipeline).not.toHaveBeenCalled();
+    await expect(redis.hgetallMany(['a'])).rejects.toThrow('boom');
+  });
+});

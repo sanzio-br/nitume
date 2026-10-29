@@ -156,6 +156,8 @@ export interface AppConfig {
     disputeSweepIntervalSeconds: number;
     stkReconcileIntervalSeconds: number;
     offerExpirySweepIntervalSeconds: number;
+    /** Issue #36: how often the web runner presence sweep runs (default 30 s). */
+    webPingSweepIntervalSeconds: number;
   };
   /** Runner `location:ping` intake (§4.2, §4.3; RA-4). */
   location: {
@@ -181,6 +183,12 @@ export interface AppConfig {
     retentionDays: number;
     /** Row 247: when the daily job-location purge runs (cron, Africa/Nairobi). */
     retentionCron: string;
+    /** Issue #36: TTL of the Redis presence record `runner:presence:{id}` (default 24 h). */
+    presenceTtlSeconds: number;
+    /** Issue #36 (Q14-5): a web runner online or busy with no ping for longer is flagged to ops (default 90 s). */
+    webStaleSeconds: number;
+    /** Issue #36 (Q14-6): an idle online web runner with no ping for longer is set offline (default 300 s). */
+    webOfflineSeconds: number;
   };
   push: {
     fcm: {
@@ -395,6 +403,8 @@ export const configuration = (): AppConfig => ({
     stkReconcileIntervalSeconds: int(process.env.PAYMENTS_STK_RECONCILE_INTERVAL_SECONDS, 60),
     // How often lapsed offers are marked expired (task stays RUNNER_ASSIGNED, row 157).
     offerExpirySweepIntervalSeconds: int(process.env.MATCHING_OFFER_EXPIRY_SWEEP_INTERVAL_SECONDS, 30),
+    // Issue #36: how often web runners with stopped pings are flagged / set offline.
+    webPingSweepIntervalSeconds: Math.max(5, int(process.env.LOCATION_WEB_SWEEP_INTERVAL_SECONDS, 30)),
   },
   // Runner location pings (§4.2, §4.3, RA-4). Client cadence is decided
   // (row 123: 4-8 s on a job, 30 s online); these are the server-side guards.
@@ -407,6 +417,10 @@ export const configuration = (): AppConfig => ({
     persistEnabled: (process.env.LOCATION_PERSIST_ENABLED ?? 'true').trim().toLowerCase() !== 'false',
     retentionDays: Math.max(1, int(process.env.LOCATION_RETENTION_DAYS, 90)),
     retentionCron: process.env.LOCATION_RETENTION_CRON || '30 3 * * *',
+    // Issue #36 (owner Q14-5, Q14-6): web runner presence (Redis only).
+    presenceTtlSeconds: Math.max(60, int(process.env.LOCATION_PRESENCE_TTL_SECONDS, 86_400)),
+    webStaleSeconds: Math.max(1, int(process.env.LOCATION_WEB_STALE_SECONDS, 90)),
+    webOfflineSeconds: Math.max(1, int(process.env.LOCATION_WEB_OFFLINE_SECONDS, 300)),
   },
   // FCM push (row 31). All three set -> firebase-admin; otherwise a no-op.
   // The private key may use literal \n sequences (single-line env value).

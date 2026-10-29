@@ -973,4 +973,544 @@ Each item gives the **current** state, the **target** (spec section) and the **e
 
 ---
 
-<!-- Sections for issues #7 to #18 are appended below as their web specs are written. -->
+## Issue #7 — customer home and create-task wizard
+
+- Specs: `docs/specs/website/customer-v-home.md` (cited H), `customer-v-new-category.md` (NC; it also holds the wizard foundation NC§W0–§W10), `customer-v-new-details.md` (ND), `customer-v-new-review.md` (NR). First written in `cae824c`; updated in `8feae7e` for the owner decisions and the #6 build. The baseline audits against `8feae7e`; re-audit 1 (2026-10-29) audits the build at `dd95c1a` against `b98ca6e` (owner WQ-2, attribution clear space, Places Details session). Re-audit 2 (2026-10-29) audits `6338a75` against `e059d16` (owner WQ-53 caption copy).
+- Baseline audited: `apps/website` on `feat/website-customer-create-task` at `8feae7e`. Its website code is identical to the #6 PASS tip `32ea1a1`: `git diff --stat 32ea1a1 55af009 -- apps/` is empty. It includes the #5 kit. No #7 code exists yet.
+- Builder: `web-parity`, branch `feat/website-customer-create-task`, commit scope `angular-website`.
+- Every item G7-1 … G7-40 is **approved extension, W-Q0**.
+- Views: customer `v-home`, `v-new-category`, `v-new-details`, `v-new-review` (SCREEN_MAP #7 rows).
+
+### Verdict: PASS (re-audit 2, 2026-10-29, `feat/website-customer-create-task` at `6338a75`)
+
+This is the second round after one FAIL. The builder fixed forward in three commits.
+
+**What changed since re-audit 1.** `git diff --stat 2a80add 6338a75` touches 7 files under `apps/website/src/app/` and nothing else: `new-details.page.{html,spec.ts}`, `task-draft.store{,.spec}.ts`, `shared/places/{google-place-search,places.spec}.ts`, `shared/ui/place-field/places-attribution.component.ts`. Every hunk belongs to one of the three findings. No other file, spec, config, marketing path or kit file changed.
+
+**Owner WQ-53 (was Q7-5, approved 2026-10-29):** the caption is exactly `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` This is recorded as decided in `customer-v-new-details.md` (`e059d16`). The built copy matches it character for character (`new-details.page.html:86,88`).
+
+**Auditor re-run in the worktree:**
+- `npx ng test --watch=false` → **73 files, 615 tests, 0 failures** (re-audit 1: 612; +3 new cases). This matches the builder.
+- `npx ng build --stats-json` → succeeds. Initial total **354.17 kB raw** / 96.92 kB transfer, ≤ 360.00 (WQ-34). The initial chunks (`main-3FKVNIG4.js`, `chunk-RDpGQkek.js`, `polyfills`) have no `core/auth`, `core/realtime`, `app-area`, `shared/ui`, `shared/places` or `shared/map` input, and no `@angular/google-maps`, `@angular/forms` or `socket.io` input. **G7-39 stays closed.**
+
+**Finding 1: closed (WQ-2, `d525420`).**
+- Code:
+  - `task-draft.store.ts:50-54` takes the EAT calendar date from the kit `eatDayKey(now)`, a UTC-based wall clock that does not depend on the browser zone.
+  - It builds `<date>T23:59:00.000+03:00`, adding one day for `Tomorrow`, and sends it as UTC ISO.
+  - The `+03:00` literal sits in the store, not a view, and EAT has no daylight saving. The kit helper uses the same fixed offset. The ND rule (no hand-written offset *in the view*) is met.
+  - The caption renders while `Today` / `Tomorrow` is selected: `details__caption` = `nm-type(greeting)`, 10px above, `23:59` in `nmNum`. `Flexible` keeps only its own caption.
+- Tests:
+  - ND T17 now runs under `Europe/London` and `Africa/Nairobi`. It includes 22:30 London on 1 Nov → `2026-11-02T20:59:00.000Z`, and `Tomorrow` → `2026-11-03T20:59:00.000Z`.
+  - ND T21a covers the caption copy, `nmNum`, the 12px size and the Flexible-only case, in both zones.
+- **Mutation check:** in a detached scratch worktree at `6338a75`, with only `deadlineAt()` reverted to the old local-zone code, `task-draft.store.spec.ts` gives **3 failed, 6 passed**. For example, `Europe/London: expected '2026-11-01T23:59:00.000Z' to be '2026-11-01T20:59:00.000Z'`. The scratch worktree was removed afterwards. With the fix, all pass.
+- Amended G7-33 grep (EAT names in `app-area/customer`, non-spec) hits only `task-draft.store.ts` (`deadlineAt`) and the two caption lines in `new-details.page.html`.
+
+**Finding 2: closed (`1527870`).**
+- `nm-places-attribution` wraps the image in `.nm-places-attribution { padding: 10px 10px 5px }`. Inside the panel's `0 4px`, that gives 14px left and right, 10px top and 5px below. This meets Google's minimum (≥ 10 left, right and top, ≥ 5 below).
+- The inline styles use no mixin, so F9.60 still holds.
+- ND T22 asserts both declared paddings through `declared()` and that the image sits inside `.nm-places-attribution`.
+
+**Finding 3: closed (`6338a75`).**
+- `GooglePlaceSearch` keeps each Google suggestion's `placePrediction` in the per-session cache entry (`CachedAnswer`; memory only, same 200 cap, dropped with the session after Details).
+- `details()` calls `prediction.toPlace().fetchFields({ fields: ['id','displayName','formattedAddress','location'] })`. It falls back to `new Place({ id })` only when no prediction is held for that session.
+- `PlacesLibrary.Place` no longer accepts `sessionToken`.
+- Tests:
+  - ND T11 details: `toPlace()` was called on `pid-Sarit`, `fetchFields` came via `toPlace` with exactly the four fields, and no `Place` was constructed.
+  - ND T11 fallback: `new Place({ id: 'pid-x' })` with no `sessionToken` key.
+  - ND T7 (place-field level): `toPlaceTokens` equals the session's token, `constructed` is empty, and a new token follows the pick.
+- This still cannot be run against Google without a key (WQ-1). The mechanism is now the documented one.
+
+**Per-commit health (noted, not failed, per the orchestrator):** the old history keeps the known failures: `1ae2dae` … `db87eba` fail `tokens.spec` case 2, and `eec45ba` does not compile. These go away in the squash merge. The three fix commits were not run one by one. The tip is green.
+
+**Item status:** G7-1 … G7-40 **all closed**. G7-3, G7-25, G7-26, G7-31, G7-33 and G7-37, which were open at re-audit 1, are closed by the three fixes and their tests. SCREEN_MAP #7 rows → `matches-design`. Merge still waits for #6 and its preconditions (PR #20, #22, #25, #26).
+
+**For #8 (not a #7 item):** #8's deadline panel should follow WQ-2 and WQ-53: 23:59 EAT and the EAT wording. Its spec still says "23:59 local".
+
+### Re-audit 1 (2026-10-29, `feat/website-customer-create-task` at `dd95c1a`): 2 blockers, 1 minor (all closed at re-audit 2)
+
+Built by `web-parity` in 34 commits `303c0b6` … `dd95c1a` on top of the spec/audit commits. The branch also carries the #6 tip `ed8f7b5` through merge `a0db2db`. That commit is a #6 test-only change: it freezes the clock in `auth-otp.page.spec.ts` and makes T12 and T13 assert exact values, so it strengthens #6 assertions and is not a #7 matter. Specs re-audited against `b98ca6e` (this re-audit's spec update, see "Spec updates at re-audit 1").
+
+**Auditor re-run in the worktree** (`npm ci`, then):
+- `npx ng test --watch=false` → **73 files, 612 tests, 0 failures**. This matches the builder.
+- `npx ng build --stats-json` → succeeds, **initial total 354.17 kB raw** / 96.89 kB transfer. That is ≤ 360.00 (WQ-34) and +2.73 kB on #6's 351.44.
+- The initial chunks have clean stats inputs:
+  - `main-VODTCODL.js`: the marketing files, `app.config.ts`, `app.routes.ts`, `app.component.ts`, `core/lazy-session/{lazy-session,realtime-session.tokens}.ts`; packages `@angular/{common,platform-browser,router}`.
+  - `chunk-RDpGQkek.js`: `@angular/core`, `rxjs`, `tslib`.
+  - `polyfills`: `zone.js`.
+  - No `core/auth`, `core/realtime`, `app-area`, `shared/ui`, `shared/places` or `shared/map` input, and no `@angular/google-maps`, `@angular/forms` or `socket.io-client`. **G7-39 PASS.**
+
+37 of 40 items close as built. The three findings below hold G7-25, G7-26, G7-31 and G7-33 open; G7-3 and G7-37 are open only for the deadline part of finding 1.
+- Every copy string in the four specs' "Copy (exact)" sections is present verbatim.
+- All required cases are present as their own `it(...)`: H T1–T19, NC T1–T10, ND T1–T23 (T11 in `shared/places/places.spec.ts`, T16 in `shared/kit-additions-7.spec.ts`, T17 in `task-draft.store.spec.ts`), NR T1–T17 (T16 in `shared/ui/receipt/receipt.spec.ts`), NC§W9.1–W9.17.
+- The #7 static spec (`src/styles/customer-static.spec.ts`) computes "#7 code" from the route entry points' import graph, so it includes the kit files the routes reach. It runs (a)–(f), the inline-style check, the memory-only scan and the G7-13 token count. The forbidden pattern includes `shared/places`, and the walker self-check is present.
+- None of the #5/#6 kit spec files changed (`card`, `overlay`, `field`, `back-button`, `pushed-header`, `map`, `realtime`, `template-outlet`), and all pass. That closes G7-8, G7-9, G7-10, G7-11 and G7-14.
+- Marketing paths are unchanged against `55af009`. Every new component is `OnPush`. Every commit message is conventional with scope `angular-website`.
+
+**Per-commit health (noted, not failed, per the orchestrator):** commits `1ae2dae` … `db87eba` fail `tokens.spec` case 2, and `eec45ba` does not compile. The tip is green. The orchestrator handles this with a squash merge. Formally it breaks AGENTS.md rule 4 for those intermediate commits.
+
+#### Spec updates at re-audit 1 (`b98ca6e`)
+
+1. **Owner WQ-2 (answered 2026-10-29, #7 issue comment, after the baseline report):**
+   - Activity times (greeting, Recent) use the browser's local time. Home is unchanged and already does this.
+   - **Deadlines use EAT and are labelled as EAT.** `Today`/`Tomorrow` = 23:59 EAT of the EAT calendar date, independent of the browser zone (ND Rules).
+   - Proposed label: a caption under the chips, `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` (`23:59` in Fira Code). This is **Q7-5** for the owner. ND T17 now runs under two browser zones, and ND T21a is new.
+   - G7-33 is amended (below).
+2. **Google attribution clear space:** the spec said 8px above and below. Google's attribution guidelines ask for at least 10 dp left, right and top and at least 5 dp below. **Ruling: where Google's minimum is stricter, Google's minimum applies.** ND Places and ND T22 now say at least 10px left, right and top and at least 5px below, counting the list panel's padding.
+3. **Places Details session (spec defect):** the spec told the builder to pass `sessionToken` in the `Place` constructor options. `PlaceOptions` has no such field. The Maps JS API carries the session into Details through `placePrediction.toPlace()`. ND Places and ND T11 are corrected. The builder followed the spec as written, so finding 3 is a spec-caused defect.
+
+#### Findings (re-audit 1)
+
+1. **blocker. Deadlines use the browser's zone and are not labelled as EAT (owner WQ-2).** `apps/website/src/app/app-area/customer/new-task/task-draft.store.ts:44-50`; `new-details.page.html` (deadline card); `task-draft.store.spec.ts:116-150`.
+   - Design (ND Rules, owner WQ-2):
+     - `Today` → 23:59 EAT of today's EAT date, as UTC ISO (`…T20:59:00.000Z`); `Tomorrow` → the next EAT date.
+     - Independent of the browser zone.
+     - Labelled `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` while that chip is selected (proposed copy, Q7-5).
+   - Code:
+     - `deadlineAt()` builds `new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 23, 59)` in the **browser's** zone. A London browser choosing `Today` sends 23:59 London, which is 02:59 EAT the next day.
+     - No caption is shown for `Today`/`Tomorrow`.
+     - ND T17 stubs `TZ=Etc/GMT-3`, which equals EAT, so the test cannot see the difference (`dd95c1a`).
+   - Fix:
+     - Compute the EAT calendar date with the kit EAT helpers (`eatDayKey` / the `…Eat` family in `shared/format/formatters.ts`) and send 23:59 EAT of that date (and of the next date) as UTC. No hand-written offset in the view.
+     - Add the Today/Tomorrow caption in the Flexible caption's place and style (`nm-type(greeting)`, `23:59` in `nmNum`).
+     - Update ND T17 to two zones (`Europe/London` and `Africa/Nairobi`, including 22:30 London on 1 Nov → `2026-11-02T20:59:00.000Z`) and add ND T21a.
+     - Update the `clock.ts` comment so `CUSTOMER_NOW` is described as the clock, not as the deadline zone.
+     - If the owner answers Q7-5 with other words, only the caption copy changes.
+2. **minor. Google attribution has less clear space than Google requires.** `apps/website/src/app/shared/ui/place-field/places-attribution.component.ts:13-16` (`padding: 8px 0`) inside `place-field.component.scss:11` (panel `padding: 0 4px`).
+   - Design: ND Places (re-audit 1 ruling) requires at least 10px left, right and top and at least 5px below.
+   - Code: 4px left and right, 8px top, 8px bottom.
+   - Fix: give `nm-places-attribution` the space, e.g. `padding: 10px 10px 5px` counted together with the panel's 4px. Move it to a `styleUrl` `.scss` if a token mixin is used. Extend ND T22 with the `declared()` clear-space assertion. Update the component's header comment.
+3. **blocker. Place Details is not tied to the autocomplete session (WQ-25 "session tokens").** `apps/website/src/app/shared/places/google-place-search.ts:108` (`new places.Place({ id: placeId, sessionToken: … })`); `places.spec.ts:37-43,88-91`.
+   - Design (ND Places, corrected in `b98ca6e`): Details is `placePrediction.toPlace().fetchFields({ fields: [...] })`. `toPlace()` carries the request's session token, which closes the billing session. `PlaceOptions` has no `sessionToken`. A pick from the list always has its prediction in hand.
+   - Code: passes `sessionToken` as a `Place` constructor option. The Maps JS API does not define that option, so in a real browser the Details call is likely billed outside the session. Each autocomplete request then likely bills on its own, which is the cost WQ-25 is meant to avoid. The fake library in `places.spec.ts` accepts the option, so the tests pass. This cannot be confirmed without a key (WQ-1), but the documented path is `toPlace()`.
+   - Fix:
+     - Keep each Google suggestion's `placePrediction` in the per-session cache next to the mapped suggestion (memory only, same cap and lifetime).
+     - `details()` calls `toPlace()` on it, then `fetchFields` with the four fields. Fall back to `new Place({ id })` only when no prediction is held.
+     - Update the fake (`placePrediction.toPlace` returning a recorded fake `Place`) and ND T11: no `sessionToken` key on any `Place` constructor call.
+   - Origin: spec defect (my first ND text); this is not a builder error.
+
+#### Builder choices and extras (auditor ruling)
+
+| # | Choice | Ruling | Reason |
+|---|---|---|---|
+| a | #5/#6 test-file edits: `icon.spec.ts` (list gains the 10 #7 names), `format.pipes.spec.ts` (`formatHours` row, case count 24 → 25), `app-shell.page.spec.ts` T11 (label-less stub now checked on `/app/customer/notifications`), `app.routes.spec.ts` F9.5 (Home `h1` is now the first name `Achieng`), `testing/app-harness.ts` (`providers` option) | **PASS** | Each is the minimum change the #7 spec makes necessary: §W9a adds the icons and the pipe; §W1 replaces the `new` stub, so another skeleton-only stub is used; H gives Home's `h1` as the first name. No assertion was weakened or removed. Each test still checks what it checked before. The harness option is additive (default empty) |
+| b | Deadline `nm-choice-chip-group` labelled with `[ariaLabel]="Deadline"` instead of `aria-labelledby` the card heading | **PASS** | The kit `nm-form-card` heading has no `id` (`form-card.component.ts:11`), so `aria-labelledby` would need a kit change. `ariaLabel` gives the identical accessible name. The group supports both inputs, and `labelledBy` wins when set |
+| c | `nmTemplateOutlet` gains `nmTemplateOutletContext` (used by `nm-dialog`) | **PASS** | Additive with a `null` default, so #6 call sites are unchanged. The unchanged #5 dialog spec renders a `let-ref` template (`shared/ui/overlay/overlay.spec.ts:189`), which exercises the context. Unlike `NgTemplateOutlet`, a changed context recreates the view rather than updating it in place. The dialog's `ref` and `data` are fixed for a dialog's life, so behaviour is the same |
+| d | `--nm-cta-scroll-margin` set by `nm-wizard-frame` (bar height + 16) and read by `nm-field` (`scroll-margin-bottom: var(--nm-cta-scroll-margin, 0px)`) | **PASS** | It implements NC§W4 ("a focused field is never hidden under it") without a view query. It is a layout length, not a colour. It uses the kit's private `--nm-` prefix like `--nm-toast-offset`. The `0px` fallback leaves `nm-field` unchanged outside the wizard, and the #5 field tests pass unchanged |
+| e | `QUOTE_PREVIEW_ENABLED` and `CUSTOMER_NOW` injection tokens | **PASS** | Test seams whose defaults are exactly the spec values (`environment.quotePreviewEnabled`; `new Date()`), the same pattern as #5 `MAPS_API_KEY` and #6 `APP_LINKS`. `CUSTOMER_NOW` is the clock only; the deadline zone is finding 1 |
+| f | Place Details `sessionToken` as a `Place` option | **FAIL (finding 3)** | Not a documented Maps JS option. The mechanism came from the spec and is corrected there |
+| g | G7-26 evidence grep `rg -n "maps.googleapis|places" …` hits `replaces` / `places` in comments and the place-field imports | **PASS** | The baseline grep was too broad (auditor error). Corrected evidence: `rg -n "maps\.googleapis|google\.maps|importLibrary\(" apps/website/src/app --glob '!**/*.spec.ts'` hits only `shared/map/maps-loader.service.ts`, `shared/places/google-place-search.ts` and the #5 `shared/map/live-map.component.ts`. No Google call is made outside the loader and `shared/places`, and there is no Places route in `apps/api` |
+| h | `dd95c1a` reshapes tests so the G7-3, G7-5 and G7-33 greps run clean: memory-only scan moved into `customer-static.spec.ts`, `sendsCredentials()` helper, `Etc/GMT-3` instead of `Africa/Nairobi` in the `toRequest` stub, one comment reworded | **PASS, with a note** | The assertions are unchanged. The `Etc/GMT-3` stub equals EAT, so it hides finding 1. The finding-1 fix must test two zones (ND T17 as amended) |
+
+#### Item status at re-audit 1
+
+| Item | Status | Evidence (auditor) |
+|---|---|---|
+| G7-1, G7-2 | closed | `customer.routes.ts:46-109`: componentless `new` parent with `providers`, entry guard and three titled children; five #7 stubs with `navKey: 'home'`, `pushed: true`. `customer-links.ts` paths equal NC§W1; no hard-coded `/app/customer/` elsewhere in the customer area or `shared/`; NC§W9.1, NC§W9.11 |
+| G7-3 | closed except the deadline (finding 1) | store and memory-only scan; NC§W9.4–W9.6, W9.9 |
+| G7-4, G7-5, G7-6 | closed | NC§W9.2, W9.3, W9.7, W9.8, W9.10, W9.15; no `withCredentials`/interceptor in the customer area; flag `false` in both environment files |
+| G7-7 … G7-14 | closed | `kit-additions-7.spec.ts`; #5/#6 kit spec files unchanged and passing; `_tokens.scss` unchanged against `55af009`; no `NgTemplateOutlet`/`viewChild` left in `card`, `section-label` or `dialog.component` |
+| G7-15 … G7-24, G7-27, G7-28 | closed | one spec file per component, each with render, inputs, accessible name, focus ring and token checks (`testing/css.ts` `declared`, `tokensOnly`, `noShadow`) |
+| G7-25 | **open (finding 2)** | combobox, debounce, pick and attribution placement correct; clear space short |
+| G7-26 | **open (finding 3)** | region, language, cache, fallback and no-proxy correct; Details session wrong |
+| G7-29, G7-30, G7-32 | closed | H T1–T19, NC T1–T10, NR T1–T17; copy verbatim; WQ-29 no ETA and no `locationUpdates$` (`home.page.ts` uses `statusChanges$`, `onStateChange`, one `setInterval`). G7-32's request body inherits finding 1 through `toRequest` and re-checks with it |
+| G7-31 | **open (finding 1; Places via findings 2–3)** | all other ND rules met |
+| G7-33 | **open (finding 1)** | WQ-25/26/29 met as recorded; WQ-2 deadline part not met |
+| G7-34 … G7-36, G7-38, G7-40 | closed | NC§W9.17(a)–(f) pass; scans in the evidence lines return no hits; marketing diff empty; `OnPush` on every new component; conventional commits |
+| G7-37 | closed except ND T17 / T21a (finding 1), ND T11 (finding 3), ND T22 (finding 2) | coverage complete for the original lists |
+| G7-39 | closed | 354.17 kB raw ≤ 360.00; stats inputs clean |
+
+#### Re-audit 2 checklist
+
+1. Findings 1–3 fixed. ND T11, T17, T21a and T22 as amended in `b98ca6e` are present and pass.
+2. `npx ng test --watch=false` 0 failures; `npx ng build --stats-json` initial total ≤ 360.00 kB raw with clean inputs.
+3. Owner Q7-5 (EAT label words): if answered before re-audit 2, the caption matches the answer; otherwise the proposed copy.
+
+### Baseline verdict: FAIL (not built, 2026-10-29)
+
+None of the four views exists. `/app/customer/home` and `/app/customer/new` are #6 `ViewStubComponent` routes. `new/details` and `new/review` do not exist, and nor do the wizard store, guards, errands API, Places search or any of the 13 new #7 components. The items below are the build list. Every item is a **blocker** unless it says minor.
+
+### Merge preconditions (not build items)
+
+| Precondition | State on 2026-10-29 | Effect on #7 |
+|---|---|---|
+| #6 (`feat/website-auth-shell`, re-audit 3 PASS at `32ea1a1`) and its own preconditions (PR #20, #22, #25, #26) | open | #7 is stacked on #6. It must not be merged before #6 |
+| #8 (`feat/website-customer-checkout`) | specced, not built | #7 builds `nm-fixed-cta`, `nm-choice-chip` and the receipt parts once (NC§W9b). #8 reuses them. If #8 lands first, #7 reuses #8's versions instead, and this report is updated at re-audit |
+| Owner WQ-1 (production Maps key with Places API (New) enabled) | open (deployment) | No code change. Without a key the saved-address fallback runs (WQ-25) |
+
+### Owner decisions that apply to this section
+
+| Id (board) | Spec's first id | Decision (owner) | Where it lands |
+|---|---|---|---|
+| WQ-25 | Q7-2 | Places runs in the browser through the Maps JS API with the WQ-1 key (Places API (New)). Session tokens, 300 ms debounce, per-session cache, Kenya only. Saved addresses without a key. No API proxy (2026-10-28) | G7-10, G7-25, G7-26, G7-31 |
+| WQ-26 | Q7-3 | Google's attribution under the suggestion list on the web; the apps follow in #27 (2026-10-28) | G7-25, G7-33 |
+| WQ-29 | Q7-4 | Home active card follows the built app: no ETA (2026-10-29) | G7-23, G7-29, G7-33 |
+| WQ-34 | — | Marketing initial bundle ≤ 360 kB raw (`npx ng build` "Initial total"). The PR reports the figure. Signed-in code stays lazy, with the same static checks as #6 (2026-10-29) | G7-38, G7-39 |
+| WQ-33 | — | (#6) Session layer lazy. The framework-feature rules from the #6 re-audit 2 note apply to every later issue | G7-14, G7-38 |
+| WQ-15, WQ-16 | — | (#6) Side nav kept on pushed routes from 768px, and white | G7-1 (route data) |
+
+**WQ-2** was open at the baseline. **Answered by the owner on 2026-10-29** (#7 issue comment): activity times (greeting, Recent) use the browser's local time; deadlines use EAT and are labelled as EAT. Applied at re-audit 1 (G7-33 amended, finding 1). **Q7-5** answered by the owner on 2026-10-29 as **WQ-53**: the caption is exactly `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` (met at re-audit 2).
+
+### Current-state evidence (baseline)
+
+| Fact | Evidence |
+|---|---|
+| Home and wizard are #6 stubs | `src/app/app-area/customer.routes.ts:45` (`home`, `stubLabel: 'Home'`, stub), `:47` (`new`, `navKey: 'new'`, `pushed: true`, stub, no `title`); no `new/details`, `new/review`, `tasks/…`, `notifications` route |
+| No #7 folders | `src/app/app-area/` has no `customer/`; `src/app/shared/ui/` has no `wizard-frame`, `stepper`, `fixed-cta`, `category`, `choice-chip`, `receipt`, `notification-bell`, `avatar`, `search-entry`, `active-task-card`, `task-row`, `place-field`, `shopping-list`; no `src/app/shared/places/` |
+| Icon registry lacks the #7 names | `src/app/shared/ui/icon/icons.ts:8-34`: 14 #6 names only. `location` and `person` exist and are reused (NC§W9a) |
+| Back button cannot be disabled | `src/app/shared/ui/back-button/back-button.component.ts`: inputs `fallback` only; `nm-pushed-header` has no `backDisabled` |
+| `nm-field` lacks the place-field inputs | `src/app/shared/ui/field/field.component.ts:30-46`: no `leadingIcon`, `busy` or combobox attributes |
+| `nmFieldValue` writes the initial value only | `src/app/shared/ui/field/field-value.directive.ts:16` (`ngOnInit` only) |
+| Maps loader cannot load Places | `src/app/shared/map/maps-loader.service.ts:55` imports `maps` and `marker` only; no public `importLibrary` |
+| No public realtime state listener | `src/app/core/realtime/realtime.service.ts:117` `stateListeners` is private; only `showReconnecting` uses it |
+| No `formatHours` / `initialsFor` | `rg -n "formatHours|initialsFor" apps/website/src/app` → no hits |
+| Kit files #7 reaches use WQ-33-costly features | `shared/ui/card/section-label.component.ts:3,8` and `card.component.ts:3,8` (`NgTemplateOutlet`); `shared/ui/overlay/dialog.component.ts:3,43` (`NgTemplateOutlet`) and `:73-74` (`viewChild`) |
+| No preview flag | `src/environments/environment.ts`: no `quotePreviewEnabled` |
+| No third-party asset folder | `src/assets/` holds `app-icon-192.png`, `app-icon.svg` only |
+| #6 static tests scope | `src/styles/auth-static.spec.ts:11` `FORBIDDEN_EAGER` (`core/auth`, `core/realtime`, `app-area`, `shared/ui`); `:48-64` `ISSUE_6_DIRS` (includes `app-area`, so #7 files under `app-area/customer/` are covered by F9.48–F9.50; new `shared/ui/*` and `shared/places` folders are not) |
+| Build health | Not re-run at baseline: this worktree has no `node_modules`. The code equals `32ea1a1`, where the #6 re-audit 3 ran 48 files / 412 tests with 0 failures and an initial total of 351.44 kB raw / 96.31 kB transfer. That is the #7 reference figure; the WQ-34 headroom is 8.56 kB |
+| API (on this branch) | `apps/api/src/errands/errands.controller.ts`: `GET /errands` (`:62`, multi-status), `GET /errands/defaults` (`:85`), `POST /errands` (`:51`), `POST /errands/:id/submit` (`:208`), `PATCH /errands/:id/status` (`:236`, `Idempotency-Key` optional); `customer-accounts.controller.ts:28` `GET /customers/me/addresses`; `notifications.controller.ts:26` `GET /notifications/unread-count`. All exist. No Places endpoint, and none is to be added (WQ-25) |
+
+### Items
+
+Each item gives the **current** state, the **target** (spec section) and the **evidence at re-audit**. `H Tn`, `NC Tn`, `ND Tn` and `NR Tn` are the cases in each view spec's "Required tests". `NC§W9.n` is foundation case n. Every listed case is its own `it(...)`.
+
+#### A. Routes, links and wizard foundation (NC§W0–§W8)
+
+**G7-1 Customer routes: Home and the wizard replace the #6 stubs**
+- Current: `customer.routes.ts:45,47` load `ViewStubComponent`.
+- Target: NC§W1. `home` loads `HomePage` (`app-area/customer/home/home.page.ts`), keeps `title: 'Home · Nitume'` and `navKey: 'home'`, and drops `stubLabel`. `new` becomes a componentless parent with `data { role, navKey: 'new', pushed: true }`, `providers: [TaskDraftStore]` and `canActivate: [wizardEntryGuard]`. It has three lazy children: `''`, `details`, `review`. Their `title` strings are `New task · Nitume`, `Task details · Nitume` and `Review · Nitume`, read by Angular's default `TitleStrategy` (no custom strategy, WQ-33). The children carry the step and leave guards.
+- Evidence: NC§W9.1; `rg -n "ViewStubComponent|stub\b" apps/website/src/app/app-area/customer.routes.ts` shows the stub only on the five NC§W1 stub paths and the #6 `track`, `history` and `profile` routes.
+
+**G7-2 `customerLinks` and the #7 stub routes**
+- Current: none. The #8 spec names `/tasks/:errandId/quote` and `/tasks/:errandId/payment`. The first #7 spec draft used `/pay`, which `8feae7e` corrected.
+- Target: NC§W1 table, in `app-area/customer/customer-links.ts`. Paths match the #6 routes (`/home`, `/new`, `/track`, `/track/:errandId`, `/history`, `/profile`, the same as `CUSTOMER_NAV`) and the #8 A§1 routes. `ViewStubComponent` stubs are declared for `tasks/:errandId`, `tasks/:errandId/quote`, `tasks/:errandId/payment`, `tasks/:errandId/evidence` and `notifications`, each with `pushed: true`, `navKey: 'home'`, no `stubLabel` and no `title`. Every Home and wizard link uses `customerLinks`; no view hard-codes `/app/customer/…`.
+- Evidence: NC§W9.11; `rg -n "'/app/customer/" apps/website/src/app/app-area/customer apps/website/src/app/shared --glob '!**/*.spec.ts'` hits only `customer-links.ts`.
+
+**G7-3 `TaskDraftStore`**
+- Current: none.
+- Target: NC§W2. `@Injectable()` provided by the `new` parent route. Signals, memory only. It has every field and computed value in the listing, including `submitting`, plus `start`, `changeCategory` (Flutter rules), `reset`, `finish` and `toRequest`. No storage, no `effect()`.
+- Evidence: NC§W9.4, NC§W9.5, NC§W9.6, NC§W9.9; ND T17; `rg -n "localStorage|sessionStorage" apps/website/src/app/app-area/customer` → no hits.
+
+**G7-4 Wizard guards, leaving, tab close, orphan DRAFT**
+- Current: none.
+- Target: NC§W3, NC§W8.
+  - `wizardEntryGuard`: fresh start only from outside `/app/customer/new`; `?category` validated, with an invalid value removed by a `replaceUrl` `UrlTree`.
+  - `wizardStepGuard(n)`: redirects to step 1 or to `openerUrl` after a submit.
+  - `wizardLeaveGuard`: no prompt without data, after a submit or between steps; discard confirm otherwise; blocked silently while submitting.
+  - Step 1 Back confirms before navigating, through `NmBackEvent.preventDefault()`.
+  - A `window:beforeunload` host listener on `nm-wizard-frame` while `hasData && !submitted`.
+  - `cancelDraft` best effort when leaving with an unsubmitted DRAFT.
+- Evidence: NC§W9.2, NC§W9.3, NC§W9.7, NC§W9.8, NC§W9.10; NC T9; NR T15.
+
+**G7-5 Customer data services and `apiErrorOf`**
+- Current: none.
+- Target: NC§W5. `CustomerErrandsApi` (`list`, `defaults`, `create`, `submit`, `cancelDraft`), `CustomerAddressesApi` (`GET /customers/me/addresses`) and `NotificationsCountApi` (`GET /notifications/unread-count`), all under `app-area/customer/data/`. Each uses `HttpClient` through the #6 lazy interceptor, with no `withCredentials` and no extra interceptor. `apiErrorOf` reads `code`, `pointType`, string or array `message`, and status 0. Only existing endpoints are used (the issue's common criterion).
+- Evidence: NC§W9.15; H T6; ND T21; NR T6; `rg -n "withCredentials|HTTP_INTERCEPTORS|withInterceptors" apps/website/src/app/app-area/customer` → no hits; `rg -n "places" apps/api/src --glob '*.controller.ts'` → no hits (no proxy, WQ-25).
+
+**G7-6 `environment.quotePreviewEnabled`** (minor)
+- Current: absent.
+- Target: NC§W6. Committed as `false`, added to the `Environment` interface and `environment.local.example.ts`. No other environment change.
+- Evidence: NR T2, NR T4 (both flag values); `git diff 55af009 -- apps/website/src/environments` adds only this key.
+
+#### B. Kit additions (NC§W9a)
+
+**G7-7 `nm-icon` entries**
+- Current: 14 #6 names (`icons.ts:8-34`).
+- Target: add `search`, `notifications`, `shopping-bag`, `local-shipping`, `fact-check`, `hourglass`, `bookmark`, `close`, `add` and `remove` (Material paths; the existing Apache-2.0 header covers them). Reuse `location` for Go There For Me and the place fields, and `person` for the avatar fallback. No `place` and no `business-center`. `categoryIcon(wire)` sits next to `categoryName`.
+- Evidence: NC§W9.16 (icons); NC T7; `git diff 55af009 -- apps/website/package.json` adds no icon package.
+
+**G7-8 `nm-back-button` `disabled`, `nm-pushed-header` `backDisabled`**
+- Current: not supported.
+- Target: NC§W9a. Renders the `disabled` attribute and `aria-disabled="true"`, with no emission and no navigation; the arrow is slate-400. Defaults unchanged, so the #6 tests pass unchanged.
+- Evidence: NC§W9.13, NC§W9.16; NR T7; the #6 `back-button` and `pushed-header` spec files are unchanged and passing.
+
+**G7-9 `nm-field` place-field inputs and `nmFieldValue` updates**
+- Current: `field.component.ts:30-46` has neither; `field-value.directive.ts:16` writes only in `ngOnInit`.
+- Target: NC§W9a.
+  - New inputs: `leadingIcon`, `busy` (spinner `aria-hidden`, input `aria-busy`, no spin under reduced motion), and `role`, `ariaAutocomplete`, `ariaExpanded`, `ariaControls`, `ariaActivedescendant` (absent by default).
+  - `nmFieldValue` writes a changed input after init, unless it equals the value the control last emitted (no caret jump).
+  - #5 and #6 defaults unchanged.
+- Evidence: NC§W9.16; ND T6, ND T12; the #5 `field` and #6 `field-value` spec files pass unchanged.
+
+**G7-10 `MapsLoaderService.importLibrary` (WQ-25)**
+- Current: `maps-loader.service.ts:55` loads `maps` and `marker` only.
+- Target: NC§W9a. Adds `importLibrary('places')`: `load()` first; `null` when unavailable or rejected; never a script without a key. `load()` itself is unchanged.
+- Evidence: NC§W9.16; ND T10, ND T11; the #5 maps-loader tests pass unchanged.
+
+**G7-11 `RealtimeService.onStateChange`**
+- Current: `realtime.service.ts:117` `stateListeners` is private.
+- Target: NC§W9a. A public `onStateChange(listener, destroyRef): () => void` over the same set. `showReconnecting` behaviour is unchanged.
+- Evidence: NC§W9.16; H T16; the #5 and #6 realtime suites pass unchanged.
+
+**G7-12 `formatHours` (+ pipe) and `initialsFor`**
+- Current: absent.
+- Target: NC§W9a, in `shared/format/formatters.ts` and `format.pipes.ts` (added to `FORMAT_PIPES`).
+- Evidence: ND T16; NC§W9.16 (`initialsFor` cases); H T2.
+
+**G7-13 No new type style, no new colour** (minor)
+- Current: the `_tokens.scss` type map is #5 plus the #6 five.
+- Target: NC§W9a. No entry is added to the type map and no `--nitume-*` colour token is added. In-between Flutter styles use the `nm-type` overrides listed in the NC§W9a table (`row-title` 11.5 or 13, `body` 13, `greeting` for captions, `card-title` white, `num-meta-lg` slate-400, `button-sm` white). Amounts and quantities use `<span nmNum>` (family only). `NumStyle` is unchanged.
+- Evidence: `git diff 55af009 -- apps/website/src/styles/_tokens.scss` is empty; `rg -n "\-\-nitume-[a-z0-9-]+:" apps/website/src/styles/_tokens.scss | wc -l` is unchanged from `55af009`.
+
+**G7-14 WQ-33 conversions in kit files the #7 routes reach**
+- Current: `NgTemplateOutlet` in `card.component.ts:3,8`, `section-label.component.ts:3,8` and `dialog.component.ts:3,43`; `viewChild` in `dialog.component.ts:73-74`.
+- Target: NC§W9a last row, NC§W10 item 3. `NgTemplateOutlet` → the #6 `nmTemplateOutlet`; dialog `viewChild` → an `ElementRef` lookup in the same hook. Rendered markup, classes, focus trap and tests are unchanged (precedent: #6 re-audit 2, ruling (c)). The panel (`panel.component.ts`) and `list-item` may stay as they are while no #7 route reaches them.
+- Evidence: NC§W9.16 (the three #5 spec files pass unchanged: `git diff 55af009 -- apps/website/src/app/shared/ui/card/*.spec.ts apps/website/src/app/shared/ui/overlay/*.spec.ts` has no removed lines); NC§W9.17(c).
+
+#### C. New shared components (NC§W9b; built once, reused by #8, #10, #11 and #12)
+
+All of them: standalone, `OnPush`, signal inputs, `nm-` prefix, under `shared/ui/<folder>/`; mixins only in `styleUrl` `.scss` files (F9.60); colours through `--nitume-*` only; focus ring via `nm-focus-ring`; hover via `nm-hover`.
+
+**G7-15 `nm-wizard-frame` and `nm-stepper`**
+- Current: none.
+- Target: NC§W4.
+  - Frame: the #6 `nm-pushed-header` (`title`, `step`, `steps` 3, `fallback`, `backDisabled`), the stepper, the body, then `nm-fixed-cta` with the `[nmWizardAbove]` and `[nmWizardCta]` slots. Max 640px and centred from 768px. The `beforeunload` host listener (G7-4).
+  - Stepper: three 4px segments, gap 6, green done / slate-line empty, `role="img"` `Step n of 3`.
+  - The frame reuses the #6 header; it does not copy a header.
+- Evidence: NC§W9.12, NC§W9.13; NC T1, NC T2; NR T1.
+
+**G7-16 `nm-fixed-cta` (shared with #8)**
+- Current: none (specified in `customer-x-awaiting-quote.md` §Components for #8).
+- Target: NC§W4. Below 768px: fixed, slate background, `8px 20px 6px` + safe-area inset, content padded so nothing hides under it. From 768px: inline. The `above` slot sits 10px above the button. Toast offset = bar height below 768px. No `box-shadow`.
+- Evidence: NC§W9.14; NR T8 (toast offset).
+
+**G7-17 `nm-category-tile` and `nm-category-grid`**
+- Current: none (the kit leaves the tile to #7, K§3; the marketing `app-category-card` is not reused).
+- Target: NC §Components.
+  - Grid: 3 columns at every width, 5 tiles in canonical order, an empty sixth cell.
+  - Tile: white with a slate-line border, `r-m`; icon box 32 in `green-050` with a blue icon; label `nm-type(row-title, 11.5px)` with line-height 1.3.
+  - Selected state: green border plus a 2px inset `green-050` ring via outline or a second border, never `box-shadow`. Hover border blue.
+  - `select` mode is a `radiogroup` with roving tabindex and `aria-posinset`/`setsize`; `link` mode renders `<a>` to `customerLinks.newTask(wire)`.
+- Evidence: NC T1 … T7, NC T10; H T5.
+
+**G7-18 `nm-choice-chip` and `nm-choice-chip-group` (shared with #8)**
+- Current: none.
+- Target: ND §`nm-choice-chip`. Pill, `8px 13px`, `chip` type. Unselected: slate fill, slate-line border, blue text. Selected: blue fill and border with **white** text, never green. 48px hit area. `disabled` input (the #8 saving state). The group is a radiogroup with roving tabindex and arrow keys. Values match `customer-x-awaiting-quote.md` §Components so #8 needs no second chip.
+- Evidence: ND T14.
+
+**G7-19 `nm-receipt-row`, `nm-receipt-caption`, `nm-receipt-group` (shared with #8)**
+- Current: none.
+- Target: NR "Receipt parts".
+  - Row: label `nm-type(body, 13px)`; amount `formatKesOrDash` in `<span nmNum>`. `isTotal` adds 700, a slate-line top border, margin-top 6 and padding `10px 0 6px`. `amountLabel` gives the accessible name.
+  - Caption: the `greeting` values, padding-top 8.
+  - Group: a hairline, 10px margin and 4px padding above.
+  - Values match the #8 spec.
+- Evidence: NR T16, NR T3, NR T4.
+
+**G7-20 `nm-notification-bell` (shared with #11)**
+- Current: none (the kit assigns it to #11; Home needs it first).
+- Target: H §Components. A 48×48 link followed in-app (`followInAppLink`). Inside: a 36px white circle with a slate-line border and an 18px blue `notifications` icon. When unread > 0: a 7px `--nitume-red` dot with a 1.5px white ring (OA-13; red is a status accent here, not a fill). Accessible name `Notifications, N unread` / `Notifications`.
+- Evidence: H T3.
+
+**G7-21 `nm-avatar` (shared with #10, #11, #12)**
+- Current: none.
+- Target: H §Components. A blue circle at 36, 60 or 70px; white 700 initials (13, 20 or 24px) from `initialsFor`; `person` icon fallback. As a link: 48×48 hit area with an accessible name from the input. White on blue only.
+- Evidence: H T2; component tests for the three sizes.
+
+**G7-22 `nm-search-entry`**
+- Current: none.
+- Target: H §Components. A **link** styled as a field (not an input). White, slate-line border, `r-m`, padding `13px 16px`, min-height 48. `search` icon 15 slate-400, gap 10. Placeholder text `body` in slate-400, which is also the accessible name. Hover border blue.
+- Evidence: H T4.
+
+**G7-23 `nm-active-task-card` (WQ-29)**
+- Current: none.
+- Target: H §Components.
+  - Blue fill, `r-m`, padding 18, no shadow; the card itself is not clickable.
+  - Compact info chip with the category name and the `#reference` suffix in `nmNum`.
+  - Title `nm-type(card-title, $color: white)`.
+  - Meta `nm-type(num-meta-lg, $color: slate-400)` plus `nmNum`; never an ETA (WQ-29).
+  - Primary small button rendered as `<a>`.
+- Evidence: H T10, H T11, H T12.
+
+**G7-24 `nm-task-row` (shared with #11 History)**
+- Current: none.
+- Target: H §Components. The whole row is an `<a>`: white, slate-line border, `r-m`, padding `13px 15px`. Title `nm-type(row-title, 13px)` with ellipsis. Meta `formatDayTime` in `nmNum="meta"`. Trailing regular `nm-status-chip` from `[customerStatus]`. Hover border blue.
+- Evidence: H T14, H T15.
+
+**G7-25 `nm-place-field` and Google attribution (WQ-25, WQ-26)**
+- Current: none.
+- Target: ND §`nm-place-field`, ND §Places.
+  - Built on `nm-field` (G7-9) as an ARIA 1.2 combobox with a `listbox`. Leading icon `location`.
+  - Search: 2-character minimum, 300 ms debounce, only the latest answer used. Saved addresses are listed on focus with empty text.
+  - A pick holds only while the text matches it; the pick writes the text through `nmFieldValue`.
+  - Search failure shows `Couldn't search places. Check your connection.` through the field `error`.
+  - Keyboard: Arrow, Enter, Escape. Focus, blur and keys come from bubbling host listeners; `focusRequest` acts from `ngOnChanges`.
+  - **Attribution:** `img[alt="Google Maps"]` with `src` `assets/third-party/google-maps-attribution.svg`, Google's unmodified asset, 16px high, placed after the options and outside the `listbox`. Shown only while Google suggestions are listed. The asset file sits in `src/assets/third-party/` with a README line giving its source URL.
+- Evidence: ND T6 … T10, ND T12, ND T22; NC§W9.17(a) (the asset is the only excepted path).
+
+**G7-26 `PLACE_SEARCH`, `GooglePlaceSearch`, `SavedPlaceSearch` (WQ-25)**
+- Current: none.
+- Target: ND §Places, under `shared/places/`.
+  - Token factory: a key gives Google; no key gives saved addresses.
+  - Google goes through `MapsLoaderService.importLibrary('places')`. `AutocompleteSuggestion.fetchAutocompleteSuggestions` with `includedRegionCodes: ['ke']`, `language: 'en'` and an `AutocompleteSessionToken`. `Place.fetchFields` asks for exactly `id`, `displayName`, `formattedAddress`, `location`, with the same token.
+  - Per-session cache keyed on token + normalised query, cap 200, dropped after Details. A new token after each pick. `composeAddressText`. A place without a location rejects. A library-load failure gives the search-failure line.
+  - Saved search: label or address contains, only entries with `lat`/`lon`, `placeId: null`.
+  - No key: no script, plus the C-40 notice.
+  - **No API proxy** and no Nitume token sent to Google.
+- Evidence: ND T7, ND T9, ND T10, ND T11; `rg -n "maps\.googleapis|google\.maps|importLibrary\(" apps/website/src/app --glob '!**/*.spec.ts'` shows only the kit loader, `shared/places/` and the #5 live map (corrected at re-audit 1; the baseline grep matched the word "replaces"); no new `apps/api` route. Re-audit 1: Details through `placePrediction.toPlace()` (finding 3).
+
+**G7-27 `nm-shopping-list`**
+- Current: none.
+- Target: ND §`nm-shopping-list`.
+  - Rows with hairlines between them. The name field has `maxlength` 80 and the names `Item n`.
+  - Stepper: 32px circles in 48px hit areas; value `<span nmNum>` at 13/600 blue; range 1–99; disabled ends with `aria-disabled`. Names `Decrease/Increase quantity of <item>`.
+  - Remove: `close` with the name `Remove item <name>`, hidden for a single row.
+  - `+ Add item` link: hidden at 30 rows, and it focuses the new row.
+  - Error `Add at least one item.`
+- Evidence: ND T13, ND T3 (list error).
+
+**G7-28 Component test minimum for every new #7 component** (F§9.8 rule)
+- Target: each component in G7-15 … G7-27 has its own spec file covering: renders, inputs, accessible name, focus-ring class, and token use (custom-property names, never hex).
+- Evidence: one spec file per component; the auditor greps each for the five checks.
+
+#### D. Views
+
+**G7-29 `HomePage` (`v-home`)**
+- Current: the #6 stub (top bar `Home` only).
+- Target: `customer-v-home.md`.
+  - Header and entry points:
+    - Greeting by local hour (WQ-2 default).
+    - First name as the `h1`, or a visually hidden `h1` `Home` when there is no name.
+    - Bell and avatar; search row.
+    - `Categories` grid in link mode.
+  - Tasks region:
+    - Loading: 140px skeleton plus two 72px skeletons.
+    - Error: `Couldn't load your tasks.` + `Try again`.
+    - Empty: nothing below the categories, and no empty message.
+    - `In progress`: the first active errand, `+N more in progress`, the per-state meta, button and target table.
+    - `Recent`: up to two rows.
+  - Data: the two list calls plus unread, in parallel.
+  - Realtime: join and leave the room, reload on the status change and on reconnect through `onStateChange`, never `location:update`.
+  - 30 s poll while disconnected and visible.
+  - Layout: CSS-only layouts at 768 and 1024.
+  - `Pay now →` is a plain link; #8 adds the intent.
+- Evidence: H T1 … T19; the issue's feature criterion "empty home state" is H T8.
+
+**G7-30 `v-new-category` page**
+- Current: the #6 stub (skeleton).
+- Target: `customer-v-new-category.md`. `New task`, `Step 1 of 3`, `What do you need done?`, five tiles (no Business Tasks), `Continue →` disabled until a tile is chosen, `?category` preselection, and the discard dialog copy and order.
+- Evidence: NC T1 … T10.
+
+**G7-31 `v-new-details` page**
+- Current: none.
+- Target: `customer-v-new-details.md`.
+  - The per-category card matrix, with exact headings, labels and placeholders.
+  - Every validation message: shown after the first `Continue →`, then live. Focus on the first error.
+  - Deadline chips with the Flexible caption from `GET /errands/defaults` (`formatHours`, hidden on failure).
+  - Budget rules (row 45), `toRequest` (local 23:59 as UTC, `lon`, no `urgency`), `focusOnReturn`.
+  - Places as G7-25 and G7-26.
+  - `<form novalidate>` with no forms module.
+- Evidence: ND T1 … T23. The issue's feature criteria "per-category field rules" and "validation errors" are ND T1 and ND T3 (with T4, T5, T18).
+
+**G7-32 `v-new-review` page**
+- Current: none.
+- Target: `customer-v-new-review.md`.
+  - Variant A notice (no estimate call), plus the item-budget card when the budget is > 0.
+  - Variant B behind the flag: `QUOTE_ESTIMATE`, whose default makes no HTTP request.
+  - `Submit task →`: create, then submit. Retry submits only, never a second create.
+  - Error table: generic toast; 400 on create → API message and back to step 2; 400 on submit → generic. 422 `location_outside_service_area` → no toast, cancel the DRAFT if one exists, the notice plus `Change location` above the CTA, CTA disabled until a re-pick.
+  - Success → `replaceUrl` to `/app/customer/tasks/<id>/quote`, then `finish()`.
+  - Submitting state disables Back.
+- Evidence: NR T1 … T17. The issue's feature criteria "estimate request" and "submit success/failure paths" are NR T2, T4, T5 and NR T6 … T14.
+
+**G7-33 Owner-decision behaviour (WQ-25, WQ-26, WQ-29, WQ-2)** (cross-check item; **amended at re-audit 1** for owner WQ-2, answered 2026-10-29: activity times local, deadlines EAT and labelled EAT)
+- Target (as amended): WQ-25, WQ-26 and WQ-29 as below. **WQ-2:** greeting and Recent times in browser local time. `Today`/`Tomorrow` deadlines are 23:59 EAT of the EAT date, whatever the browser zone, with the EAT caption (ND Rules, proposed copy Q7-5). EAT helpers (`eatDayKey`, `…Eat` formatters) are **allowed in `app-area/customer` for deadline code only** (the store's `deadlineAt` / `toRequest` and the deadline caption); greeting, Recent and every other activity time keep the local formatters.
+- Evidence (as amended): ND T17 (two zones), ND T21a; H T1, H T14 (local); `rg -n "Africa/Nairobi|Eat\b|eatDayKey|formatDeadlineEat|formatDayTimeEat" apps/website/src/app/app-area/customer --glob '!**/*.spec.ts'` hits only deadline code (store `deadlineAt`, the deadline caption in `new-details.page.*`).
+- Baseline target (superseded for WQ-2):
+  - WQ-25: browser path only, Kenya, 300 ms, session tokens, per-session cache, saved-address fallback, no proxy.
+  - WQ-26: attribution shown under Google suggestions only.
+  - WQ-29: no ETA and no `location:update` on Home.
+  - WQ-2: browser local time everywhere it applies, with no EAT-only code path added. Each is decided only as recorded.
+- Evidence: ND T7, ND T10, ND T11, ND T22; H T10, H T16; `rg -n "Africa/Nairobi|formatDayTimeEat|formatDeadlineEat" apps/website/src/app/app-area/customer` → no hits.
+
+#### E. Rules, tests and health
+
+**G7-34 Tokens, typography and contrast in #7 code**
+- Target:
+  - No hex, `rgb(a)`, `hsl(a)`, named colour, `box-shadow` or marketing variable in #7 code (the Google attribution asset excepted by exact path, WQ-26).
+  - Fira Code only through `nmNum` and the `num-*` mixins, on every numeric field the four specs list: step counters, reference, active meta, `+N`, Recent times, budget input and prefix, quantities, `{duration}`, amounts.
+  - White text on the blue card, the blue avatar, the selected chip and the green buttons.
+  - Green only for the primary buttons, the selected tile border, done stepper segments, the active nav item and the focus ring. Red only for errors and the unread dot. Amber is not used.
+- Evidence: NC§W9.17(a)(b); H T12; NR T16; `rg -n "#[0-9A-Fa-f]{3,8}\b|rgba?\(|hsla?\(|box-shadow" <#7 files>` → no hits.
+
+**G7-35 Domain rules**
+- Target:
+  - Five MVP display names only, never wire values in the UI, never `Business Tasks`.
+  - States through `customerStatus()` / `parseErrandStatus`, with unknown values dropped. DRAFT is never listed. RUNNER_ASSIGNED reads `Finding a runner` with no runner name.
+  - No wallet or escrow wording, no `KES`.
+  - Item budget is never added to a fee total; service fee, runner fee and merchant payment stay separate.
+- Evidence: H T5, H T10, H T15, H T19; NC T1, NC T4; NR T4, NR T17; `rg -ni "wallet|escrow" apps/website/src/app/app-area/customer apps/website/src/app/shared --glob '!**/*.spec.ts'` → no hits.
+
+**G7-36 Responsive and accessibility**
+- Target:
+  - No horizontal scroll at 360px; uses the width at ≥ 1280px (the Home two-column grid).
+  - 48×48 targets.
+  - Focus ring everywhere, and no bare `outline: none`.
+  - Radio semantics for tiles and chips. Combobox semantics for place fields.
+  - `role="alert"` errors; `role="status"` skeletons.
+  - Visually hidden `h1` on Home without a name.
+  - The fixed CTA never hides the focused field.
+  - Focus on entry follows the #6 `focusPageHeading` rule (`ngAfterViewInit` for field focus).
+- Evidence: H T7, H T18; NC T5; ND T12, ND T20; NR T7; NC§W9.17(f).
+
+**G7-37 Required Vitest cases: coverage table**
+- Current: no #7 spec files.
+- Target: every case below is its own `it(...)`; `cd apps/website && npx ng test --watch=false` has 0 failures, and the 412 #5/#6 tests still pass.
+
+| Cases | Item |
+|---|---|
+| NC§W9.1 | G7-1 |
+| NC§W9.2, NC§W9.3, NC§W9.7, NC§W9.8, NC§W9.10 | G7-4 |
+| NC§W9.4, NC§W9.5, NC§W9.6, NC§W9.9 | G7-3 |
+| NC§W9.11 | G7-2 |
+| NC§W9.12, NC§W9.13 | G7-15 |
+| NC§W9.14 | G7-16 |
+| NC§W9.15 | G7-5 |
+| NC§W9.16 | G7-7 … G7-12, G7-14 |
+| NC§W9.17 | G7-38 (also G7-34, G7-36) |
+| NC§W9.18 (build, not Vitest) | G7-39 |
+| NC T1 … T10 | G7-30 (T1–T7, T10 also G7-17) |
+| H T1 … T19 | G7-29 (T2 G7-21, T3 G7-20, T4 G7-22, T10–T12 G7-23, T14–T15 G7-24) |
+| ND T1 … T23 | G7-31 (T6–T12, T22 G7-25/G7-26; T13 G7-27; T14 G7-18; T16 G7-12) |
+| NR T1 … T17 | G7-32 (T16 G7-19) |
+| Issue #7 feature criterion | per-category field rules ND T1; validation errors ND T3–T5, T18; estimate request NR T2, T4, T5; submit success/failure NR T6–T14; empty home H T8 |
+
+**G7-38 WQ-33 static checks for #7 code (WQ-34 "same static checks as #6")**
+- Current: the #6 checks cover `app-area/**` and the #6 folders only (`auth-static.spec.ts:48-64`).
+- Target: NC§W10 items 2–5, in a new `src/styles/customer-static.spec.ts`:
+  - (a) colour patterns;
+  - (b) font literals;
+  - (c) none of `effect(`, `afterNextRender`, `afterRender`, `viewChild`, `viewChildren`, `contentChild`, `NgTemplateOutlet`, `ngTemplateOutlet`, `ReactiveFormsModule`, `FormControl`, `FormGroup`, `FormsModule`, `ngModel`, `toObservable` in #7 code, meaning the files #7 adds plus every kit file a #7 route component imports (at least `shared/ui/card/*`, `shared/ui/overlay/dialog.component.ts`, `shared/ui/field/*`, `shared/ui/status-chip/*`, `shared/ui/states/*`, `shared/ui/notice/*`, `shared/map/maps-loader.service.ts`);
+  - (d) no import from the `shared/ui` or `shared/map` barrels in #7 code;
+  - (e) F9.50 eager walker, with `shared/places` added to `FORBIDDEN_EAGER`, plus a walker self-check;
+  - (f) no bare `outline: none`.
+  - `app.config.ts` still has no `withComponentInputBinding(` (F9.50 framework weight keeps passing).
+- Evidence: NC§W9.17. The auditor reads the regexes and checks that each fails when one forbidden line is injected (as at #6 re-audit 2). `rg -n "effect\(|afterNextRender|viewChild|NgTemplateOutlet|ReactiveFormsModule|FormsModule|ngModel|toObservable" <#7 files>` → no hits.
+
+**G7-39 WQ-34 bundle check**
+- Current: 351.44 kB raw (#6 re-audit 3, identical code).
+- Target: NC§W10 item 1. `npx ng build` "Initial total" **≤ 360.00 kB raw**. The PR body reports raw and transfer next to 351.44 kB. If the figure exceeds 360.00, it goes to the owner; the cap is not raised in code. The initial chunks contain no `core/auth`, `core/realtime`, `app-area`, `shared/ui` or `shared/places` input, and no `@angular/google-maps`, `@angular/forms`, `socket.io-client` or `engine.io-client`.
+- Evidence at re-audit:
+  1. `npx ng build --stats-json`: Initial total ≤ 360.00 kB raw.
+  2. The stats inputs of every initial chunk list only the marketing files, the #6 shims (`core/lazy-session/**`, `app.config.ts`, `app.routes.ts`) and the packages `@angular/{core,common,router,platform-browser}`, `rxjs`, `tslib`, `zone.js`.
+  3. The PR body figure matches the auditor's run.
+
+**G7-40 Commits, layout, marketing unchanged** (minor)
+- Target:
+  - Conventional commits on `feat/website-customer-create-task`, scope `angular-website`. Kit additions (G7-7 … G7-14) go in their own commits, before the components that need them.
+  - #7 view code under `app-area/customer/{home,new-task,data}/` plus `customer-links.ts`. New components under `shared/ui/<folder>/`. Places under `shared/places/`.
+  - Every new component is `OnPush`.
+  - Marketing pages, layout, header, footer, `styles.scss` and `index.html` are unchanged.
+- Evidence: `git log --oneline 8feae7e..HEAD`; `git diff 55af009 -- apps/website/src/app/{pages,layout} apps/website/src/app/shared/{header,footer,category-card,profile-card,proof-item,ticket} apps/website/src/styles.scss apps/website/src/index.html` is empty; `rg -n "changeDetection" <new component files>` shows `OnPush` on each.
+
+### Re-audit checklist for #7 (auditor)
+
+1. G7-1 … G7-40 each closed with the evidence above.
+2. Re-run `npx ng test --watch=false` (0 failures) and `npx ng build --stats-json` (G7-39 evidence 1–3).
+3. Owner decisions WQ-25, WQ-26, WQ-29 and WQ-2 (deadlines EAT, labelled) are met as recorded (G7-33, amended at re-audit 1).
+4. Copy check against the four specs' "Copy (exact)" sections, including the discard dialog, every validation message, the service-area notice and the Places notice.
+5. Verdict PASS → `SCREEN_MAP.md` #7 rows → `matches-design`. Merge still waits for #6 and its preconditions.
+
+---
+
+<!-- Sections for issues #8 to #18 are appended below as their web specs are written. -->

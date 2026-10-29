@@ -25,6 +25,9 @@ export class EvidenceController {
   constructor(private readonly evidence: EvidenceService) {}
 
   /**
+   * Issue #39: the assigned runner (allowed states, else 409
+   * `evidence_not_allowed`) or an admin; anyone else 403
+   * `evidence_upload_forbidden`. GET below is unchanged.
    * Optional `Idempotency-Key` (RA-17): a replayed upload returns the first
    * evidence row and stores nothing new. Row 252: up to
    * `evidence.maxUploadBytes` (10 MB) per file, else 413

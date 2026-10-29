@@ -121,7 +121,8 @@ describe('customer shell (#6)', () => {
     expect(text(stub)).toBe('History');
     expect(stub.querySelectorAll('h1')).toHaveLength(1);
     expect(stub.textContent).not.toMatch(/TODO|Coming soon|Lorem/i);
-    await h.harness.navigateByUrl('/app/customer/new');
+    // A #7 stub without a label (the wizard replaced the #6 `new` stub).
+    await h.harness.navigateByUrl('/app/customer/notifications');
     const skeleton = h.root().querySelector('app-view-stub') as HTMLElement;
     expect(skeleton.querySelector('h1')).toBeNull();
     expect(skeleton.querySelector('nm-skeleton-card')).not.toBeNull();

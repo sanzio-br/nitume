@@ -1,6 +1,7 @@
 import { Component, inject, output, signal } from '@angular/core';
 import { AdminDataService, shortId, timeAgo } from '../admin-data.service';
 import { StatusChipComponent, statusLabel } from '../../../shared/status-chip.component';
+import { isActive, isFlagged, isWeb } from '../runner-presence';
 
 /**
  * Runner network panel (design mockup `#p-runners`): a live directory grid of
@@ -70,6 +71,13 @@ import { StatusChipComponent, statusLabel } from '../../../shared/status-chip.co
               </div>
             </div>
             <div class="r-tags">
+              <!-- #36: web runner marker and flag, A-02 fixed chips. -->
+              @if (isWeb(runner) && isActive(runner)) {
+                <app-status-chip label="Web" tone="neutral" />
+              }
+              @if (isFlagged(runner)) {
+                <app-status-chip label="Pings stopped" tone="pending" />
+              }
               <app-status-chip [status]="runner.verificationLevel" kind="level" />
               <span class="chip chip-neutral">{{ runner.skillsCount ?? 0 }} skills</span>
             </div>
@@ -95,9 +103,12 @@ export class RunnersPanelComponent {
   protected sub(): string {
     const all = this.s.runners().length;
     const t = this.s.topStats();
+    // #36: ` · {n} pings stopped` only when n > 0 (never pluralised by code).
+    const flagged = this.s.runners().filter(isFlagged).length;
     return all === 0
       ? 'No runner profiles synced yet'
-      : `${all} runners · ${t.onlineRunners} online · ${t.onTaskRunners} on task`;
+      : `${all} runners · ${t.onlineRunners} online · ${t.onTaskRunners} on task` +
+          (flagged ? ` · ${flagged} pings stopped` : '');
   }
 
   protected visible() {
@@ -108,7 +119,9 @@ export class RunnersPanelComponent {
         r.id.toLowerCase().includes(q) ||
         shortId(r.id).toLowerCase().includes(q) ||
         (r.verificationLevel ?? '').toLowerCase().includes(q) ||
-        statusLabel(r.availability, 'availability').toLowerCase().includes(q)
+        statusLabel(r.availability, 'availability').toLowerCase().includes(q) ||
+        // #36: `web` and `pings stopped` match the chips on the card.
+        `${isWeb(r) && isActive(r) ? 'web ' : ''}${isFlagged(r) ? 'pings stopped' : ''}`.includes(q)
       );
     });
   }
@@ -140,4 +153,7 @@ export class RunnersPanelComponent {
 
   protected readonly shortId = shortId;
   protected readonly timeAgo = timeAgo;
+  protected readonly isWeb = isWeb;
+  protected readonly isActive = isActive;
+  protected readonly isFlagged = isFlagged;
 }

@@ -104,7 +104,8 @@ describe('app routes and frame (#6)', () => {
   it('F9.5. focus moves to the page h1 (tabindex -1) after navigation inside /app', async () => {
     const h = await openApp('/app/customer/home', { restore: userJson() });
     await vi.waitFor(() => expect(document.activeElement?.tagName).toBe('H1'));
-    expect(text(document.activeElement)).toBe('Home');
+    // #7: Home's h1 is the customer's first name (userJson: Achieng Otieno).
+    expect(text(document.activeElement)).toBe('Achieng');
     expect(document.activeElement?.getAttribute('tabindex')).toBe('-1');
     await h.harness.navigateByUrl('/app/customer/history');
     await vi.waitFor(() => expect(text(document.activeElement)).toBe('History'));

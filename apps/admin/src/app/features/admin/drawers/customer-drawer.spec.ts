@@ -146,6 +146,9 @@ describe('Open customer links (SQ-3)', () => {
     } as unknown as RefundDetail);
     await flushAsync();
     f.detectChanges();
+    // The link is a @defer chunk: wait for it, not a fixed number of ticks.
+    await f.whenStable();
+    f.detectChanges();
     const el = f.nativeElement as HTMLElement;
     expect(el.textContent).toContain('Amina W.');
     const link = openCustomer(el)!;

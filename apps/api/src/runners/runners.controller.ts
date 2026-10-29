@@ -48,6 +48,13 @@ export class RunnersController {
     return this.runners.publicProfile(id);
   }
 
+  /**
+   * Admin runner directory. Issue #36: every item carries `presence`
+   * `{ client: 'web' | 'app' | null, lastPingAt, webPingsStoppedAt }` (ISO
+   * or null) from the Redis presence record; `webPingsStoppedAt` is set
+   * while a web runner who is online or busy has sent no ping past
+   * LOCATION_WEB_STALE_SECONDS, and is always null for an offline runner.
+   */
   @UseGuards(JwtAuthGuard)
   @Get()
   @Roles(UserRole.ADMIN)
@@ -285,7 +292,8 @@ export class RunnersController {
    * item shape (every record newest first, `pendingCount`,
    * `oldestPendingAt`, `verification`, `applicationStatus`), whatever the
    * queue filters; no document links. A runner with only phone records still
-   * answers (`applicationStatus` null). Errors: 400 for a malformed id; 404
+   * answers (`applicationStatus` null). Issue #36: plus `presence` (same
+   * shape as on `GET /runners`), on this route only. Errors: 400 for a malformed id; 404
    * runner_not_found. Declared after every `me/...` and `verifications/...`
    * route so it never shadows them.
    */

@@ -37,6 +37,7 @@ const build = (opts: {
     profileByUserId: vi.fn(opts.profile ?? (() => Promise.resolve({ id: 'rp-1' }))),
   };
   const location = { ingest: vi.fn(() => Promise.resolve({ ok: true })) };
+  const presence = { recordConnect: vi.fn(() => Promise.resolve()) };
   const gateway = new RealtimeGateway(
     jwt as never,
     config as never,
@@ -44,6 +45,7 @@ const build = (opts: {
     errands as never,
     runners as never,
     location as never,
+    presence as never,
   );
   const emit = vi.fn();
   const to = vi.fn(() => ({ emit }));
@@ -51,7 +53,7 @@ const build = (opts: {
   const fetchSockets = vi.fn(() => Promise.resolve(roomSockets));
   const inRoom = vi.fn(() => ({ fetchSockets }));
   gateway.server = { to, in: inRoom } as never;
-  return { gateway, jwt, access, errands, runners, location, to, emit, roomSockets, inRoom };
+  return { gateway, jwt, access, errands, runners, location, presence, to, emit, roomSockets, inRoom };
 };
 
 const socket = (auth: Record<string, unknown> = { token: 'abc' }, headers = {}) => ({
@@ -387,7 +389,8 @@ describe('RealtimeGateway location:ping (RA-4)', () => {
     client.data.user = { userId: 'r-1', role: UserRole.RUNNER };
     const body = { lat: -1.28, lng: 36.82 };
     await expect(gateway.locationPing(client as never, body)).resolves.toEqual({ ok: true });
-    expect(location.ingest).toHaveBeenCalledWith({ userId: 'r-1', role: UserRole.RUNNER }, body);
+    // Issue #36: no `client` on the handshake -> the app.
+    expect(location.ingest).toHaveBeenCalledWith({ userId: 'r-1', role: UserRole.RUNNER }, body, expect.any(Date), 'app');
   });
 });
 
@@ -550,5 +553,83 @@ describe('RealtimeGateway merchant_details events per role (rows 42-44, 80; issu
     await built.gateway.onMerchantDetailsChanged(changed);
     expect(built.errands.merchantNumbersVisibleTo).not.toHaveBeenCalled();
     expect(runner.emit).toHaveBeenCalledWith('merchant_details:changed', changed);
+  });
+});
+
+describe('RealtimeGateway web runner presence (issue #36)', () => {
+  const runnerRow = { id: 'u-r', role: UserRole.RUNNER, phone: '+254700000001', status: UserStatus.ACTIVE };
+
+  it("marks a runner socket 'web' from handshake.auth.client and records the connect", async () => {
+    const { gateway, presence } = build({ user: runnerRow });
+    const client = socket({ token: 'abc', client: 'web' });
+    await gateway.handleConnection(client as never);
+    expect((client.data as { client?: string }).client).toBe('web');
+    expect(presence.recordConnect).toHaveBeenCalledWith('rp-1', 'web');
+  });
+
+  it("treats any other client value, or none, as the app", async () => {
+    for (const auth of [{ token: 'abc' }, { token: 'abc', client: 'ios' }, { token: 'abc', client: 'Web' }]) {
+      const { gateway, presence } = build({ user: runnerRow });
+      const client = socket(auth);
+      await gateway.handleConnection(client as never);
+      expect((client.data as { client?: string }).client).toBe('app');
+      expect(presence.recordConnect).toHaveBeenCalledWith('rp-1', 'app');
+    }
+  });
+
+  it('records nothing for customer and admin sockets', async () => {
+    for (const role of [UserRole.CUSTOMER, UserRole.ADMIN]) {
+      const { gateway, presence } = build({ user: { ...runnerRow, role } });
+      await gateway.handleConnection(socket({ token: 'abc', client: 'web' }) as never);
+      expect(presence.recordConnect).not.toHaveBeenCalled();
+    }
+  });
+
+  it("passes the socket's client to the ping intake", async () => {
+    const { gateway, location } = build();
+    const client = socket({ token: 'abc', client: 'web' });
+    client.data.user = { userId: 'u-r', role: UserRole.RUNNER };
+    (client.data as { client?: string }).client = 'web';
+    await gateway.locationPing(client as never, { lat: 1, lng: 2 });
+    expect(location.ingest).toHaveBeenCalledWith(client.data.user, { lat: 1, lng: 2 }, expect.any(Date), 'web');
+  });
+
+  it('relays the three presence events to the admins room', () => {
+    const { gateway, to, emit } = build();
+    gateway.onWebPingsStopped({ runnerProfileId: 'rp-1', lastPingAt: null, at: '2026-10-29T08:00:00.000Z' });
+    expect(to).toHaveBeenLastCalledWith('admins');
+    expect(emit).toHaveBeenLastCalledWith(SocketServerEvent.RUNNER_WEB_PINGS_STOPPED, {
+      runnerProfileId: 'rp-1',
+      lastPingAt: null,
+      at: '2026-10-29T08:00:00.000Z',
+    });
+    gateway.onWebPingsResumed({ runnerProfileId: 'rp-1', at: '2026-10-29T08:01:00.000Z' });
+    expect(to).toHaveBeenLastCalledWith('admins');
+    expect(emit).toHaveBeenLastCalledWith('runner:web_pings_resumed', { runnerProfileId: 'rp-1', at: '2026-10-29T08:01:00.000Z' });
+    gateway.onWebAutoOffline({ runnerProfileId: 'rp-1', lastPingAt: '2026-10-29T07:55:00.000Z', at: '2026-10-29T08:00:30.000Z' });
+    expect(to).toHaveBeenCalledWith('admins');
+    expect(emit).toHaveBeenCalledWith('runner:web_auto_offline', {
+      runnerProfileId: 'rp-1',
+      lastPingAt: '2026-10-29T07:55:00.000Z',
+      at: '2026-10-29T08:00:30.000Z',
+    });
+    expect(SocketServerEvent.RUNNER_WEB_PINGS_STOPPED).toBe('runner:web_pings_stopped');
+  });
+
+  it("tells the runner's own room when the system set them offline (owner, 2026-10-29)", () => {
+    const { gateway, to, emit } = build();
+    gateway.onWebAutoOffline({ runnerProfileId: 'rp-7', lastPingAt: null, at: '2026-10-29T09:00:00.000Z' });
+    expect(to).toHaveBeenCalledWith('admins');
+    expect(to).toHaveBeenCalledWith('runner:rp-7:status');
+    expect(emit).toHaveBeenCalledWith('runner:availability_changed', {
+      availability: 'offline',
+      reason: 'web_pings_stopped',
+      at: '2026-10-29T09:00:00.000Z',
+    });
+    // The stopped/resumed flags stay admin only.
+    to.mockClear();
+    gateway.onWebPingsStopped({ runnerProfileId: 'rp-7', lastPingAt: null, at: '2026-10-29T09:00:00.000Z' });
+    gateway.onWebPingsResumed({ runnerProfileId: 'rp-7', at: '2026-10-29T09:01:00.000Z' });
+    expect(to.mock.calls).toEqual([['admins'], ['admins']]);
   });
 });

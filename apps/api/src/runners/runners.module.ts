@@ -13,6 +13,7 @@ import {
   verificationDocumentStorageProvider,
 } from './verification-storage/verification-document-storage';
 import { RunnersController } from './runners.controller';
+import { RunnerPresenceService } from './runner-presence.service';
 import { RunnersService } from './runners.service';
 import { UsersModule } from '../users/users.module';
 
@@ -32,10 +33,11 @@ import { UsersModule } from '../users/users.module';
   controllers: [RunnersController],
   providers: [
     RunnersService,
+    RunnerPresenceService,
     CloudinaryVerificationDocumentStorage,
     ConsoleVerificationDocumentStorage,
     verificationDocumentStorageProvider,
   ],
-  exports: [RunnersService],
+  exports: [RunnersService, RunnerPresenceService],
 })
 export class RunnersModule {}

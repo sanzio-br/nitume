@@ -26,10 +26,15 @@
       @if (kind() === 'money') {
         <span class="nm-field__prefix" nmNum>KSh </span>
       }
+      @if (leadingIcon(); as icon) {
+        <nm-icon class="nm-field__lead" [name]="icon" [size]="18" />
+      }
       <input
         class="nm-field__input"
         [class.nm-field__input--num]="isNumeric()"
         [class.nm-field__input--money]="kind() === 'money'"
+        [class.nm-field__input--lead]="!!leadingIcon()"
+        [class.nm-field__input--busy]="busy()"
         [class.nm-field__input--error]="!!error()"
         [id]="id"
         [attr.type]="kind() === 'phone' ? 'tel' : 'text'"
@@ -44,9 +49,18 @@
         [readOnly]="readonly()"
         [attr.aria-invalid]="error() ? 'true' : null"
         [attr.aria-describedby]="error() ? errorId : null"
+        [attr.role]="role()"
+        [attr.aria-autocomplete]="ariaAutocomplete()"
+        [attr.aria-expanded]="ariaExpandedAttr()"
+        [attr.aria-controls]="ariaControls()"
+        [attr.aria-activedescendant]="ariaActivedescendant()"
+        [attr.aria-busy]="busy() ? 'true' : null"
         (input)="onInput($event)"
         (blur)="onTouched()"
       />
+      @if (busy()) {
+        <span class="nm-field__spinner" aria-hidden="true"></span>
+      }
     }
   </div>
   @if (error(); as message) {

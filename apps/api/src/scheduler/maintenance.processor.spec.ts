@@ -7,6 +7,7 @@ import {
   MaintenanceProcessor,
   OFFER_EXPIRY_JOB,
   STK_RECONCILE_JOB,
+  WEB_PRESENCE_SWEEP_JOB,
 } from './maintenance.processor';
 
 const build = () => {
@@ -97,5 +98,14 @@ describe('MaintenanceProcessor location purge (row 247)', () => {
     const processor = new MaintenanceProcessor({} as never, {} as never, {} as never, locations as never);
     await expect(processor.process({ name: LOCATION_PURGE_JOB } as never)).resolves.toEqual({ errandIds: ['e-1'], deleted: 4 });
     expect(locations.purgeExpired).toHaveBeenCalled();
+  });
+});
+
+describe('MaintenanceProcessor web presence sweep (issue #36)', () => {
+  it('runs the web presence sweep from the queue', async () => {
+    const web = { sweep: vi.fn(() => Promise.resolve({ flagged: ['rp-1'], offlined: ['rp-2'] })) };
+    const processor = new MaintenanceProcessor({} as never, {} as never, {} as never, undefined, web as never);
+    await expect(processor.process({ name: WEB_PRESENCE_SWEEP_JOB } as never)).resolves.toEqual({ flagged: ['rp-1'], offlined: ['rp-2'] });
+    expect(web.sweep).toHaveBeenCalled();
   });
 });

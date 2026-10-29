@@ -284,3 +284,41 @@ describe('LocationIngestService geofence (§4.3)', () => {
     expect(errands.locationsFor).not.toHaveBeenCalled();
   });
 });
+
+describe('LocationIngestService presence (issue #36)', () => {
+  const withPresence = (opts: Parameters<typeof build>[0] = {}) => {
+    const b = build(opts);
+    const presence = { recordPing: vi.fn(() => Promise.resolve()) };
+    const service = new LocationIngestService(
+      b.errands as never,
+      b.runners as never,
+      b.redis as never,
+      b.queue as never,
+      { get: vi.fn((_k: string, d: unknown) => d) } as never,
+      presence as never,
+    );
+    return { ...b, service, presence };
+  };
+
+  it('records the client and receipt time on an accepted idle ping (web) and job ping (app by default)', async () => {
+    const { service, presence } = withPresence({ availability: RunnerAvailability.ONLINE });
+    await expect(service.ingest(runnerUser, ping(), NOW, 'web')).resolves.toEqual({ ok: true });
+    expect(presence.recordPing).toHaveBeenLastCalledWith('rp-1', 'web', NOW);
+
+    const job = withPresence();
+    await expect(job.service.ingest(runnerUser, ping({ errandId: ERRAND }), NOW)).resolves.toMatchObject({ ok: true });
+    expect(job.presence.recordPing).toHaveBeenLastCalledWith('rp-1', 'app', NOW);
+  });
+
+  it('records nothing for a refused ping (offline runner, foreign job, throttled)', async () => {
+    const offline = withPresence({ availability: RunnerAvailability.OFFLINE });
+    await expect(offline.service.ingest(runnerUser, ping(), NOW, 'web')).resolves.toEqual({ ok: false, error: 'runner_offline' });
+    const foreign = withPresence({ holder: { runnerProfileId: 'rp-9', status: AssignmentStatus.ACCEPTED } });
+    await expect(foreign.service.ingest(runnerUser, ping({ errandId: ERRAND }), NOW, 'web')).resolves.toEqual({ ok: false, error: 'forbidden' });
+    const throttled = withPresence({ throttleFree: false });
+    await expect(throttled.service.ingest(runnerUser, ping(), NOW, 'web')).resolves.toEqual({ ok: false, error: 'rate_limited' });
+    for (const b of [offline, foreign, throttled]) {
+      expect(b.presence.recordPing).not.toHaveBeenCalled();
+    }
+  });
+});

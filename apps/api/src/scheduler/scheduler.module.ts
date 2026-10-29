@@ -9,8 +9,9 @@ import { IdDocumentRetentionService } from './id-document-retention.service';
 import { LocationRetentionService } from './location-retention.service';
 import { MaintenanceProcessor } from './maintenance.processor';
 import { MaintenanceScheduler } from './maintenance.scheduler';
+import { WebPresenceSweepService } from './web-presence-sweep.service';
 
-/** Dispute-window, STK reconcile and retention (ID images, job locations) jobs on the maintenance queue. */
+/** Dispute-window, STK reconcile, retention (ID images, job locations) and web presence (issue #36) jobs on the maintenance queue. */
 @Module({
   imports: [
     ErrandsModule,
@@ -22,8 +23,9 @@ import { MaintenanceScheduler } from './maintenance.scheduler';
   providers: [
     IdDocumentRetentionService,
     LocationRetentionService,
+    WebPresenceSweepService,
     ...(queueWorkersEnabled() ? [MaintenanceProcessor, MaintenanceScheduler] : []),
   ],
-  exports: [IdDocumentRetentionService, LocationRetentionService],
+  exports: [IdDocumentRetentionService, LocationRetentionService, WebPresenceSweepService],
 })
 export class SchedulerModule {}

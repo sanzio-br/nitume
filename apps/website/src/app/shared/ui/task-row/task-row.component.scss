@@ -1,0 +1,44 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 13px 15px;
+  background-color: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-m);
+  color: inherit;
+  text-decoration: none;
+
+  @include nm-hover {
+    border-color: var(--nitume-blue);
+  }
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-task-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nm-task-row__title {
+  @include nm-type(row-title, 13px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nm-task-row__chip {
+  flex: none;
+}

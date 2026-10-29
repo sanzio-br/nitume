@@ -24,6 +24,9 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+/** The 401 message of a refresh session that was rotated, revoked or expired. */
+export const REFRESH_REVOKED_MESSAGE = 'Refresh token revoked or expired';
+
 const refreshSessionKey = (userId: string, jti: string): string =>
   `refresh:${userId}:${jti}`;
 
@@ -96,7 +99,7 @@ export class TokenService {
     }
     const stored = await this.redis.get(refreshSessionKey(payload.sub, payload.jti));
     if (!stored || stored !== this.hashToken(refreshToken)) {
-      throw new UnauthorizedException('Refresh token revoked or expired');
+      throw new UnauthorizedException(REFRESH_REVOKED_MESSAGE);
     }
     return { ...payload, jti: payload.jti };
   }

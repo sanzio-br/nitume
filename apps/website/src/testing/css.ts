@@ -74,3 +74,16 @@ export function rawStyles(): string {
     .join('\n')
     .replace(/\s+/g, '');
 }
+
+/** Raw colour or shadow (the #5 scan, F9.48): kept here, outside src/app/. */
+export const RAW_COLOUR_OR_SHADOW = /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|box-shadow/;
+
+/** True when no component stylesheet in the document declares a shadow. */
+export function noShadow(): boolean {
+  return !rawStyles().includes('box-shadow');
+}
+
+/** True when the component stylesheets hold only custom-property colours (no hex, rgb(a), hsl(a) or shadow). */
+export function tokensOnly(): boolean {
+  return !RAW_COLOUR_OR_SHADOW.test(rawStyles());
+}
