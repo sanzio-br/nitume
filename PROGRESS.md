@@ -510,3 +510,25 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
   fix/runner-level2-legacy-ids → docs/runner-level2-legacy-spec → feat/api-level-drop-followups →
   docs/verification-owner-answers-269 → feat/api-verification-queue-filters → docs/admin-verification-table-spec →
   feat/admin-verification-table → docs/admin-verification-table-audit → docs/board-admin-verification.
+
+## 2026-10-28 — Website parity with the customer and runner apps (issues #5–#19)
+
+- Owner asked for every customer and runner app feature on the website. 14 feature-group issues (#5–#18) were opened on GitHub, each with a statement, a description and PR acceptance criteria, including mandatory Vitest tests with 0 failures. Owner decisions are recorded on BOARD (W-Q0…W-Q4, Q-W1…Q-W3, WQ-1…WQ-11).
+- Completed: API web sign-in with an httpOnly refresh cookie (`/api/v1/auth/web/*`, `WEB_ORIGINS`), PR #20 (part of #6). Unit 923/923, e2e 175/175. No schema change. Deploy must set `WEB_ORIGINS`.
+- Completed: #5 web UI kit (tokens, components, overlays, status maps, formatters and pipes, RealtimeService, LiveMapComponent), PR #26. Website tests 15 files / 164 tests, 0 failures; design-auditor PASS 41/41; reviewer READY. Deferred: the Maps key (WQ-1, placeholder shown), AdvancedMarkerElement follow-up, WQ-2 customer time zones.
+- Completed (API, for #21/#23): refresh rejects suspended accounts (PR #22) and access tokens of suspended accounts are refused on HTTP and Socket.IO (PR #25). Owner opened #24 (admin suspend action, schema approved).
+- In progress: #6 auth and shell (specced), #24 API part.
+- Deferred: #19 CORS/Socket.IO origin allowlist (follow-up); Google Maps browser key (WQ-1) and Firebase web config / VAPID key (WQ-4) to be provided by the owner.
+- 2026-10-28: merged to main by the owner: PR #20 (web refresh cookie, part of #6), PR #22 (#21) and PR #25 (#23).
+- 2026-10-29: #28 (merchant numbers hidden from customers until the fees are paid) built and reviewed, PR #29. #24 API complete (admin status endpoints, history, revoke-all, token cut-off, U-1/U-2); admin UI in progress. #6 in its third audit round (marketing title). Marketing bundle cap 360 kB (WQ-34).
+- 2026-10-29: #5 merged (PR #26). #6 (web sign-in, roles, app shell) reviewed READY, PR #31: 412 website tests, marketing bundle 351.44 kB (lazy session layer, WQ-33). #24 (admin suspend/ban/reactivate with an audit history; new table user_status_history, WQ-23) reviewed READY, PR #32: API unit 1079 / e2e 242, admin 409. Deferred: #30 (socket cycle with a revoked token), #33 (refresh cut-off), multi-instance Socket.IO adapter. #7 building.
+- 2026-10-29: owner merged PR #29 (#28), PR #31 (#6) and PR #32 (#24). Website sign-in, roles and shell, and admin user status actions, are on main.
+- 2026-10-29: #33 (refresh sessions issued before a suspension refused; always reads user_status_history) reviewed READY, PR #34. Specs done for #13 (runner onboarding) and #17 (runner earnings); builds wait for #7.
+- 2026-10-29: owner merged PR #34 (#33, refresh cut-off).
+- 2026-10-29: #35 (history notes and actor ids hidden from customers/runners) reviewed READY, PR #37. Follow-up #38 (dispute party ids).
+- 2026-10-29: #7 (customer home + create-task wizard on the web: Places via the browser key, EAT deadlines, 13 shared kit components) reviewed READY, PR open (squash). 615 website tests; marketing bundle 354.17 kB. PR #37 (#35) merged. #6 note: merged as PR #31 (sign-in, roles, shell; 412 tests).
+- 2026-10-29: #39 (only the assigned runner may upload task evidence; security) reviewed READY, PR open.
+- 2026-10-29: owner merged PR #42 (#7) and PR #43 (#39).
+- 2026-10-29: #36 (web runner presence: Redis flag after 90 s, auto-offline of idle web runners after 5 min via the queue; admin live socket, chips, drawer, map) reviewed READY, PR open (squash). API 1138/252, admin 458, admin bundle 498.90 kB. Follow-up #44 on hold.
+- 2026-10-29: owner merged PR #45 (#36 web runner presence).
+- 2026-10-29: #8 (customer quote, checkout and M-Pesa on the web: money rule WQ-27, no repeat STK WQ-28, EAT deadlines) reviewed READY, PR #46. 753 website tests; marketing bundle 354.59 kB. In-flight work finished; the remaining issues are on hold pending owner approval.
