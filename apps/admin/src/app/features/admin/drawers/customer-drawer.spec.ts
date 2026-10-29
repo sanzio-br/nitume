@@ -11,6 +11,7 @@ import {
 import type { AdminUserSummary, RefundDetail } from '../../../core/api-types';
 import { DrawerNavService } from '../drawer-nav.service';
 import { CustomerDrawerComponent } from './customer-drawer';
+import { CustomerLinkComponent } from './customer-link';
 import { RefundDrawerComponent } from './refund-drawer';
 import { TaskDrawerComponent } from './task-drawer';
 
@@ -206,5 +207,46 @@ describe('Open customer links (SQ-3)', () => {
     const el = await taskDrawer(null);
     expect(openCustomer(el)).toBeUndefined();
     expect(el.textContent).toContain('…a1b2');
+  });
+});
+
+describe('lazy Open customer link (budget, SQ-3)', () => {
+  let http: HttpTestingController;
+  beforeEach(() => {
+    http = setupHttpWithAuth();
+  });
+  afterEach(() => http.verify());
+
+  it('CustomerLinkComponent opens the Customer drawer by user id', () => {
+    const nav = TestBed.inject(DrawerNavService);
+    const f = TestBed.createComponent(CustomerLinkComponent);
+    f.componentRef.setInput('userId', CUSTOMER);
+    f.detectChanges();
+    const button = (f.nativeElement as HTMLElement).querySelector('button') as HTMLButtonElement;
+    expect(button.textContent?.trim()).toBe('Open customer');
+    expect(button.className).toBe('btn btn-text btn-sm');
+    expect(button.getAttribute('type')).toBe('button');
+    button.click();
+    expect(nav.current()).toEqual({ kind: 'customer', id: CUSTOMER });
+  });
+
+  it('the task drawer mounts the deferred link and it opens the Customer drawer', async () => {
+    const nav = TestBed.inject(DrawerNavService);
+    const e = errandFixture({ status: 'REQUESTED', customerUserId: CUSTOMER });
+    const f = TestBed.createComponent(TaskDrawerComponent);
+    f.componentRef.setInput('errandId', e.id);
+    f.detectChanges();
+    http.expectOne(`${API}/errands/${e.id}`).flush(e);
+    http.expectOne(`${API}/errands/${e.id}/history`).flush([]);
+    await flushAsync();
+    f.detectChanges();
+    await f.whenStable();
+    f.detectChanges();
+    const link = (f.nativeElement as HTMLElement).querySelector(
+      'app-customer-link button',
+    ) as HTMLButtonElement;
+    expect(link.textContent?.trim()).toBe('Open customer');
+    link.click();
+    expect(nav.current()).toEqual({ kind: 'customer', id: CUSTOMER });
   });
 });
