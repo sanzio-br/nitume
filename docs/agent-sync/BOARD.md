@@ -116,10 +116,11 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/runner/earnings (issue #17) | specced (59484f3; Q17-1..3 answered); gap report + build after #7 | design-auditor | feat/website-runner-earnings (off main) | — | specs only |
 | website/customer/tracking (issue #9) | specced (4d1f5fa; WQ-43/44 answered); build after #7 + #8 | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
 | website/runner/jobs (issue #14) | specced (75578f3; Q14-1..10 answered); build after #7 + #13/#17 shared pieces | design-auditor | feat/website-runner-jobs (off main) | — | Q-W2 browser location; web-runner flag check |
-| api/history-privacy (issue #35) | building | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
+| api/history-privacy (issue #35) | awaiting-owner (PR #37, squash; reviewer READY: unit 1104, e2e 246) | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
 | api+admin/web-runner-presence (issue #36) | building (API part) | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
 | website/runner/active (issue #15) | spec in progress | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
 | website/customer/evidence (issue #10) | spec in progress | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
+| api/dispute-party-ids (issue #38) | unaudited | — | — | — | found during #35 |
 | website/customer + runner parity (issues #11, #12, #16, #18) | unaudited | — | — | #5, #6 | 14 feature-group issues on GitHub (owner request 2026-10-28); one PR per issue with `Closes #N` |
 | admin/p-runners-verification-documents (verification inbox) | awaiting-owner (row 278 table + drawer reviewed READY, matches-design) | web-parity + api-contract (A-9) | fix/admin-verification-inbox (stacked on docs/admin-verification-audit; worktree ../nitume-fix-admin-verification) + fix/api-verification-review (worktree ../nitume-fix-api-verification-review) | AQ-35..37 (rows 260–262); api A-1..A-7 | Audit 2026-10-21 FAIL (admin-gap-report "Audit 2026-10-21: verification inbox", findings 34–49, supersede 18, 19, 20, 22, 23, 28): f642187, 73fc96d, d5ef069. Owner-seen symptoms: Approve/Reject 404 (client PATCH /runners/verifications/{id}; API route is /runners/:runnerId/verifications/:verificationId); NaN date (reads submittedAt, API sends createdAt); no Front/Back (side ignored); no View image (reads documentKey, API sends hasDocument); 5 items counts approved phone check (AQ-35); raw type labels; false "runner level upgrades" copy (AQ-36); initials from profile UUID (needs api A-5). Blockers 34, 35, 36, 37, 45, 48. Do now (no owner input): 34, 35, 36, 39, 41, 42, 43, 44, 45, 47, 48, 49; after AQ-35 + A-5: 37, 38, 40, 46 |
 
@@ -605,6 +606,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | WQ-46 | design-auditor (#14, Q14-5) | Ops flag storage and threshold | ANSWERED: Redis only, 90 s, including never-pinged web runners |
 | WQ-47 | design-auditor (#14, Q14-6) | Closed or hidden tab while online | ANSWERED: auto-offline idle web runners after 5 min (busy: flag only), issue #36 |
 | WQ-48 | design-auditor (#14, Q14-7, Q14-9, Q14-10) | Revoked location; leave prompt; countdown announcement | ANSWERED: stay online plus banner and flag; no leave prompt; announce at 1 minute |
+| WQ-49 | api-contract (#35) | Keep actorType; dispute event actorId | ANSWERED 2026-10-29: keep actorType; dispute ids follow-up (issue #38) |
 
 ## Session log
 
@@ -882,3 +884,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | design-auditor #14 specced (75578f3). Owner answered WQ-45..48. Issue #36 (web runner presence + auto-offline, API + admin) opened; api-contract building the API part. |
 | 2026-10-29 | Owner merged PR #34 (#33). |
 | 2026-10-29 | Dispatched design-auditor for the #15 and #10 web specs. |
+| 2026-10-29 | api-contract #35 built; reviewer READY (full e2e 246/246) → PR #37 (squash: intermediate commits fail one e2e). Issue #38 opened. #7 builder still running (waiting on its own background work). |

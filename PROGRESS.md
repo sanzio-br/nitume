@@ -525,3 +525,4 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 - 2026-10-29: owner merged PR #29 (#28), PR #31 (#6) and PR #32 (#24). Website sign-in, roles and shell, and admin user status actions, are on main.
 - 2026-10-29: #33 (refresh sessions issued before a suspension refused; always reads user_status_history) reviewed READY, PR #34. Specs done for #13 (runner onboarding) and #17 (runner earnings); builds wait for #7.
 - 2026-10-29: owner merged PR #34 (#33, refresh cut-off).
+- 2026-10-29: #35 (history notes and actor ids hidden from customers/runners) reviewed READY, PR #37. Follow-up #38 (dispute party ids).
