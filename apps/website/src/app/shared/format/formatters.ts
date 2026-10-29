@@ -182,6 +182,10 @@ function clock12(w: WallClock): string {
   return `${hour12}:${String(w.minute).padStart(2, '0')} ${w.hour < 12 ? 'AM' : 'PM'}`;
 }
 
+function clock24(w: WallClock): string {
+  return `${String(w.hour).padStart(2, '0')}:${String(w.minute).padStart(2, '0')}`;
+}
+
 /** Calendar days from `a` to `b` (positive when `a` is earlier). */
 function calendarDaysBetween(a: WallClock, b: WallClock): number {
   return Math.round((Date.UTC(b.year, b.month, b.day) - Date.UTC(a.year, a.month, a.day)) / DAY_MS);
@@ -286,12 +290,16 @@ export function formatDayTimeEat(date: DateInput, now: Date = new Date()): strin
   return dayTime(eatWall(toDate(date)), eatWall(now));
 }
 
-/** Deadlines: `Today, 11:59 PM`, `Tomorrow, …`, `Yesterday, …`, else the date. */
-export function formatDeadlineEat(date: DateInput, now: Date = new Date()): string {
+/**
+ * Deadlines: `Today, 11:59 PM`, `Tomorrow, …`, `Yesterday, …`, else the date.
+ * With `{ hour24: true }` (owner Q8-3, the checkout deadline line):
+ * `Today, 23:59`.
+ */
+export function formatDeadlineEat(date: DateInput, now: Date = new Date(), opts: { hour24?: boolean } = {}): string {
   const t = eatWall(toDate(date));
   const ref = eatWall(now);
   const ahead = -calendarDaysBetween(t, ref);
-  const clock = clock12(t);
+  const clock = opts.hour24 ? clock24(t) : clock12(t);
   if (ahead === 0) return `Today, ${clock}`;
   if (ahead === 1) return `Tomorrow, ${clock}`;
   if (ahead === -1) return `Yesterday, ${clock}`;

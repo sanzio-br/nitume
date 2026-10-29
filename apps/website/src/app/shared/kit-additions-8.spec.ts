@@ -5,7 +5,7 @@ import { Component, TemplateRef, inject, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { addKes, compareKes, isPositiveKes, subtractKes } from './format/formatters';
+import { addKes, compareKes, formatDeadlineEat, isPositiveKes, subtractKes } from './format/formatters';
 import { NM_OVERLAY_DATA } from './ui/overlay/overlay-ref';
 import { NmPanelService } from './ui/overlay/panel.service';
 import { NmIcon } from './ui/icon/icon.component';
@@ -108,6 +108,29 @@ describe('#8 kit additions (A§8)', () => {
       expect(() => subtractKes('1.00', '')).toThrow();
       expect(() => compareKes('1.00', 'NaN')).toThrow();
       expect(() => isPositiveKes('12a')).toThrow();
+    });
+  });
+
+  describe('formatDeadlineEat hour24 (owner Q8-3)', () => {
+    it('Q8-3. { hour24: true } → `Today, 23:59` / `Tomorrow, 23:59` on EAT days, identical in London and Nairobi; the default stays 12-hour', () => {
+      const original = process.env['TZ'];
+      try {
+        for (const zone of ['Europe/London', 'Africa/Nairobi']) {
+          process.env['TZ'] = zone;
+          const now = new Date('2026-11-01T07:00:00.000Z'); // 10:00 EAT
+          expect.soft(formatDeadlineEat('2026-11-01T20:59:00.000Z', now, { hour24: true }), zone).toBe('Today, 23:59');
+          expect.soft(formatDeadlineEat('2026-11-02T20:59:00.000Z', now, { hour24: true }), zone).toBe('Tomorrow, 23:59');
+          expect.soft(formatDeadlineEat('2026-11-01T06:05:00.000Z', now, { hour24: true }), zone).toBe('Today, 09:05');
+          expect.soft(formatDeadlineEat('2026-11-05T20:59:00.000Z', now, { hour24: true }), zone).toBe('5 Nov, 23:59');
+          // 21:30 London on 1 Nov is already 2 Nov in EAT.
+          const late = new Date('2026-11-01T21:30:00.000Z');
+          expect.soft(formatDeadlineEat('2026-11-02T20:59:00.000Z', late, { hour24: true }), zone).toBe('Today, 23:59');
+          expect.soft(formatDeadlineEat('2026-11-01T20:59:00.000Z', now), zone).toBe('Today, 11:59 PM');
+        }
+      } finally {
+        if (original === undefined) delete process.env['TZ'];
+        else process.env['TZ'] = original;
+      }
     });
   });
 });
