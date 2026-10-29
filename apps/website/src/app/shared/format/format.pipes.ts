@@ -19,6 +19,7 @@ import {
   formatDistanceKm,
   formatDurationMin,
   formatEta,
+  formatHours,
   formatKes,
   formatKesLedger,
   formatKesOrDash,
@@ -196,6 +197,13 @@ export class FormatDurationMinPipe implements PipeTransform {
   }
 }
 
+@Pipe({ name: 'formatHours' })
+export class FormatHoursPipe implements PipeTransform {
+  transform(seconds: Maybe<number>): string {
+    return missing(seconds) ? MISSING_VALUE : formatHours(seconds);
+  }
+}
+
 @Pipe({ name: 'formatPhoneIntl' })
 export class FormatPhoneIntlPipe implements PipeTransform {
   transform(phone: Maybe<string>): string {
@@ -228,5 +236,6 @@ export const FORMAT_PIPES = [
   EatWeekStartPipe,
   FormatDistanceKmPipe,
   FormatDurationMinPipe,
+  FormatHoursPipe,
   FormatPhoneIntlPipe,
 ] as const;

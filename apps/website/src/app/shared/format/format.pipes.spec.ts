@@ -18,6 +18,7 @@ import {
   FormatDistanceKmPipe,
   FormatDurationMinPipe,
   FormatEtaPipe,
+  FormatHoursPipe,
   FormatKesLedgerPipe,
   FormatKesOrDashPipe,
   FormatKesPipe,
@@ -226,6 +227,16 @@ const CASES: readonly PipeCase[] = [
     missing: DASH,
   },
   {
+    // #7 (customer-v-new-category §W9a).
+    name: 'formatHours',
+    pipe: new FormatHoursPipe() as AnyPipe,
+    present: [
+      [[86400], '24 hours'],
+      [[5400], '1 h 30 min'],
+    ],
+    missing: DASH,
+  },
+  {
     name: 'formatPhoneIntl',
     pipe: new FormatPhoneIntlPipe() as AnyPipe,
     present: [
@@ -243,7 +254,7 @@ describe('format pipes (§5.2)', () => {
     expect([...FORMAT_PIPES].sort((a, b) => a.name.localeCompare(b.name))).toEqual(
       [...tested].sort((a, b) => a.name.localeCompare(b.name)),
     );
-    expect(CASES).toHaveLength(24);
+    expect(CASES).toHaveLength(25);
   });
 
   describe.each(CASES)('$name', ({ pipe, present, missing }) => {

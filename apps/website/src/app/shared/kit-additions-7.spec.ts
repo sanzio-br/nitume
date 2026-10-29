@@ -13,6 +13,8 @@ import { DestroyRef } from '@angular/core';
 import { RealtimeService } from '../core/realtime/realtime.service';
 import { REALTIME_BACKOFF, REALTIME_TOKEN_PROVIDER, SOCKET_IO_FACTORY } from '../core/realtime/realtime.tokens';
 import { CUSTOMER_MVP_CATEGORIES, categoryIcon } from './format/category';
+import { FORMAT_PIPES, FormatHoursPipe } from './format/format.pipes';
+import { formatHours, initialsFor } from './format/formatters';
 import { NmIcon } from './ui/icon/icon.component';
 import { NM_ICONS } from './ui/icon/icons';
 
@@ -308,6 +310,26 @@ describe('NC§W9.16 #7 kit additions', () => {
       expect(other).toEqual(['connecting', 'connected', 'reconnecting']);
       // showReconnecting keeps working on the same set.
       expect(service.showReconnecting(10, destroyRef)()).toBe(false);
+    });
+  });
+
+  describe('formatHours and initialsFor (G7-12)', () => {
+    it('ND T16. formatHours: 3600 s → 1 hour, 86400 s → 24 hours, 5400 s → 1 h 30 min; the pipe is in FORMAT_PIPES', () => {
+      expect(formatHours(3600)).toBe('1 hour');
+      expect(formatHours(86400)).toBe('24 hours');
+      expect(formatHours(5400)).toBe('1 h 30 min');
+      expect(formatHours(0)).toBe('1 min');
+      expect(new FormatHoursPipe().transform(7200)).toBe('2 hours');
+      expect(new FormatHoursPipe().transform(null)).toBe('—');
+      expect(FORMAT_PIPES as readonly unknown[]).toContain(FormatHoursPipe);
+    });
+
+    it('NC§W9.16 initialsFor. Achieng Wanjiru → AW, brian → B, blank → empty, at most two words', () => {
+      expect(initialsFor('Achieng Wanjiru')).toBe('AW');
+      expect(initialsFor('brian')).toBe('B');
+      expect(initialsFor('   ')).toBe('');
+      expect(initialsFor(null)).toBe('');
+      expect(initialsFor('  mary  njeri kamau ')).toBe('MN');
     });
   });
 });
