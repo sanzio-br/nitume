@@ -49,6 +49,8 @@ describe('UserStatusStore.write (issue #24)', () => {
     expect(statements).toEqual(['SELECT id,', 'UPDATE "users"', 'INSERT INTO', 'SELECT (extract(epoch']);
     expect(tx.query.mock.calls[0][0]).toMatch(/FOR UPDATE/);
     expect(tx.query.mock.calls[2][1]).toEqual([USER, 'active', 'suspended', 'admin', ADMIN, 'Repeated fraud reports']);
+    // Stamped after the lock is held, so concurrent changes sort in lock order.
+    expect(tx.query.mock.calls[2][0]).toContain('clock_timestamp())');
     expect(out).toEqual({
       from: UserStatus.ACTIVE,
       access: { status: UserStatus.SUSPENDED, role: UserRole.CUSTOMER, phone: '+254700000001' },

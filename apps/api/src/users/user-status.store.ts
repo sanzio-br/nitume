@@ -117,8 +117,11 @@ export class UserStatusStore {
         if (opts.audit) {
           const { actorType, actorUserId, reason } = opts.audit;
           const inserted: { id: string; createdAt: Date; actorDisplayName: string | null }[] = await manager.query(
-            `INSERT INTO "user_status_history" ("userId", "fromStatus", "toStatus", "actorType", "actorUserId", "reason")
-             VALUES ($1, $2, $3, $4, $5, $6)
+            // clock_timestamp(), not the column default now() (the transaction
+            // start): a change that waited on the row lock must sort after
+            // the one it waited for.
+            `INSERT INTO "user_status_history" ("userId", "fromStatus", "toStatus", "actorType", "actorUserId", "reason", "createdAt")
+             VALUES ($1, $2, $3, $4, $5, $6, clock_timestamp())
              RETURNING id, "createdAt",
                (SELECT a."displayName" FROM "users" a WHERE a.id = $5) AS "actorDisplayName"`,
             [userId, current.status, to, actorType, actorUserId, reason],
