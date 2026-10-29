@@ -73,6 +73,20 @@ const AVAILABILITY_VARIANTS: Record<string, ChipVariant> = {
   offline: 'neutral',
 };
 
+// Account status (issue #24, owner SQ-1 2026-10-29): Active blue, Suspended
+// amber, Banned red. Never green: an active account is not a complete state.
+export const ACCOUNT_LABELS: Record<string, string> = {
+  active: 'Active',
+  suspended: 'Suspended',
+  banned: 'Banned',
+};
+
+const ACCOUNT_VARIANTS: Record<string, ChipVariant> = {
+  active: 'info',
+  suspended: 'pending',
+  banned: 'danger',
+};
+
 const REFUND_LABELS: Record<string, string> = {
   pending_review: 'Needs review',
   approved: 'Payout due',
@@ -114,7 +128,7 @@ const RUNNER_PAYOUT_VARIANTS: Record<string, ChipVariant> = {
  * "payout due" refund), so the caller always says which one it shows.
  */
 export type ChipKind =
-  'errand' | 'refund' | 'runner_payout' | 'verification' | 'availability' | 'level';
+  'errand' | 'refund' | 'runner_payout' | 'verification' | 'availability' | 'level' | 'account';
 
 interface Vocabulary {
   labels: Record<string, string>;
@@ -155,6 +169,12 @@ const VOCABULARIES: Record<ChipKind, Vocabulary> = {
   availability: {
     labels: AVAILABILITY_LABELS,
     variants: AVAILABILITY_VARIANTS,
+    key: (s) => s,
+    fallbackVariant: 'neutral',
+  },
+  account: {
+    labels: ACCOUNT_LABELS,
+    variants: ACCOUNT_VARIANTS,
     key: (s) => s,
     fallbackVariant: 'neutral',
   },

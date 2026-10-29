@@ -2,6 +2,10 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import {
+  AdminUserSummary,
+  ChangeUserStatusResult,
+  UserStatus,
+  UserStatusHistoryPage,
   AssignErrandDto,
   AssignErrandResult,
   CreateRefundCorrectionDto,
@@ -348,6 +352,28 @@ export class ApiService {
     if (cursor) params = params.set('cursor', cursor);
     params = params.set('limit', String(limit));
     return this.http.get<ListRunnersResult>(`${this.base}/runners`, { params });
+  }
+
+  /** GET /admin/users/:id — account summary (U-1, issue #24). */
+  adminUser(id: string) {
+    return this.http.get<AdminUserSummary>(`${this.base}/admin/users/${id}`);
+  }
+
+  /** PATCH /admin/users/:id/status — suspend, ban or reactivate with a reason. */
+  changeUserStatus(id: string, status: UserStatus, reason: string) {
+    return this.http.patch<ChangeUserStatusResult>(`${this.base}/admin/users/${id}/status`, {
+      status,
+      reason,
+    });
+  }
+
+  /** GET /admin/users/:id/status-history — newest first, cursor-paginated. */
+  userStatusHistory(id: string, cursor?: string | null, limit = 20) {
+    let params = new HttpParams().set('limit', String(limit));
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<UserStatusHistoryPage>(`${this.base}/admin/users/${id}/status-history`, {
+      params,
+    });
   }
 }
 

@@ -26,6 +26,7 @@ const build = (opts: {
     accessOf: vi.fn(() =>
       Promise.resolve(row ? { status: row.status, role: row.role, phone: row.phone } : null),
     ),
+    isTokenRevoked: vi.fn(() => Promise.resolve(false)),
   };
   const errands = {
     getById: vi.fn(opts.getById ?? (() => Promise.resolve({ id: ERRAND_ID }))),

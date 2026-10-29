@@ -77,6 +77,6 @@ import { WebOriginGuard } from './web/web-origin.guard';
     RefreshCookieService,
     WebOriginGuard,
   ],
-  exports: [AuthService],
+  exports: [AuthService, TokenService],
 })
 export class AuthModule {}

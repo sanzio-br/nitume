@@ -11,6 +11,7 @@ import { UserRole, UserStatus } from '../src/common/enums';
 import { CustomersService } from '../src/customers/customers.service';
 import { RedisService } from '../src/infra/redis/redis.service';
 import { RunnersService } from '../src/runners/runners.service';
+import { userTokensValidAfterKey } from '../src/users/token-cutoff.service';
 import { UserAccessService, userAccessCacheKey } from '../src/users/user-access.service';
 import { UsersService } from '../src/users/users.service';
 import { TestSocket, connectSocket } from './support/socket-client';
@@ -21,7 +22,8 @@ import { TestSocket, connectSocket } from './support/socket-client';
  * Socket.IO. The body is the OTP verify / refresh one. Status changes go
  * through `UserAccessService.setStatus`, which refreshes the Redis cache
  * and disconnects live sockets; the cache TTL is only the fallback for
- * changes made outside the API.
+ * changes made outside the API. Issue #24 (owner, 2026-10-29): after
+ * reactivation such a token stays refused (plain 401); a new one works.
  */
 describe('Suspended accounts lose access-token access (issue #23, e2e)', () => {
   let app: INestApplication<App>;
@@ -40,7 +42,15 @@ describe('Suspended accounts lose access-token access (issue #23, e2e)', () => {
   const randomPhone = (): string => `+2547${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  const makeUser = async (role: UserRole = UserRole.CUSTOMER): Promise<{ id: string; token: string }> => {
+  const sign = (user: { id: string; role: UserRole; phone: string }): string =>
+    new JwtService().sign(
+      { sub: user.id, role: user.role, phone: user.phone, type: 'access' },
+      { secret: app.get(ConfigService).get<string>('jwt.accessSecret') as string, expiresIn: '5m' },
+    );
+
+  const makeUser = async (
+    role: UserRole = UserRole.CUSTOMER,
+  ): Promise<{ id: string; token: string; newToken: () => string }> => {
     const user = await app.get(UsersService).create({ phone: randomPhone(), role });
     userIds.push(user.id);
     if (role === UserRole.RUNNER) {
@@ -48,11 +58,18 @@ describe('Suspended accounts lose access-token access (issue #23, e2e)', () => {
     } else {
       await app.get(CustomersService).createForUser(user.id);
     }
-    const token = new JwtService().sign(
-      { sub: user.id, role: user.role, phone: user.phone, type: 'access' },
-      { secret: app.get(ConfigService).get<string>('jwt.accessSecret') as string, expiresIn: '5m' },
-    );
-    return { id: user.id, token };
+    return { id: user.id, token: sign(user), newToken: () => sign(user) };
+  };
+
+  /**
+   * Issue #24: `iat` has whole seconds and a suspension cuts off its whole
+   * second, so a token meant to be "issued after" waits for the next one.
+   */
+  const nextSecond = async (): Promise<void> => {
+    const now = Math.floor(Date.now() / 1000);
+    while (Math.floor(Date.now() / 1000) <= now) {
+      await sleep(20);
+    }
   };
 
   const me = (token: string) => request(baseUrl).get('/api/v1/users/me').set('Authorization', `Bearer ${token}`);
@@ -87,7 +104,7 @@ describe('Suspended accounts lose access-token access (issue #23, e2e)', () => {
       s.close();
     }
     if (userIds.length > 0) {
-      await app.get(RedisService).del(...userIds.map(userAccessCacheKey));
+      await app.get(RedisService).del(...userIds.map(userAccessCacheKey), ...userIds.map(userTokensValidAfterKey));
       await ds.query('DELETE FROM "customer_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "runner_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "users" WHERE id = ANY($1)', [userIds]);
@@ -113,12 +130,15 @@ describe('Suspended accounts lose access-token access (issue #23, e2e)', () => {
       },
     );
 
-    it('reactivating restores the same token at once', async () => {
-      const { id, token } = await makeUser();
-      await access.setStatus(id, UserStatus.SUSPENDED);
-      await me(token).expect(401);
-      await access.setStatus(id, UserStatus.ACTIVE);
-      await me(token).expect(200);
+    it('reactivating does not restore a token issued before the suspension; a new token works (issue #24)', async () => {
+      const user = await makeUser();
+      await access.setStatus(user.id, UserStatus.SUSPENDED);
+      await me(user.token).expect(401);
+      await nextSecond();
+      await access.setStatus(user.id, UserStatus.ACTIVE);
+      const old = await me(user.token).expect(401);
+      expect(old.body.code).toBeUndefined();
+      await me(user.newToken()).expect(200);
     });
 
     it('public routes still answer a suspended token', async () => {
@@ -168,12 +188,17 @@ describe('Suspended accounts lose access-token access (issue #23, e2e)', () => {
       expect(retry.connectError?.message).toBe('account_suspended');
     });
 
-    it('a reactivated account connects again', async () => {
-      const { id, token } = await makeUser();
-      await access.setStatus(id, UserStatus.SUSPENDED);
-      expect((await socketFor(token)).connectError?.message).toBe('account_suspended');
-      await access.setStatus(id, UserStatus.ACTIVE);
-      const s = await socketFor(token);
+    it('a reactivated account connects again with a new token, not with the old one (issue #24)', async () => {
+      const user = await makeUser();
+      await access.setStatus(user.id, UserStatus.SUSPENDED);
+      expect((await socketFor(user.token)).connectError?.message).toBe('account_suspended');
+      await nextSecond();
+      await access.setStatus(user.id, UserStatus.ACTIVE);
+      const old = await socketFor(user.token);
+      await waitClosed(old);
+      expect(old.connectError).toBeNull();
+      expect(old.closed).toBe(true);
+      const s = await socketFor(user.newToken());
       expect(s.connectError).toBeNull();
       expect(s.closed).toBe(false);
     });

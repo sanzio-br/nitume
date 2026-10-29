@@ -23,6 +23,19 @@ export interface UserAccess {
   phone: string;
 }
 
+/**
+ * Issue #24 (U-1): what the admin Customer drawer shows of an account. The
+ * phone is the full sign-in number (admins only).
+ */
+export interface AdminUserSummary {
+  id: string;
+  role: UserRole;
+  status: UserStatus;
+  /** Null until the user sets it. */
+  displayName: string | null;
+  phone: string;
+}
+
 export const toPublicUser = (user: User): PublicUser => ({
   id: user.id,
   phone: user.phone,
@@ -78,20 +91,15 @@ export class UsersService {
     return row ? { status: row.status, role: row.role, phone: row.phone } : null;
   }
 
-  /**
-   * Writes the account status and returns the previous one (null if no such
-   * user). Call it through `UserAccessService.setStatus`, which also
-   * refreshes the access cache and disconnects live sockets (issue #23).
-   */
-  async updateStatus(id: string, status: UserStatus): Promise<UserStatus | null> {
-    const before = await this.statusOf(id);
-    if (before === null) {
-      return null;
-    }
-    if (before !== status) {
-      await this.users.update({ id }, { status });
-    }
-    return before;
+  /** U-1 (issue #24): id, role, status, display name and phone; null if no such user. */
+  async summaryOf(id: string): Promise<AdminUserSummary | null> {
+    const row = await this.users.findOne({
+      where: { id },
+      select: { id: true, role: true, status: true, displayName: true, phone: true },
+    });
+    return row
+      ? { id: row.id, role: row.role, status: row.status, displayName: row.displayName || null, phone: row.phone }
+      : null;
   }
 
   findByPhone(phone: string): Promise<User | null> {

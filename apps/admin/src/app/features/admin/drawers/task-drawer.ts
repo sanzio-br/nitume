@@ -6,12 +6,8 @@ import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
 import { ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
-import type {
-  ErrandCandidatesPage,
-  ErrandStatusHistoryEntry,
-  QuoteErrandResult,
-} from '../../../core/api-types';
-import { formatDateTime, formatKsh, formatKshExact } from '../shared-format';
+import type { ErrandCandidatesPage, QuoteErrandResult } from '../../../core/api-types';
+import { formatDateTime, formatKsh, formatKshExact, historyActor } from '../shared-format';
 import { QuoteConflict, QuoteDialogComponent } from './quote-dialog';
 import { QuoteSectionComponent } from './quote.section';
 import { MerchantDetailsSectionComponent } from './merchant-details.section';
@@ -19,6 +15,7 @@ import { RefundLinkSectionComponent } from './refund-link.section';
 import { RunnerPayoutsLinkSectionComponent } from '../payouts/runner-payouts-link.section';
 import { TaskOfferSectionComponent } from './task-offer.section';
 import { RunnerPickerComponent } from './runner-picker';
+import { CustomerLinkComponent } from './customer-link';
 
 /**
  * Admin actions by state (§3.3): the first quote only from REQUESTED; a
@@ -53,18 +50,6 @@ export function deadlineRow(
 }
 
 /**
- * `Status history` caption actor: `Admin · {admin name}` when the API names
- * the admin (`actor.displayName`, admin viewers), else the actor type as
- * built (`Admin`, `System`, `Runner`, `Customer`).
- */
-export function historyActor(entry: ErrandStatusHistoryEntry): string {
-  const type = entry.actorType.replace(/_/g, ' ');
-  const label = type.charAt(0).toUpperCase() + type.slice(1);
-  const name = entry.actor?.displayName?.trim();
-  return entry.actorType === 'admin' && name ? `${label} · ${name}` : label;
-}
-
-/**
  * Task drawer: errand detail (`GET /errands/:id`) + status history. Sections:
  * summary, items, locations, runner (offer state), merchant payment details,
  * quote, admin actions
@@ -87,6 +72,7 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
     RunnerPayoutsLinkSectionComponent,
     TaskOfferSectionComponent,
     RunnerPickerComponent,
+    CustomerLinkComponent,
   ],
   template: `
     @if (s.detailLoading()) {
@@ -120,7 +106,18 @@ export function historyActor(entry: ErrandStatusHistoryEntry): string {
             <span>Category</span><b class="txt">{{ categoryLabel(d.category) }}</b>
           </div>
           <div class="drawer-row">
-            <span>Customer</span><b>{{ maskedId(d.customerId) }}</b>
+            <span>Customer</span>
+            @if (d.customerUserId; as cu) {
+              <!-- drawer-user-status §2 (SQ-3, U-2): the customer's account. -->
+              <span class="row-inline">
+                <b>{{ maskedId(d.customerId) }}</b>
+                @defer (on immediate) {
+                  <app-customer-link [userId]="cu" />
+                }
+              </span>
+            } @else {
+              <b>{{ maskedId(d.customerId) }}</b>
+            }
           </div>
           <div class="drawer-row">
             <span>Budget</span><b>{{ formatKsh(d.budget) }}</b>

@@ -45,6 +45,7 @@ export const APPEND_ONLY_TABLES = [
   'runner_payout_lines',
   'runner_payout_requests',
   'task_exposure_overrides',
+  'user_status_history',
   'verification_document_access_log',
 ] as const;
 

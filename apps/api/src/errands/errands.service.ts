@@ -206,6 +206,13 @@ export type ErrandView = Errand & {
    *   PAYMENT_CONFIRMED and `deadlineAt` passed.
    */
   canExpire?: { noRunner: boolean; deadlinePassed: boolean };
+  /**
+   * Admin detail only (issue #24, U-2): the user id of the customer who owns
+   * the task (`customerId` is the customer profile id), so the admin drawer
+   * can open the Customer drawer (`GET /admin/users/:id`). Null if the
+   * profile is missing.
+   */
+  customerUserId?: string | null;
 };
 
 /** States in which the assigned runner may write `runnerNotes`. */
@@ -954,8 +961,15 @@ export class ErrandsService {
         noRunner: (await this.noRunnerExpiryBlocker(errand, all)) === null,
         deadlinePassed: paidExpiryBlocker(errand) === null,
       };
+      view.customerUserId = await this.customerUserIdOf(errand.customerId);
     }
     return view;
+  }
+
+  /** U-2: the user id behind a customer profile id, or null. */
+  private async customerUserIdOf(customerProfileId: string): Promise<string | null> {
+    const row = await this.customerProfiles.findOne({ where: { id: customerProfileId }, select: { id: true, userId: true } });
+    return row?.userId ?? null;
   }
 
   /**

@@ -7,6 +7,7 @@ import {
   formatTime,
   formatKsh,
   formatKshExact,
+  historyActor,
   parseKsh,
   toEatLocalInput,
 } from './shared-format';
@@ -132,5 +133,58 @@ describe('datetime-local helpers', () => {
   it('rejects malformed values', () => {
     expect(eatLocalInputToIso('')).toBeNull();
     expect(eatLocalInputToIso('2026-10-08')).toBeNull();
+  });
+});
+
+describe('historyActor (task and account histories: drawer-task-offer row 187, drawer-user-status §3.1)', () => {
+  const base = {
+    id: 'h1',
+    errandId: 'e1',
+    fromStatus: 'RUNNER_ASSIGNED',
+    toStatus: 'EXPIRED',
+    createdAt: '2026-10-19T09:00:00Z',
+  };
+
+  it('names the admin when the API gives a display name', () => {
+    expect(
+      historyActor({
+        ...base,
+        actorType: 'admin',
+        actor: { id: 'u1', displayName: 'Wanjiru K.' },
+      }),
+    ).toBe('Admin · Wanjiru K.');
+  });
+
+  it('falls back to the actor type as built', () => {
+    expect(historyActor({ ...base, actorType: 'admin', actor: null })).toBe('Admin');
+    expect(historyActor({ ...base, actorType: 'admin' })).toBe('Admin');
+    expect(historyActor({ ...base, actorType: 'system', actor: null })).toBe('System');
+  });
+
+  it('names only admins', () => {
+    expect(
+      historyActor({ ...base, actorType: 'runner', actor: { id: 'u2', displayName: 'Kevin O.' } }),
+    ).toBe('Runner');
+  });
+});
+
+describe('historyActor on account status items (drawer-user-status §3.1)', () => {
+  const item = {
+    id: 'h1',
+    fromStatus: 'active',
+    toStatus: 'suspended',
+    reason: 'Repeated no-shows on paid tasks',
+    createdAt: '2026-10-28T09:00:00Z',
+  };
+
+  it('reads Admin · name, Admin, and System for a system or null actor', () => {
+    expect(
+      historyActor({ ...item, actorType: 'admin', actor: { id: 'a1', displayName: 'Wanjiru K.' } }),
+    ).toBe('Admin · Wanjiru K.');
+    expect(
+      historyActor({ ...item, actorType: 'admin', actor: { id: 'a1', displayName: null } }),
+    ).toBe('Admin');
+    expect(historyActor({ ...item, actorType: 'system', actor: null })).toBe('System');
+    expect(historyActor({ ...item, actorType: 'customer', actor: null })).toBe('Customer');
   });
 });

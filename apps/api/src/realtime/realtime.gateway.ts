@@ -118,7 +118,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
    * suspended or banned account is refused before it connects, with a
    * `connect_error` whose `message` is `account_suspended` and whose `data`
    * is the HTTP body (`{ statusCode: 401, code, message }`). A missing or
-   * invalid token keeps the earlier behaviour (connect, then disconnect).
+   * invalid token keeps the earlier behaviour (connect, then disconnect), as
+   * does a token issued before the account's last suspension or ban (#24).
    */
   afterInit(server: Server): void {
     server.use((socket, next) => {
@@ -476,7 +477,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
       return { kind: 'invalid' };
     }
     try {
-      const payload = await this.jwt.verifyAsync<{ sub?: string; type?: string }>(token, {
+      const payload = await this.jwt.verifyAsync<{ sub?: string; type?: string; iat?: number }>(token, {
         secret: this.config.get<string>('jwt.accessSecret') as string,
       });
       if (payload.type !== 'access' || !payload.sub) {
@@ -488,6 +489,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
       }
       if (user.status !== UserStatus.ACTIVE) {
         return { kind: 'suspended' };
+      }
+      // Issue #24: a token issued before the last suspension or ban is
+      // treated like an invalid one (connect, then disconnect; no code).
+      if (await this.access.isTokenRevoked(payload.sub, payload.iat)) {
+        return { kind: 'invalid' };
       }
       return {
         kind: 'ok',

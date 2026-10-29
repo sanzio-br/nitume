@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpTestingController } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
+import { AuthStore } from '../../core/auth/auth.store';
 import { API, flushAsync, setupHttp } from '../../testing/admin-test-utils';
 import { AdminDataService } from './admin-data.service';
 import { AdminDashboardComponent } from './admin-dashboard.component';
@@ -10,7 +12,10 @@ describe('AdminDashboardComponent sidebar (row 77)', () => {
   let http: HttpTestingController;
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [{ provide: AuthService, useValue: { logout: () => undefined } }],
+      providers: [
+        { provide: AuthService, useValue: { logout: () => undefined } },
+        { provide: AuthStore, useValue: { userId: signal('admin-1') } },
+      ],
     });
     http = setupHttp();
   });
@@ -74,5 +79,30 @@ describe('AdminDashboardComponent sidebar (row 77)', () => {
     fixture.detectChanges();
     const active = (fixture.nativeElement as HTMLElement).querySelector('.ops-nav-item.active');
     expect(active?.textContent).toContain('Runner payouts');
+  });
+
+  it('opens the Customer drawer (SQ-3) titled Customer, by user id', async () => {
+    const fixture = await render();
+    const nav = TestBed.inject(DrawerNavService);
+    const id = 'cccccccc-1111-4222-8333-00000000a1b2';
+    nav.open('customer', id);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.drawer-head h3')?.textContent?.trim()).toBe('Customer');
+    http.expectOne(`${API}/admin/users/${id}`).flush({
+      id,
+      role: 'customer',
+      status: 'active',
+      displayName: 'Amina Wanjiru',
+      phone: '+254712345678',
+    });
+    http
+      .expectOne((r) => r.url === `${API}/admin/users/${id}/status-history`)
+      .flush({ items: [], nextCursor: null });
+    await flushAsync();
+    fixture.detectChanges();
+    expect(el.querySelector('app-customer-drawer')?.textContent).toContain('Amina Wanjiru');
   });
 });

@@ -29,6 +29,14 @@ const build = (opts: { row?: UserAccess | null; redisDown?: boolean } = {}) => {
       store.set(k, v);
       return Promise.resolve(true);
     }),
+    setIfNotOlder: vi.fn((k: string, v: string, version: number) => {
+      if (opts.redisDown) return fail();
+      const cur = store.get(k);
+      const curVersion = cur ? (JSON.parse(cur) as { v?: unknown }).v : undefined;
+      if (typeof curVersion === 'number' && curVersion > version) return Promise.resolve(false);
+      store.set(k, v);
+      return Promise.resolve(true);
+    }),
     del: vi.fn((k: string) => {
       store.delete(k);
       return Promise.resolve();
@@ -36,16 +44,23 @@ const build = (opts: { row?: UserAccess | null; redisDown?: boolean } = {}) => {
   };
   const users = {
     accessOf: vi.fn(() => Promise.resolve(row ? { ...row } : null)),
-    updateStatus: vi.fn((_id: string, status: UserStatus) => {
+  };
+  // The locked write (UserStatusStore.write, issue #24): previous status, the
+  // access as written and an increasing version.
+  let clock = 0;
+  const statusStore = {
+    write: vi.fn((_id: string, status: UserStatus) => {
       if (!row) return Promise.resolve(null);
       const before = row.status;
       row = { ...row, status };
-      return Promise.resolve(before);
+      clock += 1;
+      return Promise.resolve({ from: before, access: { ...row }, version: clock, entry: null });
     }),
   };
   const events = { emit: vi.fn() };
-  const service = new UserAccessService(users as never, redis as never, events as never);
-  return { service, users, redis, events, store };
+  const cutoff = { mark: vi.fn(() => Promise.resolve()), isRefused: vi.fn(() => Promise.resolve(false)) };
+  const service = new UserAccessService(users as never, redis as never, events as never, statusStore as never, cutoff as never);
+  return { service, users, redis, events, store, cutoff };
 };
 
 describe('UserAccessService.accessOf (issue #23)', () => {
@@ -64,7 +79,7 @@ describe('UserAccessService.accessOf (issue #23)', () => {
     expect(users.accessOf).toHaveBeenCalledTimes(1);
   });
 
-  it('documents a short fallback TTL (WQ-21, proposed 60 s)', () => {
+  it('uses the 60 s fallback TTL decided by the owner (WQ-21, 2026-10-28)', () => {
     expect(USER_ACCESS_CACHE_TTL_SECONDS).toBe(60);
   });
 
@@ -132,5 +147,29 @@ describe('UserAccessService.setStatus (issue #23 invalidation)', () => {
     const { service, redis } = build({ redisDown: true });
     await service.setStatus('u-1', UserStatus.SUSPENDED);
     expect(redis.del).toHaveBeenCalledWith('user:access:u-1');
+  });
+});
+
+describe('UserAccessService access-token cut-off (issue #24, owner 2026-10-29)', () => {
+  it.each([UserStatus.SUSPENDED, UserStatus.BANNED, UserStatus.ACTIVE])(
+    'a change to %s marks the cut-off after the cache write',
+    async (to) => {
+      const { service, cutoff } = build({ row: { ...ACTIVE, status: to === UserStatus.ACTIVE ? UserStatus.SUSPENDED : UserStatus.ACTIVE } });
+      await service.setStatus('u-1', to);
+      expect(cutoff.mark).toHaveBeenCalledWith('u-1', to);
+    },
+  );
+
+  it('an unchanged status marks nothing', async () => {
+    const { service, cutoff } = build();
+    await service.setStatus('u-1', UserStatus.ACTIVE);
+    expect(cutoff.mark).not.toHaveBeenCalled();
+  });
+
+  it('isTokenRevoked delegates to the cut-off service', async () => {
+    const { service, cutoff } = build();
+    cutoff.isRefused.mockResolvedValueOnce(true);
+    expect(await service.isTokenRevoked('u-1', 1_700_000_000)).toBe(true);
+    expect(cutoff.isRefused).toHaveBeenCalledWith('u-1', 1_700_000_000);
   });
 });

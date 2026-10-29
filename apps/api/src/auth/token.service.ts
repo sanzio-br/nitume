@@ -5,7 +5,7 @@ import type { SignOptions } from 'jsonwebtoken';
 import { createHash, randomUUID } from 'node:crypto';
 import { UserRole } from '../common/enums';
 import { User } from '../users/user.entity';
-import { RedisService } from '../infra/redis/redis.service';
+import { escapeGlob, RedisService } from '../infra/redis/redis.service';
 
 export type TokenType = 'access' | 'refresh';
 
@@ -15,6 +15,8 @@ export interface JwtPayload {
   phone: string;
   type: TokenType;
   jti?: string;
+  /** Issued-at, whole seconds (set by jsonwebtoken on sign). */
+  iat?: number;
 }
 
 export interface TokenPair {
@@ -123,6 +125,19 @@ export class TokenService {
     } catch {
       // Unknown/expired token — nothing to revoke.
     }
+  }
+
+  /**
+   * Issue #24 (owner WQ-23, 2026-10-28): revokes every refresh session of a
+   * user (mobile and web share the `refresh:{userId}:{jti}` store), so a
+   * suspended or banned account keeps no session and a reactivated one must
+   * sign in again with OTP. Returns how many sessions were revoked.
+   */
+  async revokeAllForUser(userId: string): Promise<number> {
+    if (!userId) {
+      return 0;
+    }
+    return this.redis.deleteMatching(refreshSessionKey(escapeGlob(userId), '*'));
   }
 
   private hashToken(token: string): string {
