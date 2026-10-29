@@ -97,6 +97,46 @@ export function kesSpoken(amount: Amount): string {
 }
 
 // ---------------------------------------------------------------------------
+// Money arithmetic (#8 A§4, owner WQ-27): decimal strings in cents, never
+// floating point. Ports of the app's addDecimals / subtractDecimals /
+// isPositiveAmount (`util/display.dart`). Results are 2-decimal strings
+// (`"42200.00"`); a non-numeric string throws (as `parseAmount`).
+// ---------------------------------------------------------------------------
+
+function toCents(amount: Amount): bigint {
+  const p = parseAmount(amount);
+  const cents = BigInt(`${p.integer}${p.fraction}`);
+  return p.negative ? -cents : cents;
+}
+
+function fromCents(cents: bigint): string {
+  const negative = cents < 0n;
+  const digits = (negative ? -cents : cents).toString().padStart(3, '0');
+  return `${negative ? '-' : ''}${digits.slice(0, -2)}.${digits.slice(-2)}`;
+}
+
+/** `a + b`: `addKes('2200.00', '40000.00')` → `'42200.00'`. */
+export function addKes(a: Amount, b: Amount): string {
+  return fromCents(toCents(a) + toCents(b));
+}
+
+/** `a − b`: `subtractKes('45000', '40000.00')` → `'5000.00'`; may be negative. */
+export function subtractKes(a: Amount, b: Amount): string {
+  return fromCents(toCents(a) - toCents(b));
+}
+
+/** −1, 0 or 1 as `a` is less than, equal to or greater than `b`. */
+export function compareKes(a: Amount, b: Amount): -1 | 0 | 1 {
+  const d = toCents(a) - toCents(b);
+  return d < 0n ? -1 : d > 0n ? 1 : 0;
+}
+
+/** True when the amount is above zero (`'0.00'` and negatives are not). */
+export function isPositiveKes(amount: Amount): boolean {
+  return toCents(amount) > 0n;
+}
+
+// ---------------------------------------------------------------------------
 // Local (browser zone) times
 // ---------------------------------------------------------------------------
 

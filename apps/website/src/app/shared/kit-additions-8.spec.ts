@@ -5,6 +5,7 @@ import { Component, TemplateRef, inject, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { addKes, compareKes, isPositiveKes, subtractKes } from './format/formatters';
 import { NM_OVERLAY_DATA } from './ui/overlay/overlay-ref';
 import { NmPanelService } from './ui/overlay/panel.service';
 import { NmIcon } from './ui/icon/icon.component';
@@ -68,6 +69,45 @@ describe('#8 kit additions (A§8)', () => {
       expect(document.activeElement).toBe(document.querySelector('nm-panel .nm-panel'));
       second.close();
       expect(document.querySelector('nm-panel')).toBeNull();
+    });
+  });
+
+  describe('decimal money helpers (G8-12, WQ-27)', () => {
+    it('A.T6 addKes. exact cents: 2200 + 40000, 0.10 + 0.20 without float drift, the largest values, mixed precision', () => {
+      expect(addKes('2200.00', '40000.00')).toBe('42200.00');
+      expect(addKes('0.10', '0.20')).toBe('0.30');
+      expect(0.1 + 0.2).not.toBe(0.3); // the float result the helper avoids
+      expect(addKes('99999999999.99', '0.01')).toBe('100000000000.00');
+      expect(addKes('440', '660.5')).toBe('1100.50');
+      expect(addKes('0', '0.00')).toBe('0.00');
+      expect(addKes('-5.00', '2.50')).toBe('-2.50');
+    });
+
+    it('A.T6 subtractKes. 45000 − 40000.00 → 5000.00; negative results keep the sign; 0.50 differences are exact', () => {
+      expect(subtractKes('45000', '40000.00')).toBe('5000.00');
+      expect(subtractKes('40000.00', '45000.00')).toBe('-5000.00');
+      expect(subtractKes('40000.50', '40000.00')).toBe('0.50');
+      expect(subtractKes('0.30', '0.10')).toBe('0.20');
+      expect(subtractKes('40000.00', '40000')).toBe('0.00');
+    });
+
+    it('A.T6 compareKes and isPositiveKes. −1/0/1 on cents; 0.00 and negatives are not positive', () => {
+      expect(compareKes('45000.00', '40000.00')).toBe(1);
+      expect(compareKes('40000', '40000.00')).toBe(0);
+      expect(compareKes('39999.99', '40000.00')).toBe(-1);
+      expect(compareKes('-1.00', '0.00')).toBe(-1);
+      expect(isPositiveKes('0.00')).toBe(false);
+      expect(isPositiveKes('0')).toBe(false);
+      expect(isPositiveKes('-0.01')).toBe(false);
+      expect(isPositiveKes('0.01')).toBe(true);
+      expect(isPositiveKes('40000.00')).toBe(true);
+    });
+
+    it('A.T6 non-numeric. every helper throws on a non-numeric string', () => {
+      expect(() => addKes('abc', '1.00')).toThrow();
+      expect(() => subtractKes('1.00', '')).toThrow();
+      expect(() => compareKes('1.00', 'NaN')).toThrow();
+      expect(() => isPositiveKes('12a')).toThrow();
     });
   });
 });
