@@ -1,7 +1,7 @@
 // `nm-task-row` (customer-v-home §Components; Flutter TaskRow C-22). Built
 // once in #7; #11 History reuses it. The whole row is a link (followed
 // in-app): white, slate-line, r-m, padding 13 15; title row-title 13 with
-// ellipsis over the meta time (`formatDayTime`, browser local, Fira Code
+// ellipsis over the meta time (`formatDayTime`, browser local, nmNum
 // `num-meta`); a regular status chip from `customerStatus` at the end.
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { Router } from '@angular/router';

@@ -1,8 +1,8 @@
 // `nm-active-task-card` (customer-v-home §Components; Flutter ActiveTaskCard
 // C-20, OA-14 replacements). Blue fill, r-m, padding 18, no shadow; the
 // card itself is not clickable. A compact info chip with the category name
-// and `#reference` (Fira Code), the title in white, the meta line in Fira
-// Code slate-400 (never an ETA, WQ-29: the view passes only the state
+// and `#reference` (nmNum), the title in white, the meta line in num-meta-lg
+// slate-400 (never an ETA, WQ-29: the view passes only the state
 // text), and a primary small button rendered as a link, followed in-app.
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { Router } from '@angular/router';

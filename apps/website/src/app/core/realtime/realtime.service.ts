@@ -257,7 +257,7 @@ export class RealtimeService {
 
   /**
    * Calls `listener` on every later state transition (#7, §W9a: views react
-   * to `state` without `effect()` or `toObservable`). Removed when
+   * to `state` without signal effects or an observable bridge). Removed when
    * `destroyRef` is destroyed or when the returned function is called.
    * `showReconnecting` uses the same listener set.
    */

@@ -1,6 +1,6 @@
 // `nm-dialog` (ui-kit spec §4.8; Flutter NitumeDialog / showNitumeConfirmDialog
 // C-35). Created by `NmDialogService`; views never build their own overlay.
-// No view queries and no NgTemplateOutlet (WQ-33, #7 §W9a).
+// No view queries and no @angular/common template outlet (WQ-33, #7 §W9a).
 import { NgComponentOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,

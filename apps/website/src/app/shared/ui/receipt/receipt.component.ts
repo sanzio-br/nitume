@@ -6,7 +6,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { NmNum } from '../../format/num.directive';
 import { Amount, formatKesOrDash } from '../../format/formatters';
 
-/** Label left (body 13 blue), amount right in Fira Code; `isTotal` adds 700 and a top rule. */
+/** Label left (body 13 blue), amount right in `nmNum`; `isTotal` adds 700 and a top rule. */
 @Component({
   selector: 'nm-receipt-row',
   imports: [NmNum],

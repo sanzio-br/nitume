@@ -1,7 +1,7 @@
 // `nm-shopping-list` (customer-v-new-details §nm-shopping-list; Flutter
 // ShoppingListEditor C-37). Rows with hairlines between them: the item
 // name (`maxlength` 80, names `Item n`), a quantity stepper (1–99, 32px
-// circles in 48px hit areas, value in Fira Code) and a remove button
+// circles in 48px hit areas, value in nmNum) and a remove button
 // (hidden for a single row). `+ Add item` is hidden at 30 rows and focuses
 // the new row. Emits the full list (unnamed rows included); the view
 // trims and validates.
