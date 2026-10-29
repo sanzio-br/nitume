@@ -37,6 +37,15 @@ export const RUNNER_UPLOAD_STATES: Readonly<Record<'photo' | 'receipt', Readonly
   receipt: new Set([ErrandStatus.ARRIVED, ErrandStatus.IN_PROGRESS, ErrandStatus.AWAITING_CUSTOMER, ErrandStatus.DISPUTED]),
 };
 
+/**
+ * Issue #39: 403 for an upload by anyone but the task's assigned runner or
+ * an admin (customers, other runners, a runner whose assignment ended).
+ */
+export const EVIDENCE_UPLOAD_FORBIDDEN = 'evidence_upload_forbidden';
+
+const evidenceUploadForbidden = (): ApiError =>
+  new ApiError(HttpStatus.FORBIDDEN, EVIDENCE_UPLOAD_FORBIDDEN, 'Only the runner assigned to this task can upload evidence');
+
 /** Row 129: receipts also after the task ended this way, inside the window. */
 const RECEIPT_AFTER_END: ReadonlySet<ErrandStatus> = new Set([ErrandStatus.CANCELLED, ErrandStatus.FAILED]);
 
@@ -79,9 +88,11 @@ export class EvidenceService implements OnModuleInit {
   }
 
   /**
-   * Upload evidence for an errand. The current user must own the errand
-   * (customer) or hold an active assignment (runner); admins may attach
-   * evidence during mediation. Bytes go through the configured storage
+   * Upload evidence for an errand. Issue #39 (owner, 2026-10-29): only the
+   * runner on the current assignment uploads, in the states of
+   * `RUNNER_UPLOAD_STATES` (409 `evidence_not_allowed` otherwise); admins
+   * keep their mediation path. Everyone else, customers included, gets 403
+   * `evidence_upload_forbidden`. Bytes go through the configured storage
    * driver (console in dev, Cloudinary once credentials are set).
    */
   async upload(
@@ -93,11 +104,10 @@ export class EvidenceService implements OnModuleInit {
     if (!errand) {
       throw new NotFoundException('Errand not found');
     }
-    const permitted = await this.hasAccess(errand, viewer);
-    if (!permitted) {
-      throw new ForbiddenException('You do not have access to this errand');
-    }
-    if (viewer.role === UserRole.RUNNER) {
+    if (viewer.role !== UserRole.ADMIN) {
+      if (viewer.role !== UserRole.RUNNER || !(await this.errandService.isCurrentRunner(errand.id, viewer.userId))) {
+        throw evidenceUploadForbidden();
+      }
       await this.assertRunnerUpload(errand, dto);
     }
 
@@ -221,7 +231,7 @@ export class EvidenceService implements OnModuleInit {
     return photos > 0 ? [] : ['photo'];
   }
 
-  /** Customer (owner), the runner on the current assignment, or admin may view/attach. */
+  /** Customer (owner), the runner on the current assignment, or admin may view. */
   private async hasAccess(
     errand: Errand,
     viewer: EvidenceViewerContext,

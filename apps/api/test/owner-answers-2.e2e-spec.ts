@@ -505,10 +505,12 @@ describe('Owner answers 2 (e2e)', () => {
 
   it('never exposes evidence storage keys or permanent URLs (row 25)', async () => {
     const customer = await makeUser(UserRole.CUSTOMER);
+    const admin = await makeUser(UserRole.ADMIN);
     const errand = await createErrand(customer);
+    // Issue #39: customers no longer upload; the admin path is unchanged.
     const up = await http()
       .post(`/api/v1/errands/${errand.id}/evidence`)
-      .set(bearer(customer.token))
+      .set(bearer(admin.token))
       .send({
         type: 'photo',
         contentType: 'image/png',
