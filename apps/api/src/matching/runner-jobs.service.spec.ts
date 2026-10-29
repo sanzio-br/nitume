@@ -45,7 +45,21 @@ const build = (
       Promise.resolve({ items: [{ errand, assignment: { ...offer, status: AssignmentStatus.ACCEPTED } }], nextCursor: 'c-2' }),
     ),
     activeAssignmentFor: vi.fn(() => Promise.resolve({ ...offer, runnerProfileId: opts.holder ?? 'rp-1' })),
-    transition: vi.fn(() => Promise.resolve({ errand, history: { id: 'h-1' } })),
+    transition: vi.fn(() =>
+      Promise.resolve({
+        errand,
+        history: {
+          id: 'h-1',
+          errandId: 'e-1',
+          fromStatus: ErrandStatus.RUNNER_ASSIGNED,
+          toStatus: ErrandStatus.RUNNER_EN_ROUTE,
+          actorType: 'runner',
+          actorId: 'u-1',
+          note: 'runner note',
+          createdAt: new Date(5),
+        },
+      }),
+    ),
   };
   const runners = {
     profileByUserId: vi.fn(() => Promise.resolve({ id: 'rp-1' })),
@@ -116,6 +130,19 @@ describe('RunnerJobsService (RA-1, RA-2)', () => {
       undefined,
       { role: 'runner', userId: 'u-1' },
     );
+  });
+
+  it('accept returns the history row without note or actorId (issue #35)', async () => {
+    const { service } = build();
+    const out = await service.accept('u-1', 'e-1');
+    expect(out.history).toEqual({
+      id: 'h-1',
+      errandId: 'e-1',
+      fromStatus: ErrandStatus.RUNNER_ASSIGNED,
+      toStatus: ErrandStatus.RUNNER_EN_ROUTE,
+      actorType: 'runner',
+      createdAt: new Date(5),
+    });
   });
 });
 

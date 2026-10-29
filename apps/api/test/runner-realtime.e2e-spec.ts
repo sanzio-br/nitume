@@ -413,8 +413,13 @@ describe('Runner realtime (e2e)', () => {
         customerSocket.waitFor('errand:status_changed', (d: { status: string }) => d.status === 'ARRIVED', 8000),
       ).resolves.toMatchObject({ errandId: errand.id, from: 'RUNNER_EN_ROUTE' });
       const history = await http().get(`/api/v1/errands/${errand.id}/history`).set(bearer(runner.token)).expect(200);
-      const arrived = (history.body as { toStatus: string; actorType: string; note: string | null }[]).find((h) => h.toStatus === 'ARRIVED');
-      expect(arrived).toMatchObject({ actorType: 'system', note: 'Geofence arrival' });
+      const arrived = (history.body as { toStatus: string; actorType: string }[]).find((h) => h.toStatus === 'ARRIVED');
+      // The runner app shows "GPS" from actorType; the note is admin-only (issue #35).
+      expect(arrived).toMatchObject({ actorType: 'system' });
+      expect(arrived).not.toHaveProperty('note');
+      const adminHistory = await http().get(`/api/v1/errands/${errand.id}/history`).set(bearer(admin.token)).expect(200);
+      const adminArrived = (adminHistory.body as { toStatus: string }[]).find((h) => h.toStatus === 'ARRIVED');
+      expect(adminArrived).toMatchObject({ actorType: 'system', note: 'Geofence arrival' });
       // Still live after arrival; no second arrival is attempted.
       await expect(ping(runnerSocket, { lat: SITE.lat, lng: SITE.lng, errandId: errand.id })).resolves.toEqual({
         ok: true,
