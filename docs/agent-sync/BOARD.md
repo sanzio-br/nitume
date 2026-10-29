@@ -106,7 +106,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/refresh-suspended (issue #21) | merged (PR #22, c4b90a9; merge commit, not squash) | api-contract | fix/api-refresh-suspended (stacked on #20; worktree ../nitume-fix-api-refresh-suspended) | owner chose squash on merge | unit 929/929, e2e 178/178, lint/build clean at tip; 3815dc4, cba0781, 743fcd5 fail tsc alone |
 | api/suspended-access (issue #23) | merged (PR #25, 28a0c42) | — | feat/api-suspended-access (stacked on #22 → #20; worktree ../nitume-feat-api-suspended-access) | none | 8eb934d, 2e70401, 5b49108, e095f15, e187481; unit 960/960, e2e 187/187; each commit compiles |
 | admin/user-status-actions (issue #24) | merged (PR #32, be0229f) | api-contract | feat/api-user-status-audit (stacked on feat/api-suspended-access; worktree ../nitume-feat-api-user-status-audit) | #23 | schema WQ-23 approved; then design-auditor admin drawer spec, web-parity build |
-| website/customer/create-task (issue #7) | awaiting-owner (PR open, squash; reviewer READY: 615 tests, 354.17 kB) | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
+| website/customer/create-task (issue #7) | merged (PR #42, 81aa065; merge commit, not squash) | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
 | website/customer/checkout (issue #8) | specced → gap report (#7 merged in 528ed46; align to app-area/customer, EAT deadline) | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
 | api/merchant-details-privacy (issue #28) | merged (PR #29, 5f0ab08) | api-contract | fix/api-merchant-details-privacy (off main; worktree ../nitume-fix-api-merchant-details-privacy) | none | found while speccing #8 |
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
@@ -121,7 +121,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/runner/active (issue #15) | specced (2e17a0a; Q15-1..6 answered) | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
 | website/customer/evidence (issue #10) | specced (6e00e0f; WQ-10-1..4 answered) | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
 | api/dispute-party-ids (issue #38) | unaudited | — | — | — | found during #35 |
-| api/evidence-upload-guard (issue #39) | awaiting-owner (PR open; reviewer READY: unit 1120, e2e 256) | api-contract | fix/api-evidence-upload-guard (off main) | — | SECURITY, found speccing #10 |
+| api/evidence-upload-guard (issue #39) | merged (PR #43, 22c6ac6) | api-contract | fix/api-evidence-upload-guard (off main) | — | SECURITY, found speccing #10 |
 | api/evidence-retention (issue #40) | unaudited | — | — | — | 1 year after close; dispute hold |
 | runner-app/active-fixes (issue #41) | unaudited | — | — | — | rows 251/258, destination, Fira Code (found speccing #15) |
 | api+admin/availability-event (issue #44) | ON HOLD (owner approval needed) | — | — | #36 | Q36-9 follow-up |
@@ -904,3 +904,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | OWNER INSTRUCTION: finish only the in-flight issues (#39 review→PR, #36 admin spec→build→PR, #8 gap report→build→PR); do NOT start any other issue until the owner approves. On hold: specced #9, #10, #13, #14, #15, #17; not started #11, #12, #16, #18, #27, #30, #38, #40, #41. Owner confirmed PR #37 merged. |
 | 2026-10-29 | reviewer #39 READY → PR opened. Deploy note: delete idem:evidence-upload:* keys to close the 24 h replay window. |
 | 2026-10-29 | design-auditor #36 admin spec (dcfbd69, 87dd7cb). Owner WQ-54. Issue #44 opened ON HOLD. web-parity building the #36 admin UI (in-flight issue). |
+| 2026-10-29 | Owner merged PR #42 (#7, 81aa065, merge commit, so the red intermediate commits are in main history; tip is fine) and PR #43 (#39, 22c6ac6). Still in flight: #36 admin build, #8 gap report. |
