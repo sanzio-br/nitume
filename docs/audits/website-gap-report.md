@@ -1513,4 +1513,602 @@ All of them: standalone, `OnPush`, signal inputs, `nm-` prefix, under `shared/ui
 
 ---
 
-<!-- Sections for issues #8 to #18 are appended below as their web specs are written. -->
+## Issue #8 — customer quote, checkout and M-Pesa payment
+
+- Views: customer `x-awaiting-quote`, `v-payment`, `v-price-auth`, `x-merchant-payment`.
+- Specs: `docs/specs/website/customer-x-awaiting-quote.md` (view + shared §A, cited A§n; foundation tests A.Tn), `customer-v-payment.md` (VP), `customer-v-price-auth.md` (PA), `customer-x-merchant-payment.md` (MP). The view tests are cited as XQ Tn, VP Tn, PA Tn and MP Tn. The specs were updated for the owner answers and the #7 build in `8b12d91`, on top of `672745a`.
+- Branch: `feat/website-customer-checkout` (worktree `../nitume-feat-website-customer-checkout`). It is stacked on #7 (`feat/website-customer-create-task`, re-audit 2 PASS at `6338a75`, in review), which was merged into this branch at `528ed46`. #7 is stacked on #6.
+- Builder: `web-parity`. Every item below is an **approved extension, W-Q0**.
+
+### Verdict: PASS (re-audit 2, 2026-10-29, `feat/website-customer-checkout` at `a334abc`)
+
+This is the second round, after one FAIL. The builder fixed forward in four commits on top of `c56b0f5`.
+
+**What changed since re-audit 1.** `git log --oneline c56b0f5..a334abc`:
+- `ee8cb17` fix: x-awaiting-quote
+- `3a98dd8` fix: v-payment
+- `5a674e4` fix: x-merchant-payment
+- `a334abc` test: the static paramMap check
+
+`git diff --stat c56b0f5 a334abc` touches 7 files, +288 / −53:
+- the three pages and their three spec files under `app-area/customer/checkout/`;
+- `src/styles/customer-static.spec.ts`.
+
+No other file, spec, kit file, config, marketing path or doc changed. Every hunk belongs to finding 1.
+
+**Finding 1: closed.**
+- **Code.** Each page now holds `id` as a field set only by `startFor(id)`. `ActivatedRoute.paramMap.pipe(takeUntilDestroyed())` calls it in the constructor; there is no `snapshot.paramMap`. On a new id, `startFor`:
+  - leaves the old room and joins the new one;
+  - clears the page state to loading;
+  - re-reads `router.currentNavigation()?.extras.state` (quote: `quoteExpired` / `deadlinePassed`; item payment: `approvedIncrease` / `priceChangeRequestId`, reset to null when absent);
+  - starts the A§2 read.
+- **Per page:**
+  - Payment page: clears its poll and the 1.5 s SUCCESS timer, and takes `CheckoutIntentStore.take(newId)` (WQ-28: no initiate without an intent for the new errand).
+  - Quote page: closes an open deadline panel. It bumps its `sequence` counter, so late errand, quote and method answers are dropped. Its 15 s poll and 30 s tick are page-level repeating timers that read the current id or only the clock, so nothing of e-1 survives them.
+  - Merchant-payment page: clears its poll and resets `openedAt`, the document title flag and the in-flight flags.
+- **Late answers.** Every awaited call (load, accept, request quote, deadline save, cancel, initiate, status check, difference retry) captures `id` first and drops its answer when `id !== this.id` or the page is destroyed (`gone(id)`).
+- **Socket events** are filtered against the current `this.id`.
+- No `RouteReuseStrategy` anywhere (static check).
+- The `trackLink` / `quoteLink` fields became getters on the current id.
+
+**The three new tests, against the fix and against the old code.**
+- XQ T24, VP T19 and MP T17 each match the amended A§1:
+  - a same-route navigation shows the new errand's figures;
+  - rooms switch, e-1 socket events and polls are ignored;
+  - the quote page's open deadline panel closes;
+  - the payment page sends no initiate without an e-2 intent;
+  - MP T17 drives the real price-change dialog approve on e-1's page and checks e-1's Till is cleared while e-2 loads, then e-2's Till, amount and `Includes the KSh 5,000 increase you approved.`;
+  - a router navigation back re-reads e-1.
+- To prove they test the fix, each page was restored from `c56b0f5` (temporary, reverted, worktree clean):
+  - `merchant-payment.page.ts` old → **MP T17 fails** (1 failed / 16 passed): "Expected one matching request … `/errands/e-2`, found none";
+  - `payment.page.ts` old → **VP T19 fails** (1 / 18), same message;
+  - `awaiting-quote.page.ts` old → **XQ T24 fails** (1 / 27), same message.
+  - Each other case in those files still passed.
+- Static check (`customer-static.spec.ts`, "Re-audit 1 finding 1"): all three pages contain `paramMap.pipe(takeUntilDestroyed())` and no `snapshot.paramMap`, and there is no `RouteReuseStrategy` in `src/app`. `rg -n "snapshot\.paramMap" apps/website/src/app/app-area/customer/checkout` → no hits.
+
+**Auditor re-run in the worktree:**
+- `npx ng test --watch=false` → **87 files, 753 tests, 0 failures** (re-audit 1: 749; +3 view cases, +1 static case). This matches the builder.
+- `npx ng build --stats-json` → succeeds. Initial total **354.59 kB raw** / 97.05 kB transfer, ≤ 360.00 (WQ-34), unchanged from re-audit 1. The initial chunks (`main-TX4OEFU6.js` 31 inputs, `chunk-Dbgtyy_1.js` 85, `polyfills-5CFQRCPP.js` 2) have no `core/auth`, `core/realtime`, `app-area`, `shared/ui`, `shared/places` or `shared/map` input, and no `@angular/google-maps`, `@angular/forms` or `socket.io` input.
+
+**Browser check (real browser history).** Same method as re-audit 1: headless Chrome via Playwright on the rebuilt `dist`, with the API mocked.
+- **Scenario:**
+  1. Open `/app/customer/tasks/e-1/item-payment`: Till `111111`, `Shop ONE`.
+  2. The watcher's shell-start check opens the price-change dialog for e-2 over it.
+  3. `Approve KSh 5,000 increase` → URL `/tasks/e-2/item-payment`. The page shows **`222222`**, `Shop TWO`, `KSh 45,000`, `Includes the KSh 5,000 increase you approved.` and the toast `Price change approved.`, with **no `111111`**. New requests: `GET /errands/e-2`, `GET /payments/e-2`.
+  4. **Browser Back** (`page.goBack()`, real history `popstate`) → URL `/tasks/e-1/item-payment`, **`111111`** shown, `222222` gone. **Fresh requests `GET /errands/e-1`, `GET /payments/e-1`.**
+  5. **Browser Forward** → `/tasks/e-2/item-payment`, `222222` shown, fresh `GET /errands/e-2`, `GET /payments/e-2`.
+- No page errors.
+- The 360/768/1024/1280 checks of re-audit 1 were rerun on the new build with identical results:
+  - no horizontal scroll; the fixed CTA below 768px and inline from 768px; the checkout two columns at 1024/1280;
+  - the panel as a sheet at 360 and centred 560px at 1024; the dialog 320px at 360 and 335px at 1280;
+  - after a reload the payment page sends 0 initiates.
+
+**Item status at re-audit 2:** G8-7, G8-24, G8-27, G8-31 and G8-38 (the five open at re-audit 1) are **closed**. XQ T24, VP T19 and MP T17 are added to the G8-38 coverage, under G8-24, G8-27 and G8-31 respectively. **All 41 items (G8-1 … G8-41) are closed.** No new finding.
+
+**Merge preconditions:** #7 (PR #42) and PR #29 are on `main` and under the branch (`7d0b81e`). `Change` on `Pay with` still waits for #12, as specified (not a #8 item).
+
+### Re-audit 1 (2026-10-29, `feat/website-customer-checkout` at `a690870`): FAIL, 1 blocker (finding 1, closed at re-audit 2)
+
+**What was audited.**
+- The 19 build commits `03b4a8e … a690870`, on top of `7d0b81e`. That merge brought in the latest `main`: #7 as PR #42 and PR #29 (merchant privacy). So the PR #29 merge precondition is now met (`git merge-base --is-ancestor 5f0ab08 HEAD` is true).
+- `git diff --stat 7d0b81e a690870`: 67 files, +7198 / −37. Everything is under `apps/website/src/` (`app-area/customer/{checkout,shared,data}`, `deadline.ts`, the four new kit folders, the changed kit and #7 files, `styles/customer-static.spec.ts`, `testing/checkout.ts`). No marketing file, `styles.scss`, `index.html`, `_tokens.scss` or `package.json` changed.
+
+**Spec updates made at this re-audit** (`docs(audits): re-audit issue #8`, same commit):
+- Owner **Q8-3** (2026-10-29, after the spec): the checkout deadline line is 24-hour, `Today, 23:59 EAT`. Recorded in A§8 (`nm-deadline-line`, the kit table) and A§10, in Copy, and in XQ T19. The builder had already built it this way (`formatDeadlineEat(…, { hour24: true })`, `85fc51f`).
+- A§1 "Same route, another errand" (finding 1), with new tests XQ T24, VP T19 and MP T17.
+- A§7 `CHECKOUT_TIMERS` (ruling 4).
+- A§8 kit rows for `beforeFollow` (ruling 3) and `hour24`.
+- PA Accessibility: no `aria-describedby` (ruling 6).
+
+**Auditor re-run in the worktree** (dependencies already installed and matching the lockfile):
+- `npx ng test --watch=false` → **87 files, 749 tests, 0 failures**. This matches the builder (615 at #7 + 134 #8 cases).
+- `npx ng build --stats-json` → succeeds. Initial total **354.59 kB raw** / 97.07 kB transfer. That is ≤ 360.00 (WQ-34) and +0.42 kB on #7's 354.17. It matches the builder's figure.
+- The initial chunks have no `core/auth`, `core/realtime`, `app-area`, `shared/ui`, `shared/places` or `shared/map` input, and no `@angular/google-maps`, `@angular/forms` or `socket.io` input:
+  - `main-726DWNFE.js`: 31 inputs; `src` plus `@angular/{common,platform-browser,router}`;
+  - `chunk-Dbgtyy_1.js`: `rxjs`, `tslib`, `@angular/core`;
+  - `polyfills`: `zone.js`.
+  - The #8 pages are lazy chunks: `awaiting-quote-page` 34.00 kB, `merchant-payment-page` 18.78 kB, `payment-page` 11.74 kB. **G8-40 closed.**
+
+**WQ-27 mutation checks (G8-37).** Each was a temporary edit, run, then `git checkout` (worktree clean afterwards).
+1. `addKes` replaced by float addition (`(Number(a) + Number(b)).toString()`) → **A.T6** (two cases), **A.T7 (b) cents** and **VP T9** fail.
+2. The `Includes … for your runner's purchase.` line removed from `nm-stk-status` → **A.T7 (a)**, **A.T7 (b)** and **VP T9** fail.
+
+Both rules are enforced. **G8-37 closed.**
+
+**WQ-33 injection check (G8-39).** Each was a temporary edit, run, then reverted. `viewChild(` in `payment.page.ts`, `'#123456'` in `radio-row.component.ts`, and a static import of `app-area/customer/data/checkout.api` in `app.routes.ts`. `customer-static.spec.ts` checks (a), (c) and (e) each fail. The extended scope covers the #8 files. **G8-39 closed.**
+
+**Browser check.**
+- Method:
+  - Chrome (headless, via Playwright) on the built `dist/website/browser`, served locally.
+  - The API was mocked at `http://localhost:3000`: session restore, errands, quote, payments, price change. The socket was left unreachable, so the pages ran in poll mode.
+  - The script and screenshots are in the auditor's scratchpad and are not committed.
+- Results:
+
+| Screen | 360 | 768 | 1024 | 1280 |
+|---|---|---|---|---|
+| `x-awaiting-quote` checkout (QUOTED, Buy For Me) | No horizontal scroll; single column; CTA bar `position: fixed`, full width, 62px | No scroll; inline CTA (`static`), 460px | Two columns `332px 360px`; CTA in the 360px aside | Two columns `576px 360px`; aside CTA |
+| Deadline panel (`Change`) | Bottom sheet, full width | — | Centred, 560px (x = 232) | — |
+| `v-payment` (stored PENDING, no intent, as after a reload) | `Check your phone`, `KSh 41,100` + `Includes KSh 40,000 …`; **0 initiate requests** (WQ-28) | — | — | Same; 0 initiate requests |
+| `x-merchant-payment` variant A | No scroll; `Done` bar fixed; title `Pay the merchant · Nitume` | Inline `Done` | Inline | Inline |
+| `v-price-auth` (opened by the watcher's resume check) | 320px wide | — | — | 335px wide; `role="dialog"`, `aria-modal`, `aria-labelledby` set, no `aria-describedby` |
+
+- Copy seen on screen matched the specs: `Total (service + runner fee) KSh 1,100`, `Item amount KSh 40,000`, both route rows, `Your sign-in number`, `Confirm & pay KSh 1,100 →`, the deadline line `Today, 23:59 EAT` (Q8-3), the panel caption `Due today, 23:59 EAT.`, and the increase dialog copy with `Brian K.`, `"Shelf price changed"`, `40,000 → 45,000`, `+ KSh 5,000 additional`.
+- Targets under 44px by bounding box:
+  - the deadline chips (35px high) and `Copy` (64×38). Both keep the 48×48 `::before` hit area of `nm-hit-area` (`choice-chip.component.scss`; `nm-btn--small`), as at #7. **Not a finding.**
+
+#### Finding 1 (blocker): a reused page shows another errand's data after a same-route navigation (A§1, G8-7, G8-24, G8-27, G8-31)
+
+- **Files:**
+  - `app-area/customer/checkout/merchant-payment.page.ts:116`
+  - `awaiting-quote.page.ts:140`
+  - `payment.page.ts:109`
+  
+  Each has `protected readonly id: string = inject(ActivatedRoute).snapshot.paramMap.get('errandId') ?? ''`. The id is read once, and the room join, socket filters, polls and navigation state hang off it.
+- **What the design says:** each page shows the errand in its URL (A§2), and the item payment shows that errand's Till/Paybill and amount (OA-5).
+- **What the code does:** Angular's default `RouteReuseStrategy` keeps the component when only `:errandId` changes, so the page keeps the old errand. Reproduced in the browser:
+  - on `/app/customer/tasks/e-1/item-payment` (Till `111111`) the watcher opened the price-change dialog for e-2;
+  - `Approve KSh 5,000 increase` navigated to `/tasks/e-2/item-payment`. The page **still showed e-1's Till `111111`**, made no `GET /errands/e-2` or `GET /payments/e-2`, and dropped the `approvedIncrease` state;
+  - Back to `/tasks/e-1/item-payment` made no request either.
+  
+  So a customer can be shown the wrong merchant number and amount, which is a payment error. The same pattern breaks:
+  - #11 deep links (an in-app or push notification link) to the same #8 route of another errand;
+  - Back/Forward between such entries on all three pages.
+  
+  Links from the notifications list itself are not affected, because they leave the #8 route first. The cause is a spec defect: A§1 said to read navigation state "once … in the constructor" and allowed snapshot reads. The spec is corrected.
+- **Fix (A§1, as amended):** each page reads the id from `ActivatedRoute.paramMap` (`takeUntilDestroyed`). On every new id it:
+  - stops its timers and polls (`CHECKOUT_TIMERS`);
+  - leaves the old room and joins the new one;
+  - resets its state to loading, so nothing of the old errand stays on screen;
+  - re-reads `router.getCurrentNavigation()?.extras.state` and `CheckoutIntentStore.take(newId)`;
+  - closes an open deadline panel;
+  - filters socket events by the current id;
+  - reruns the A§2 read.
+  
+  No custom `RouteReuseStrategy`. Add XQ T24, VP T19 and MP T17. MP T17 is the scenario above.
+- **Re-audit evidence:**
+  - the three new cases pass;
+  - `rg -n "snapshot\.paramMap" apps/website/src/app/app-area/customer/checkout` → no hits;
+  - the auditor reruns the browser scenario: after approve the page shows `222222` with the requests for e-2, and Back shows `111111` after re-reading e-1.
+
+#### Auditor rulings on the coordinator's questions (no findings)
+
+1. **Removed lines in #6/#7 spec files: accepted.** Across all spec files the build removes 3 lines (`git diff 7d0b81e a690870 -- '*.spec.ts'`: 3 deletions).
+   - `customer-links.spec.ts`: the NC§W9.11 stub test's title and path list drop `tasks/:errandId/quote` and `/payment`. G8-1 replaces exactly those stubs by design. The test still checks the three remaining stubs, and `customer-routes.spec.ts` A.T1 now checks the two routes as real pages.
+   - `icon.spec.ts`: the title changes, and the exact-registry assertion gains `phone` and `check` (G8-10). It still enumerates the whole registry.
+   
+   Both changes keep or tighten what is asserted. The gap report's "no removed lines" evidence was about the Home and active-card specs (G8-5), and those only gained lines.
+2. **Home spec additions: accepted.** The fake realtime gains `priceChangeRequests$`. H T6 now also answers the shell-start resume request `GET /errands?status=IN_PROGRESS&limit=20`. This is the customer-shell watcher, specified to run on shell start (PA Entry), and it runs because the Home harness boots the real customer route tree. H T6 still verifies no other request. A.T8 is added.
+3. **`followInAppLink(…, beforeFollow?)`: accepted** as a kit addition, recorded in A§8. It is the smallest way to give G8-13 its exact semantics (emit only when followed in-app, before navigating). The fourth argument is optional, existing callers are unchanged, and the #6/#7 link and button tests pass unchanged.
+4. **`CHECKOUT_TIMERS`: accepted**, recorded in A§7. It is a root `InjectionToken` with a production default (real `setTimeout` outside the zone, re-entering to update the view), the same kind of seam as `CUSTOMER_NOW` and #7's `HOME_POLL_MS`. It adds no framework feature (WQ-33) and nothing to the initial bundle.
+5. **Same-route reuse: FAIL**, finding 1.
+6. **`aria-describedby` on the price-change dialog: not required; no kit change.**
+   - WCAG 2.2 requires a name and role for the dialog (4.1.2: given by `aria-labelledby` → `Price change`). It requires the content to be programmatically available (1.3.1: real text in reading order right after the focused title). A description is not required.
+   - WAI-ARIA APG lists `aria-describedby` on `dialog` as optional and advises against it when the content has structure, as here: the compare row, route radios, two buttons and four states.
+   - The `PA` Accessibility line that asked for "described by the body" was a spec over-reach. It is amended. The kit keeps describing static `confirm()` bodies (`alertdialog`).
+7. **Evidence command corrected.** In G8-6, `rg -n "errands/defaults"` also matched #7's comment in `new-details.page.ts:4`. The evidence now matches only the URL builder: `rg -n -g '!*.spec.ts' 'API_V1\}/errands/defaults' apps/website/src/app` → one hit (`errands.api.ts:97`). At `a690870` it gives that one hit, so #8 adds no second call site. (In this repo `rg` takes `-g`, not `--glob`; the evidence commands below use `-g`.)
+
+#### Item status at re-audit 1
+
+| Item | Status | Note |
+|---|---|---|
+| G8-1, G8-2 | closed | Routes and titles (`customer.routes.ts:113-128`), stubs left only for #9/#10/#11 and the #6 nav routes; A.T1. `customerLinks.itemPayment`; no `/app/customer/` literal outside `customer-links.ts` |
+| G8-3 | closed | `checkout-routing.ts`; A.T2 |
+| G8-4 | closed | Stores; no storage or `history` writes (rg clean); A.T3, A.T4 |
+| G8-5 | closed | Home `onFollowed` + card `followed`; A.T8 (order `set` → `navigate`; Ctrl/Meta set nothing) |
+| G8-6 | closed | `checkout.api.ts`; no quote components; no `withCredentials`; one defaults call site (corrected command) |
+| G8-7 | **open** | Finding 1: rooms, filters and polls are tied to the snapshot id |
+| G8-8 | closed | Numbers only in `checkout.api.ts` (types) and `merchant-payment.page.ts`; the client rule at `merchant-payment.page.ts:139`; MP T6 (a)–(d); PR #29 now underneath |
+| G8-9 | closed | One `deadlineAt` (`deadline.ts:21`); #7 store and review specs unchanged |
+| G8-10 … G8-14 | closed | Icons; panel without `NgTemplateOutlet` / `viewChild` (#5 overlay spec unchanged); BigInt cent helpers; `followed`; no token or type-map change |
+| G8-15 … G8-18 | closed | Kit components; hit areas 48px via `nm-hit-area` |
+| G8-19 … G8-23 | closed | Customer components; deadline line `Today, 23:59 EAT` (Q8-3); one `nm-stk-status` used by two pages |
+| G8-24 | **open** | Finding 1 (quote page) |
+| G8-25, G8-26 | closed | Browser and XQ T5–T23 |
+| G8-27 | **open** | Finding 1 (payment page). The WQ-28 entry decision itself is met (browser: 0 initiates after a reload) |
+| G8-28 … G8-30 | closed | VP states, the dialog, and the watcher on the customer shell route (`customer.routes.ts:48`) |
+| G8-31 | **open** | Finding 1, reproduced on this page |
+| G8-32 … G8-36 | closed | Copy, tokens, domain and responsive checks clean (rg and browser) |
+| G8-37 | closed | Both mutations caught |
+| G8-38 | **open** | Add XQ T24, VP T19, MP T17 |
+| G8-39, G8-40 | closed | Injection check; 354.59 kB raw |
+| G8-41 | closed | 19 conventional commits, each with its G8 ids; no `features/`; marketing unchanged (`git diff 6338a75 -- …` empty); every new component `OnPush` |
+
+#### Re-audit 2 checklist
+
+1. Finding 1 fixed on all three pages; XQ T24, VP T19, MP T17 pass; `rg -n "snapshot\.paramMap" apps/website/src/app/app-area/customer/checkout` → no hits.
+2. Re-run `npx ng test --watch=false` (0 failures) and `npx ng build --stats-json` (≤ 360.00 kB raw).
+3. Rerun the browser scenario (approve on another errand's item-payment page, then Back) and the 360/1280 spot checks.
+4. Diff since `a690870` limited to the fix and its tests.
+
+### Baseline verdict: FAIL (not built, 2026-10-29)
+
+None of the four views exists. `tasks/:errandId/quote` and `tasks/:errandId/payment` are #7 `ViewStubComponent` routes. `tasks/:errandId/item-payment`, the price-change dialog and watcher, the checkout stores, the checkout API, the money helpers and the nine new #8 components do not exist. The items below are the build list. Every item is a **blocker** unless it says minor.
+
+### Merge preconditions (not build items)
+
+| Precondition | State on 2026-10-29 | Effect on #8 |
+|---|---|---|
+| #7 (`feat/website-customer-create-task`, re-audit 2 PASS at `6338a75`) | merged on `main` as PR #42; under this branch since `7d0b81e` (re-audit 1). At the baseline it was in review | #8 is stacked on #7 and reuses its components (A§8). It must not be merged before #7 |
+| #6 (PR #31, `a0caeee`) | merged on `main` | none |
+| PR #29 / issue #28 (merchant numbers hidden from customers until the fees are paid, `5f0ab08`) | merged on `main`; **under this branch since `7d0b81e`** (re-audit 1). At the baseline it was not | #8 relies on it (G8-8). The code needs no API change. The branch must not reach `main` without it underneath, which holds automatically once it is rebased or merged onto `main` |
+| #12 (`v-payment-methods`) | not built | `Change` on `Pay with` is not rendered until #12 (A§9) |
+| #9 (Track, Task detail) | specced (`4d1f5fa`), not built | Track's `Pay the item amount` notice and `Price change` button arrive with #9. Until then `x-merchant-payment` is reached from the price-change dialog, a notification link or the URL |
+
+### Owner decisions that apply to this section
+
+| Id (board) | Spec's first id | Decision (owner) | Where it lands |
+|---|---|---|---|
+| WQ-27 | Q8-1 | The item/merchant amount is never folded silently into a fee figure and always has its own line. The decided combined figures stay: row 34 `Total (service + runner fee)` and the row 76/91 send-to-runner charge with its `Includes KSh … for your runner's purchase.` line. Service fee, runner fee and merchant payment stay separate records in code and data (2026-10-28) | G8-6, G8-12, G8-25, G8-28, G8-37 |
+| WQ-28 | Q8-2 | A reload, link or second tab never re-sends the M-Pesa prompt automatically. The page shows the stored payment's state, or returns to the checkout when there is none. The duplicate-charge key is kept in memory only (2026-10-28) | G8-4, G8-5, G8-27 |
+| WQ-2, WQ-53 | — | Activity times use the browser's local time. Deadlines use EAT and are labelled as EAT. The caption is exactly `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` (2026-10-29) | G8-9, G8-20, G8-21, G8-26 |
+| WQ-34 | — | Marketing initial bundle ≤ 360 kB raw (`npx ng build` "Initial total"); the PR reports the figure. Signed-in code stays lazy: nothing from `core/auth`, `core/realtime`, `app-area` or `shared/ui` statically reachable from `main.ts`, the same static checks as #6 (2026-10-29, #8 issue comment) | G8-39, G8-40 |
+| WQ-33 | — | (#6) The framework-feature rules apply to every later issue | G8-11, G8-39 |
+| WQ-35 | — | (#28) The merchant name stays visible before payment | G8-8 (the web still shows it only on `x-merchant-payment` after payment) |
+| WQ-3, WQ-15, WQ-16 | — | (#5, #6) Panel sheet and centred panel; dialogs 335px; side nav kept on pushed routes from 768px, and white | G8-1, G8-21, G8-29 |
+
+New question raised by the spec update (does not block; build default stated): **Q8-3** deadline line format, `Today, 11:59 PM EAT` (app's 12-hour formatter + EAT label, build default) vs `Today, 23:59 EAT` (A§10). Inherited, unchanged: mobile `x-awaiting-quote` Q2 and mobile `x-merchant-payment` Q1 (build defaults in A§10).
+
+### Current-state evidence (baseline)
+
+| Fact | Evidence |
+|---|---|
+| Code equals #7 re-audit 2 | `git diff --stat 6338a75 HEAD -- apps/` is empty. `528ed46` brought in only #7 code plus docs |
+| #8 routes are #7 stubs; no item-payment route | `src/app/app-area/customer.routes.ts:106` (`tasks/:errandId/quote`) and `:107` (`tasks/:errandId/payment`) load `stub`, with `data { role, navKey: 'home', pushed: true }` and no `title`. There is no `item-payment` path |
+| `customerLinks` has the two #8 paths, not the third | `src/app/app-area/customer/customer-links.ts:15` `awaitingQuote`, `:17` `payment`; no `itemPayment` |
+| Home `Pay now →` links without an intent | `src/app/app-area/customer/home/home-tasks.ts:81-82` (`// #8 adds the checkout intent to this link.`, `actionHref: customerLinks.payment(id)`); `shared/ui/active-task-card/active-task-card.component.ts:48-49` follows the link and emits nothing |
+| Submit already lands on the quote | `src/app/app-area/customer/new-task/new-review.page.ts:112` (`awaitingQuote(id)`, `replaceUrl: true`) |
+| #7 pieces #8 reuses exist | `shared/ui/fixed-cta/fixed-cta.component.ts` (+ `NmFixedCtaOffset`); `shared/ui/choice-chip/choice-chip-group.component.ts` (`disabled` input); `shared/ui/receipt/receipt.component.ts` (`nm-receipt-row`, `-caption`, `-group`); `app-area/customer/data/errands.api.ts` (`apiErrorOf`, `API_V1`, `CustomerErrandsApi.defaults/list`); `core/realtime/realtime.service.ts:264` `onStateChange`; `app-area/customer/clock.ts` `CUSTOMER_NOW` |
+| Deadline helper lives in the wizard store | `src/app/app-area/customer/new-task/task-draft.store.ts:49-54` `deadlineAt(choice, now)` (23:59 EAT, WQ-2); the #7 caption is at `new-details.page.html:86,88` |
+| No checkout folder, stores, API or watcher | `src/app/app-area/customer/` has `home/`, `new-task/`, `data/` only; `data/` has no `checkout.api.ts` |
+| Panel uses WQ-33-costly features | `shared/ui/overlay/panel.component.ts:4,31,51` (`NgTemplateOutlet` / `[ngTemplateOutlet]`), `:84-85` (`viewChild`). #7 converted only `nm-dialog` (NC§W9a) |
+| Icon registry lacks `phone` and `check` | `shared/ui/icon/icons.ts`: 24 names (the #6 and #7 sets); no `phone`, no `check` |
+| No decimal money helpers | `rg -n "addKes|subtractKes|compareKes|isPositiveKes" apps/website/src` → no hits. `formatters.ts` has the parse/format side only (`formatKes`, `formatAmount`, `kesSpoken`) |
+| No #8 kit components | `shared/ui/` has no `radio-row`, `payment-method-card`, `copy-row` or `pulsing-dots` |
+| #7 static spec scope | `src/styles/customer-static.spec.ts:20` `ISSUE_7_DIRS` (includes `app-area/customer`), `:39` `ISSUE_7_CHANGED`, `:62` `ISSUE_7_ENTRIES` (four #7 pages + `customer.routes.ts`). The #8 kit folders and `panel.component.ts` are not in scope |
+| Realtime events exist | `core/realtime/realtime.events.ts:10-29`: `errand:status_changed`, `quote:reissued`, `quote:requested`, `merchant_details:updated/:changed`, `price_change:requested`, `price_change:difference_paid`, `errand:access_revoked`; matching observables at `realtime.service.ts:93-107` |
+| API (`origin/main` @ `380be22`) | `errands.controller.ts`: `GET :id` (`:109`), `PATCH :id` (`:128`), `GET :id/quote` (`:175`), `POST :id/quote/accept` (`:185`), `POST :id/quote/request` (`:203`), `PATCH :id/status` (`:252`), `GET defaults` (`:91`), `GET` list (`:66`). `payments.controller.ts`: `POST :errandId/initiate` (`:28`), `POST :errandId/price-changes/:requestId/initiate` (`:61`), `GET :errandId` (`:71`). `price-change.controller.ts`: `GET` (`:21`), `POST :requestId/approve` (`:48`), `POST :requestId/reject` (`:63`). `customer-accounts.controller.ts:66` `GET payment-methods`. `payments.service.ts:257` returns the open main payment without a new push (A§3). All exist; #8 needs no API change |
+| #28 masking (`origin/main`) | `payments.service.ts:819-848` (`feesPaidAmong`, `feesPaid`, `merchantNumbersVisible`: customer sees the numbers only once the primary payment is `completed`); `errands.service.ts:1155-1182` (`merchantNumbersVisibleTo`, `hideMerchantNumbersFor`); `realtime.gateway.ts:310-347` (`emitMerchantDetails`: per-socket null numbers for customers) |
+| Build health | Not re-run at baseline: this worktree has no `node_modules`. The code equals `6338a75`, where the #7 re-audit 2 ran 73 files / 615 tests with 0 failures and an initial total of **354.17 kB raw** / 96.92 kB transfer. That is the #8 reference figure; the WQ-34 headroom is **5.83 kB** |
+
+### Items
+
+Each item gives the **current** state, the **target** (spec section) and the **evidence at re-audit**. Every listed test case is its own `it(...)`. Paths are under `apps/website/src/app/` unless they say otherwise.
+
+#### A. Routes, links, stores, data and live rules (A§1–A§7)
+
+**G8-1 Customer routes: the #8 views replace the #7 stubs**
+- Current: `customer.routes.ts:106-107` load `ViewStubComponent`; there is no `item-payment` route.
+- Target: A§1.
+  - `tasks/:errandId/quote` → `AwaitingQuotePage`, `title: 'Your quote · Nitume'`.
+  - `tasks/:errandId/payment` → `PaymentPage`, `title: 'Payment · Nitume'`.
+  - New `tasks/:errandId/item-payment` → `MerchantPaymentPage`, `navKey: 'track'`, `title: 'Pay the item amount · Nitume'`.
+  - All three: lazy `loadComponent`, `data { role, navKey, pushed: true }`, route `title` strings (no custom `TitleStrategy`).
+  - The `tasks/:errandId`, `tasks/:errandId/evidence` and `notifications` stubs stay.
+- Evidence: A.T1; `rg -n "loadComponent: stub" apps/website/src/app/app-area/customer.routes.ts` no longer lists the two #8 paths.
+
+**G8-2 `customerLinks.itemPayment`**
+- Current: absent (`customer-links.ts`).
+- Target: A§1. `itemPayment(id)` → `/app/customer/tasks/${enc(id)}/item-payment`. Every #8 target goes through `customerLinks`.
+- Evidence: A.T1; `rg -n "'/app/customer/" apps/website/src/app/app-area/customer apps/website/src/app/shared --glob '!**/*.spec.ts'` hits only `customer-links.ts`.
+
+**G8-3 Entry routing `checkoutRedirect` (A§2)**
+- Current: none.
+- Target: one pure function in `app-area/customer/checkout/checkout-routing.ts` holding the A§2 table for the three routes, used by all three pages (no copied switch). Status parsed with `parseErrandStatus`; an unknown value → load error.
+- Evidence: A.T2 (17 statuses × 3 views); XQ T1, VP T13, MP T12.
+
+**G8-4 `CheckoutIntentStore` and `PaymentAttemptStore` (WQ-28)**
+- Current: none.
+- Target: A§3, both `providedIn: 'root'`, signals, memory only.
+  - `set` / `take` (once).
+  - `keyFor` / `newAttempt`, with the `PAYMENT_KEY_FACTORY` token (`randomUUID`, else a `getRandomValues` fallback), matching `^[A-Za-z0-9_-]{8,128}$`.
+  - Nothing in `localStorage`, `sessionStorage`, IndexedDB, cookies or `history.state`.
+- Evidence: A.T3, A.T4; XQ T22; VP T15; `rg -n "localStorage|sessionStorage|indexedDB|document\.cookie|history\.(push|replace)State" apps/website/src/app/app-area/customer --glob '!**/*.spec.ts'` → no hits.
+
+**G8-5 Intent writers: the checkout CTA and Home `Pay now →` (#7 code)**
+- Current: `home-tasks.ts:81-82` links to `payment(id)` without an intent, so after #8 a Home click would bounce to the checkout instead of paying.
+- Target: A§3, A§8 "Changes to #7 code".
+  - The checkout CTA sets `{ route?, paymentMethodId?, payerDetail? }` before navigating.
+  - Home sets `CheckoutIntentStore.set(id, {})` on the active card's new `followed` output (G8-13) for ACCEPTED only. A modified or middle click sets nothing (WQ-28).
+  - The `// #8 adds …` comment is removed.
+- Evidence: A.T8; XQ T10; the #7 Home and active-card spec files pass with no removed lines (`git diff 6338a75 -- '*home*.spec.ts' '*active-task-card*.spec.ts'` adds cases only).
+
+**G8-6 `CheckoutApi` and the #8 types (A§5, A§6)**
+- Current: none.
+- Target: `app-area/customer/data/checkout.api.ts`.
+  - `CheckoutErrand extends ErrandView` (#7). No second `ErrandView` and no change to #7's interface.
+  - `Quote` with `total`, `expiresAt` and `createdAt` only (no quote components, OA-4).
+  - `PaymentSummary`, `Payment` (`serviceFee`, `runnerFee` and `merchantAmount` as separate string fields, WQ-27), `MerchantPaymentView`, `DifferencePaymentView`, `InitiateResult`, `PriceChangeRequest`, `PriceChangeDecision`, `PaymentMethod`.
+  - Every A§6 call except `defaults` and `list`, which reuse #7's `CustomerErrandsApi`.
+  - `Idempotency-Key` only on the main initiate. Errors read with #7's `apiErrorOf`. No `withCredentials`, no interceptor. Not in `core/api-types.ts`.
+- Evidence: A.T5; `rg -n "withCredentials|HTTP_INTERCEPTORS|withInterceptors" apps/website/src/app/app-area/customer` → no hits; `rg -n "baseFee|distanceFee|timeFee|urgencyFee|complexityFee|premiumFee" apps/website/src/app --glob '!**/*.spec.ts'` → no hits; `rg -n -g '!*.spec.ts' 'API_V1\}/errands/defaults' apps/website/src/app` → one hit (`errands.api.ts:97`). (Corrected at re-audit 1: the first command, `rg -n "errands/defaults"`, also matched #7's comment at `new-details.page.ts:4`.)
+
+**G8-7 Live data, polling and the clock (A§7)**
+- Current: none.
+- Target: A§7.
+  - `joinErrand` / `leaveErrand` per page.
+  - The listed events. `price_change:difference_paid` re-reads variant B at once (row 248).
+  - Reconnect refetch through #7's `onStateChange` (no `effect()` / `toObservable`).
+  - Polls only while visible (`document:visibilitychange` host listener) at the A§7 cadences.
+  - Every "now" from `CUSTOMER_NOW`.
+  - Timers cleared on destroy.
+- Evidence: XQ T3, T4; VP T3, T8, T18; MP T10, T15; PA T12.
+
+**G8-8 Merchant numbers: the server guard (#28) plus the client rule**
+- Current: PR #29 is on `main` (`payments.service.ts:819-848`, `errands.service.ts:1155-1182`, `realtime.gateway.ts:310-347`), not yet under this branch (merge precondition).
+- Target: A§5, A§9, MP "Entry / exit".
+  - #8 relies on the server: for a customer the numbers are null until the primary payment is `completed`. The details-pending layout is the normal pre-payment case.
+  - The client keeps the render rule as defence in depth: PAYMENT_CONFIRMED or later, **and** main payment `completed`, **and** a non-null number.
+  - No #8 type declares the errand's `merchantTillNumber` / `merchantPaybillNumber` / `merchantAccountReference` / `merchantName`. Socket payloads only trigger a re-read.
+  - The merchant name (visible before payment since WQ-35) is not shown anywhere before payment.
+- Evidence: MP T6 (a)–(d); XQ T23; `rg -n "merchantTillNumber|merchantPaybillNumber|merchantAccountReference" apps/website/src/app --glob '!**/*.spec.ts'` → no hits; `rg -n "tillNumber|paybillNumber" apps/website/src/app/app-area --glob '!**/*.spec.ts'` hits only `checkout.api.ts` (types) and the merchant-payment page.
+
+**G8-9 `app-area/customer/deadline.ts`: `deadlineAt` moved, `deadlineChoiceOf` added (WQ-2)**
+- Current: `deadlineAt` sits in `new-task/task-draft.store.ts:49-54`.
+- Target: A§8.
+  - `deadlineAt` and `DeadlineChoice` move to `app-area/customer/deadline.ts`. The store imports and re-exports them (no second copy), and the #7 store and review specs pass unchanged.
+  - New `deadlineChoiceOf(deadlineAt, now)`: 23:59 EAT today → `today`; tomorrow → `tomorrow`; `null` → `flexible`; any other time → `null`.
+  - EAT dates come from the kit `eatDayKey`, independent of the browser zone.
+- Evidence: A.T13; `rg -n "function deadlineAt" apps/website/src/app` → exactly one hit (`deadline.ts`); `git diff 6338a75 -- apps/website/src/app/app-area/customer/new-task/task-draft.store.spec.ts` is empty.
+
+#### B. Kit additions (A§8)
+
+**G8-10 `nm-icon` `phone` and `check`**
+- Current: absent (`icons.ts`, 24 names).
+- Target: Material Symbols paths under the existing Apache-2.0 header. No icon package.
+- Evidence: A.T9; `git diff 6338a75 -- apps/website/package.json` adds no icon package.
+
+**G8-11 WQ-33 conversion of `nm-panel`**
+- Current: `panel.component.ts:4,31,51` (`NgTemplateOutlet`), `:84-85` (`viewChild`).
+- Target: A§8 kit table, the same treatment #7 gave `nm-dialog` (NC§W9a). `nmTemplateOutlet`, plus an `ElementRef` lookup for the sheet and title. Markup, classes, focus trap and the #5 panel tests unchanged. `NgComponentOutlet` stays (allowed).
+- Evidence: A.T9; `git diff 6338a75 -- apps/website/src/app/shared/ui/overlay/overlay.spec.ts` has no removed lines; `rg -n "NgTemplateOutlet|ngTemplateOutlet|viewChild" apps/website/src/app/shared/ui/overlay/panel.component.ts` → no hits.
+
+**G8-12 Decimal money helpers (WQ-27)**
+- Current: absent.
+- Target: A§4. `addKes`, `subtractKes`, `compareKes` and `isPositiveKes` in `shared/format/formatters.ts`: decimal strings in cents, 2-decimal results, a throw on a non-numeric string, no `Number(` / `parseFloat` arithmetic on amounts.
+- Evidence: A.T6; `rg -n "parseFloat|Number\(.*(Fee|Amount|amount|total|budget|Price)" apps/website/src/app/app-area/customer apps/website/src/app/shared/format --glob '!**/*.spec.ts'` → no hits on money values.
+
+**G8-13 `nm-active-task-card` output `followed`**
+- Current: `active-task-card.component.ts:48-49` follows the link silently.
+- Target: A§8. Emits only when `followInAppLink` would follow (plain left click, no modifier), before the router navigates. Additive; the #7 card tests pass unchanged.
+- Evidence: A.T8.
+
+**G8-14 No new type style, no new colour** (minor)
+- Target: A§8. No type-map entry and no `--nitume-*` token added. In-between Flutter styles use `nm-type` overrides (`dialog-title` 700, `resend`, `field-label` 400, `body-lg` 600, `num` 16/600). Amber only through `--nitume-amber`.
+- Evidence: `git diff 6338a75 -- apps/website/src/styles/_tokens.scss` is empty.
+
+#### C. New shared components, kit level (A§8; `shared/ui/<folder>/`)
+
+All of them: standalone, `OnPush`, signal inputs, `nm-` prefix, styles in a `styleUrl` `.scss` file (F9.60), colours through `--nitume-*` only, focus ring via `nm-focus-ring`.
+
+**G8-15 `nm-radio-row`** (`radio-row/`)
+- Current: none (#7's `nm-choice-chip` is the chip, not the full-width two-line row).
+- Target: A§8 table. Pill, min-height 48. Selected: blue fill with **white** label and subtitle. Disabled: slate-400 and `aria-disabled`. A native radio inside a `<label>`; arrow keys within the group; accessible name `label. subtitle`.
+- Evidence: A.T11; XQ T8; PA T7.
+
+**G8-16 `nm-payment-method-card`** (`payment-method-card/`; reused by #12)
+- Target: A§8 table. The `M-PESA` badge: white `tag` text on the green token. Label `row-title`; detail in `nmNum` meta; trailing slot.
+- Evidence: A.T12; XQ T9.
+
+**G8-17 `nm-copy-row`** (`copy-row/`)
+- Target: MP §Components. Styles `number` / `amount` / `text`; `Copy` with accessible name `Copy <label>`; `copyValue`, `copyable`; the `NM_CLIPBOARD` token; toasts `Copied` / `Couldn't copy. Select the number and copy it.`
+- Evidence: MP T1, T2.
+
+**G8-18 `nm-pulsing-dots`** (`pulsing-dots/`)
+- Target: A§8 table. Three 7px slate-400 dots, CSS keyframes only, `role="status"` + label, static under reduced motion.
+- Evidence: A.T10; XQ T2; VP T2.
+
+#### D. New components, customer level (A§8; `app-area/customer/shared/`, reused by #9)
+
+**G8-19 `nm-task-summary-card`**
+- Target: A§8 table. Optional chip through `customerStatus()`; the title or the category display name (never the wire value); the whole meta line in `nmNum` (`#` + reference · `formatDayTime(createdAt, now)`, local, WQ-2); a footer slot.
+- Evidence: XQ T2, T13, T16.
+
+**G8-20 `nm-deadline-line` (WQ-2)**
+- Target: A§8 table. `Deadline` + optional `Change`. The value is `formatDeadlineEat(deadlineAt, now)` in `nmNum` followed by ` EAT` in Sans. Owner Q8-3 (answered after the baseline): 24-hour, `Today, 23:59 EAT` (`formatDeadlineEat(…, { hour24: true })`). The null copy is exact. Identical under any browser zone.
+- Evidence: XQ T19.
+
+**G8-21 Deadline panel (`DeadlinePanelComponent` in `NmPanelService`; WQ-2, WQ-53)**
+- Current: the first #8 spec said "23:59 local". The spec is corrected in `8b12d91`.
+- Target: XQ §States "Deadline panel".
+  - #7's `nm-choice-chip-group`; its `disabled` input while saving, with `Saving` dots.
+  - `Today` hidden after 23:59 **EAT**.
+  - The current chip from `deadlineChoiceOf`.
+  - The captions `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` (`23:59` in `nmNum`, #7 markup) and the Flexible caption from `CustomerErrandsApi.defaults()` + `formatHours`.
+  - The PATCH sends `deadlineAt(choice, now)` (UTC ISO of 23:59 EAT) or `null`.
+  - The error and `deadline_not_editable` paths.
+  - No hand-written zone offset in the view.
+- Evidence: XQ T18 (both zones); `rg -n "\+03:00|Africa/Nairobi|getTimezoneOffset" apps/website/src/app/app-area/customer --glob '!**/*.spec.ts'` hits only `deadline.ts`.
+
+**G8-22 `nm-merchant-route-rows`**
+- Target: A§8 table. Two `nm-radio-row`s in a `radiogroup`, exact copy, `merchantDetailsAvailable` → disabled merchant-direct with its subtitle, nothing preselected unless given. One component for the checkout and the dialog. No `runner_advance` option.
+- Evidence: XQ T8; PA T7.
+
+**G8-23 `nm-stk-status`**
+- Target: VP §Layout. Icon circle (green-050 or slate; red never a surface), live-region heading, body with the payer number in `nmNum`, the amount in `amount-lg` with `kesSpoken`, the optional `Includes` line, dots, the button stack (220px) and the still-pending line. One component for `v-payment` and variant B.
+- Evidence: VP T1–T6; MP T8, T9; `rg -n "<nm-stk-status" apps/website/src/app --glob '!**/*.spec.ts'` hits exactly the payment page and the merchant-payment page templates, and no other file renders the icon circle or the STK button stack.
+
+#### E. Views
+
+**G8-24 `x-awaiting-quote`: waiting, new quote requested, outside area, live switch**
+- Target: XQ §Layout (Waiting, New quote requested, Outside area), §States (Loading, Load error, Live quote, Reconnecting), the exact copy, the announcements, focus on the `h1`.
+- Evidence: XQ T1–T4, T15, T16.
+
+**G8-25 `x-awaiting-quote`: checkout, accept, decline (WQ-27)**
+- Target: XQ §Layout "Checkout state", from 1024px the two columns with DOM order kept.
+  - `Final quote` with one `Total (service + runner fee)` row (#7 `nm-receipt-row`).
+  - The `Item amount` row and the route rows (Buy For Me / Get It For Me, > 0 only).
+  - `Pay with` (`Change` hidden until #12).
+  - The CTA inside #7's `nm-fixed-cta`, with the charge from `addKes` only for `send_to_runner`.
+  - Accept rules (`quoteAcceptanceRequired`), then intent, then `payment(id)`.
+  - Decline → confirm → CANCELLED → Home.
+- Evidence: XQ T5–T12, T20, T23.
+
+**G8-26 `x-awaiting-quote`: expired quote, new-quote request, passed deadline, deadline panel**
+- Target: XQ §States (Quote expired and its triggers, Requesting a new quote, Chosen deadline already passed, Deadline panel), with the injected clock and the 30 s / visibility re-check. An expired quote takes precedence over a passed deadline.
+- Evidence: XQ T13, T14, T17, T18, T19.
+
+**G8-27 `v-payment`: entry decision and initiate (WQ-28)**
+- Target: VP "Entry decision", "Initiate", "Answers from initiate".
+  - A prompt is sent only with an intent taken from `CheckoutIntentStore`, or by a click (`Try again`, `Send a new prompt`).
+  - Reload / link / second tab → the stored state, or `…/quote` with no request.
+  - Key reuse on `Try again` after an initiate error; a new key after FAILED and on `Send a new prompt`; one retry on `idempotency_key_reused`.
+  - Every A§6 initiate code routed as the table says.
+  - No `beforeunload`.
+- Evidence: VP T6, T7, T10, T11, T12, T15, T16; `rg -n "beforeunload" apps/website/src/app/app-area/customer/checkout` → no hits.
+
+**G8-28 `v-payment`: states, following, buttons, amount (WQ-27)**
+- Target: VP §Copy and states, Following the result, Buttons.
+  - Every state's exact copy (mockup PENDING).
+  - SUCCESS → Track after 1.5 s with `replaceUrl`.
+  - `stkStatus` from the API decides TIMEOUT.
+  - Late results honoured.
+  - The amount = `addKes(serviceFee, runnerFee)` (+ `merchantAmount` only for `customer_to_runner`), with the `Includes` line in that case only.
+  - The initiate body carries no amount.
+- Evidence: VP T1–T5, T8, T9, T14, T17, T18.
+
+**G8-29 `v-price-auth` dialog**
+- Target: PA §Presentation, Layout, Copy, States.
+  - `NmDialogService.open(…, { dismissible: false })`, 335px.
+  - Increase and decrease copy with the runner short name.
+  - The compare row: Original blue, New price and the difference on `--nitume-amber`, `nmNum`.
+  - The difference from `subtractKes` / `compareKes`.
+  - Route rows on `merchant_route_required` / `merchant_details_missing`.
+  - Reject → stacked confirm; already answered; load failure; inline error.
+  - After an approved increase with a difference `merchantPayment`, navigation to `itemPayment(id)` with `{ approvedIncrease, priceChangeRequestId }`.
+  - No fee figure.
+- Evidence: PA T1–T11, T14.
+
+**G8-30 `CustomerPriceChangeWatcher`**
+- Target: PA "Entry / exit".
+  - Provided only on the customer shell route (`providers` + `provideEnvironmentInitializer`), not in `app.config.ts`, not for runners.
+  - Live `price_change:requested` for an IN_PROGRESS errand.
+  - Resume on shell start and on tab visible via `CustomerErrandsApi.list(['IN_PROGRESS'], 20)`.
+  - Single flight; silent failures.
+- Evidence: PA T12, T13, T15; A.T14 (the watcher is in the static scope and not eagerly reachable).
+
+**G8-31 `x-merchant-payment` variant A, details pending / changed, nothing due**
+- Target: MP "Which variant" 1–4, Variant A, Details pending, Details changed (`Contact support` once, with `supportUrl`), the increase line (state, else derived after a reload), the how-to, `Done` in `nm-fixed-cta` (toast offset), the `Pay the merchant · Nitume` title, nothing due → toast + leave.
+- Evidence: MP T1–T7, T11, T13, T14, T16.
+
+**G8-32 `x-merchant-payment` variant B (send-to-runner difference)**
+- Target: MP Variant B. `nm-stk-status` with the difference amount only. SUCCESS `Item amount paid`. `Try again` / `Send a new prompt` → `POST …/price-changes/:requestId/initiate` (request id from state, else the payment). Polling from page open. The `difference_paid` re-read.
+- Evidence: MP T8–T10, T15.
+
+**G8-33 Exact copy across the four specs** (minor)
+- Target: every string in the four specs' Copy sections, including the cancel, reject and decline dialogs, all toasts, the announcements, the EAT captions and the web-only copy-failure toast. `KSh`, never `KES`.
+- Evidence: XQ T2, T12–T19; VP T1; PA T1, T2, T8–T11; MP T1, T5, T7, T9, T11; `rg -n "KES\b" apps/website/src/app/app-area/customer --glob '!**/*.spec.ts'` → no hits.
+
+#### F. Rules, tests and health
+
+**G8-34 Tokens, typography and contrast in #8 code**
+- Target:
+  - No hex, `rgb(a)`, `hsl(a)`, named colour, `box-shadow` or marketing variable in #8 code.
+  - Fira Code only through `nmNum` and the `num-*` styles, on every numeric field the four specs list: reference + created time, `Requested …`, `Valid until` / `Expired at`, the deadline value, `23:59`, `24 hours`, all amounts, masked phones, the payer number, Till / Paybill / account, the details-changed time, the compare values and the difference.
+  - White text on the blue selected radio row, the green M-PESA badge and the green buttons.
+  - Green only for primary buttons, the badge (brand), the waiting / success icon tint and the focus ring.
+  - Red only for destructive text and errors (never a fill, OA-13).
+  - Amber only for the price-change values and the increase line.
+- Evidence: A.T14 (a)(b); XQ T21; PA T3; `rg -n "#[0-9A-Fa-f]{3,8}\b|rgba?\(|hsla?\(|box-shadow" <#8 files>` → no hits.
+
+**G8-35 Domain rules**
+- Target:
+  - Task states shown only through `customerStatus()` / `parseErrandStatus`, never invented or skipped (A§2).
+  - Category display names only.
+  - No wallet, escrow, balance, hold or release wording.
+  - The three payment flows separate in UI, copy and code (G8-37).
+  - Never `runner_advance` as a customer option.
+  - No runner phone number or "send money to your runner".
+- Evidence: A.T2; MP T14; XQ T8; `rg -ni "wallet|escrow" apps/website/src/app/app-area/customer apps/website/src/app/shared --glob '!**/*.spec.ts'` → no hits.
+
+**G8-36 Responsive and accessibility**
+- Target:
+  - No horizontal scroll at 360px; the checkout two-column grid from 1024px.
+  - 48×48 targets.
+  - The focus ring everywhere, no bare `outline: none`.
+  - Radio semantics for the route rows and deadline chips.
+  - Live regions for state headings and announcements.
+  - Focus on the `h1` on arrival; after a state change focus moves to the new heading only if the focused button vanished (`setTimeout` + `querySelector`, WQ-33).
+  - The dialog: modal, focus trapped and returned, the page behind `inert`.
+  - Toasts above the fixed CTA.
+  - Reduced motion: static dots, no fades.
+- Evidence: XQ T20; PA T4, T8; A.T11; A.T14 (f). The auditor checks 360, 768, 1024 and 1280px in the browser at re-audit.
+
+**G8-37 WQ-27 money-rule tests**
+- Current: none.
+- Target: A§4 rule enforced by tests, as listed:
+
+| Rule (WQ-27) | Cases |
+|---|---|
+| The item amount always has its own line when > 0 | A.T7 (a); XQ T6; VP T9; MP T3, T4 |
+| Only the two decided combined figures exist, each with the item amount visible beside it | A.T7 (b); XQ T5, T7; VP T9 |
+| `merchant_direct` never adds the item amount to a charge | A.T7 (c); XQ T7; VP T9 |
+| Service fee and runner fee never rendered separately; quote components never rendered | A.T7 (d); XQ T5 |
+| Separate records in code and data: no client field merges the flows; the initiate body carries no amount | A.T7 (e); VP T17; G8-6 type review |
+| Price-change and merchant screens show item amounts only | A.T7 (f); PA T14; MP T3 |
+| Arithmetic on decimal strings, never floats | A.T6; XQ T7; PA T14 |
+
+- Evidence: the cases above exist and pass. The auditor mutates `addKes` to float addition and removes the `Includes` line once each, and checks that A.T6, A.T7 and VP T9 fail.
+
+**G8-38 Required Vitest cases: coverage table**
+- Current: no #8 spec files.
+- Target: every case below is its own `it(...)`. `cd apps/website && npx ng test --watch=false` has 0 failures, and the 615 #5–#7 tests still pass (the #7 files that #8 touches gain cases only).
+
+| Cases | Item |
+|---|---|
+| A.T1 | G8-1, G8-2 |
+| A.T2 | G8-3 |
+| A.T3, A.T4 | G8-4 |
+| A.T5 | G8-6 |
+| A.T6 | G8-12 |
+| A.T7 | G8-37 |
+| A.T8 | G8-5, G8-13 |
+| A.T9 | G8-10, G8-11 |
+| A.T10 | G8-18 |
+| A.T11 | G8-15 |
+| A.T12 | G8-16 |
+| A.T13 | G8-9 |
+| A.T14 | G8-39 (also G8-34, G8-36) |
+| A.T15 (build, not Vitest) | G8-40 |
+| XQ T1 … T23 | G8-24 (T1–T4, T15, T16), G8-25 (T5–T12, T20, T23), G8-26 (T13, T14, T17–T19); T18 also G8-21, T19 G8-20 |
+| VP T1 … T18 | G8-27 (T6, T7, T10–T12, T15, T16), G8-28 (T1–T5, T8, T9, T14, T17, T18) |
+| PA T1 … T15 | G8-29 (T1–T11, T14), G8-30 (T12, T13, T15) |
+| MP T1 … T16 | G8-31 (T1–T7, T11, T13, T14, T16), G8-32 (T8–T10, T15); T6 also G8-8 |
+| Issue #8 feature criterion | STK pending VP T2; success VP T3; failed VP T4; timeout VP T5; retry VP T6, T7 (and MP T9 for the difference); quote accept XQ T10, T11; quote decline XQ T12; price change approve PA T5–T7; reject PA T8; merchant-direct path MP T1, T2, T6; send-to-runner path MP T8, T9 and XQ T7; "never combined" = G8-37 |
+
+**G8-39 WQ-33 static checks for #8 code (WQ-34 "same static checks as #6")**
+- Current: `customer-static.spec.ts:20,39,62` scope #7 only.
+- Target: A§11 item 6.
+  - Extend #7's spec (not a copy): the directories `shared/ui/{radio-row,payment-method-card,copy-row,pulsing-dots}`; the changed files `shared/ui/overlay/panel.component.ts` and `shared/ui/active-task-card/active-task-card.component.ts`; the entries: the three #8 pages, `price-change-dialog.component.ts`, `price-change.watcher.ts`.
+  - Checks (a) colours, (b) fonts, (c) the framework-feature list, (d) no `shared/ui` / `shared/map` barrel imports, (e) the eager walker with `FORBIDDEN_EAGER` unchanged, (f) no bare `outline: none` run over the #8 set.
+  - The scope test names the #8 files.
+- Evidence: A.T14. The auditor injects one forbidden line per check (e.g. `viewChild` into a #8 page, a static import of `checkout.api.ts` into `app.routes.ts`) and sees each check fail. `rg -n "effect\(|afterNextRender|viewChild|NgTemplateOutlet|ReactiveFormsModule|FormsModule|ngModel|toObservable" <#8 files>` → no hits.
+
+**G8-40 WQ-34 bundle check**
+- Current: 354.17 kB raw / 96.92 kB transfer (#7 re-audit 2; identical code). Headroom 5.83 kB.
+- Target: A§11 item 1. `npx ng build` "Initial total" **≤ 360.00 kB raw**. The PR body reports raw and transfer next to 354.17 kB. Above 360.00 goes to the owner; the cap is not raised in code. The initial chunks contain no `core/auth`, `core/realtime`, `app-area`, `shared/ui`, `shared/places` or `shared/map` input, and no `@angular/google-maps`, `@angular/forms`, `socket.io-client` or `engine.io-client`.
+- Evidence at re-audit:
+  1. `npx ng build --stats-json`: Initial total ≤ 360.00 kB raw.
+  2. The stats inputs of every initial chunk list only the marketing files, the #6 shims and the Angular / rxjs / tslib / zone.js packages.
+  3. The PR body figure matches the auditor's run.
+
+**G8-41 Commits, layout, marketing unchanged** (minor)
+- Target:
+  - Conventional commits on `feat/website-customer-checkout`, scope `angular-website`. Kit additions (G8-10 … G8-13) and the `deadline.ts` move (G8-9) go in their own commits, before the code that needs them. Each commit passes on its own (the #7 lesson: 17 intermediate commits failed there).
+  - View code under `app-area/customer/{checkout,shared,data}/` plus `deadline.ts`. Kit components under `shared/ui/<folder>/`. Nothing under `features/`.
+  - Every new component is `OnPush`.
+  - Marketing pages, layout, header, footer, `styles.scss` and `index.html` are unchanged.
+- Evidence: `git log --oneline 8b12d91..HEAD`; `test ! -d apps/website/src/app/features`; `git diff 6338a75 -- apps/website/src/app/{pages,layout} apps/website/src/app/shared/{header,footer,category-card,profile-card,proof-item,ticket} apps/website/src/styles.scss apps/website/src/index.html` is empty; `rg -n "changeDetection" <new component files>` shows `OnPush` on each.
+
+### Re-audit checklist for #8 (auditor)
+
+1. G8-1 … G8-41 each closed with the evidence above.
+2. Re-run `npx ng test --watch=false` (0 failures, ≥ 615 + the #8 cases) and `npx ng build --stats-json` (G8-40 evidence 1–3).
+3. Owner decisions WQ-27 (G8-37 mutation check), WQ-28 (VP T11, T12, T16), WQ-2 / WQ-53 (XQ T18, T19 under two zones) and WQ-34 / WQ-33 are met as recorded.
+4. PR #29 is underneath the branch before merge (merge precondition), and MP T6 (a) uses the server's null-number shape.
+5. Copy check against the four specs' Copy sections (G8-33).
+6. Browser check at 360, 768, 1024 and 1280px: checkout grid, fixed CTA, dialog 335px, panel sheet / centred.
+7. Verdict PASS → `SCREEN_MAP.md` #8 rows → `matches-design`. Merge still waits for #7.
+
+---
+
+<!-- Sections for issues #9 to #18 are appended below as their web specs are written. -->

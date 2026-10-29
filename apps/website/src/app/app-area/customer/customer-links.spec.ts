@@ -16,6 +16,8 @@ describe('customerLinks (NC§W9.11)', () => {
     expect(customerLinks.newTaskReview()).toBe('/app/customer/new/review');
     expect(customerLinks.awaitingQuote('e-1')).toBe('/app/customer/tasks/e-1/quote');
     expect(customerLinks.payment('e 1/2')).toBe('/app/customer/tasks/e%201%2F2/payment');
+    // #8 (A.T1): the item payment.
+    expect(customerLinks.itemPayment('a/b')).toBe('/app/customer/tasks/a%2Fb/item-payment');
     expect(customerLinks.track()).toBe('/app/customer/track');
     expect(customerLinks.track('e-1')).toBe('/app/customer/track/e-1');
     expect(customerLinks.taskDetail('e-1')).toBe('/app/customer/tasks/e-1');
@@ -25,8 +27,9 @@ describe('customerLinks (NC§W9.11)', () => {
     expect(customerLinks.profile()).toBe('/app/customer/profile');
   });
 
-  it('NC§W9.11 stubs. the five #7 stub routes use ViewStubComponent, pushed, navKey home, no stubLabel and no title', async () => {
-    const paths = ['tasks/:errandId', 'tasks/:errandId/quote', 'tasks/:errandId/payment', 'tasks/:errandId/evidence', 'notifications'];
+  it('NC§W9.11 stubs. the #7 stub routes still owned by later issues use ViewStubComponent, pushed, navKey home, no stubLabel and no title', async () => {
+    // #8 replaced the quote and payment stubs (A.T1, customer-routes.spec.ts).
+    const paths = ['tasks/:errandId', 'tasks/:errandId/evidence', 'notifications'];
     for (const path of paths) {
       const route = shellChildren().find((r) => r.path === path);
       expect.soft(route, path).toBeDefined();
@@ -43,6 +46,7 @@ describe('customerLinks (NC§W9.11)', () => {
       customerLinks.home(),
       customerLinks.awaitingQuote('e-1'),
       customerLinks.payment('e-1'),
+      customerLinks.itemPayment('e-1'), // #8
       customerLinks.track(),
       customerLinks.track('e-1'),
       customerLinks.taskDetail('e-1'),

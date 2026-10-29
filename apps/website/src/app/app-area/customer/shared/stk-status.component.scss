@@ -1,0 +1,89 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-stk {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 30px;
+  text-align: center;
+}
+
+.nm-stk__circle {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 20px;
+  border-radius: 50%;
+}
+
+.nm-stk__circle--waiting,
+.nm-stk__circle--success {
+  background-color: var(--nitume-green-050);
+  color: var(--nitume-green);
+}
+
+.nm-stk__circle--failed {
+  background-color: var(--nitume-slate);
+  border: 1px solid var(--nitume-slate-line);
+  color: var(--nitume-blue);
+}
+
+.nm-stk__live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.nm-stk__heading {
+  @include nm-type(dialog-title, $weight: 700);
+  margin: 0 0 8px;
+}
+
+.nm-stk__body {
+  @include nm-type(muted);
+  max-width: 260px;
+  margin: 0;
+}
+
+.nm-stk__reason {
+  margin-top: 6px;
+}
+
+.nm-stk__amount {
+  margin: 22px 0 0;
+}
+
+.nm-stk__includes {
+  @include nm-type(resend);
+  margin: 8px 0 0;
+}
+
+.nm-stk__dots {
+  margin-top: 26px;
+}
+
+.nm-stk__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 220px;
+  max-width: 100%;
+  margin-top: 26px;
+}
+
+.nm-stk__dots + .nm-stk__actions {
+  margin-top: 30px;
+}
+
+.nm-stk__still {
+  @include nm-type(resend);
+  max-width: 260px;
+  margin: 12px 0 0;
+}

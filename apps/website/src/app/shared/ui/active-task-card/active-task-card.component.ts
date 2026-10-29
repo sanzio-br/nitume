@@ -4,7 +4,9 @@
 // and `#reference` (nmNum), the title in white, the meta line in num-meta-lg
 // slate-400 (never an ETA, WQ-29: the view passes only the state
 // text), and a primary small button rendered as a link, followed in-app.
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+// `followed` (#8 A§8) fires only when the card follows the link in-app
+// (plain left click), before the router navigates.
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { Router } from '@angular/router';
 import { NmNum } from '../../format/num.directive';
 import { NmButton } from '../button/button.component';
@@ -38,6 +40,9 @@ export class NmActiveTaskCard {
   readonly actionLabel = input.required<string>();
   readonly actionHref = input.required<string>();
 
+  /** The link is being followed in-app (no emission for a modified or middle click). */
+  readonly followed = output<void>();
+
   private readonly router = inject(Router);
 
   protected readonly suffix = computed(() => {
@@ -46,6 +51,6 @@ export class NmActiveTaskCard {
   });
 
   protected follow(event: MouseEvent): void {
-    followInAppLink(event, this.actionHref(), this.router);
+    followInAppLink(event, this.actionHref(), this.router, () => this.followed.emit());
   }
 }

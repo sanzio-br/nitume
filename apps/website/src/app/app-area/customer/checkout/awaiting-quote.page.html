@@ -1,0 +1,151 @@
+<div class="quote">
+  <nm-pushed-header class="quote__header" title="Your quote" [fallback]="links.home()" />
+  <p class="quote__announce" aria-live="polite">{{ announcement() }}</p>
+
+  @switch (view()) {
+    @case ('loading') {
+      <div class="quote__column quote__loading">
+        <nm-skeleton-card [height]="120" />
+        <nm-skeleton-card [height]="120" />
+      </div>
+    }
+    @case ('error') {
+      <div class="quote__column">
+        <nm-error-state [message]="copy.loadError" (retry)="retry()" />
+      </div>
+    }
+    @case ('outside') {
+      <div class="quote__column quote__waiting quote__outside">
+        <div role="status">
+          <h2 class="quote__heading" tabindex="-1">{{ copy.outsideHeading }}</h2>
+        </div>
+        <p class="quote__body">{{ copy.outsideBody }}</p>
+        @if (errand(); as e) {
+          <nm-task-summary-card
+            class="quote__summary"
+            [status]="status() === 'REQUESTED' ? status() : null"
+            [title]="e.title"
+            [category]="e.category"
+            [reference]="e.reference"
+            [createdAt]="e.createdAt"
+            [now]="clock()"
+          />
+        }
+        <div class="quote__buttons">
+          <nm-button class="quote__cancel" [expand]="true" [loading]="cancelling()" (pressed)="cancel()">{{ copy.cancelTask }}</nm-button>
+          <nm-button class="quote__home" variant="outline" [expand]="true" [href]="links.home()" (pressed)="follow($event, links.home())">{{
+            copy.backHome
+          }}</nm-button>
+        </div>
+      </div>
+    }
+    @case ('checkout') {
+      <div class="quote__checkout" [class.quote__fade]="fade()">
+        <div class="quote__main">
+          @if (errand(); as e) {
+            <nm-task-summary-card
+              class="quote__summary"
+              [status]="expired() ? null : status()"
+              [title]="e.title"
+              [category]="e.category"
+              [reference]="e.reference"
+              [createdAt]="e.createdAt"
+              [now]="clock()"
+            >
+              <nm-deadline-line [deadlineAt]="e.deadlineAt" [now]="clock()" [changeable]="canChangeDeadline()" (change)="openDeadline()" />
+            </nm-task-summary-card>
+          }
+          <nm-form-card class="quote__card quote__final" [label]="copy.finalQuote">
+            <nm-receipt-row [label]="copy.total" [amount]="feeTotal()" [isTotal]="true" [amountLabel]="feeSpoken()" />
+            @if (validCaption(); as v) {
+              <nm-receipt-caption>{{ v.prefix }}<span nmNum>{{ v.clock }}</span></nm-receipt-caption>
+            }
+          </nm-form-card>
+          @if (!expired() && itemAmount(); as item) {
+            <nm-form-card class="quote__card quote__route" [label]="copy.routeCard">
+              <nm-receipt-row [label]="copy.itemAmount" [amount]="item" [amountLabel]="itemSpoken()" />
+              <nm-receipt-group>
+                <nm-merchant-route-rows
+                  [selected]="route()"
+                  [merchantDetailsAvailable]="!!errand()?.merchantDetailsAvailable"
+                  [disabled]="busy()"
+                  [ariaLabel]="copy.routeCard"
+                  (selectedChange)="chooseRoute($event)"
+                />
+              </nm-receipt-group>
+            </nm-form-card>
+          }
+        </div>
+        <div class="quote__aside">
+          @if (!expired()) {
+            <nm-form-card class="quote__card quote__payer" [label]="copy.payWith">
+              <nm-payment-method-card [label]="method()?.label ?? copy.mpesa" [detail]="payerDetail()" />
+              @if (!method()) {
+                <p class="quote__payer-note">{{ copy.signInNumber }}</p>
+              }
+            </nm-form-card>
+          }
+          @if (expired()) {
+            <nm-notice class="quote__notice quote__notice--expired">{{ copy.expired }}</nm-notice>
+          } @else if (deadlinePassed()) {
+            <nm-notice class="quote__notice quote__notice--deadline">{{ copy.deadlinePassed }}</nm-notice>
+          }
+          <nm-fixed-cta class="quote__cta">
+            @if (expired()) {
+              <nm-button [expand]="true" [loading]="requesting()" [disabled]="cancelling()" (pressed)="requestNewQuote()">{{
+                copy.requestQuote
+              }}</nm-button>
+            } @else if (deadlinePassed()) {
+              <nm-button [expand]="true" [disabled]="busy() || panelOpen()" (pressed)="openDeadline()">{{ copy.chooseDeadline }}</nm-button>
+            } @else {
+              <nm-button class="quote__pay" [expand]="true" [loading]="accepting()" [disabled]="requesting() || cancelling()" (pressed)="confirm()"
+                >Confirm &amp; pay @if (chargeText(); as c) {<span nmNum>{{ c }}</span>{{ ' ' }}}→</nm-button
+              >
+            }
+          </nm-fixed-cta>
+          <nm-button
+            class="quote__decline"
+            variant="text"
+            [destructive]="true"
+            [expand]="true"
+            [loading]="cancelling()"
+            [disabled]="accepting() || requesting()"
+            (pressed)="cancel()"
+            >{{ copy.decline }}</nm-button
+          >
+        </div>
+      </div>
+    }
+    @default {
+      <!-- waiting / requested -->
+      @let requested = view() === 'requested';
+      <div class="quote__column quote__waiting">
+        <nm-pulsing-dots class="quote__dots" [label]="requested ? copy.requestedDots : copy.waitingDots" />
+        <h2 class="quote__heading" tabindex="-1">{{ requested ? copy.requestedHeading : copy.waitingHeading }}</h2>
+        <p class="quote__body">{{ requested ? copy.requestedBody : copy.waitingBody }}</p>
+        @if (requested && requestedLine(); as line) {
+          <p class="quote__requested" nmNum="meta-lg">{{ line }}</p>
+        }
+        @if (errand(); as e) {
+          <nm-task-summary-card
+            class="quote__summary"
+            [status]="requested ? null : status()"
+            [title]="e.title"
+            [category]="e.category"
+            [reference]="e.reference"
+            [createdAt]="e.createdAt"
+            [now]="clock()"
+          />
+        }
+        <div class="quote__buttons">
+          <nm-button class="quote__home" variant="outline" [expand]="true" [href]="links.home()" (pressed)="follow($event, links.home())">{{
+            copy.backHome
+          }}</nm-button>
+          <nm-button class="quote__cancel" variant="text" [destructive]="true" [expand]="true" [loading]="cancelling()" (pressed)="cancel()">{{
+            copy.cancelTask
+          }}</nm-button>
+        </div>
+      </div>
+    }
+  }
+</div>

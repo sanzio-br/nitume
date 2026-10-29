@@ -78,7 +78,6 @@ export function activeCard(errand: HomeErrand): ActiveCardModel {
       rest = { meta: 'Your quote is ready', actionLabel: 'Review quote →', actionHref: customerLinks.awaitingQuote(id) };
       break;
     case 'ACCEPTED':
-      // #8 adds the checkout intent to this link.
       rest = { meta: 'Pay to confirm your task', actionLabel: 'Pay now →', actionHref: customerLinks.payment(id) };
       break;
     case 'PAYMENT_CONFIRMED':

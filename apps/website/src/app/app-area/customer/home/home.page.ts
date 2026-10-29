@@ -23,6 +23,7 @@ import { NmErrorState } from '../../../shared/ui/states/error-state.component';
 import { NmSkeletonCard } from '../../../shared/ui/states/skeleton-card.component';
 import { NmTaskRow } from '../../../shared/ui/task-row/task-row.component';
 import { NmTopBar } from '../../../shared/ui/top-bar/top-bar.component';
+import { CheckoutIntentStore } from '../checkout/checkout-intent.store';
 import { CUSTOMER_NOW } from '../clock';
 import { customerLinks } from '../customer-links';
 import { CustomerErrandsApi } from '../data/errands.api';
@@ -75,6 +76,7 @@ export class HomePage {
   private readonly realtime = inject(RealtimeService);
   private readonly router = inject(Router);
   private readonly now = inject(CUSTOMER_NOW);
+  private readonly intents = inject(CheckoutIntentStore);
 
   protected readonly links = customerLinks;
   protected readonly errorCopy = HOME_ERROR;
@@ -155,6 +157,17 @@ export class HomePage {
     } catch {
       if (sequence === this.sequence) this.state.set({ kind: 'error' });
     }
+  }
+
+  /**
+   * `Pay now →` followed in-app (a plain left click) on an ACCEPTED card: the
+   * #8 checkout intent, so the payment page may send the prompt (WQ-28). A
+   * modified or middle click opens a tab without one.
+   */
+  protected onFollowed(): void {
+    const s = this.state();
+    const first = s.kind === 'loaded' ? s.active[0] : undefined;
+    if (first?.status === 'ACCEPTED') this.intents.set(first.id, {});
   }
 
   protected follow(event: MouseEvent, href: string): void {

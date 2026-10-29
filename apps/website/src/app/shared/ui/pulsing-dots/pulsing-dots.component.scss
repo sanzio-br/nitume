@@ -1,0 +1,48 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-flex;
+}
+
+.nm-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nm-dots__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--nitume-slate-400);
+  animation: nm-dots-pulse 1.2s ease-in-out infinite;
+
+  &:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  &:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+}
+
+.nm-dots__label {
+  @include nm-visually-hidden;
+}
+
+@keyframes nm-dots-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@include nm-reduced-motion {
+  .nm-dots__dot {
+    animation: none;
+  }
+}

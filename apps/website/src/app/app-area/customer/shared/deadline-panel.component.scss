@@ -1,0 +1,18 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.deadline-panel__caption {
+  @include nm-type(greeting);
+  margin: 10px 0 0;
+}
+
+.deadline-panel__saving {
+  margin-top: 12px;
+}
+
+.deadline-panel__error {
+  margin-top: 12px;
+}

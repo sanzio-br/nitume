@@ -1,5 +1,6 @@
 // `/app/customer/**` (auth-foundation §2, customer-shell.md). Later issues
 // replace the ViewStubComponent routes with their views.
+import { inject, provideEnvironmentInitializer } from '@angular/core';
 import { Routes } from '@angular/router';
 import {
   authGuard,
@@ -9,6 +10,7 @@ import {
   otpStepGuard,
   roleGuard,
 } from '../core/auth/guards';
+import { CustomerPriceChangeWatcher } from './customer/checkout/price-change.watcher';
 import { TaskDraftStore } from './customer/new-task/task-draft.store';
 import { wizardEntryGuard, wizardLeaveGuard, wizardStepGuard } from './customer/new-task/wizard.guards';
 
@@ -41,6 +43,9 @@ export const CUSTOMER_ROUTES: Routes = [
     path: '',
     canActivate: [authGuard, roleGuard(role), hasNameGuard],
     data: { role },
+    // #8 (customer-v-price-auth.md Entry): the price-change watcher runs only
+    // inside the signed-in customer shell.
+    providers: [CustomerPriceChangeWatcher, provideEnvironmentInitializer(() => inject(CustomerPriceChangeWatcher).start())],
     loadComponent: () => import('./shell/app-shell.page').then((m) => m.AppShellPage),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'home' },
@@ -103,8 +108,25 @@ export const CUSTOMER_ROUTES: Routes = [
       // #7 stubs for the targets of Home and the wizard (customerLinks,
       // customer-v-new-category §W1). Each owning issue replaces its stub.
       { path: 'tasks/:errandId', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #9
-      { path: 'tasks/:errandId/quote', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #8
-      { path: 'tasks/:errandId/payment', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #8
+      // #8 (customer-x-awaiting-quote A§1).
+      {
+        path: 'tasks/:errandId/quote',
+        title: 'Your quote · Nitume',
+        data: { role, navKey: 'home', pushed: true },
+        loadComponent: () => import('./customer/checkout/awaiting-quote.page').then((m) => m.AwaitingQuotePage),
+      },
+      {
+        path: 'tasks/:errandId/payment',
+        title: 'Payment · Nitume',
+        data: { role, navKey: 'home', pushed: true },
+        loadComponent: () => import('./customer/checkout/payment.page').then((m) => m.PaymentPage),
+      },
+      {
+        path: 'tasks/:errandId/item-payment',
+        title: 'Pay the item amount · Nitume',
+        data: { role, navKey: 'track', pushed: true },
+        loadComponent: () => import('./customer/checkout/merchant-payment.page').then((m) => m.MerchantPaymentPage),
+      },
       { path: 'tasks/:errandId/evidence', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #10
       { path: 'notifications', data: { role, navKey: 'home', pushed: true }, loadComponent: stub }, // #11
     ],

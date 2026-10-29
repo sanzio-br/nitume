@@ -1,0 +1,31 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.payment {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+// The STK block centred on both axes in the height under the header.
+.payment__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.payment__error {
+  width: 100%;
+  padding: 0 20px;
+}
+
+.payment__stk {
+  width: 100%;
+  max-width: 560px;
+}

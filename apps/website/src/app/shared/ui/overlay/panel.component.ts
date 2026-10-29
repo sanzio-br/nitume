@@ -1,7 +1,9 @@
 // `nm-panel` (ui-kit spec §4.9, WQ-3 approved). Bottom sheet below 768px;
 // from 768px the same panel, bottom-anchored and centred, max-width 560px.
 // Flutter: showModalBottomSheet + bottomSheetTheme, showDragHandle.
-import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
+// No view queries and no @angular/common template outlet (WQ-33; #8 A§8,
+// the treatment #7 gave `nm-dialog`).
+import { NgComponentOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -12,8 +14,8 @@ import {
   computed,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
+import { NmTemplateOutlet } from '../template-outlet.directive';
 import { NmOverlayContainer, trapTab } from './overlay-host';
 import { NmOverlayRef } from './overlay-ref';
 import { NM_BP_MD_QUERY, mediaQuery } from './viewport';
@@ -28,11 +30,10 @@ let nextId = 0;
 
 @Component({
   selector: 'nm-panel',
-  imports: [NgComponentOutlet, NgTemplateOutlet],
+  imports: [NgComponentOutlet, NmTemplateOutlet],
   template: `
     <div class="nm-overlay__scrim" (click)="onScrim()"></div>
     <div
-      #sheet
       class="nm-panel"
       [class.nm-panel--centered]="wide()"
       role="dialog"
@@ -42,13 +43,13 @@ let nextId = 0;
     >
       <span class="nm-panel__handle" aria-hidden="true"></span>
       @if (config().title; as title) {
-        <h2 #title class="nm-panel__title" [id]="titleId" tabindex="-1">{{ title }}</h2>
+        <h2 class="nm-panel__title" [id]="titleId" tabindex="-1">{{ title }}</h2>
       }
       @if (componentContent(); as type) {
         <ng-container *ngComponentOutlet="type; injector: contentInjector() ?? undefined" />
       }
       @if (templateContent(); as tpl) {
-        <ng-container [ngTemplateOutlet]="tpl" [ngTemplateOutletContext]="{ $implicit: ref, data: config().data }" />
+        <ng-container [nmTemplateOutlet]="tpl" [nmTemplateOutletContext]="{ $implicit: ref, data: config().data }" />
       }
     </div>
   `,
@@ -81,15 +82,16 @@ export class NmPanel implements NmOverlayContainer {
   });
   protected readonly dismissible = computed(() => this.config().dismissible !== false);
 
-  private readonly sheet = viewChild<ElementRef<HTMLElement>>('sheet');
-  private readonly title = viewChild<ElementRef<HTMLElement>>('title');
+  // Element lookups instead of view queries (WQ-33), read at the same
+  // moments the queries were: on keydown and after the first render.
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   surface(): HTMLElement | null {
-    return this.sheet()?.nativeElement ?? null;
+    return this.host.querySelector<HTMLElement>('.nm-panel');
   }
 
   initialFocus(): HTMLElement | null {
-    return this.title()?.nativeElement ?? this.surface();
+    return this.host.querySelector<HTMLElement>('.nm-panel__title') ?? this.surface();
   }
 
   protected onScrim(): void {

@@ -37,6 +37,7 @@
                 [meta]="c.meta"
                 [actionLabel]="c.actionLabel"
                 [actionHref]="c.actionHref"
+                (followed)="onFollowed()"
               />
               @if (more() > 0) {
                 <nm-button class="home__more" variant="link" size="small" [href]="links.track()" (pressed)="follow($event, links.track())"

@@ -1,6 +1,8 @@
 // Static checks for the issue #7 code (customer-v-new-category §W10;
 // NC§W9.17 (a)–(f); gap report G7-34, G7-36, G7-38). Outside src/app/ on
 // purpose: the patterns below would trip the #5 raw-colour scan.
+// #8 extends the lists below and adds its own block at the end
+// (customer-x-awaiting-quote A§11 item 6, A.T14; gap report G8-39).
 //
 // "#7 code" = every file in a #7 folder, the kit files #7 changed, and every
 // file a #7 route component (or the customer route tree) reaches through
@@ -33,6 +35,11 @@ const ISSUE_7_DIRS = [
   'shared/ui/task-row',
   'shared/ui/place-field',
   'shared/ui/shopping-list',
+  // #8 (A§11 item 6): the four kit folders (app-area/customer is listed above).
+  'shared/ui/radio-row',
+  'shared/ui/payment-method-card',
+  'shared/ui/copy-row',
+  'shared/ui/pulsing-dots',
 ];
 
 /** Kit files #7 changed (§W9a). */
@@ -56,6 +63,10 @@ const ISSUE_7_CHANGED = [
   'shared/ui/template-outlet.directive.ts',
   'shared/map/maps-loader.service.ts',
   'core/realtime/realtime.service.ts',
+  // Kit files #8 changed (A§8).
+  'shared/ui/overlay/panel.component.ts',
+  'shared/ui/active-task-card/active-task-card.component.ts',
+  'shared/ui/links.ts',
 ];
 
 /** The #7 route components, plus the customer route tree that loads them. */
@@ -65,6 +76,12 @@ const ISSUE_7_ENTRIES = [
   'app-area/customer/new-task/new-details.page.ts',
   'app-area/customer/new-task/new-review.page.ts',
   'app-area/customer.routes.ts',
+  // #8: the three pages, the price-change dialog and the watcher.
+  'app-area/customer/checkout/awaiting-quote.page.ts',
+  'app-area/customer/checkout/payment.page.ts',
+  'app-area/customer/checkout/merchant-payment.page.ts',
+  'app-area/customer/checkout/price-change-dialog.component.ts',
+  'app-area/customer/checkout/price-change.watcher.ts',
 ];
 
 /** Relative module specifiers of static imports and re-exports (not `import()`, not type-only). */
@@ -258,5 +275,119 @@ describe('issue #7 static checks (NC§W9.17)', () => {
     const styles = tokens.slice(tokens.indexOf('$nm-type-styles: ('), tokens.indexOf(');', tokens.indexOf('$nm-type-styles: (')));
     expect(styles.match(/^\s+'[a-z0-9-]+':/gm)?.length).toBe(35);
     expect(tokens.match(/--nitume-(blue|white|slate|green|amber|red|scrim)[a-z0-9-]*:/g)?.length).toBe(16);
+  });
+});
+
+describe('issue #8 static checks (A.T14, G8-39 and the gap report rg evidence)', () => {
+  const sources = (dir: string) =>
+    walk(resolve(appDir, dir))
+      .filter((f) => /\.(ts|html)$/.test(f) && !f.endsWith('.spec.ts'))
+      .map((f) => ({ rel: relative(appDir, f), text: readFileSync(f, 'utf8') }));
+  const hits = (dir: string, pattern: RegExp, code = false) =>
+    sources(dir)
+      .filter((f) => pattern.test(code ? withoutComments(f.text) : f.text))
+      .map((f) => f.rel);
+
+  it('A.T14 scope. the #8 file set holds the pages, dialog, watcher, stores, API, the customer components, the four kit folders and the changed kit files', () => {
+    const rels = issue7Files().map((f) => relative(appDir, f));
+    for (const f of [
+      'app-area/customer/checkout/awaiting-quote.page.ts',
+      'app-area/customer/checkout/awaiting-quote.page.html',
+      'app-area/customer/checkout/awaiting-quote.page.scss',
+      'app-area/customer/checkout/payment.page.ts',
+      'app-area/customer/checkout/merchant-payment.page.ts',
+      'app-area/customer/checkout/merchant-payment.page.html',
+      'app-area/customer/checkout/price-change-dialog.component.ts',
+      'app-area/customer/checkout/price-change.watcher.ts',
+      'app-area/customer/checkout/checkout-intent.store.ts',
+      'app-area/customer/checkout/payment-attempt.store.ts',
+      'app-area/customer/checkout/checkout-routing.ts',
+      'app-area/customer/data/checkout.api.ts',
+      'app-area/customer/deadline.ts',
+      'app-area/customer/shared/stk-status.component.ts',
+      'app-area/customer/shared/deadline-panel.component.ts',
+      'shared/ui/radio-row/radio-row.component.ts',
+      'shared/ui/payment-method-card/payment-method-card.component.ts',
+      'shared/ui/copy-row/copy-row.component.ts',
+      'shared/ui/pulsing-dots/pulsing-dots.component.scss',
+      'shared/ui/overlay/panel.component.ts',
+      'shared/ui/active-task-card/active-task-card.component.ts',
+      'shared/ui/overlay/dialog.component.ts',
+      'shared/ui/fixed-cta/fixed-cta.component.ts',
+    ]) {
+      expect.soft(rels, f).toContain(f);
+    }
+  });
+
+  it('A.T14 (e) walker check. an injected static import of checkout.api.ts into app.routes.ts is reported', () => {
+    const routesPath = resolve(appDir, 'app.routes.ts');
+    const read = (file: string) => {
+      const source = readFileSync(file, 'utf8');
+      return file === routesPath ? `import { CheckoutApi } from './app-area/customer/data/checkout.api';\n${source}` : source;
+    };
+    const reached = [...eagerGraph(resolve(srcDir, 'main.ts'), read)].map((f) => relative(srcDir, f));
+    expect(reached.filter((f) => FORBIDDEN_EAGER.test(f))).toContain('app/app-area/customer/data/checkout.api.ts');
+  });
+
+  it('G8-4 / G8-27. memory only: no storage, IndexedDB, cookie or history writes in the customer area; no beforeunload in the checkout', () => {
+    expect(hits('app-area/customer', /localStorage|sessionStorage|indexedDB|document\.cookie|history\.(push|replace)State/)).toEqual([]);
+    expect(hits('app-area/customer/checkout', /beforeunload/)).toEqual([]);
+  });
+
+  it('G8-6. no credentials flag or interceptor in the customer area; no quote component read; one errands/defaults call site', () => {
+    expect(hits('app-area/customer', /withCredentials|HTTP_INTERCEPTORS|withInterceptors/)).toEqual([]);
+    expect(hits('.', /baseFee|distanceFee|timeFee|urgencyFee|complexityFee|premiumFee/)).toEqual([]);
+    // Call sites (code, not comments).
+    expect(hits('.', /errands\/defaults/, true)).toEqual(['app-area/customer/data/errands.api.ts']);
+  });
+
+  it('G8-8. no errand merchant fields anywhere; Till / Paybill only in the checkout types and the merchant-payment page', () => {
+    expect(hits('.', /merchantTillNumber|merchantPaybillNumber|merchantAccountReference/)).toEqual([]);
+    expect(hits('app-area', /tillNumber|paybillNumber/).sort()).toEqual([
+      'app-area/customer/checkout/merchant-payment.page.ts',
+      'app-area/customer/data/checkout.api.ts',
+    ]);
+  });
+
+  it('G8-9 / G8-21. one deadlineAt; zone offsets only in deadline.ts', () => {
+    expect(hits('.', /function deadlineAt/)).toEqual(['app-area/customer/deadline.ts']);
+    expect(hits('app-area/customer', /\+03:00|Africa\/Nairobi|getTimezoneOffset/)).toEqual(['app-area/customer/deadline.ts']);
+  });
+
+  it('G8-12. no float arithmetic on money values in the customer area or the format helpers', () => {
+    const pattern = /parseFloat|Number\(.*(Fee|Amount|amount|total|budget|Price)/;
+    expect([...hits('app-area/customer', pattern), ...hits('shared/format', pattern)]).toEqual([]);
+  });
+
+  it('G8-23. nm-stk-status is rendered by exactly the payment and merchant-payment pages', () => {
+    expect(hits('.', /<nm-stk-status/).sort()).toEqual([
+      'app-area/customer/checkout/merchant-payment.page.html',
+      'app-area/customer/checkout/payment.page.ts',
+    ]);
+  });
+
+  it('G8-33 / G8-35. KSh never KES; no wallet or escrow wording in the customer area and the kit', () => {
+    expect(hits('app-area/customer', /KES\b/)).toEqual([]);
+    expect([...hits('app-area/customer', /wallet|escrow/i), ...hits('shared', /wallet|escrow/i)]).toEqual([]);
+  });
+
+  it('Re-audit 1 finding 1. the three #8 pages follow ActivatedRoute.paramMap, never a one-off snapshot of the errand id; no custom RouteReuseStrategy', () => {
+    for (const page of ['awaiting-quote.page.ts', 'payment.page.ts', 'merchant-payment.page.ts']) {
+      const source = readFileSync(resolve(appDir, 'app-area/customer/checkout', page), 'utf8');
+      expect.soft(source, page).toMatch(/paramMap\.pipe\(takeUntilDestroyed\(\)\)/);
+      expect.soft(source, page).not.toMatch(/snapshot\.paramMap/);
+    }
+    expect(hits('.', /RouteReuseStrategy/, true)).toEqual([]);
+  });
+
+  it('G8-36 / G8-41. every new #8 component is OnPush; nothing under features/', () => {
+    const files = [
+      ...walk(resolve(appDir, 'app-area/customer/checkout')),
+      ...walk(resolve(appDir, 'app-area/customer/shared')),
+      ...['radio-row', 'payment-method-card', 'copy-row', 'pulsing-dots'].flatMap((d) => walk(resolve(appDir, 'shared/ui', d))),
+    ].filter((f) => f.endsWith('.ts') && !f.endsWith('.spec.ts') && /@Component\(/.test(readFileSync(f, 'utf8')));
+    expect(files.length).toBeGreaterThanOrEqual(13);
+    for (const f of files) expect.soft(readFileSync(f, 'utf8'), relative(appDir, f)).toContain('ChangeDetectionStrategy.OnPush');
+    expect(existsSync(resolve(appDir, 'features'))).toBe(false);
   });
 });

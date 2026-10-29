@@ -1,0 +1,20 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-task-summary__chip {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.nm-task-summary__title {
+  @include nm-type(card-title);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.nm-task-summary__meta {
+  margin: 4px 0 0;
+}
