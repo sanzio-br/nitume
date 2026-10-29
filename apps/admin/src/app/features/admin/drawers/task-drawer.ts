@@ -6,12 +6,8 @@ import { InlineNoticeComponent, NoticeTone } from '../../../shared/inline-notice
 import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 import { FieldControlDirective, FormFieldComponent } from '../../../shared/form-field.component';
 import { ApiErrorInfo, FORBIDDEN_COPY } from '../../../core/api-error';
-import type {
-  ErrandCandidatesPage,
-  ErrandStatusHistoryEntry,
-  QuoteErrandResult,
-} from '../../../core/api-types';
-import { formatDateTime, formatKsh, formatKshExact } from '../shared-format';
+import type { ErrandCandidatesPage, QuoteErrandResult } from '../../../core/api-types';
+import { formatDateTime, formatKsh, formatKshExact, historyActor } from '../shared-format';
 import { QuoteConflict, QuoteDialogComponent } from './quote-dialog';
 import { QuoteSectionComponent } from './quote.section';
 import { MerchantDetailsSectionComponent } from './merchant-details.section';
@@ -50,18 +46,6 @@ export function deadlineRow(
   if (deadlineAt) return { at: deadlineAt };
   if (status === 'CANCELLED') return null;
   return { at: null, text: PRE_PAYMENT_STATUSES.has(status) ? 'No deadline yet' : '—' };
-}
-
-/**
- * `Status history` caption actor: `Admin · {admin name}` when the API names
- * the admin (`actor.displayName`, admin viewers), else the actor type as
- * built (`Admin`, `System`, `Runner`, `Customer`).
- */
-export function historyActor(entry: ErrandStatusHistoryEntry): string {
-  const type = entry.actorType.replace(/_/g, ' ');
-  const label = type.charAt(0).toUpperCase() + type.slice(1);
-  const name = entry.actor?.displayName?.trim();
-  return entry.actorType === 'admin' && name ? `${label} · ${name}` : label;
 }
 
 /**
