@@ -531,3 +531,4 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 - 2026-10-29: owner merged PR #42 (#7) and PR #43 (#39).
 - 2026-10-29: #36 (web runner presence: Redis flag after 90 s, auto-offline of idle web runners after 5 min via the queue; admin live socket, chips, drawer, map) reviewed READY, PR open (squash). API 1138/252, admin 458, admin bundle 498.90 kB. Follow-up #44 on hold.
 - 2026-10-29: owner merged PR #45 (#36 web runner presence).
+- 2026-10-29: #8 (customer quote, checkout and M-Pesa on the web: money rule WQ-27, no repeat STK WQ-28, EAT deadlines) reviewed READY, PR #46. 753 website tests; marketing bundle 354.59 kB. In-flight work finished; the remaining issues are on hold pending owner approval.
