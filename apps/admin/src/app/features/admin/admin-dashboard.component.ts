@@ -352,7 +352,13 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
     const { AdminRealtimeService } = await import('../../core/realtime/admin-realtime.service');
     if (this.destroyed) return;
     const rt = this.injector.get(AdminRealtimeService);
-    this.live = rt;
+    const detach = this.s.attachLive(rt);
+    this.live = {
+      disconnect: () => {
+        detach();
+        rt.disconnect();
+      },
+    };
     void rt.connect();
   }
 
