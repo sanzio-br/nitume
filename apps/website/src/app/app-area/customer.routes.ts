@@ -9,6 +9,8 @@ import {
   otpStepGuard,
   roleGuard,
 } from '../core/auth/guards';
+import { TaskDraftStore } from './customer/new-task/task-draft.store';
+import { wizardEntryGuard, wizardLeaveGuard } from './customer/new-task/wizard.guards';
 
 const role = 'customer';
 const stub = () => import('./view-stub.component').then((m) => m.ViewStubComponent);
@@ -43,8 +45,23 @@ export const CUSTOMER_ROUTES: Routes = [
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'home' },
       { path: 'home', title: 'Home · Nitume', data: { role, navKey: 'home', stubLabel: 'Home' }, loadComponent: stub },
-      // #7 wizard: pushed; New task active from 768px.
-      { path: 'new', data: { role, navKey: 'new', pushed: true }, loadComponent: stub },
+      // #7 task wizard (customer-v-new-category §W1): one draft for the three
+      // steps; pushed, New task active from 768px (WQ-15, WQ-16).
+      {
+        path: 'new',
+        data: { role, navKey: 'new', pushed: true },
+        providers: [TaskDraftStore],
+        canActivate: [wizardEntryGuard],
+        children: [
+          {
+            path: '',
+            pathMatch: 'full',
+            title: 'New task · Nitume',
+            canDeactivate: [wizardLeaveGuard],
+            loadComponent: () => import('./customer/new-task/new-category.page').then((m) => m.NewCategoryPage),
+          },
+        ],
+      },
       { path: 'track', title: 'Track · Nitume', data: { role, navKey: 'track', stubLabel: 'Track' }, loadComponent: stub },
       {
         path: 'track/:errandId',
