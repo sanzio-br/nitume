@@ -16,6 +16,11 @@
   - Owner decisions WQ-27 (money rule, was Q8-1), WQ-28 (no automatic prompt; key in memory, was Q8-2), WQ-2 / WQ-53 (deadlines 23:59 EAT, labelled EAT), WQ-34 (360 kB raw, WQ-33 rules), WQ-35 (merchant name visible before payment).
   - Aligned with what #7 built: code under `app-area/customer/`; `nm-fixed-cta`, `nm-choice-chip` (+ group), the receipt parts, `customerLinks`, `apiErrorOf`, `CustomerErrandsApi.defaults()`, `RealtimeService.onStateChange` and `CUSTOMER_NOW` are reused and no longer listed as new.
   - PR #29 (issue #28) on `main`: the server now withholds the Till/Paybill/account numbers from customers until the fees are paid (A§5, A§9).
+- **Re-audit 1 update (2026-10-29):**
+  - Owner **Q8-3** answered: the checkout deadline line is 24-hour, `Today, 23:59 EAT` (kit `formatDeadlineEat(…, { hour24: true })`).
+  - **Same-route navigation** (spec defect found at re-audit 1, finding 1): the errand id is read from `ActivatedRoute.paramMap`, not once from the snapshot, and every page resets on a change (A§1 "Same route, another errand").
+  - Builder seams recorded: `CHECKOUT_TIMERS` (A§7); `formatDeadlineEat` `hour24` and `followInAppLink` `beforeFollow` (A§8 kit table).
+  - The price-change dialog has no `aria-describedby` (`customer-v-price-auth.md` Accessibility).
 
 ---
 
@@ -34,7 +39,20 @@
 - **Links.** Every #8 target goes through `customerLinks` (`app-area/customer/customer-links.ts`, NC§W1). #8 adds one function, `itemPayment(id)` → `/app/customer/tasks/${enc(id)}/item-payment`. #9's spec adds it only if #8 has not. No #8 file hard-codes `/app/customer/…`.
 - `pushed: true`: below 768px the bottom bar is hidden; from 768px the white side nav stays visible with the `navKey` item active (WQ-15, WQ-16). `navKey: 'home'` for quote and payment because a REQUESTED / QUOTED / ACCEPTED task is listed on Home and `Back to Home` is this flow's way out. `track` for the item payment because it is opened from Track.
 - `:errandId` is passed to the API as is. A 404/403 shows the view's load-error state.
-- In-app navigation between #8 views uses the Angular router. "Replace" in the mobile spec (`Nav.replaceWith…`, `resetToTrack`) = `router.navigateByUrl(…, { replaceUrl: true })`. Navigation state (`{ quoteExpired }`, `{ deadlinePassed }`, `{ approvedIncrease, priceChangeRequestId }`) is passed with the `state` option and read once from `router.getCurrentNavigation()?.extras.state` in the constructor (`ActivatedRoute.snapshot` and router state only; no router-bound inputs, WQ-33).
+- In-app navigation between #8 views uses the Angular router. "Replace" in the mobile spec (`Nav.replaceWith…`, `resetToTrack`) = `router.navigateByUrl(…, { replaceUrl: true })`. Navigation state (`{ quoteExpired }`, `{ deadlinePassed }`, `{ approvedIncrease, priceChangeRequestId }`) is passed with the `state` option. It is read from `router.getCurrentNavigation()?.extras.state` each time the page (re)starts for an errand (below), never from router-bound inputs (WQ-33).
+- **Same route, another errand (re-audit 1, finding 1).** Angular's default `RouteReuseStrategy` keeps the page component when only `:errandId` changes, for example:
+  - `/tasks/e-1/item-payment` → `/tasks/e-2/item-payment` after the price-change dialog for e-2 is approved on e-1's page (the watcher opens the dialog over any page);
+  - a #11 notification or push link to the same #8 route of another errand;
+  - browser Back/Forward between such entries.
+
+  So each #8 page:
+  - reads the id from `ActivatedRoute.paramMap` (`pipe(takeUntilDestroyed())`; an observable read, allowed by WQ-33), not once from `snapshot`;
+  - on every new id: stops its timers and polls, `leaveErrand(old)`, clears its state (loading again, no content of the old errand on screen), re-reads the navigation state, `joinErrand(new)`, and runs the A§2 read for the new errand;
+  - filters socket events by the **current** id;
+  - closes any open deadline panel when the id changes;
+  - reads `CheckoutIntentStore.take` for the new id.
+
+  No custom `RouteReuseStrategy` (it is root-level and would change #6/#7 routes).
 - Destinations named in this flow: Home `customerLinks.home()`; Track `customerLinks.track(id)` (S, OA-21); Task detail `customerLinks.taskDetail(id)` (#9); payment methods in select mode (#12, A§9).
 
 ### A§2 Entry routing (every #8 route checks the errand first)
@@ -178,6 +196,7 @@ One service, **`CheckoutApi`** (`app-area/customer/data/checkout.api.ts`, `provi
   - quote: every 15 s, only while the socket is not `connected` (K§6.5);
   - payment and variant B: every 5 s for the first 2 min after the payment's `createdAt`, then every 30 s, stopping 10 min after `createdAt`. Manual checks and socket events still work after that.
 - **Clock.** Every "now" in #8 (quote expiry, the deadline rules, the poll schedule, `formatDayTime` relative days) comes from #7's `CUSTOMER_NOW` token (`app-area/customer/clock.ts`), so tests inject a fixed time.
+- **Timers (builder seam, accepted at re-audit 1).** Every #8 timer (polls, the 30 s expiry tick, the 1.5 s SUCCESS delay) goes through `CHECKOUT_TIMERS` (`app-area/customer/checkout/checkout-timers.ts`, `providedIn: 'root'`). Its default runs `setTimeout` outside the zone and re-enters it to update the view, as Home's poll does. Tests replace it with a step-able fake that shares one clock with `CUSTOMER_NOW`. It is the same kind of seam as `CUSTOMER_NOW` and `HOME_POLL_MS`, and adds no framework feature.
 
 ### A§8 Components
 
@@ -200,6 +219,8 @@ One service, **`CheckoutApi`** (`app-area/customer/data/checkout.api.ts`, `provi
 | WQ-33 conversion of `nm-panel` | `shared/ui/overlay/panel.component.ts` | `NgTemplateOutlet` → `nmTemplateOutlet`; the two `viewChild` queries → an `ElementRef` lookup (`host.querySelector('.nm-panel')`, `'.nm-panel__title'`), exactly as #7 did for `nm-dialog` (NC§W9a last row). Rendered markup, focus and the #5 panel tests unchanged | deadline panel |
 | `addKes`, `subtractKes`, `compareKes`, `isPositiveKes` | `shared/format/formatters.ts` | A§4 | all #8 views, #9 |
 | `nm-active-task-card` output `followed` | `shared/ui/active-task-card/active-task-card.component.ts` | Emitted only when the card follows its link in-app (the `followInAppLink` test: plain left click, no modifier), **before** the router navigates. No emission for a modified or middle click | Home `Pay now →` intent (below) |
+| `followInAppLink(event, url, router, beforeFollow?)` (re-audit 1) | `shared/ui/links.ts` | Optional fourth argument, called only when the link is followed in-app, after `preventDefault()` and before `navigateByUrl`. Without it the function behaves exactly as before | `nm-active-task-card` `followed` |
+| `formatDeadlineEat(date, now, { hour24 })` (owner Q8-3) | `shared/format/formatters.ts` | Optional third argument; `hour24: true` → `Today, 23:59`. Default unchanged (12-hour) | `nm-deadline-line` |
 
 In-between Flutter text styles use the `nm-type` overrides the mixin offers (NC§W9a precedent): the 17/700 headings = `nm-type(dialog-title, $weight: 700)`; receipt rows as #7 built them; the 12.5 slate-600 lines = `nm-type(resend)`; the Copy-row label = `nm-type(field-label, $weight: 400)`; the Copy-row text value = `nm-type(body-lg, $weight: 600)`.
 
@@ -217,7 +238,7 @@ In-between Flutter text styles use the `nm-type` overrides the mixin offers (NC�
 | Web component | Flutter counterpart | Spec |
 |---|---|---|
 | `nm-task-summary-card` | app `TaskSummaryCard` (`task_widgets.dart`) | `nm-card` (padding 16): optional status chip (`showChip`), 10px; title `card-title` (`title`, else the category display name, row 41); 4px; meta line in `nmNum` `meta-lg` (the whole line in Code 12 slate-600) `#NT-10482 · Today, 10:03 AM` (`#` + `reference` · `formatDayTime(createdAt, now)`, local time, WQ-2); optional footer slot. #9 adds inputs to it (#9 spec T§7) |
-| `nm-deadline-line` | app `DeadlineLine` (`deadline_widgets.dart`) | Footer of the summary card: 12px, hairline, 10px; row `Deadline` (`row-title`) + optional trailing `nm-button` link small `Change`; 4px; the deadline (**WQ-2, EAT, labelled**): `<span nmNum>` `formatDeadlineEat(deadlineAt, now)` `</span>` + ` EAT` in `meta-lg` Sans slate-600 (e.g. `Today, 11:59 PM EAT`). No deadline: `No deadline yet. It starts when your payment is confirmed.` in `muted` Sans |
+| `nm-deadline-line` | app `DeadlineLine` (`deadline_widgets.dart`) | Footer of the summary card: 12px, hairline, 10px; row `Deadline` (`row-title`) + optional trailing `nm-button` link small `Change`; 4px; the deadline (**WQ-2, EAT, labelled; owner Q8-3: 24-hour**): `<span nmNum>` `formatDeadlineEat(deadlineAt, now, { hour24: true })` `</span>` + ` EAT` in `meta-lg` Sans slate-600 (e.g. `Today, 23:59 EAT`). No deadline: `No deadline yet. It starts when your payment is confirmed.` in `muted` Sans |
 | `DeadlinePanelComponent` (content of the deadline panel) | app `showDeadlineSheet` (`deadline_sheet.dart`) | Hosted by `NmPanelService` (WQ-3), §States "Deadline panel". Uses `nm-choice-chip-group` (#7) |
 | `nm-merchant-route-rows` | app `MerchantRouteRows` | Two `nm-radio-row`s in a `role="radiogroup"`, gap 8, exact copy in §Copy. Inputs `selected`, `merchantDetailsAvailable`, `disabled`; output `selectedChange`. Used here and in `v-price-auth` |
 | `nm-stk-status` | app `StkStatusView` (`widgets/stk_view.dart`) | `customer-v-payment.md` §Layout. One component for `v-payment` and `x-merchant-payment` variant B (never two copies) |
@@ -250,11 +271,7 @@ In-between Flutter text styles use the `nm-type` overrides the mixin offers (NC�
 | WQ-34, WQ-33 | — | Marketing initial bundle ≤ 360 kB raw; signed-in code stays lazy with the #6 static checks; the WQ-33 framework rules (2026-10-29) | A§11 |
 | WQ-35 | — | The merchant name stays visible before payment (API) | A§5 (the web still shows it only on `x-merchant-payment`) |
 
-**Open question (new, does not block the build; build default stated):**
-
-| Id | Question | Build default |
-|---|---|---|
-| Q8-3 | **Deadline line format.** WQ-53 fixed the wizard caption as `Due today, 23:59 EAT.` (24-hour, fixed text). On the checkout, the saved deadline is shown as a time formatted by the kit (the app's `DeadlineLine` uses the 12-hour clock), so it reads `Today, 11:59 PM EAT`. Keep the app's 12-hour format with the EAT label, or show `Today, 23:59 EAT` to match the caption? | `formatDeadlineEat` (12-hour, as the app) + ` EAT` |
+| Q8-3 (board number to be assigned by the orchestrator) | Q8-3 | The checkout deadline line is 24-hour: `Today, 23:59 EAT`, matching the WQ-53 caption (2026-10-29) | `nm-deadline-line`; XQ T19 |
 
 Inherited, unchanged: mobile `x-awaiting-quote` Q2 (route fixed once the fees are paid; build default: no change after payment) and mobile `x-merchant-payment` Q1 (no "I've paid the merchant" confirmation; build default: `Done` only closes).
 
@@ -386,7 +403,7 @@ From 1024px (web adaptation, "uses the width sensibly"): a two-column grid, `gri
   - panel title `Deadline`; chips `Today`, `Tomorrow`, `Flexible`;
   - panel captions (#7's exact copy and markup): `Due today, ` + `23:59` (Code) + ` EAT.` while `Today` is the current choice; `Due tomorrow, ` + `23:59` (Code) + ` EAT.` for `Tomorrow`; for `Flexible`, `No fixed time. Your task's deadline is ` + `24 hours` (Code, `formatHours`) + ` after your payment is confirmed.`;
   - panel error `Couldn't change the deadline. Try again.`;
-  - summary line `Today, 11:59 PM EAT` style (Q8-3), or `No deadline yet. It starts when your payment is confirmed.`
+  - summary line `Today, 23:59 EAT` style (owner Q8-3), or `No deadline yet. It starts when your payment is confirmed.`
 - Toasts: `Task cancelled.`; `Couldn't cancel the task. Try again.`; `Couldn't accept the quote. Try again.`
 - Announcements (visually hidden `aria-live="polite"`): `Your quote is ready.` (REQUESTED → QUOTED while open); `Your new quote is ready.` (request answered).
 - Load error: `Couldn't load this task.` + `Try again`.
@@ -434,7 +451,7 @@ From 1024px (web adaptation, "uses the width sensibly"): a two-column grid, `gri
 - The reference `#NT-10482` and the created time (the whole summary meta line).
 - The `Requested …` line.
 - The `Valid until` / `Expired at` time.
-- The deadline value in the deadline line (not the ` EAT` label).
+- The deadline value in the deadline line (`Today, 23:59`; not the ` EAT` label).
 - `23:59` in the panel captions.
 - Every amount: the fee total, the item amount, and the amount inside the CTA.
 - The masked phone in the payer card.
@@ -488,11 +505,12 @@ From 1024px (web adaptation, "uses the width sensibly"): a two-column grid, `gri
     - while saving, the chip group is `disabled` (no second PATCH) and `Saving` dots show;
     - success closes the panel and restores the pay CTA with the quote unchanged;
     - `deadline_not_editable` → reload; 400 → the danger notice in the panel.
-19. Deadline line: the chosen deadline as `formatDeadlineEat` in `nmNum` + ` EAT` outside it (`Today, 11:59 PM EAT`); the same value under both zones; `Flexible` → `No deadline yet. It starts when your payment is confirmed.`; `Change` opens the panel.
+19. Deadline line (owner Q8-3): the chosen deadline as `formatDeadlineEat(…, { hour24: true })` in `nmNum` + ` EAT` outside it (`Today, 23:59 EAT`); the same value under both zones; `Flexible` → `No deadline yet. It starts when your payment is confirmed.`; `Change` opens the panel.
 20. Layout structure: the checkout renders the main column (items 1–3) before the aside (items 4–6) in DOM order, and the CTA sits inside `nm-fixed-cta`. The grid itself is CSS only (`nm-up($nm-bp-lg)`); the auditor checks it at 360, 1024 and 1280px.
 21. Token and font use: no raw colours (A.T14 static check covers the folder); every numeric field listed above is inside `nmNum`.
 22. No storage writes during the whole flow (`localStorage` / `sessionStorage` / `history.state` untouched).
 23. **Merchant data (#28)**: the page renders no `merchantName`, Till, Paybill or account value even when a fixture errand carries them.
+24. **Same route, another errand (A§1)**: from `/tasks/e-1/quote` an in-app navigation to `/tasks/e-2/quote` shows e-2's errand and quote (reference, total), leaves e-1's room and joins e-2's, stops e-1's timers, and ignores later e-1 socket events; Back to e-1 re-reads e-1; an open deadline panel closes.
 
 ## Current vs design
 - Not built. `tasks/:errandId/quote` is a #7 `ViewStubComponent` route (`customer.routes.ts`, `data { role, navKey: 'home', pushed: true }`, no `title`).

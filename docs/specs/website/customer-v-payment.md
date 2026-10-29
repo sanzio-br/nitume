@@ -133,6 +133,7 @@ A§5 `PaymentSummary`, `InitiateResult`; A§6 initiate and status calls through 
 16. **WQ-28, resume without a click**: a stored PENDING payment and a stored TIMEOUT payment, each opened without an intent, show their state; `Send a new prompt` / `Try again` are the only ways a new initiate is sent, and each is a click.
 17. **WQ-27, initiate body**: every initiate request body holds only `merchantRoute?` and `paymentMethodId?` (no amount, no fee field).
 18. Reconnect through `onStateChange` → one immediate status read.
+19. **Same route, another errand (A§1)**: from `/tasks/e-1/payment` (PENDING, polling) an in-app navigation to `/tasks/e-2/payment` stops e-1's polls, shows e-2's stored payment and amount, never shows e-1's amount, and sends no initiate unless an intent for e-2 is taken; Back to e-1 re-reads e-1 without an initiate.
 
 ## Current vs design
 Not built (`tasks/:errandId/payment` is a #7 stub; Home's `Pay now →` already links to it without an intent). The Flutter screen is the reference (`matches-design`). Web differences, all from browser constraints: no automatic prompt after a reload or a link (WQ-28), idempotency key in memory (WQ-28, WQ-8), polling paused in hidden tabs.

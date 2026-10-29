@@ -143,6 +143,7 @@ Till number, Paybill number, account number (as returned; Code even when alphanu
 14. No banned words (`wallet`, `escrow`, `balance`, `hold`, `release`) in the rendered DOM of every state.
 15. `price_change:difference_paid` for this errand → one immediate re-read (variant B moves to SUCCESS); an event for another errand → nothing.
 16. Toasts on this page carry the `nm-fixed-cta` offset below 768px.
+17. **Same route, another errand (A§1, re-audit 1 finding 1)**: on `/tasks/e-1/item-payment` (Till `111111`), the price-change dialog for e-2 is approved and navigates to `/tasks/e-2/item-payment`. The page reads `GET /errands/e-2` and `GET /payments/e-2`, shows e-2's Till and amount and the `approvedIncrease` line from the new navigation state, never e-1's Till, switches rooms and timers, and ignores e-1 events. Back to e-1 re-reads e-1 and shows `111111` again.
 
 ## Current vs design
 Not built (no route). The Flutter screen is the reference (`matches-design`; open minor there: `Contact support` shown twice, not ported). Web differences:
