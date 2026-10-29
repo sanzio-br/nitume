@@ -114,8 +114,9 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/refresh-cutoff (issue #33) | awaiting-owner (PR #34; reviewer READY, unit 1114, e2e 251) | api-contract | fix/api-refresh-cutoff (off main; worktree ../nitume-fix-api-refresh-cutoff) | — | — | #24 | WQ-39 |
 | website/runner/onboarding (issue #13) | specced (d9154a1; Q13-1..4 answered); gap report + build after #7 (shared nm-fixed-cta, card/dialog conversions) | design-auditor | feat/website-runner-onboarding (off main) | — | Q-W1 selfie live-only |
 | website/runner/earnings (issue #17) | specced (59484f3; Q17-1..3 answered); gap report + build after #7 | design-auditor | feat/website-runner-earnings (off main) | — | specs only |
-| website/customer/tracking (issue #9) | spec in progress | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
+| website/customer/tracking (issue #9) | specced (4d1f5fa; WQ-43/44 answered); build after #7 + #8 | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
 | website/runner/jobs (issue #14) | spec in progress | design-auditor | feat/website-runner-jobs (off main) | — | Q-W2 browser location; web-runner flag check |
+| api/history-privacy (issue #35) | building | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
 | website/customer + runner parity (issues #10–#12, #15, #16, #18) | unaudited | — | — | #5, #6 | 14 feature-group issues on GitHub (owner request 2026-10-28); one PR per issue with `Closes #N` |
 | admin/p-runners-verification-documents (verification inbox) | awaiting-owner (row 278 table + drawer reviewed READY, matches-design) | web-parity + api-contract (A-9) | fix/admin-verification-inbox (stacked on docs/admin-verification-audit; worktree ../nitume-fix-admin-verification) + fix/api-verification-review (worktree ../nitume-fix-api-verification-review) | AQ-35..37 (rows 260–262); api A-1..A-7 | Audit 2026-10-21 FAIL (admin-gap-report "Audit 2026-10-21: verification inbox", findings 34–49, supersede 18, 19, 20, 22, 23, 28): f642187, 73fc96d, d5ef069. Owner-seen symptoms: Approve/Reject 404 (client PATCH /runners/verifications/{id}; API route is /runners/:runnerId/verifications/:verificationId); NaN date (reads submittedAt, API sends createdAt); no Front/Back (side ignored); no View image (reads documentKey, API sends hasDocument); 5 items counts approved phone check (AQ-35); raw type labels; false "runner level upgrades" copy (AQ-36); initials from profile UUID (needs api A-5). Blockers 34, 35, 36, 37, 45, 48. Do now (no owner input): 34, 35, 36, 39, 41, 42, 43, 44, 45, 47, 48, 49; after AQ-35 + A-5: 37, 38, 40, 46 |
 
@@ -595,6 +596,8 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | WQ-40 | reviewer (#24) | DB CHECK on reason length | ANSWERED: API only |
 | WQ-41 | design-auditor (#17, Q17-1..3) | Earnings copy; requestable vs available; new strings | ANSWERED 2026-10-29: copy approved; explain on the card: "KSh {amount} is waiting to be re-sent, so you can request up to KSh {requestable} now."; five strings approved |
 | WQ-42 | design-auditor (#13, Q13-1..4) | Camera copy; "Upload a photo"; rejected/re-review; upload progress | ANSWERED: copy approved; label approved; the reviewer note is never shown (row 262); spinner |
+| WQ-43 | design-auditor (#9) | History note/actorId sent to customers and runners | ANSWERED 2026-10-29: strip them, issue #35 |
+| WQ-44 | design-auditor (#9) | Hidden tab while tracking | ANSWERED: keep the socket and room; pause polling and animation |
 
 ## Session log
 
@@ -868,3 +871,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | design-auditor #13 (d9154a1) and #17 (59484f3) specced; owner answered WQ-41/42 (row 262 checked before recording). Both builds wait for #7's shared components. |
 | 2026-10-29 | reviewer #33 READY → PR #34. Minors: web cookie cleared on a DB blip (existing behaviour); setStatus writes no history (no production callers). |
 | 2026-10-29 | Dispatched design-auditor for the #9 and #14 web specs (worktrees off main). |
+| 2026-10-29 | design-auditor #9 specced (4d1f5fa). Orchestrator note: #7 uses app-area/customer/, #8's spec used features/customer/; align #8 to app-area/customer/ in its gap report. Issue #35 opened; api-contract dispatched. |
