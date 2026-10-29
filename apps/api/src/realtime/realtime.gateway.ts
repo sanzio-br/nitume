@@ -1,4 +1,4 @@
-import { ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
@@ -25,6 +25,17 @@ import {
 } from '../errands/errands.service';
 import { LocationIngestService } from '../location/location-ingest.service';
 import { MerchantDetailsChangedEvent, PriceDifferencePaidEvent } from '../payments/payment-events';
+import {
+  PresenceClient,
+  RunnerPresenceService,
+  WEB_AUTO_OFFLINE_EVENT,
+  WEB_PINGS_RESUMED_EVENT,
+  WEB_PINGS_STOPPED_EVENT,
+  WebAutoOfflineEvent,
+  WebPingsResumedEvent,
+  WebPingsStoppedEvent,
+  presenceClientOf,
+} from '../runners/runner-presence.service';
 import { RunnersService } from '../runners/runners.service';
 import {
   USER_STATUS_CHANGED,
@@ -62,6 +73,8 @@ interface SocketData {
   authChecked?: boolean;
   /** Set on connect for a runner with a profile (RA-5 room). */
   runnerProfileId?: string;
+  /** Issue #36: `handshake.auth.client === 'web'` -> `'web'`, anything else `'app'`. */
+  client?: PresenceClient;
 }
 
 type AuthedSocket = Socket<
@@ -111,6 +124,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
     private readonly errands: ErrandsService,
     private readonly runners: RunnersService,
     private readonly location: LocationIngestService,
+    @Optional() private readonly presence?: RunnerPresenceService,
   ) {}
 
   /**
@@ -167,6 +181,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
         const profile = await this.runners.profileByUserId(user.userId);
         client.data.runnerProfileId = profile.id;
         await client.join(runnerRoom(profile.id));
+        // Issue #36: a web socket starts the "no ping" clock even before the first ping.
+        client.data.client = presenceClientOf(client.handshake.auth);
+        await this.presence?.recordConnect(profile.id, client.data.client);
       } catch (err) {
         this.logger.warn(`Runner ${user.userId} connected without a runner room: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -243,7 +260,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
     if (!client.data.user) {
       return { ok: false, error: 'unauthenticated' };
     }
-    return this.location.ingest(client.data.user, body);
+    return this.location.ingest(client.data.user, body, new Date(), client.data.client ?? presenceClientOf(client.handshake.auth));
   }
 
   /**
@@ -461,6 +478,38 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
   @OnEvent(DomainEvent.MERCHANT_DETAILS_CHANGED, { async: true })
   async onMerchantDetailsChanged(event: MerchantDetailsChangedEvent): Promise<void> {
     await this.emitMerchantDetails(SocketServerEvent.MERCHANT_DETAILS_CHANGED, event);
+  }
+
+  /**
+   * Issue #36 (owner Q14-5): a web runner, online or busy, sent no location
+   * for `location.webStaleSeconds`. Once per silence, to `admins`.
+   */
+  @OnEvent(WEB_PINGS_STOPPED_EVENT)
+  onWebPingsStopped(event: WebPingsStoppedEvent): void {
+    this.server?.to(ADMIN_ROOM).emit(SocketServerEvent.RUNNER_WEB_PINGS_STOPPED, {
+      runnerProfileId: event.runnerProfileId,
+      lastPingAt: event.lastPingAt,
+      at: event.at,
+    });
+  }
+
+  /** Issue #36: the flagged runner pinged again (or reconnected from the app); the flag is cleared. */
+  @OnEvent(WEB_PINGS_RESUMED_EVENT)
+  onWebPingsResumed(event: WebPingsResumedEvent): void {
+    this.server?.to(ADMIN_ROOM).emit(SocketServerEvent.RUNNER_WEB_PINGS_RESUMED, {
+      runnerProfileId: event.runnerProfileId,
+      at: event.at,
+    });
+  }
+
+  /** Issue #36 (owner Q14-6): an idle web runner was set offline by the system. */
+  @OnEvent(WEB_AUTO_OFFLINE_EVENT)
+  onWebAutoOffline(event: WebAutoOfflineEvent): void {
+    this.server?.to(ADMIN_ROOM).emit(SocketServerEvent.RUNNER_WEB_AUTO_OFFLINE, {
+      runnerProfileId: event.runnerProfileId,
+      lastPingAt: event.lastPingAt,
+      at: event.at,
+    });
   }
 
   /** Customer asked for a new quote (row 68): admins and the errand room. */
