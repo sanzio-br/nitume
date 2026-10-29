@@ -107,7 +107,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/suspended-access (issue #23) | merged (PR #25, 28a0c42) | — | feat/api-suspended-access (stacked on #22 → #20; worktree ../nitume-feat-api-suspended-access) | none | 8eb934d, 2e70401, 5b49108, e095f15, e187481; unit 960/960, e2e 187/187; each commit compiles |
 | admin/user-status-actions (issue #24) | merged (PR #32, be0229f) | api-contract | feat/api-user-status-audit (stacked on feat/api-suspended-access; worktree ../nitume-feat-api-user-status-audit) | #23 | schema WQ-23 approved; then design-auditor admin drawer spec, web-parity build |
 | website/customer/create-task (issue #7) | merged (PR #42, 81aa065; merge commit, not squash) | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
-| website/customer/checkout (issue #8) | fixed (ee8cb17, 3a98dd8, 5a674e4, a334abc; 753 tests) → re-audit 2 | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
+| website/customer/checkout (issue #8) | audited-pass (re-audit 2, d14c9de) → in review | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
 | api/merchant-details-privacy (issue #28) | merged (PR #29, 5f0ab08) | api-contract | fix/api-merchant-details-privacy (off main; worktree ../nitume-fix-api-merchant-details-privacy) | none | found while speccing #8 |
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
 | api+web+core/socket-revoked-token (issue #30) | unaudited | — | — | #24, #6 | from the #6 review |
@@ -914,3 +914,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | Owner merged PR #45 (#36). Remaining in flight: #8 re-audit. |
 | 2026-10-29 | design-auditor #8 re-audit 1 FAIL (c56b0f5): blocker, the id is read once from the snapshot, so same-route errand switches keep stale data (wrong Till). Spec defect, now corrected. Browser checks at 360/768/1024/1280, WQ-27/28/33 all pass. Q8-3 recorded as WQ-55. Sent back to web-parity (FAIL 1 of 2). |
 | 2026-10-29 | web-parity #8 finding-1 fix (paramMap, full reset per errand), resumed after the usage limit; 753 tests twice, 354.59 kB. design-auditor re-audit 2 (with a real-browser Back). |
+| 2026-10-29 | design-auditor #8 re-audit 2 PASS (d14c9de): all 41 items; the new tests fail on the old code; real-browser Back/Forward re-read the right errand. Sent to reviewer. |
