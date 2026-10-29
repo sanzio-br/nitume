@@ -899,3 +899,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | #7 merged into the #8 branch (528ed46); design-auditor writing the #8 gap report. |
 | 2026-10-29 | api-contract #39 built: customers and non-assigned runners get 403 evidence_upload_forbidden; no client change. Sent to reviewer. |
 | 2026-10-29 | reviewer #7 READY; PR opened (squash). PR #37 merged (380be22) per the review's origin/main check. |
+| 2026-10-29 | OWNER INSTRUCTION: finish only the in-flight issues (#39 review→PR, #36 admin spec→build→PR, #8 gap report→build→PR); do NOT start any other issue until the owner approves. On hold: specced #9, #10, #13, #14, #15, #17; not started #11, #12, #16, #18, #27, #30, #38, #40, #41. Owner confirmed PR #37 merged. |
