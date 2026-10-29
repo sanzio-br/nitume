@@ -272,7 +272,12 @@ type Panel =
             <app-task-drawer [errandId]="t.id" />
           }
           @case ('runner') {
-            <app-runner-drawer [runnerId]="t.id" />
+            <!-- Lazy chunk: keeps the initial bundle within budget (#36). -->
+            @defer (on immediate) {
+              <app-runner-drawer [runnerId]="t.id" />
+            } @loading {
+              <div class="ops-loading">Loading runner profile…</div>
+            }
           }
           @case ('dispute') {
             <app-dispute-drawer [errandId]="t.id" />
