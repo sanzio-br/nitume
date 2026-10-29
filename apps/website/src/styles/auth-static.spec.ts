@@ -77,4 +77,17 @@ describe('issue #6 static checks', () => {
     expect(store).not.toMatch(/^import .*realtime/m);
     expect(store).toContain("await import('../realtime/realtime.service')");
   });
+
+  it('F9.60. no inline component styles under src/app/ contain @use, @include, @mixin or a $ variable', () => {
+    // angular.json sets no inlineStyleLanguage: inline styles are plain CSS.
+    const out: string[] = [];
+    for (const file of walk(appDir).filter((f) => f.endsWith('.ts') && !f.endsWith('.spec.ts'))) {
+      const source = readFileSync(file, 'utf8');
+      for (const m of source.matchAll(/styles:\s*(\[[\s\S]*?\]|`[\s\S]*?`)/g)) {
+        if (/@use|@include|@mixin|\$[a-zA-Z_-]/.test(m[1])) out.push(relative(appDir, file));
+      }
+    }
+    expect(out).toEqual([]);
+  });
 });
+
