@@ -5,7 +5,7 @@
 - Shared conventions: `docs/specs/admin/_shared.md` (§2 access, §3.1 times, §4 layout tokens, §5 components A-01 … A-18).
 - API: **built** on `feat/api-user-status-audit` (`95b5943` … `1d4bd3f`) for the change and the history; **missing** for reading the current status (U-1) and for linking a task to its customer's user (U-2). See Data.
 - Implementation: none. Runner drawer `apps/admin/src/app/features/admin/drawers/runner-drawer.ts` (no status section); **no customer drawer exists** (`drawer-nav.service.ts:3` kinds: `task | runner | dispute | refund | runner_payout | runner_verification`).
-- Status: missing.
+- Status: matches-design (re-audit 2026-10-29, `docs/audits/admin-gap-report.md` #24).
 
 ## 1. Purpose
 
@@ -214,6 +214,8 @@ Component specs next to the files (`*.spec.ts`, Jasmine/Karma as the other drawe
 `ng test` and `ng build` clean; `npm run lint` clean if configured.
 
 ## 14. Questions for the owner
+
+**Answered 2026-10-29 (issue #24 comments):** SQ-1 Active blue (info) / Suspended amber / Banned red, as proposed; SQ-2 inline success notice, no toast; SQ-3 Customer drawer, opened from the refund drawer and from the task drawer; SQ-4 dialog note `Open tasks are not changed. Reassign or cancel them from the task queue.` on suspend and ban; SQ-5 keep the green timeline dot; SQ-6 all proposed copy approved. API: U-1 (`GET /admin/users/:id`) and U-2 (`customerUserId` on the admin errand detail) built (`d076594`, `dbd698e`). The questions below are kept for the record.
 
 - **SQ-1 (palette rule, AGENT_BUILD_INSTRUCTIONS §4)** Chip tones: `Active` = info (blue), `Suspended` = amber, `Banned` = red. Red is defined as "disputes / failed only", so using it for `Banned` widens its meaning. Approve red for `Banned`, or use the neutral slate chip? Recommended: red (a ban is the most serious account state and red stays chip-sized). Also confirm `Active` is blue, not green (green is for complete states).
 - **SQ-2 (component pattern)** The brief asks for a success toast; there is no toast in the design system or the admin app. Use the existing inline success notice (A-11, auto-dismiss after 6 s) at the top of the `Account` section, or add a toast component? Recommended: inline notice (no new pattern).

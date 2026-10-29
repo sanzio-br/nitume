@@ -1325,3 +1325,38 @@ SQ-1 chip tones (red for `Banned` widens "disputes / failed only"; `Active` blue
 
 ### Verdict
 Spec round. `drawer-user-status` is **missing**: G24-1, G24-4, G24-5, G24-6, G24-7, G24-11 (blockers), G24-2 (blocker, after SQ-3), G24-3, G24-8, G24-9, G24-10 (minor). Buildable now on the owner-approved scope (WQ-22/WQ-23): G24-3 … G24-11 and the history part of G24-1; the chip and buttons need U-1; the customer drawer needs SQ-3 (and U-2 for the task-drawer link). `SCREEN_MAP.md`: new row `drawer-user-status`, status `missing`.
+
+## Re-audit 2026-10-29: #24 admin user status (`feat/api-user-status-audit` @ `c8a9474`)
+
+web-parity commits `61a049d`, `1ebcf46`, `57248c6`, `194dba4`, `0ede045`, `669798c`, `c8a9474`; API `d076594` (U-1), `dbd698e` (U-2), `a908051` … `b620f8e` (token cut-off, `9741485` history ordering). Owner decisions 2026-10-29 (issue #24 comments): SQ-1 Active blue / Suspended amber / Banned red; SQ-2 inline notice; SQ-3 Customer drawer; SQ-4 dialog note; SQ-5 green dot; SQ-6 copy approved. Spec updated with these answers.
+
+Build health, re-run by the auditor in `apps/admin`: `npx ng test --watch=false` → **34 files, 408 tests, 0 failures** (one Node `ExperimentalWarning` about `localStorage`, from the runner, not a test failure); `npx ng build` → **initial total 497.22 kB, no warnings or errors**. Token greps on the new files (`user-status*.ts`, `customer-*.ts`): no hex, no `font-family`, no `rgb(`, no wallet/escrow wording. The section's local `.drawer-actions .btn` rule (`user-status.section.ts:187-196`) only restores the A-07 `.btn` sizing that `_ops.scss:993` shrinks for mockup drawers (spec §3.3); no new values or colours.
+
+### Gap items re-checked
+| Item | Result | Evidence |
+|---|---|---|
+| G24-1 runner drawer section | closed | `runner-drawer.ts:72-75` last, `@defer`, `[userId]="r.userId"`; section `user-status.section.ts:64-171`; test `targets RunnerListItem.userId, not the profile id, and sits last` |
+| G24-2 Customer drawer | closed | `drawer-nav.service.ts` kind `customer`; shell `@case ('customer')` + title `Customer`; `customer-drawer.ts` (name `b.txt` / masked id, `Phone` in `drawer-row b` = Fira Code); links `customer-link.ts` from `refund-drawer.ts:166-177` and `task-drawer.ts` `Customer` row via `customerUserId` (U-2) |
+| G24-3 account chip | closed | `status-chip.component.ts` `ACCOUNT_LABELS` / `ACCOUNT_VARIANTS` `info` / `pending` / `danger` (SQ-1); spec cases |
+| G24-4 reason dialog | closed | `user-status-dialog.ts`: A-08 form mode, `data-autofocus`, `maxlength=500`, plain hint, counter `{n}/500` in `.field-counter` (Fira Code), trimmed 10–500, `Enter a reason.` / `Enter at least 10 characters.`, reset on open; copy `user-status.ts:86-121` matches spec §5 word for word |
+| G24-5 error mapping | closed | `statusChangeFailure` (`user-status.ts:168-209`) covers every row of spec §7; one test per row in `user-status.section.spec.ts:241-350` |
+| G24-6 history | closed | timeline `from → to`, `.dt-actor` actor + `formatDateTime` in `.dt-time`, reason in `.dt-actor` (Fira Sans), `limit=20`, A-12, loading / empty / error + `Try again` / `cursor_invalid` once; `historyActor` moved to `shared-format.ts` (`61a049d`), task drawer imports it |
+| G24-7 rules | closed | `accountActions` / `blockedReason`; no buttons for admin, self, or unknown status; explanation lines |
+| G24-8 success | closed, see m-1 | chip from `res.user.status`, change prepended, A-11 success 6 s, focus to the status cell |
+| G24-9 client and types | closed | `api-types.ts`, `api.service.ts` (`adminUser`, `changeUserStatus`, `userStatusHistory`) |
+| G24-10 close guard | closed | `setCloseGuard` in the section; `askDiscard` in the dialog; tests for close, switch and no-reason |
+| G24-11 tests | closed | 35 section, 22 dialog, 10 customer-drawer cases plus chip and `shared-format` cases; all pass |
+
+### Builder decisions ruled
+1. **Open-tasks note on suspend and ban only, not reactivate — PASS.** SQ-4 is about what suspend and ban leave behind; reactivating has no open-task consequence, so the sentence would mislead there (`user-status-dialog.ts:66-68`).
+2. **Refund drawer link as a new `Customer` summary row next to `Task` / `Open task` — PASS.** Same `.row-inline` + `.btn-text.btn-sm` shape as the `Task` row above it (`refund-drawer.ts:157-177`); it is the refund drawer's customer reference the spec §2 meant; no new pattern.
+3. **`Discard this reason?` without body copy — PASS.** Spec §2 / G24-10 give only the title and `Back` · `Discard`; the A-08 card renders correctly with an empty body.
+4. **Own-account check from `s.me().id`, falling back to `AuthStore.userId` (token `sub`) — PASS.** Both identify the signed-in admin; the fallback hides the buttons before `me` loads, and the API 403 `cannot_change_own_status` remains the backstop (`user-status.section.ts:246`).
+5. **§13.13 by grep rather than an automated spec — PASS.** The auditor re-ran the greps (above) with a clean result; a spec that reads source files would need Node typings the admin test setup doesn't have. Keep the grep in each audit.
+6. **`setupHttpWithAuth()` test helper with an `AuthStore` stand-in — PASS.** One shared helper in `testing/admin-test-utils.ts` instead of per-spec stubs (reuse rule); the real store reads `localStorage`, which the runner lacks.
+
+### Findings
+1. **m-1 (minor)** `user-status.section.ts:67-75` with `shared/inline-notice.component.ts` (`ngOnInit` starts the timer). Design (spec §6): the success notice closes itself after 6 s. Code: the `@if (notice(); as n)` keeps the same `app-inline-notice` instance when one notice replaces another, and A-11 reads `autoDismissMs` only at init. After an info notice (409, `autoDismissMs` 0) is still showing, a later success reuses that instance and never closes itself (it stays dismissible). Fix: re-mount per notice, e.g. `@for (n of noticeList(); track n)` with a one-item array, or a `noticeKey` counter in the track. Test: info notice, then a success → gone after 6 s. Non-blocking.
+
+### Verdict
+`drawer-user-status` **PASS** (G24-1 … G24-11 closed; m-1 minor, non-blocking). `SCREEN_MAP.md` → `matches-design`. The branch carries API and admin work together; it needs owner review before `main`.
