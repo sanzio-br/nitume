@@ -8,6 +8,7 @@ import { NmBackButton, NmBackEvent } from './ui/back-button/back-button.componen
 import { NmPushedHeader } from './ui/pushed-header/pushed-header.component';
 import { NmField } from './ui/field/field.component';
 import { NmFieldValue } from './ui/field/field-value.directive';
+import { MAPS_API_KEY, MapsLoaderService } from './map/maps-loader.service';
 import { CUSTOMER_MVP_CATEGORIES, categoryIcon } from './format/category';
 import { NmIcon } from './ui/icon/icon.component';
 import { NM_ICONS } from './ui/icon/icons';
@@ -209,6 +210,54 @@ describe('NC§W9.16 #7 kit additions', () => {
       fixture.detectChanges();
       expect(place.value).toBe('');
       write.mockRestore();
+    });
+  });
+
+  describe('MapsLoaderService.importLibrary (G7-10)', () => {
+    type MapsWin = { google?: unknown; __nmMapsLoaderReady?: () => void };
+    const win = () => window as unknown as MapsWin;
+    const scripts = () => document.head.querySelectorAll('script[src*="maps.googleapis.com"]');
+
+    afterEach(() => {
+      delete win().google;
+      delete win().__nmMapsLoaderReady;
+      scripts().forEach((s) => s.remove());
+    });
+
+    function loader(key: string): MapsLoaderService {
+      TestBed.configureTestingModule({ providers: [{ provide: MAPS_API_KEY, useValue: key }] });
+      return TestBed.inject(MapsLoaderService);
+    }
+
+    it('NC§W9.16 importLibrary no key. resolves null and never adds a script', async () => {
+      const service = loader('');
+      await expect(service.importLibrary('places')).resolves.toBeNull();
+      expect(scripts()).toHaveLength(0);
+      expect(service.ready()).toBe('unavailable');
+    });
+
+    it("NC§W9.16 importLibrary with a key. loads the API, then calls google.maps.importLibrary('places'); a rejection gives null", async () => {
+      const places = { AutocompleteSuggestion: {} };
+      const importLibrary = vi.fn((name: string) => (name === 'places' ? Promise.resolve(places) : Promise.resolve({})));
+      const service = loader('test-browser-key');
+      const pending = service.importLibrary('places');
+      expect(scripts()).toHaveLength(1);
+      win().google = { maps: { importLibrary } };
+      win().__nmMapsLoaderReady?.();
+      await expect(pending).resolves.toBe(places);
+      expect(importLibrary).toHaveBeenCalledWith('places');
+      expect(service.ready()).toBe('ready');
+
+      importLibrary.mockImplementation(() => Promise.reject(new Error('ApiNotActivatedMapError')));
+      await expect(service.importLibrary('places')).resolves.toBeNull();
+      expect(service.ready()).toBe('ready'); // state left as it is
+    });
+
+    it('NC§W9.16 importLibrary script failure. resolves null', async () => {
+      const service = loader('test-browser-key');
+      const pending = service.importLibrary('places');
+      (scripts()[0] as HTMLScriptElement).dispatchEvent(new Event('error'));
+      await expect(pending).resolves.toBeNull();
     });
   });
 });
