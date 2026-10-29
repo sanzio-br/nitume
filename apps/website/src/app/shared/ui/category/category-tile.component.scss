@@ -1,0 +1,71 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-category-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: var(--nitume-tap);
+  margin: 0;
+  padding: 14px 10px;
+  background-color: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-m);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+
+  @include nm-hover {
+    border-color: var(--nitume-blue);
+  }
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+// Checked state: green border plus a 2px green-050 inner ring drawn as a
+// second border (mockup `.cat-tile.sel`; never a shadow, K§2.1).
+.nm-category-tile--selected {
+  border-color: var(--nitume-green);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--nitume-green-050);
+    border-radius: calc(var(--nitume-r-m) - 1px);
+    pointer-events: none;
+  }
+
+  @include nm-hover {
+    border-color: var(--nitume-green);
+  }
+}
+
+.nm-category-tile__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--nitume-r-s);
+  background-color: var(--nitume-green-050);
+  color: var(--nitume-blue);
+}
+
+.nm-category-tile__label {
+  @include nm-type(row-title, 11.5px);
+  margin-top: 8px;
+  line-height: 1.3;
+}
