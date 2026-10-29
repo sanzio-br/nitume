@@ -106,9 +106,14 @@ export class PaymentPage {
   private readonly now = inject(CUSTOMER_NOW);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
-  protected readonly id: string = inject(ActivatedRoute).snapshot.paramMap.get('errandId') ?? '';
+  private readonly activatedRoute = inject(ActivatedRoute);
+  private readonly intents = inject(CheckoutIntentStore);
+  /** The current errand; follows `paramMap` (A§1 "Same route, another errand"). */
+  protected id = '';
   protected readonly copy = PAYMENT_COPY;
-  protected readonly quoteLink = customerLinks.awaitingQuote(this.id);
+  protected get quoteLink(): string {
+    return customerLinks.awaitingQuote(this.id);
+  }
 
   protected readonly phase = signal<PaymentPhase>('loading');
   protected readonly payment = signal<Payment | null>(null);
@@ -119,7 +124,7 @@ export class PaymentPage {
   protected readonly stillPending = signal(false);
 
   /** Read once (WQ-28): only an in-app click sets it. Kept until it starts a prompt. */
-  private intent: CheckoutIntent | null;
+  private intent: CheckoutIntent | null = null;
   private request: InitiateBody = {};
   private keyReused = false;
   private pollHandle: unknown = null;
@@ -207,9 +212,6 @@ export class PaymentPage {
   });
 
   constructor() {
-    this.intent = inject(CheckoutIntentStore).take(this.id);
-    if (this.intent) this.request = this.bodyOf(this.intent);
-
     const destroyRef = inject(DestroyRef);
     this.realtime.statusChanges$.pipe(takeUntilDestroyed()).subscribe((e) => {
       if (e.errandId !== this.id) return;
@@ -228,10 +230,38 @@ export class PaymentPage {
       this.destroyed = true;
       this.clearPoll();
       if (this.successHandle !== null) this.timers.clearTimeout(this.successHandle);
-      this.realtime.leaveErrand(this.id);
+      if (this.id) this.realtime.leaveErrand(this.id);
     });
-    void this.realtime.joinErrand(this.id);
+    // A§1: the page is reused when only `:errandId` changes; start over for each id.
+    this.activatedRoute.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => this.startFor(params.get('errandId') ?? ''));
+  }
+
+  /** Stops the previous errand's polls and timers, leaves its room, clears the view, then follows the new one. */
+  private startFor(id: string): void {
+    if (id === this.id) return;
+    if (this.id) this.realtime.leaveErrand(this.id);
+    this.clearPoll();
+    if (this.successHandle !== null) this.timers.clearTimeout(this.successHandle);
+    this.successHandle = null;
+    this.id = id;
+    this.phase.set('loading');
+    this.payment.set(null);
+    this.failureReason.set(null);
+    this.payer.set(null);
+    this.checking.set(false);
+    this.inFlight.set(false);
+    this.stillPending.set(false);
+    this.keyReused = false;
+    // Only an in-app click set an intent for this errand (WQ-28).
+    this.intent = this.intents.take(id);
+    this.request = this.intent ? this.bodyOf(this.intent) : {};
+    void this.realtime.joinErrand(id);
     void this.load();
+  }
+
+  /** True once the page left `id` (another errand or destroyed): late answers are dropped. */
+  private gone(id: string): boolean {
+    return this.destroyed || id !== this.id;
   }
 
   protected retry(): void {
@@ -265,9 +295,10 @@ export class PaymentPage {
 
   /** Entry decision (VP "Entry decision"). */
   private async load(): Promise<void> {
+    const id = this.id;
     try {
-      const [errand, summary, methods] = await Promise.all([this.api.errand(this.id), this.api.payments(this.id), this.api.paymentMethods()]);
-      if (this.destroyed) return;
+      const [errand, summary, methods] = await Promise.all([this.api.errand(id), this.api.payments(id), this.api.paymentMethods()]);
+      if (this.gone(id)) return;
       const status = parseErrandStatus(errand?.status);
       if (!status) throw new Error('unknown status');
       const redirect = checkoutRedirect('payment', status, this.id);
@@ -295,13 +326,14 @@ export class PaymentPage {
       }
       this.apply(summary);
     } catch {
-      if (!this.destroyed) this.phase.set('error');
+      if (!this.gone(id)) this.phase.set('error');
     }
   }
 
   /** `POST …/initiate`: `fresh` starts a new attempt (new key); otherwise the current key. */
   private async initiate(fresh: boolean): Promise<void> {
     if (this.inFlight() || this.destroyed) return;
+    const id = this.id;
     this.intent = null;
     this.inFlight.set(true);
     this.stillPending.set(false);
@@ -310,13 +342,13 @@ export class PaymentPage {
     const key = fresh ? this.attempts.newAttempt(this.id) : this.attempts.keyFor(this.id);
     if (fresh) this.keyReused = false;
     try {
-      const result = await this.api.initiate(this.id, this.request, key);
+      const result = await this.api.initiate(id, this.request, key);
+      if (this.gone(id)) return;
       this.inFlight.set(false);
-      if (this.destroyed) return;
       this.apply(result);
     } catch (err) {
+      if (this.gone(id)) return;
       this.inFlight.set(false);
-      if (this.destroyed) return;
       const e = apiErrorOf(err);
       switch (e.code) {
         case 'quote_expired':
@@ -351,17 +383,19 @@ export class PaymentPage {
   /** `GET /payments/:errandId` now (a manual check shows the still-pending line). */
   private async check(manual: boolean): Promise<void> {
     if (this.checking() || this.destroyed) return;
+    const id = this.id;
     this.checking.set(true);
     try {
-      const summary = await this.api.payments(this.id);
-      if (this.destroyed) return;
+      const summary = await this.api.payments(id);
+      if (this.gone(id)) return;
       this.apply(summary);
       if (manual && this.phase() === 'PENDING') this.stillPending.set(true);
     } catch (err) {
+      if (this.gone(id)) return;
       if (manual) this.toast.show(friendlyError(err));
       else this.schedulePoll();
     } finally {
-      this.checking.set(false);
+      if (!this.gone(id)) this.checking.set(false);
     }
   }
 
@@ -413,10 +447,12 @@ export class PaymentPage {
 
   /** Re-reads the errand and applies A§2. */
   private async reroute(): Promise<void> {
+    const id = this.id;
     try {
-      const errand = await this.api.errand(this.id);
+      const errand = await this.api.errand(id);
+      if (this.gone(id)) return;
       const status = parseErrandStatus(errand?.status);
-      const redirect = status ? checkoutRedirect('payment', status, this.id) : null;
+      const redirect = status ? checkoutRedirect('payment', status, id) : null;
       if (redirect) this.leave(redirect);
       else if (status === 'ACCEPTED' && !this.payment()) this.leave(this.quoteLink);
     } catch {

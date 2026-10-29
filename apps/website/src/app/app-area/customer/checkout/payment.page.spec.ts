@@ -442,4 +442,39 @@ describe('customer v-payment (#8)', () => {
     expect(requests('/payments/e-1')).toHaveLength(0);
     httpMock().match(() => true).forEach((r) => r.flush({}));
   });
+  it('VP T19. same route, another errand (A§1): /tasks/e-1/payment (PENDING, polling) → /tasks/e-2/payment stops e-1 polls, shows e-2 stored payment, never e-1 amount, no initiate without an e-2 intent; back to e-1 re-reads e-1 without an initiate', async () => {
+    const { h, rig } = await openPayment({ summary: PENDING_STORED() });
+    expect(text(page(h).querySelector('.nm-stk__amount'))).toBe('KSh 1,100');
+    expect(rig.timers.pending()).toEqual([STK_FAST_MS]);
+
+    void h.router.navigateByUrl('/app/customer/tasks/e-2/payment');
+    await flushGet('/errands/e-2', checkoutErrand({ id: 'e-2', status: 'ACCEPTED' }));
+    await flushGet('/payments/e-2', summaryJson({ payment: paymentJson({ id: 'p-2', errandId: 'e-2', serviceFee: '1000.00', runnerFee: '1000.00' }), stkStatus: 'TIMEOUT' }));
+    await flushGet('/customers/me/payment-methods', []);
+    await routedTo(h, '/app/customer/tasks/e-2/payment');
+    expect(rig.realtime.leaveErrand).toHaveBeenCalledWith('e-1');
+    expect(rig.realtime.joinErrand).toHaveBeenLastCalledWith('e-2');
+    expect(heading(h)).toBe('Still checking your payment');
+    expect(text(page(h).querySelector('.nm-stk__amount'))).toBe('KSh 2,000');
+    expect(text(page(h))).not.toContain('KSh 1,100');
+    expect(requests('/payments/e-2/initiate')).toHaveLength(0);
+    expect(initiates()).toHaveLength(0);
+    // Only e-2 is polled; e-1 events are ignored.
+    rig.timers.advance(STK_FAST_MS);
+    await h.detect();
+    expect(requests('/payments/e-1')).toHaveLength(0);
+    await flushGet('/payments/e-2', summaryJson({ payment: paymentJson({ id: 'p-2', errandId: 'e-2', serviceFee: '1000.00', runnerFee: '1000.00' }), stkStatus: 'TIMEOUT' }));
+    rig.realtime.status('e-1', 'PAYMENT_CONFIRMED');
+    await h.detect();
+    expect(heading(h)).toBe('Still checking your payment');
+
+    void h.router.navigateByUrl(URL);
+    await answerLoad(h, { summary: PENDING_STORED() });
+    await routedTo(h, URL);
+    expect(rig.realtime.joinErrand).toHaveBeenLastCalledWith('e-1');
+    expect(text(page(h).querySelector('.nm-stk__amount'))).toBe('KSh 1,100');
+    expect(heading(h)).toBe('Check your phone');
+    expect(initiates()).toHaveLength(0);
+    expect(requests('/payments/e-2/initiate')).toHaveLength(0);
+  });
 });
