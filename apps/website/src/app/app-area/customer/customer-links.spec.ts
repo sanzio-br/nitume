@@ -57,5 +57,12 @@ describe('customerLinks (NC§W9.11)', () => {
       await h.detect();
       expect.soft(h.router.url, url).toBe(url);
     }
+    // The later wizard steps resolve to the wizard (step 1 without a draft), never the /app/** redirect.
+    for (const url of [customerLinks.newTaskDetails(), customerLinks.newTaskReview(), customerLinks.newTask('inspection')]) {
+      await h.harness.navigateByUrl(customerLinks.home());
+      await h.harness.navigateByUrl(url);
+      await h.detect();
+      expect.soft(h.router.url.startsWith('/app/customer/new'), url).toBe(true);
+    }
   });
 });
