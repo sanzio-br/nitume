@@ -7,7 +7,7 @@ import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../src/app.module';
-import { OTP_SENDER } from '../src/auth/otp-sender/otp-sender.provider';
+import { TokenService } from '../src/auth/token.service';
 import { UserRole, UserStatus } from '../src/common/enums';
 import { CustomersService } from '../src/customers/customers.service';
 import { RedisService } from '../src/infra/redis/redis.service';
@@ -29,7 +29,6 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
   let baseUrl: string;
   let ds: DataSource;
   let redis: RedisService;
-  const codes = new Map<string, string>();
   const userIds: string[] = [];
   const errandIds: string[] = [];
   let admin: { id: string; token: string; phone: string };
@@ -59,17 +58,18 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
     }
   };
 
-  /** A customer signed in through OTP: a real access token. */
-  const signIn = async (phone = randomPhone()) => {
-    await ds.query('DELETE FROM "otp_codes" WHERE target = $1', [phone]);
-    await request(baseUrl).post('/api/v1/auth/otp/request').send({ phone }).expect(201);
-    const res = await request(baseUrl)
-      .post('/api/v1/auth/otp/verify')
-      .send({ phone, code: codes.get(phone) })
-      .expect(201);
-    const id = res.body.user.id as string;
-    if (!userIds.includes(id)) userIds.push(id);
-    return { id, phone, accessToken: res.body.tokens.accessToken as string };
+  /**
+   * A customer with an access token from the app's own `TokenService` (the
+   * one OTP verify and refresh use). `newToken()` signs another one now. No
+   * OTP round trip, so this file does not eat the per-IP OTP budget of the
+   * run; the fresh OTP sign-in after reactivation is covered in
+   * user-status-admin.e2e-spec.ts.
+   */
+  const signIn = async () => {
+    const user = await app.get(UsersService).create({ phone: randomPhone(), role: UserRole.CUSTOMER });
+    userIds.push(user.id);
+    const newToken = () => app.get(TokenService).signAccessToken(user);
+    return { id: user.id, accessToken: newToken(), newToken };
   };
 
   const setStatus = (userId: string, status: UserStatus) =>
@@ -116,16 +116,7 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
     request(baseUrl).get(`/api/v1/admin/users/${userId}`).set('Authorization', `Bearer ${token}`);
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(OTP_SENDER)
-      .useValue({
-        name: 'capture',
-        send: (phone: string, code: string) => {
-          codes.set(phone, code);
-          return Promise.resolve();
-        },
-      })
-      .compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
@@ -152,8 +143,6 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
       await withAppendOnlyGuardLifted(ds, 'user_status_history', async (query) => {
         await query('DELETE FROM "user_status_history" WHERE "userId" = ANY($1) OR "actorUserId" = ANY($1)', [userIds]);
       });
-      const phones: { phone: string }[] = await ds.query('SELECT phone FROM "users" WHERE id = ANY($1)', [userIds]);
-      await ds.query('DELETE FROM "otp_codes" WHERE target = ANY($1)', [phones.map((p) => p.phone)]);
       await ds.query('DELETE FROM "customer_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "runner_profiles" WHERE "userId" = ANY($1)', [userIds]);
       await ds.query('DELETE FROM "users" WHERE id = ANY($1)', [userIds]);
@@ -248,7 +237,7 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
 
   describe('access tokens issued before a suspension or ban stay refused after reactivation', () => {
     it.each([UserStatus.SUSPENDED, UserStatus.BANNED])(
-      '%s, then reactivated: the old token is refused on HTTP and Socket.IO; a token from a new sign-in works',
+      '%s, then reactivated: the old token is refused on HTTP and Socket.IO; a token issued after reactivation works',
       async (status) => {
         const before = await signIn();
         await me(before.accessToken).expect(200);
@@ -262,10 +251,9 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
         await expectRevoked(before.accessToken);
         await expectSocketRefused(before.accessToken);
 
-        const after = await signIn(before.phone);
-        expect(after.id).toBe(before.id);
-        await me(after.accessToken).expect(200);
-        await expectSocketAccepted(after.accessToken);
+        const after = before.newToken();
+        await me(after).expect(200);
+        await expectSocketAccepted(after);
       },
     );
 
@@ -292,7 +280,7 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
       await setStatus(target.id, UserStatus.SUSPENDED);
       await nextSecond();
       await setStatus(target.id, UserStatus.ACTIVE);
-      const after = await signIn(target.phone);
+      const after = target.newToken();
 
       const realGet = redis.get.bind(redis);
       const spy = vi.spyOn(redis, 'get').mockImplementation((key: string) =>
@@ -301,8 +289,8 @@ describe('Admin user status follow-ups (issue #24, e2e)', () => {
       try {
         await expectRevoked(target.accessToken);
         await expectSocketRefused(target.accessToken);
-        await me(after.accessToken).expect(200);
-        await expectSocketAccepted(after.accessToken);
+        await me(after).expect(200);
+        await expectSocketAccepted(after);
         await me(bystander.accessToken).expect(200);
         expect(spy).toHaveBeenCalledWith(userTokensValidAfterKey(target.id));
       } finally {
