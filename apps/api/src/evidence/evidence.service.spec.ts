@@ -115,10 +115,47 @@ describe('EvidenceService runner uploads (RA-11, rows 121, 129)', () => {
     expect(await code(service.upload('e-1', body('document', 'application/pdf') as never, runner))).toBe('evidence_type_not_allowed');
   });
 
-  it('leaves customer and admin uploads unguarded', async () => {
-    const { service, storage } = build('COMPLETED');
+  it('leaves admin uploads unguarded (mediation path)', async () => {
+    const { service, storage, errandsSvc } = build('COMPLETED');
     await service.upload('e-1', body('video', 'video/mp4') as never, { userId: 'a-1', role: UserRole.ADMIN });
     expect(storage.upload).toHaveBeenCalled();
+    expect(errandsSvc.isCurrentRunner).not.toHaveBeenCalled();
+  });
+
+  describe('issue #39: only the assigned runner uploads', () => {
+    const status = async (p: Promise<unknown>) => {
+      const err = (await p.catch((e: unknown) => e)) as { getStatus: () => number; getResponse: () => unknown };
+      return { status: err.getStatus(), body: err.getResponse() };
+    };
+
+    it.each(['ARRIVED', 'IN_PROGRESS', 'COMPLETED'])('refuses a customer with 403 evidence_upload_forbidden in %s', async (s) => {
+      const { service, storage, evidenceRepo } = build(s);
+      const res = await status(service.upload('e-1', body('photo') as never, { userId: 'u-c', role: UserRole.CUSTOMER }));
+      expect(res).toEqual({ status: 403, body: expect.objectContaining({ code: 'evidence_upload_forbidden' }) });
+      expect(storage.upload).not.toHaveBeenCalled();
+      expect(evidenceRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('refuses a runner not on the current assignment with 403 evidence_upload_forbidden', async () => {
+      const { service, storage, errandsSvc } = build('IN_PROGRESS');
+      errandsSvc.isCurrentRunner.mockResolvedValueOnce(false);
+      const res = await status(service.upload('e-1', body('photo') as never, { userId: 'u-other', role: UserRole.RUNNER }));
+      expect(res).toEqual({ status: 403, body: expect.objectContaining({ code: 'evidence_upload_forbidden' }) });
+      expect(errandsSvc.isCurrentRunner).toHaveBeenCalledWith('e-1', 'u-other');
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
+
+    it('answers the assigned runner in a disallowed state with 409 evidence_not_allowed', async () => {
+      const { service } = build('RUNNER_EN_ROUTE');
+      const res = await status(service.upload('e-1', body('photo') as never, runner));
+      expect(res).toEqual({ status: 409, body: expect.objectContaining({ code: 'evidence_not_allowed', status: 'RUNNER_EN_ROUTE', type: 'photo' }) });
+    });
+
+    it('records the assigned runner as uploader', async () => {
+      const { service, evidenceRepo } = build('IN_PROGRESS');
+      await service.upload('e-1', body('photo') as never, runner);
+      expect(evidenceRepo.save).toHaveBeenCalledWith(expect.objectContaining({ uploadedBy: 'u-r', type: 'photo' }));
+    });
   });
 
   it('registers the completion check: a photo by the runner is required', async () => {
