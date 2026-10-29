@@ -292,11 +292,58 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
     this.server?.to(errandRoom(event.errandId)).emit(SocketServerEvent.QUOTE_REISSUED, event);
   }
 
-  @OnEvent(DomainEvent.MERCHANT_DETAILS_UPDATED)
-  onMerchantDetailsUpdated(event: MerchantDetailsUpdatedEvent): void {
-    this.server
-      ?.to(errandRoom(event.errandId))
-      .emit(SocketServerEvent.MERCHANT_DETAILS_UPDATED, event);
+  /** Merchant Till/Paybill set (rows 42-44); per-socket payload (issue #28). */
+  @OnEvent(DomainEvent.MERCHANT_DETAILS_UPDATED, { async: true })
+  async onMerchantDetailsUpdated(event: MerchantDetailsUpdatedEvent): Promise<void> {
+    await this.emitMerchantDetails(SocketServerEvent.MERCHANT_DETAILS_UPDATED, event);
+  }
+
+  /**
+   * Issue #28 (owner, 2026-10-29): sends a merchant_details event to every
+   * socket in `errand:{id}`. Runner and admin sockets get the payload as
+   * is; a customer socket gets `tillNumber`, `paybillNumber` and
+   * `accountReference` as null until the errand's fee payment has
+   * completed (same check as GET /errands/:id). If that check fails the
+   * customer gets the null payload. Never throws.
+   */
+  private async emitMerchantDetails<
+    T extends {
+      errandId: string;
+      tillNumber: string | null;
+      paybillNumber: string | null;
+      accountReference: string | null;
+    },
+  >(name: string, event: T): Promise<void> {
+    if (!this.server) {
+      return;
+    }
+    const room = errandRoom(event.errandId);
+    try {
+      const sockets = await this.server.in(room).fetchSockets();
+      const privileged = (socket: { data: unknown }): boolean => {
+        const role = (socket.data as SocketData | undefined)?.user?.role;
+        return role === UserRole.RUNNER || role === UserRole.ADMIN;
+      };
+      let customerPayload: T = { ...event, tillNumber: null, paybillNumber: null, accountReference: null };
+      if (sockets.some((s) => !privileged(s))) {
+        const visible = await this.errands
+          .merchantNumbersVisibleTo(UserRole.CUSTOMER, event.errandId)
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `Fee check for ${room} failed; merchant numbers withheld from customers: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return false;
+          });
+        if (visible) {
+          customerPayload = event;
+        }
+      }
+      for (const socket of sockets) {
+        socket.emit(name, privileged(socket) ? event : customerPayload);
+      }
+    } catch (err) {
+      this.logger.error(`Could not send ${name} to ${room}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   @OnEvent(DomainEvent.ERRAND_ACCESS_CHANGED, { async: true })
@@ -410,11 +457,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
   }
 
   /** Merchant details changed after a merchant-direct payment started (row 80). */
-  @OnEvent(DomainEvent.MERCHANT_DETAILS_CHANGED)
-  onMerchantDetailsChanged(event: MerchantDetailsChangedEvent): void {
-    this.server
-      ?.to(errandRoom(event.errandId))
-      .emit(SocketServerEvent.MERCHANT_DETAILS_CHANGED, event);
+  @OnEvent(DomainEvent.MERCHANT_DETAILS_CHANGED, { async: true })
+  async onMerchantDetailsChanged(event: MerchantDetailsChangedEvent): Promise<void> {
+    await this.emitMerchantDetails(SocketServerEvent.MERCHANT_DETAILS_CHANGED, event);
   }
 
   /** Customer asked for a new quote (row 68): admins and the errand room. */

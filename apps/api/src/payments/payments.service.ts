@@ -14,7 +14,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import type { Queue } from 'bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, LessThanOrEqual, Not, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, LessThanOrEqual, Not, Repository } from 'typeorm';
 import {
   PaymentFlow,
   PaymentMethodType,
@@ -23,7 +23,7 @@ import {
   PaymentTypeCode,
   StatusHistoryActor,
 } from '../common/enums';
-import { ErrandStatus } from '../common/enums';
+import { ErrandStatus, UserRole } from '../common/enums';
 import { AuthContext } from '../common/decorators/auth.decorators';
 import { CustomerProfile } from '../customers/customer-profile.entity';
 import { ErrandStateMachine } from '../errands/errand-state-machine';
@@ -168,6 +168,9 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
    * that no longer applies. A FAILED payment does not block it.
    */
   onModuleInit(): void {
+    // Issue #28: the errands module asks which tasks have their fees paid
+    // before it shows a customer the merchant's Till/Paybill numbers.
+    this.errands.onFeesPaidLookup((errandIds) => this.feesPaidAmong(errandIds));
     this.errands.onRequote(async (manager, errandId) => {
       const active = await manager.getRepository(Payment).findOne({
         where: { errandId, priceChangeRequestId: IsNull(), status: Not(PaymentStatus.FAILED) },
@@ -400,11 +403,16 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
       checkoutRequestId: push.checkoutRequestId,
       transactions: txRows,
       stkStatus: this.stkStatus(payment),
-      merchantPayment: await this.merchantPaymentFor(payment),
+      // Issue #28: a payment just pushed is pending, so the customer gets
+      // no merchant numbers yet.
+      merchantPayment: await this.merchantPaymentFor(payment, await this.feesPaid(errandId)),
     };
   }
 
-  /** Stored payment as an initiate response (no new STK push). */
+  /**
+   * Stored payment as an initiate response (no new STK push). Initiate is
+   * customer only, so the merchant numbers follow the fee check (issue #28).
+   */
   private async resultFor(payment: Payment): Promise<InitiateResult> {
     const tx = await this.transactions.find({ where: { paymentId: payment.id } });
     const stkStatus = this.stkStatus(payment);
@@ -417,7 +425,7 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
         stkStatus === StkStatus.SUCCESS ? 'PAID' : stkStatus === StkStatus.FAILED ? 'FAILED' : 'PENDING',
       transactions: tx,
       stkStatus,
-      merchantPayment: await this.merchantPaymentFor(payment),
+      merchantPayment: await this.merchantPaymentFor(payment, await this.feesPaid(payment.errandId)),
     };
   }
 
@@ -558,11 +566,15 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
    * for merchant_direct differences. Call after the recording transaction
    * has committed.
    */
-  async chargeDifference(paymentId: string): Promise<DifferencePaymentView> {
+  async chargeDifference(
+    paymentId: string,
+    viewer?: Pick<AuthContext, 'role'>,
+  ): Promise<DifferencePaymentView> {
     const payment = await this.payments.findOne({ where: { id: paymentId } });
     if (!payment?.priceChangeRequestId) {
       throw new NotFoundException('Price difference payment not found');
     }
+    const reveal = await this.merchantNumbersVisible(payment.errandId, viewer);
     if (payment.paymentFlow === PaymentFlow.CUSTOMER_TO_RUNNER && payment.status === PaymentStatus.PENDING) {
       const legs = await this.transactions.find({ where: { paymentId } });
       const errand = await this.errands.getById(payment.errandId);
@@ -573,9 +585,9 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
         description: `Nitume price change ${errand.reference ?? errand.id}`,
       });
       await this.rememberCheckout(legs, push);
-      return this.differenceView(payment, push.checkoutRequestId);
+      return this.differenceView(payment, reveal, push.checkoutRequestId);
     }
-    return this.differenceView(payment);
+    return this.differenceView(payment, reveal);
   }
 
   /**
@@ -604,7 +616,7 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
       );
     }
     if (latest.status !== PaymentStatus.FAILED) {
-      return this.differenceView(latest);
+      return this.differenceView(latest, await this.merchantNumbersVisible(errandId, user));
     }
     const fresh = await this.payments.manager.transaction((manager) =>
       this.saveDifference(
@@ -615,11 +627,12 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
         PaymentFlow.CUSTOMER_TO_RUNNER,
       ),
     );
-    return this.chargeDifference(fresh.id);
+    return this.chargeDifference(fresh.id, user);
   }
 
   private async differenceView(
     payment: Payment,
+    revealMerchantNumbers: boolean,
     checkoutRequestId?: string,
   ): Promise<DifferencePaymentView> {
     const transactions = await this.transactions.find({ where: { paymentId: payment.id } });
@@ -630,17 +643,20 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
         payment.paymentFlow === PaymentFlow.CUSTOMER_TO_RUNNER ? this.stkStatus(payment) : null,
       failureReason: failureReasonOf(payment, transactions),
       checkoutRequestId: checkoutRequestId ?? null,
-      merchantPayment: await this.merchantPaymentFor(payment),
+      merchantPayment: await this.merchantPaymentFor(payment, revealMerchantNumbers),
     };
   }
 
   /** Every price-change difference payment of an errand, newest first. */
-  private async differencesFor(errandId: string): Promise<DifferencePaymentView[]> {
+  private async differencesFor(
+    errandId: string,
+    revealMerchantNumbers: boolean,
+  ): Promise<DifferencePaymentView[]> {
     const rows = await this.payments.find({
       where: { errandId, priceChangeRequestId: Not(IsNull()) },
       order: { createdAt: 'DESC' },
     });
-    return Promise.all(rows.map((row) => this.differenceView(row)));
+    return Promise.all(rows.map((row) => this.differenceView(row, revealMerchantNumbers)));
   }
 
   /** Phone that receives an STK push for the errand owner. */
@@ -757,7 +773,16 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
     return (await this.merchantDetailsFor(errandId)) !== null;
   }
 
-  private async merchantPaymentFor(payment: Payment): Promise<MerchantPaymentView | null> {
+  /**
+   * The merchant/item payment view of `payment`. With
+   * `revealMerchantNumbers` false (a customer before the fee payment has
+   * completed, issue #28) `tillNumber`, `paybillNumber` and
+   * `accountReference` are null; everything else is unchanged.
+   */
+  private async merchantPaymentFor(
+    payment: Payment,
+    revealMerchantNumbers = true,
+  ): Promise<MerchantPaymentView | null> {
     const route = routeOf(payment.paymentFlow);
     if (!route) {
       return null;
@@ -771,15 +796,59 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
       amount: payment.merchantAmount,
       paidTo: 'merchant',
       merchantName: details?.merchantName ?? null,
-      tillNumber: details?.tillNumber ?? null,
-      paybillNumber: details?.paybillNumber ?? null,
-      accountReference: details?.accountReference ?? null,
+      tillNumber: revealMerchantNumbers ? (details?.tillNumber ?? null) : null,
+      paybillNumber: revealMerchantNumbers ? (details?.paybillNumber ?? null) : null,
+      accountReference: revealMerchantNumbers ? (details?.accountReference ?? null) : null,
       merchantDetailsUpdatedAt: details?.merchantDetailsUpdatedAt ?? null,
       merchantDetailsChangedAfterPayment: Boolean(
         details?.merchantDetailsUpdatedAt &&
           details.merchantDetailsUpdatedAt.getTime() > payment.createdAt.getTime(),
       ),
     };
+  }
+
+  /**
+   * Issue #28 (owner, 2026-10-29): the errands among `errandIds` whose fee
+   * payment has completed, i.e. whose primary (non-difference) payment is
+   * `completed`. This is the condition the customer app uses before it
+   * shows the Till/Paybill (`itemAmountDue`: `payment.status ==
+   * completed`), per OA-5 / `_shared.md` §8.2 ("shown only on
+   * x-merchant-payment after the fees are paid"). At most one primary
+   * payment is not failed, so this is the newest one.
+   */
+  async feesPaidAmong(errandIds: string[]): Promise<Set<string>> {
+    if (errandIds.length === 0) {
+      return new Set();
+    }
+    const rows = await this.payments.find({
+      select: { errandId: true },
+      where: {
+        errandId: In(errandIds),
+        priceChangeRequestId: IsNull(),
+        status: PaymentStatus.COMPLETED,
+      },
+    });
+    return new Set(rows.map((r) => r.errandId));
+  }
+
+  /** True once the errand's fee payment has completed (see `feesPaidAmong`). */
+  async feesPaid(errandId: string): Promise<boolean> {
+    return (await this.feesPaidAmong([errandId])).has(errandId);
+  }
+
+  /**
+   * Issue #28: whether `viewer` gets the merchant Till/Paybill/account
+   * numbers on payment views of this errand. Runner, admin and internal
+   * callers (no viewer) always; a customer once the fees are paid.
+   */
+  private async merchantNumbersVisible(
+    errandId: string,
+    viewer?: Pick<AuthContext, 'role'>,
+  ): Promise<boolean> {
+    if (!viewer || viewer.role !== UserRole.CUSTOMER) {
+      return true;
+    }
+    return this.feesPaid(errandId);
   }
 
   /**
@@ -1208,14 +1277,16 @@ export class PaymentsService implements OnApplicationBootstrap, OnModuleInit {
     const transactions = await this.transactions.find({
       where: { paymentId: payment.id },
     });
+    // Issue #28: a customer gets the merchant numbers once the fees are paid.
+    const reveal = await this.merchantNumbersVisible(errandId, user);
     return {
       payment,
       transactions,
       stkStatus: this.stkStatus(payment),
       failureReason: failureReasonOf(payment, transactions),
       merchantDetailsAvailable: await this.hasMerchantDetails(errandId),
-      merchantPayment: await this.merchantPaymentFor(payment),
-      differencePayments: await this.differencesFor(errandId),
+      merchantPayment: await this.merchantPaymentFor(payment, reveal),
+      differencePayments: await this.differencesFor(errandId, reveal),
     };
   }
 }

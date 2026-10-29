@@ -293,7 +293,8 @@ describe('PriceChangeService decisions (owner Q8)', () => {
       return Promise.resolve({ payment: { id }, stkStatus: 'PENDING', checkoutRequestId: 'chk-9' });
     });
     const res = await service.approve('e-1', 'pc-1', customerActor);
-    expect(payments.chargeDifference).toHaveBeenCalledWith('p-diff');
+    // Issue #28: the approver's role decides whether merchant numbers are shown.
+    expect(payments.chargeDifference).toHaveBeenCalledWith('p-diff', customerActor);
     expect(res.differencePayment?.checkoutRequestId).toBe('chk-9');
   });
 

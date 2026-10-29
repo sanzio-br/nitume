@@ -53,10 +53,12 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
     @Body() dto: CreateErrandDto,
   ) {
-    return this.errands.createDraft(user.userId, dto, {
-      type: StatusHistoryActor.CUSTOMER,
-      id: user.userId,
-    });
+    return this.errands
+      .createDraft(user.userId, dto, {
+        type: StatusHistoryActor.CUSTOMER,
+        id: user.userId,
+      })
+      .then((r) => this.hideMerchantNumbers(user, r, [r.errand]));
   }
 
   @Get()
@@ -64,15 +66,17 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
     @Query() query: ListErrandsQueryDto,
   ): Promise<ListErrandViewsResponse> {
-    return this.errands.listViewsFor(
-      { role: user.role, userId: user.userId },
-      {
-        status: query.status,
-        limit: query.limit,
-        cursor: query.cursor,
-        quoteRequested: query.quoteRequested,
-      },
-    );
+    return this.errands
+      .listViewsFor(
+        { role: user.role, userId: user.userId },
+        {
+          status: query.status,
+          limit: query.limit,
+          cursor: query.cursor,
+          quoteRequested: query.quoteRequested,
+        },
+      )
+      .then((r) => this.hideMerchantNumbers(user, r, r.items));
   }
 
   /**
@@ -105,7 +109,9 @@ export class ErrandsController {
     @Param('id') id: string,
     @CurrentUser() user: AuthContext,
   ): Promise<ErrandView> {
-    return this.errands.getDetail(id, { role: user.role, userId: user.userId });
+    return this.errands
+      .getDetail(id, { role: user.role, userId: user.userId })
+      .then((view) => this.hideMerchantNumbers(user, view, [view]));
   }
 
   /**
@@ -124,10 +130,12 @@ export class ErrandsController {
     @CurrentUser() user: AuthContext,
     @Body() dto: UpdateErrandDto,
   ): Promise<ErrandView> {
-    return this.errands.updateErrand(id, { title: dto.title, deadlineAt: dto.deadlineAt }, {
-      role: user.role,
-      userId: user.userId,
-    });
+    return this.errands
+      .updateErrand(id, { title: dto.title, deadlineAt: dto.deadlineAt }, {
+        role: user.role,
+        userId: user.userId,
+      })
+      .then((view) => this.hideMerchantNumbers(user, view, [view]));
   }
 
   /**
@@ -179,7 +187,9 @@ export class ErrandsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthContext,
   ): Promise<{ errand: ErrandView; quote: Quote }> {
-    return this.errands.acceptQuote(id, { role: user.role, userId: user.userId });
+    return this.errands
+      .acceptQuote(id, { role: user.role, userId: user.userId })
+      .then((r) => this.hideMerchantNumbers(user, r, [r.errand]));
   }
 
   /**
@@ -195,7 +205,9 @@ export class ErrandsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthContext,
   ): Promise<ErrandView> {
-    return this.errands.requestNewQuote(id, { role: user.role, userId: user.userId });
+    return this.errands
+      .requestNewQuote(id, { role: user.role, userId: user.userId })
+      .then((view) => this.hideMerchantNumbers(user, view, [view]));
   }
 
   @Get(':id/history')
@@ -207,13 +219,15 @@ export class ErrandsController {
 
   @Post(':id/submit')
   submit(@Param('id') id: string, @CurrentUser() user: AuthContext): Promise<ErrandResult> {
-    return this.errands.transition(
-      id,
-      ErrandStatus.REQUESTED,
-      { type: StatusHistoryActor.CUSTOMER, id: user.userId },
-      undefined,
-      { role: user.role, userId: user.userId },
-    );
+    return this.errands
+      .transition(
+        id,
+        ErrandStatus.REQUESTED,
+        { type: StatusHistoryActor.CUSTOMER, id: user.userId },
+        undefined,
+        { role: user.role, userId: user.userId },
+      )
+      .then((r) => this.hideMerchantNumbers(user, r, [r.errand]));
   }
 
   /**
@@ -244,7 +258,8 @@ export class ErrandsController {
     const actorType: StatusHistoryActor = this.actorTypeFor(user.role);
     return this.errands
       .transition(id, dto.to, { type: actorType, id: user.userId }, dto.note, { role: user.role, userId: user.userId })
-      .then((r) => (user.role === UserRole.RUNNER ? { ...r, errand: withoutCustomerPricing(r.errand) } : r));
+      .then((r) => (user.role === UserRole.RUNNER ? { ...r, errand: withoutCustomerPricing(r.errand) } : r))
+      .then((r) => this.hideMerchantNumbers(user, r, [r.errand]));
   }
 
   /**
@@ -309,5 +324,21 @@ export class ErrandsController {
       dto.rationale,
       user,
     );
+  }
+
+  /**
+   * Issue #28 (owner, 2026-10-29): a customer gets no merchant
+   * Till/Paybill/account numbers on an errand until its fee payment has
+   * completed (`merchantTillNumber`, `merchantPaybillNumber`,
+   * `merchantAccountReference` are null). Runner and admin responses are
+   * unchanged. Resolves to `result`.
+   */
+  private async hideMerchantNumbers<T>(
+    user: AuthContext,
+    result: T,
+    errands: Errand[],
+  ): Promise<T> {
+    await this.errands.hideMerchantNumbersFor({ role: user.role }, errands);
+    return result;
   }
 }
