@@ -103,9 +103,12 @@ export class RunnersPanelComponent {
   protected sub(): string {
     const all = this.s.runners().length;
     const t = this.s.topStats();
+    // #36: ` · {n} pings stopped` only when n > 0 (never pluralised by code).
+    const flagged = this.s.runners().filter(isFlagged).length;
     return all === 0
       ? 'No runner profiles synced yet'
-      : `${all} runners · ${t.onlineRunners} online · ${t.onTaskRunners} on task`;
+      : `${all} runners · ${t.onlineRunners} online · ${t.onTaskRunners} on task` +
+          (flagged ? ` · ${flagged} pings stopped` : '');
   }
 
   protected visible() {
@@ -116,7 +119,9 @@ export class RunnersPanelComponent {
         r.id.toLowerCase().includes(q) ||
         shortId(r.id).toLowerCase().includes(q) ||
         (r.verificationLevel ?? '').toLowerCase().includes(q) ||
-        statusLabel(r.availability, 'availability').toLowerCase().includes(q)
+        statusLabel(r.availability, 'availability').toLowerCase().includes(q) ||
+        // #36: `web` and `pings stopped` match the chips on the card.
+        `${isWeb(r) && isActive(r) ? 'web ' : ''}${isFlagged(r) ? 'pings stopped' : ''}`.includes(q)
       );
     });
   }

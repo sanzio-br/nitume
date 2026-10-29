@@ -72,6 +72,45 @@ describe('RunnersPanelComponent web presence (#36, spec §3.1)', () => {
     }
   });
 
+  it('adds " · {n} pings stopped" to the sub only when n > 0', () => {
+    const fixture = render([
+      runnerFixture({ id: 'r-1' }, { webPingsStoppedAt: STOP_AT }),
+      runnerFixture({ id: 'r-2', availability: 'busy' }),
+      runnerFixture({ id: 'r-3', availability: 'offline' }, { webPingsStoppedAt: STOP_AT }),
+    ]);
+    const sub = () => (fixture.nativeElement as HTMLElement).querySelector('.sub')?.textContent;
+    expect(sub()).toBe('3 runners · 2 online · 1 on task · 1 pings stopped');
+    s.runners.update((rows) =>
+      rows.map((r) => ({ ...r, presence: { ...r.presence!, webPingsStoppedAt: null } })),
+    );
+    fixture.detectChanges();
+    expect(sub()).toBe('3 runners · 2 online · 1 on task');
+  });
+
+  it('search matches "pings" and "web"', () => {
+    const fixture = render([
+      runnerFixture({ id: 'aaaaaaaa-0000-0000-0000-00000000a001' }, { webPingsStoppedAt: STOP_AT }),
+      runnerFixture({ id: 'bbbbbbbb-0000-0000-0000-00000000b002' }),
+      runnerFixture({ id: 'cccccccc-0000-0000-0000-00000000c003' }, { client: 'app' }),
+      runnerFixture(
+        { id: 'dddddddd-0000-0000-0000-00000000d004', availability: 'offline' },
+        { webPingsStoppedAt: STOP_AT },
+      ),
+    ]);
+    const el = fixture.nativeElement as HTMLElement;
+    const search = (q: string) => {
+      const input = el.querySelector('input[type="search"]') as HTMLInputElement;
+      input.value = q;
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      return [...el.querySelectorAll('.r-top b')].map((b) => b.textContent?.trim());
+    };
+    expect(search('pings')).toEqual(['#NT-0A001']);
+    expect(search('Pings Stopped')).toEqual(['#NT-0A001']);
+    expect(search('web')).toEqual(['#NT-0A001', '#NT-0B002']);
+    expect(search('')).toHaveLength(4);
+  });
+
   it('updates the card live on a stopped event, without a refetch', () => {
     const fixture = render([runnerFixture({ id: RUNNER_ID })]);
     const rt = new FakeRealtime();
