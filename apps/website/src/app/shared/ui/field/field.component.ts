@@ -11,6 +11,8 @@ import {
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { NmNum } from '../../format/num.directive';
 import { formatCounter } from '../../format/formatters';
+import { NmIcon } from '../icon/icon.component';
+import { NmIconName } from '../icon/icons';
 
 export type NmFieldKind = 'text' | 'multiline' | 'money' | 'phone';
 
@@ -18,7 +20,7 @@ let nextId = 0;
 
 @Component({
   selector: 'nm-field',
-  imports: [NmNum],
+  imports: [NmNum, NmIcon],
   templateUrl: './field.component.html',
   styleUrl: './field.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,6 +47,18 @@ export class NmField implements ControlValueAccessor {
   /** Native `spellcheck` (`null` = attribute absent). */
   readonly spellcheck = input<boolean | null>(null);
 
+  // --- #7 additions (customer-v-new-category §W9a; NitumeField prefixIcon / suffixIcon) ---
+  /** 18px slate-600 icon inside the field on the left (input padding 40px). */
+  readonly leadingIcon = input<NmIconName | null>(null);
+  /** Spinner at the right (`aria-hidden`) and `aria-busy="true"` on the input. */
+  readonly busy = input(false);
+  /** Combobox attributes on the native input (`null` = absent). */
+  readonly role = input<string | null>(null);
+  readonly ariaAutocomplete = input<string | null>(null);
+  readonly ariaExpanded = input<boolean | null>(null);
+  readonly ariaControls = input<string | null>(null);
+  readonly ariaActivedescendant = input<string | null>(null);
+
   protected readonly id = `nm-field-${nextId++}`;
   protected readonly errorId = `${this.id}-error`;
 
@@ -54,6 +68,11 @@ export class NmField implements ControlValueAccessor {
 
   protected readonly spellcheckAttr = computed(() => {
     const value = this.spellcheck();
+    return value === null ? null : String(value);
+  });
+
+  protected readonly ariaExpandedAttr = computed(() => {
+    const value = this.ariaExpanded();
     return value === null ? null : String(value);
   });
 

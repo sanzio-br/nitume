@@ -1,0 +1,61 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-flex;
+}
+
+.nm-avatar-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--nitume-tap);
+  min-height: var(--nitume-tap);
+  border-radius: 50%;
+  text-decoration: none;
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-avatar-static {
+  display: inline-flex;
+}
+
+.nm-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  background-color: var(--nitume-blue);
+  color: var(--nitume-white);
+}
+
+.nm-avatar__initials {
+  @include nm-type(button-sm, 13px, 700, white);
+  line-height: 1;
+}
+
+.nm-avatar--small {
+  width: 36px;
+  height: 36px;
+}
+
+.nm-avatar--medium {
+  width: 60px;
+  height: 60px;
+
+  .nm-avatar__initials {
+    font-size: 20px;
+  }
+}
+
+.nm-avatar--large {
+  width: 70px;
+  height: 70px;
+
+  .nm-avatar__initials {
+    font-size: 24px;
+  }
+}

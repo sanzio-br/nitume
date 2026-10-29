@@ -1,0 +1,32 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-flex;
+}
+
+.nm-choice-chip {
+  @include nm-type(chip);
+  @include nm-hit-area;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 13px;
+  background-color: var(--nitume-slate);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-pill);
+  cursor: pointer;
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-choice-chip--selected {
+  background-color: var(--nitume-blue);
+  border-color: var(--nitume-blue);
+  color: var(--nitume-white);
+}
+
+.nm-choice-chip--disabled {
+  color: var(--nitume-slate-400);
+  cursor: default;
+}

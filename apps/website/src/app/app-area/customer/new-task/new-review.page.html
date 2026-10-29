@@ -1,0 +1,54 @@
+<nm-wizard-frame
+  title="Review"
+  [step]="3"
+  [backFallback]="detailsUrl"
+  [backDisabled]="store.submitting()"
+  [unloadGuard]="unloadGuard"
+>
+  <section class="review">
+    @if (!preview) {
+      <nm-notice class="review__notice">{{ copy.notice }}</nm-notice>
+      @if (itemBudget(); as budget) {
+        <nm-form-card class="review__card" [label]="copy.itemBudget">
+          <nm-receipt-row [label]="copy.itemBudget" [amount]="budget" [amountLabel]="itemSpoken()" />
+          <nm-receipt-caption>{{ copy.itemCaption }}</nm-receipt-caption>
+        </nm-form-card>
+      }
+    } @else {
+      <nm-form-card class="review__card review__estimate" [label]="copy.estimateHeading">
+        @if (estimateResult(); as result) {
+          <nm-receipt-row [label]="copy.estimateTotal" [amount]="result.total" [isTotal]="true" [amountLabel]="spoken(result.total)" />
+          <nm-receipt-caption>{{ copy.estimateCaption }}</nm-receipt-caption>
+        } @else if (estimate().kind === 'loading') {
+          <nm-skeleton-card class="review__skeleton" [height]="40" />
+          <nm-skeleton-card class="review__skeleton" [height]="40" />
+        } @else {
+          <nm-notice class="review__unavailable">{{ copy.unavailable }}</nm-notice>
+        }
+        @if (itemBudget(); as budget) {
+          <nm-receipt-group>
+            <nm-receipt-row [label]="copy.itemBudget" [amount]="budget" [amountLabel]="itemSpoken()" />
+            <nm-receipt-caption>{{ copy.itemCaption }}</nm-receipt-caption>
+          </nm-receipt-group>
+        }
+      </nm-form-card>
+    }
+  </section>
+  @if (store.locationRefused()) {
+    <div nmWizardAbove class="review__refused">
+      <div role="alert"><nm-notice>{{ copy.outsideArea }}</nm-notice></div>
+      <nm-button class="review__change" variant="outline" [expand]="true" (pressed)="changeLocation()">{{
+        copy.changeLocation
+      }}</nm-button>
+    </div>
+  }
+  <nm-button
+    nmWizardCta
+    type="button"
+    [expand]="true"
+    [loading]="store.submitting()"
+    [disabled]="store.locationRefused()"
+    (pressed)="submit()"
+    >Submit task →</nm-button
+  >
+</nm-wizard-frame>

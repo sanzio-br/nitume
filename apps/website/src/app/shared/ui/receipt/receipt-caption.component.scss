@@ -1,0 +1,11 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-receipt-caption {
+  @include nm-type(greeting);
+  margin: 0;
+  padding-top: 8px;
+}

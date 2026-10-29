@@ -1,6 +1,7 @@
 // Opens real `/app` routes (guards, lazy chunks, interceptor) with fake
 // HTTP, WINDOW, BroadcastChannel and socket for the #6 view and shell
 // suites.
+import { EnvironmentProviders, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -24,6 +25,8 @@ export interface OpenOptions {
   flow?: { role: AppRole; flow: SignInFlow };
   /** Viewport width for matchMedia (default 360). */
   width?: number;
+  /** Extra providers (#7: fake PLACE_SEARCH, MAPS_API_KEY, QUOTE_ESTIMATE …). */
+  providers?: (Provider | EnvironmentProviders)[];
 }
 
 export interface AppHarness {
@@ -59,6 +62,7 @@ export async function openApp(url: string, opts: OpenOptions = {}): Promise<AppH
           return socket;
         },
       },
+      ...(opts.providers ?? []),
     ],
   });
   if (opts.flow) TestBed.inject(SignInFlowStore).set(opts.flow.role, opts.flow.flow);

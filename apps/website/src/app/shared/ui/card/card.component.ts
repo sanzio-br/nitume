@@ -1,17 +1,18 @@
 // `nm-card` (ui-kit spec §4.4; design-system `.card-demo`, Flutter
 // NitumeCard C-07). White, slate-line border, r-m, padding 16. No shadow.
-import { NgTemplateOutlet } from '@angular/common';
+// Content is projected through `nmTemplateOutlet` (WQ-33, #7 §W9a).
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { NmTemplateOutlet } from '../template-outlet.directive';
 
 @Component({
   selector: 'nm-card',
-  imports: [NgTemplateOutlet],
+  imports: [NmTemplateOutlet],
   template: `
     <ng-template #content><ng-content /></ng-template>
     @if (clickable()) {
       @if (href(); as link) {
         <a [class]="classes()" [style.padding]="padding()" [attr.href]="link" [attr.aria-label]="label()"
-          ><ng-container [ngTemplateOutlet]="content"
+          ><ng-container [nmTemplateOutlet]="content"
         /></a>
       } @else {
         <button
@@ -21,12 +22,12 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
           [attr.aria-label]="label()"
           (click)="activated.emit()"
         >
-          <ng-container [ngTemplateOutlet]="content" />
+          <ng-container [nmTemplateOutlet]="content" />
         </button>
       }
     } @else {
       <div [class]="classes()" [style.padding]="padding()">
-        <ng-container [ngTemplateOutlet]="content" />
+        <ng-container [nmTemplateOutlet]="content" />
       </div>
     }
   `,

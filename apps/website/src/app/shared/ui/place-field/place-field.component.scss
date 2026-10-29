@@ -1,0 +1,59 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+// Opens inline under the field and pushes the cards below down (app parity),
+// so it is never clipped.
+.nm-place-field__panel {
+  margin-top: 4px;
+  padding: 0 4px;
+  background-color: var(--nitume-white);
+}
+
+.nm-place-field__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nm-place-field__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-height: var(--nitume-tap);
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--nitume-slate-line);
+  cursor: pointer;
+
+  @include nm-hover {
+    background-color: var(--nitume-slate);
+  }
+}
+
+.nm-place-field__option--active {
+  background-color: var(--nitume-slate);
+  @include nm-focus-ring(-2px);
+}
+
+.nm-place-field__icon {
+  color: var(--nitume-slate-400);
+}
+
+.nm-place-field__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nm-place-field__title {
+  @include nm-type(row-title);
+  overflow-wrap: anywhere;
+}
+
+.nm-place-field__sub {
+  @include nm-type(muted-sm);
+  overflow-wrap: anywhere;
+}

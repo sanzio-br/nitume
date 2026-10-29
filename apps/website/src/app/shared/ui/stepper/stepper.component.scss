@@ -1,0 +1,25 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-stepper {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 16px;
+}
+
+.nm-stepper__segment {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--nitume-r-pill);
+}
+
+.nm-stepper__segment--done {
+  background-color: var(--nitume-green);
+}
+
+.nm-stepper__segment--empty {
+  background-color: var(--nitume-slate-line);
+}
