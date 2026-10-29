@@ -1520,7 +1520,74 @@ All of them: standalone, `OnPush`, signal inputs, `nm-` prefix, under `shared/ui
 - Branch: `feat/website-customer-checkout` (worktree `../nitume-feat-website-customer-checkout`). It is stacked on #7 (`feat/website-customer-create-task`, re-audit 2 PASS at `6338a75`, in review), which was merged into this branch at `528ed46`. #7 is stacked on #6.
 - Builder: `web-parity`. Every item below is an **approved extension, W-Q0**.
 
-### Verdict: FAIL (re-audit 1, 2026-10-29, `feat/website-customer-checkout` at `a690870`): 1 blocker, 0 minors
+### Verdict: PASS (re-audit 2, 2026-10-29, `feat/website-customer-checkout` at `a334abc`)
+
+This is the second round, after one FAIL. The builder fixed forward in four commits on top of `c56b0f5`.
+
+**What changed since re-audit 1.** `git log --oneline c56b0f5..a334abc`:
+- `ee8cb17` fix: x-awaiting-quote
+- `3a98dd8` fix: v-payment
+- `5a674e4` fix: x-merchant-payment
+- `a334abc` test: the static paramMap check
+
+`git diff --stat c56b0f5 a334abc` touches 7 files, +288 / −53:
+- the three pages and their three spec files under `app-area/customer/checkout/`;
+- `src/styles/customer-static.spec.ts`.
+
+No other file, spec, kit file, config, marketing path or doc changed. Every hunk belongs to finding 1.
+
+**Finding 1: closed.**
+- **Code.** Each page now holds `id` as a field set only by `startFor(id)`. `ActivatedRoute.paramMap.pipe(takeUntilDestroyed())` calls it in the constructor; there is no `snapshot.paramMap`. On a new id, `startFor`:
+  - leaves the old room and joins the new one;
+  - clears the page state to loading;
+  - re-reads `router.currentNavigation()?.extras.state` (quote: `quoteExpired` / `deadlinePassed`; item payment: `approvedIncrease` / `priceChangeRequestId`, reset to null when absent);
+  - starts the A§2 read.
+- **Per page:**
+  - Payment page: clears its poll and the 1.5 s SUCCESS timer, and takes `CheckoutIntentStore.take(newId)` (WQ-28: no initiate without an intent for the new errand).
+  - Quote page: closes an open deadline panel. It bumps its `sequence` counter, so late errand, quote and method answers are dropped. Its 15 s poll and 30 s tick are page-level repeating timers that read the current id or only the clock, so nothing of e-1 survives them.
+  - Merchant-payment page: clears its poll and resets `openedAt`, the document title flag and the in-flight flags.
+- **Late answers.** Every awaited call (load, accept, request quote, deadline save, cancel, initiate, status check, difference retry) captures `id` first and drops its answer when `id !== this.id` or the page is destroyed (`gone(id)`).
+- **Socket events** are filtered against the current `this.id`.
+- No `RouteReuseStrategy` anywhere (static check).
+- The `trackLink` / `quoteLink` fields became getters on the current id.
+
+**The three new tests, against the fix and against the old code.**
+- XQ T24, VP T19 and MP T17 each match the amended A§1:
+  - a same-route navigation shows the new errand's figures;
+  - rooms switch, e-1 socket events and polls are ignored;
+  - the quote page's open deadline panel closes;
+  - the payment page sends no initiate without an e-2 intent;
+  - MP T17 drives the real price-change dialog approve on e-1's page and checks e-1's Till is cleared while e-2 loads, then e-2's Till, amount and `Includes the KSh 5,000 increase you approved.`;
+  - a router navigation back re-reads e-1.
+- To prove they test the fix, each page was restored from `c56b0f5` (temporary, reverted, worktree clean):
+  - `merchant-payment.page.ts` old → **MP T17 fails** (1 failed / 16 passed): "Expected one matching request … `/errands/e-2`, found none";
+  - `payment.page.ts` old → **VP T19 fails** (1 / 18), same message;
+  - `awaiting-quote.page.ts` old → **XQ T24 fails** (1 / 27), same message.
+  - Each other case in those files still passed.
+- Static check (`customer-static.spec.ts`, "Re-audit 1 finding 1"): all three pages contain `paramMap.pipe(takeUntilDestroyed())` and no `snapshot.paramMap`, and there is no `RouteReuseStrategy` in `src/app`. `rg -n "snapshot\.paramMap" apps/website/src/app/app-area/customer/checkout` → no hits.
+
+**Auditor re-run in the worktree:**
+- `npx ng test --watch=false` → **87 files, 753 tests, 0 failures** (re-audit 1: 749; +3 view cases, +1 static case). This matches the builder.
+- `npx ng build --stats-json` → succeeds. Initial total **354.59 kB raw** / 97.05 kB transfer, ≤ 360.00 (WQ-34), unchanged from re-audit 1. The initial chunks (`main-TX4OEFU6.js` 31 inputs, `chunk-Dbgtyy_1.js` 85, `polyfills-5CFQRCPP.js` 2) have no `core/auth`, `core/realtime`, `app-area`, `shared/ui`, `shared/places` or `shared/map` input, and no `@angular/google-maps`, `@angular/forms` or `socket.io` input.
+
+**Browser check (real browser history).** Same method as re-audit 1: headless Chrome via Playwright on the rebuilt `dist`, with the API mocked.
+- **Scenario:**
+  1. Open `/app/customer/tasks/e-1/item-payment`: Till `111111`, `Shop ONE`.
+  2. The watcher's shell-start check opens the price-change dialog for e-2 over it.
+  3. `Approve KSh 5,000 increase` → URL `/tasks/e-2/item-payment`. The page shows **`222222`**, `Shop TWO`, `KSh 45,000`, `Includes the KSh 5,000 increase you approved.` and the toast `Price change approved.`, with **no `111111`**. New requests: `GET /errands/e-2`, `GET /payments/e-2`.
+  4. **Browser Back** (`page.goBack()`, real history `popstate`) → URL `/tasks/e-1/item-payment`, **`111111`** shown, `222222` gone. **Fresh requests `GET /errands/e-1`, `GET /payments/e-1`.**
+  5. **Browser Forward** → `/tasks/e-2/item-payment`, `222222` shown, fresh `GET /errands/e-2`, `GET /payments/e-2`.
+- No page errors.
+- The 360/768/1024/1280 checks of re-audit 1 were rerun on the new build with identical results:
+  - no horizontal scroll; the fixed CTA below 768px and inline from 768px; the checkout two columns at 1024/1280;
+  - the panel as a sheet at 360 and centred 560px at 1024; the dialog 320px at 360 and 335px at 1280;
+  - after a reload the payment page sends 0 initiates.
+
+**Item status at re-audit 2:** G8-7, G8-24, G8-27, G8-31 and G8-38 (the five open at re-audit 1) are **closed**. XQ T24, VP T19 and MP T17 are added to the G8-38 coverage, under G8-24, G8-27 and G8-31 respectively. **All 41 items (G8-1 … G8-41) are closed.** No new finding.
+
+**Merge preconditions:** #7 (PR #42) and PR #29 are on `main` and under the branch (`7d0b81e`). `Change` on `Pay with` still waits for #12, as specified (not a #8 item).
+
+### Re-audit 1 (2026-10-29, `feat/website-customer-checkout` at `a690870`): FAIL, 1 blocker (finding 1, closed at re-audit 2)
 
 **What was audited.**
 - The 19 build commits `03b4a8e … a690870`, on top of `7d0b81e`. That merge brought in the latest `main`: #7 as PR #42 and PR #29 (merchant privacy). So the PR #29 merge precondition is now met (`git merge-base --is-ancestor 5f0ab08 HEAD` is true).
