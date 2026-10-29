@@ -15,6 +15,7 @@ import {
   flushGet,
   openCheckout,
   paymentJson,
+  priceChangeJson,
   requests,
   routedTo,
   summaryJson,
@@ -22,8 +23,10 @@ import {
 import { clearOverlays } from '../../../../testing/customer';
 import { NM_CLIPBOARD } from '../../../shared/ui/copy-row/copy-row.component';
 import { NmFixedCtaOffset } from '../../../shared/ui/fixed-cta/fixed-cta.component';
+import { NmDialogService } from '../../../shared/ui/overlay/dialog.service';
 import { NmToastService } from '../../../shared/ui/overlay/toast.service';
 import { CheckoutErrand, PaymentSummary } from '../data/checkout.api';
+import { PRICE_COPY, PriceChangeDialogComponent } from './price-change-dialog.component';
 import { STK_FAST_MS, STK_SLOW_MS } from './stk';
 
 interface Opts {
@@ -359,5 +362,56 @@ describe('customer x-merchant-payment (#8)', () => {
     (page(h).querySelector('.mp__amount .nm-copy-row__copy button') as HTMLButtonElement).click();
     await h.detect();
     expect(toast()?.offset).toBe(64);
+  });
+  it('MP T17. same route, another errand (A§1, re-audit 1 finding 1): approving e-2’s price change on e-1’s item payment shows e-2 (Till, amount, increase from state), never e-1’s Till; rooms switch, e-1 events are ignored; back to e-1 re-reads e-1 and shows 111111 again', async () => {
+    const e1 = { ...PAID, merchantPayment: directMerchant({ tillNumber: '111111', merchantName: 'Shop One' }) };
+    const { h, rig } = await openMp({ summary: e1 });
+    expect(text(page(h).querySelector('.mp__till .nm-copy-row__value'))).toBe('111111');
+
+    // The watcher's dialog for e-2 opens over e-1's page and is approved.
+    TestBed.inject(NmDialogService).open(PriceChangeDialogComponent, {
+      title: PRICE_COPY.title,
+      dismissible: false,
+      data: { errandId: 'e-2', errand: checkoutErrand({ id: 'e-2', status: 'IN_PROGRESS' }), request: priceChangeJson({ errandId: 'e-2', id: 'r-2' }) },
+    });
+    await h.detect();
+    (document.querySelector('nm-dialog .pc__approve button') as HTMLButtonElement).click();
+    (await expectRequest(`${API}/errands/e-2/price-change/r-2/approve`)).flush({
+      ...priceChangeJson({ errandId: 'e-2', id: 'r-2', status: 'approved' }),
+      differencePayment: differenceJson({
+        payment: paymentJson({ id: 'pd-2', errandId: 'e-2', paymentFlow: 'merchant_direct', merchantAmount: '5000.00', priceChangeRequestId: 'r-2' }),
+        merchantPayment: directMerchant({ amount: '5000.00', tillNumber: '222222' }),
+        stkStatus: null,
+      }),
+      refundReview: null,
+    });
+    const e2Errand = await expectRequest(`${API}/errands/e-2`);
+    await h.detect();
+    expect(text(page(h))).not.toContain('111111'); // cleared while e-2 loads
+    expect(page(h).querySelector('nm-skeleton-card')).not.toBeNull();
+    e2Errand.flush(checkoutErrand({ id: 'e-2', status: 'IN_PROGRESS' }));
+    await flushGet('/payments/e-2', summaryJson({ ...PAID, merchantPayment: directMerchant({ tillNumber: '222222', merchantName: 'Shop Two', amount: '45000.00' }) }));
+    await routedTo(h, '/app/customer/tasks/e-2/item-payment');
+    expect(text(page(h).querySelector('.mp__till .nm-copy-row__value'))).toBe('222222');
+    expect(text(page(h).querySelector('.mp__amount .nm-copy-row__value'))).toBe('KSh 45,000');
+    expect(text(page(h).querySelector('.mp__increase'))).toBe('Includes the KSh 5,000 increase you approved.');
+    expect(text(page(h))).not.toMatch(/111111|Shop One/);
+    expect(rig.realtime.leaveErrand).toHaveBeenCalledWith('e-1');
+    expect(rig.realtime.joinErrand).toHaveBeenLastCalledWith('e-2');
+    rig.realtime.merchantDetailsUpdates$.next({ errandId: 'e-1', merchantName: 'Shop One', tillNumber: '111111', paybillNumber: null, accountReference: null });
+    rig.realtime.status('e-1', 'CANCELLED');
+    await h.detect();
+    expect(requests('/errands/e-1')).toHaveLength(0);
+    expect(requests('/payments/e-1')).toHaveLength(0);
+    expect(requests('/errands/e-2')).toHaveLength(0);
+
+    // Back to e-1 (the router's history navigation reuses the page the same way).
+    void h.router.navigateByUrl(URL);
+    await answerLoad(h, { summary: e1 });
+    await routedTo(h, URL);
+    expect(rig.realtime.joinErrand).toHaveBeenLastCalledWith('e-1');
+    expect(text(page(h).querySelector('.mp__till .nm-copy-row__value'))).toBe('111111');
+    expect(page(h).querySelector('.mp__increase')).toBeNull();
+    expect(text(page(h))).not.toContain('222222');
   });
 });

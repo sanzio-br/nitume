@@ -113,9 +113,13 @@ export class MerchantPaymentPage {
   private readonly title = inject(Title);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
-  protected readonly id: string = inject(ActivatedRoute).snapshot.paramMap.get('errandId') ?? '';
+  private readonly activatedRoute = inject(ActivatedRoute);
+  /** The current errand; follows `paramMap` (A§1 "Same route, another errand"). */
+  protected id = '';
   protected readonly copy = MERCHANT_COPY;
-  protected readonly trackLink = customerLinks.track(this.id);
+  protected get trackLink(): string {
+    return customerLinks.track(this.id);
+  }
   protected readonly supportUrl = safeExternalUrl(inject(APP_LINKS).customer.supportUrl);
 
   protected readonly variant = signal<Variant>({ kind: 'loading' });
@@ -124,9 +128,10 @@ export class MerchantPaymentPage {
   protected readonly stillPending = signal(false);
 
   /** Navigation state from the price-change dialog (read once). */
-  private readonly approvedIncrease: string | null;
-  private readonly stateRequestId: string | null;
-  private readonly openedAt = this.now();
+  /** Navigation state from the price-change dialog, read again for every errand. */
+  private approvedIncrease: string | null = null;
+  private stateRequestId: string | null = null;
+  private openedAt = this.now();
   private pollHandle: unknown = null;
   private dropped = false;
   private destroyed = false;
@@ -227,10 +232,6 @@ export class MerchantPaymentPage {
   });
 
   constructor() {
-    const state = this.router.currentNavigation()?.extras.state as { approvedIncrease?: unknown; priceChangeRequestId?: unknown } | undefined;
-    this.approvedIncrease = typeof state?.approvedIncrease === 'string' && positive(state.approvedIncrease) ? state.approvedIncrease : null;
-    this.stateRequestId = typeof state?.priceChangeRequestId === 'string' ? state.priceChangeRequestId : null;
-
     const destroyRef = inject(DestroyRef);
     const mine = <T extends { errandId: string }>(e: T) => e.errandId === this.id;
     // Socket payloads only trigger a re-read; nothing in them is rendered (#28).
@@ -249,10 +250,34 @@ export class MerchantPaymentPage {
     destroyRef.onDestroy(() => {
       this.destroyed = true;
       this.clearPoll();
-      this.realtime.leaveErrand(this.id);
+      if (this.id) this.realtime.leaveErrand(this.id);
     });
-    void this.realtime.joinErrand(this.id);
+    // A§1: the page is reused when only `:errandId` changes; start over for each id.
+    this.activatedRoute.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => this.startFor(params.get('errandId') ?? ''));
+  }
+
+  /** Stops the previous errand's polls, leaves its room, clears the view (no old Till on screen), then reads the new one. */
+  private startFor(id: string): void {
+    if (id === this.id) return;
+    if (this.id) this.realtime.leaveErrand(this.id);
+    this.clearPoll();
+    this.id = id;
+    this.variant.set({ kind: 'loading' });
+    this.checking.set(false);
+    this.retrying.set(false);
+    this.stillPending.set(false);
+    this.titled = false;
+    this.openedAt = this.now();
+    const state = this.router.currentNavigation()?.extras.state as { approvedIncrease?: unknown; priceChangeRequestId?: unknown } | undefined;
+    this.approvedIncrease = typeof state?.approvedIncrease === 'string' && positive(state.approvedIncrease) ? state.approvedIncrease : null;
+    this.stateRequestId = typeof state?.priceChangeRequestId === 'string' ? state.priceChangeRequestId : null;
+    void this.realtime.joinErrand(id);
     void this.load();
+  }
+
+  /** True once the page left `id` (another errand or destroyed): late answers are dropped. */
+  private gone(id: string): boolean {
+    return this.destroyed || id !== this.id;
   }
 
   protected retry(): void {
@@ -296,13 +321,14 @@ export class MerchantPaymentPage {
       if (this.checking()) return;
       this.checking.set(true);
     }
+    const id = this.id;
     const first = this.variant().kind === 'loading' || this.variant().kind === 'error';
     try {
-      const [errand, summary] = await Promise.all([this.api.errand(this.id), this.api.payments(this.id)]);
-      if (this.destroyed) return;
+      const [errand, summary] = await Promise.all([this.api.errand(id), this.api.payments(id)]);
+      if (this.gone(id)) return;
       const status = parseErrandStatus(errand?.status);
       if (!status) throw new Error('unknown status');
-      const redirect = checkoutRedirect('item-payment', status, this.id);
+      const redirect = checkoutRedirect('item-payment', status, id);
       if (redirect) {
         void this.router.navigateByUrl(redirect, { replaceUrl: true });
         return;
@@ -310,13 +336,13 @@ export class MerchantPaymentPage {
       this.applySummary(summary);
       if (manual && this.stk() === 'PENDING') this.stillPending.set(true);
     } catch (err) {
-      if (this.destroyed) return;
+      if (this.gone(id)) return;
       // A refresh error keeps the content and retries on the next tick.
       if (first) this.variant.set({ kind: 'error' });
       else if (manual) this.showToast(friendlyError(err));
       this.schedulePoll();
     } finally {
-      if (manual) this.checking.set(false);
+      if (manual && !this.gone(id)) this.checking.set(false);
     }
   }
 
@@ -364,14 +390,15 @@ export class MerchantPaymentPage {
       return;
     }
     if (this.retrying()) return;
+    const id = this.id;
     this.retrying.set(true);
     try {
-      const result = await this.api.retryDifference(this.id, requestId);
-      if (!this.destroyed) this.showDifference(result);
+      const result = await this.api.retryDifference(id, requestId);
+      if (!this.gone(id)) this.showDifference(result);
     } catch (err) {
-      this.showToast(friendlyError(err));
+      if (!this.gone(id)) this.showToast(friendlyError(err));
     } finally {
-      this.retrying.set(false);
+      if (!this.gone(id)) this.retrying.set(false);
     }
   }
 
