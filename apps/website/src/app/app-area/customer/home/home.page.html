@@ -1,0 +1,67 @@
+<div class="home">
+  <nm-top-bar class="home__top" [greeting]="greeting" [title]="firstName()">
+    <nm-notification-bell [href]="links.notifications()" [unread]="unread()" />
+    <nm-avatar [name]="displayName()" size="small" [href]="links.profile()" label="Profile" />
+  </nm-top-bar>
+  @if (!firstName()) {
+    <h1 class="home__hidden-heading">Home</h1>
+  }
+
+  <div class="home__grid">
+    <div class="home__start">
+      <nm-search-entry class="home__search" [href]="links.newTask()" placeholder="What do you need done?" />
+      <nm-section-label [inset]="false">Categories</nm-section-label>
+      <nm-category-grid class="home__categories" mode="link" [linkFor]="newTaskLink" />
+    </div>
+
+    <div class="home__tasks">
+      @switch (state().kind) {
+        @case ('loading') {
+          <div class="home__loading">
+            <nm-skeleton-card class="home__skeleton-card" [height]="140" />
+            <nm-skeleton-card class="home__skeleton-row" [height]="72" />
+            <nm-skeleton-card class="home__skeleton-row" [height]="72" />
+          </div>
+        }
+        @case ('error') {
+          <nm-error-state [message]="errorCopy" (retry)="load()" />
+        }
+        @default {
+          @if (card(); as c) {
+            <section class="home__active">
+              <nm-section-label [inset]="false">In progress</nm-section-label>
+              <nm-active-task-card
+                [category]="c.category"
+                [reference]="c.reference"
+                [title]="c.title"
+                [meta]="c.meta"
+                [actionLabel]="c.actionLabel"
+                [actionHref]="c.actionHref"
+              />
+              @if (more() > 0) {
+                <nm-button class="home__more" variant="link" size="small" [href]="links.track()" (pressed)="follow($event, links.track())"
+                  ><span nmNum>+{{ more() }}</span> more in progress</nm-button
+                >
+              }
+            </section>
+          }
+          @if (recent().length) {
+            <section class="home__recent">
+              <nm-section-label [inset]="false">Recent</nm-section-label>
+              @for (row of recent(); track row.id) {
+                <nm-task-row
+                  class="home__row"
+                  [title]="row.title"
+                  [status]="row.status"
+                  [href]="links.taskDetail(row.id)"
+                  [time]="row.time"
+                  [now]="clock"
+                />
+              }
+            </section>
+          }
+        }
+      }
+    </div>
+  </div>
+</div>

@@ -44,7 +44,12 @@ export const CUSTOMER_ROUTES: Routes = [
     loadComponent: () => import('./shell/app-shell.page').then((m) => m.AppShellPage),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'home' },
-      { path: 'home', title: 'Home · Nitume', data: { role, navKey: 'home', stubLabel: 'Home' }, loadComponent: stub },
+      {
+        path: 'home',
+        title: 'Home · Nitume',
+        data: { role, navKey: 'home' },
+        loadComponent: () => import('./customer/home/home.page').then((m) => m.HomePage),
+      },
       // #7 task wizard (customer-v-new-category §W1): one draft for the three
       // steps; pushed, New task active from 768px (WQ-15, WQ-16).
       {
