@@ -237,6 +237,45 @@ describe('UserStatusSectionComponent (drawer-user-status)', () => {
     f.detectChanges();
   }
 
+  describe('notice timer (re-audit m-1)', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('an info notice followed by a success: the success still closes after 6 s', async () => {
+      const f = await render();
+      // 1. Info notice (409 status_unchanged) and its reload.
+      await act(f, 'Suspend runner');
+      const body = { statusCode: 409, code: 'status_unchanged', status: 'active' };
+      http.expectOne(isPatch).flush(body, httpError(409, body));
+      await settle(f);
+      expect(sectionNotice(f)).toContain('This account is already Active. Nothing was changed.');
+      http.expectOne(isUser()).flush(summary());
+      http.expectOne(isHistory()).flush({ items: [], nextCursor: null });
+      await settle(f);
+      const info = el(f).querySelector('section > app-inline-notice');
+
+      // 2. Success replaces it; from here the clock is fake.
+      await act(f, 'Suspend runner');
+      vi.useFakeTimers();
+      http.expectOne(isPatch).flush({
+        user: { id: USER, role: 'runner', status: 'suspended' },
+        change: item({ id: 'h5' }),
+      });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      f.detectChanges();
+      expect(sectionNotice(f)).toContain('Account suspended. The runner has been signed out.');
+      // A new notice is a new component, not the info one reused.
+      expect(el(f).querySelector('section > app-inline-notice')).not.toBe(info);
+
+      // 3. Auto-close at 6 s.
+      vi.advanceTimersByTime(5999);
+      f.detectChanges();
+      expect(sectionNotice(f)).toContain('Account suspended.');
+      vi.advanceTimersByTime(1);
+      f.detectChanges();
+      expect(sectionNotice(f)).toBeNull();
+    });
+  });
+
   describe('section errors (§7, §13.8)', () => {
     it('403 cannot_change_own_status: closes, danger notice, hides the actions', async () => {
       const f = await render();

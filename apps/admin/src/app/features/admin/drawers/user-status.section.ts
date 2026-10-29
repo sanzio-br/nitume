@@ -64,7 +64,8 @@ export const HISTORY_PAGE = 20;
   template: `
     <section class="drawer-section">
       <div class="drawer-label" tabindex="-1" #label>Account</div>
-      @if (notice(); as n) {
+      <!-- Keyed by id: each new notice re-mounts, so its 6 s timer starts afresh. -->
+      @for (n of notices(); track n.id) {
         <app-inline-notice
           [tone]="n.tone"
           [dismissible]="true"
@@ -233,7 +234,13 @@ export class UserStatusSectionComponent implements OnInit, OnDestroy {
   protected readonly historyError = signal<string | null>(null);
   /** Cursor of the page that failed (null = page 1), for `Try again`. */
   private failedCursor: string | null = null;
-  protected readonly notice = signal<{ tone: NoticeTone; text: string } | null>(null);
+  protected readonly notice = signal<{ id: number; tone: NoticeTone; text: string } | null>(null);
+  /** The current notice as a one-item list for the keyed `@for`. */
+  protected readonly notices = computed(() => {
+    const n = this.notice();
+    return n ? [n] : [];
+  });
+  private noticeSeq = 0;
   readonly dialogAction = signal<AccountAction | null>(null);
   /** Set by a 403/404 from the PATCH (spec §7). */
   private readonly failureBlock = signal<'self' | 'admin' | 'missing' | null>(null);
@@ -377,14 +384,14 @@ export class UserStatusSectionComponent implements OnInit, OnDestroy {
     const u = this.user();
     if (u) this.user.set({ ...u, status: res.user.status });
     this.items.set([res.change, ...this.items()]);
-    this.notice.set({ tone: 'success', text: actionCopy(action, this.audience()).success });
+    this.showNotice('success', actionCopy(action, this.audience()).success);
     afterNextRender(() => this.status()?.nativeElement.focus(), { injector: this.injector });
   }
 
   /** Section-level failures (spec §7): close the dialog, show the notice. */
   protected onFailed(f: StatusChangeFailure & { kind: 'section' }): void {
     this.dialogAction.set(null);
-    this.notice.set({ tone: f.tone, text: f.text });
+    this.showNotice(f.tone, f.text);
     if (f.block === 'missing') this.markMissing(false);
     else if (f.block) this.failureBlock.set(f.block);
     if (f.reload) {
@@ -394,9 +401,14 @@ export class UserStatusSectionComponent implements OnInit, OnDestroy {
     afterNextRender(() => this.label()?.nativeElement.focus(), { injector: this.injector });
   }
 
+  /** A new notice always gets a new id, so it re-mounts (fresh auto-close timer). */
+  private showNotice(tone: NoticeTone, text: string): void {
+    this.notice.set({ id: ++this.noticeSeq, tone, text });
+  }
+
   private markMissing(notice = true): void {
     this.failureBlock.set('missing');
-    if (notice) this.notice.set({ tone: 'danger', text: NOT_FOUND_COPY });
+    if (notice) this.showNotice('danger', NOT_FOUND_COPY);
     this.missingAccount.emit();
   }
 
