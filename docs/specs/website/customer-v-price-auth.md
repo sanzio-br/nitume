@@ -1,8 +1,15 @@
 # customer `v-price-auth` (web): price-change authorisation dialog
 
 - Issue #8. Not a route: a blocking dialog (K§4.8, `dismissible: false`) opened by the customer shell (S, "App-level behaviour") over whatever customer page is open. Shared #8 rules: `customer-x-awaiting-quote.md` §A (A§n). Kit `ui-kit.md` (K§n).
-- Sources: mobile spec `docs/specs/customer/v-price-auth.md` (matches-design); Flutter `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` and the listener in `screens/shell/home_shell.dart` (`_onLivePrice`, `_checkPendingPriceChange`); mockup `docs/design/nitume_customer_app.html` lines 423–441 (`#v-price-auth`); OA-8, OA-13; rows 23, 37, 38, 40, 44, 48, 49, 54, 55, 61, 67, 82, 86; WQ-3 (dialogs 335px); API `apps/api/src/matching/price-change.{controller,service}.ts` on `origin/main` @ `28a0c42`.
+- Sources:
+  - mobile spec `docs/specs/customer/v-price-auth.md` (matches-design);
+  - Flutter `apps/customer_app/lib/src/screens/checkout/price_change_dialog.dart` and the listener in `screens/shell/home_shell.dart` (`_onLivePrice`, `_checkPendingPriceChange`);
+  - mockup `docs/design/nitume_customer_app.html` lines 423–441 (`#v-price-auth`);
+  - OA-8, OA-13; rows 23, 37, 38, 40, 44, 48, 49, 54, 55, 61, 67, 82, 86; WQ-3 (dialogs 335px); WQ-27;
+  - API `apps/api/src/matching/price-change.{controller,service}.ts` on `origin/main` @ `380be22`.
 - Implementation: none. Status: **missing**.
+- Files (A§8): `app-area/customer/checkout/price-change-dialog.component.{ts,html,scss}` and `price-change.watcher.ts`.
+- **Updated 2026-10-29**: aligned with #7 (`app-area/customer/`, `CustomerErrandsApi.list()`, `apiErrorOf`, `customerLinks.itemPayment`); WQ-27 cited; since #28 the approve decision's `merchantPayment` numbers are null for a customer until the fees are paid (never rendered here in any case).
 
 ## Purpose
 The runner found the item priced differently from the agreed item amount. The customer approves the new amount or rejects it, which cancels the task (OA-8). Increase: the difference is paid through the original item route (row 44). Decrease: the item amount goes down; on `send_to_runner` the difference goes to an admin refund review; on `merchant_direct` the customer simply pays the merchant less (rows 48, 86).
@@ -12,14 +19,14 @@ The runner found the item priced differently from the agreed item amount. The cu
 - Web adaptation: the dialog is attached to the application (not to a route), so in-app navigation and browser Back behind it do not close it; only an answer, `OK` or `Close` closes it. The page behind is `inert`.
 
 ## Entry / exit
-- Opened by `CustomerPriceChangeWatcher` (new, provided by the customer shell, built by #8; port of `home_shell.dart`):
+- Opened by `CustomerPriceChangeWatcher` (NEW #8, `price-change.watcher.ts`; port of `home_shell.dart`). It is provided on the customer shell route in `customer.routes.ts` (the `path: ''` route with `AppShellPage`): `providers: [CustomerPriceChangeWatcher, provideEnvironmentInitializer(() => inject(CustomerPriceChangeWatcher).start())]`. So it runs only for signed-in customers inside the shell, never on marketing pages, never in `app.config.ts`, and never for runners (the runner route tree and `AppShellPage` are unchanged). Sign-out is a full reload (F§4.5), which ends it. The visibility listener is added through `DOCUMENT.addEventListener('visibilitychange', …)` and removed on `DestroyRef`. Behaviour:
   - Live: `RealtimeService.priceChangeRequests$` (`price_change:requested`, row 23) for an errand room the tab has joined → `GET /errands/:id`; if IN_PROGRESS → `GET …/price-change?status=requested`; pending → open the dialog with that request.
-  - "Resume" (web adaptation of the app's resume check): on shell start (first render after sign-in or a reload) and on every `document.visibilitychange` to `visible` → `GET /errands?status=IN_PROGRESS` (the app's `errands.list(statuses: {inProgress})`), and for each errand `GET …/price-change?status=requested`; open the dialog for the first pending one.
+  - "Resume" (web adaptation of the app's resume check): on shell start (first render after sign-in or a reload) and on every `document.visibilitychange` to `visible` → `CustomerErrandsApi.list(['IN_PROGRESS'], 20)` (#7; the app's `errands.list(statuses: {inProgress})`), and for each errand `GET …/price-change?status=requested`; open the dialog for the first pending one.
   - Single-flight: never two price-change dialogs at once; a check while one runs or while the dialog is open is skipped. Failures are silent (Track also shows the request).
 - Also opened from Track's `Price change` button (#9), the notification row (#11) and a push deep link (Track for the errand, then the dialog), each with the errand (and the request when known).
 - Note on rooms: the server sends `price_change:requested` only to `errand:{id}` rooms. The tab receives it only for errands it has joined (Track, Task detail, the #8 pages). The resume check covers every other case. This is the same coverage as the app (its listener also hears only joined rooms).
 - Exits:
-  - Approve success → close; toast `Price change approved.` or, when the decision has `refundReview`, `Price change approved. We'll review a refund of the difference.`; then, when `decision.differencePayment?.merchantPayment` is not null, navigate to `/app/customer/tasks/:errandId/item-payment` with navigation state `{ approvedIncrease: differencePayment.payment.merchantAmount, priceChangeRequestId: decision.id }` (variant A for `merchant_direct`, variant B STK for `send_to_runner`).
+  - Approve success → close; toast `Price change approved.` or, when the decision has `refundReview`, `Price change approved. We'll review a refund of the difference.`; then, when `decision.differencePayment?.merchantPayment` is not null, navigate to `customerLinks.itemPayment(errandId)` with navigation state `{ approvedIncrease: differencePayment.payment.merchantAmount, priceChangeRequestId: decision.id }` (variant A for `merchant_direct`, variant B STK for `send_to_runner`).
   - Reject → second confirm → success → close both; the errand is CANCELLED (the page behind refreshes through `errand:status_changed`; Track shows the cancelled card).
   - `OK` / `Close` (answered / load failure) → close; the caller refreshes.
   - No `Not now` (the runner is waiting).
@@ -64,7 +71,7 @@ IN_PROGRESS only (row 49). Approve keeps the state. Reject → CANCELLED through
 | Rejecting | Confirm first; then reject `loading`, both disabled; `POST …/reject` |
 | Already answered | Request no longer `requested`, errand not IN_PROGRESS, `price_change_already_decided`, `price_change_not_in_progress`, `price_change_not_allowed`, or any other 409 except `price_change_reject_not_cancellable` (row 55: an admin rejection also lands here) |
 | Error | `price_change_reject_not_cancellable`, network, 5xx → inline error, actions enabled again |
-| Errand cancelled behind it | `errand:status_changed` to CANCELLED for this errand while open → switch to the already-answered state |
+| Errand cancelled behind it | `errand:status_changed` to CANCELLED for this errand while open → switch to the already-answered state. The dialog does not join a room itself; it hears the event when the page behind holds the room (Track, Task detail, the #8 pages). Otherwise an answer returns `price_change_already_decided` / `price_change_not_in_progress` and lands in the same state |
 
 ## Numeric fields (Fira Code)
 Original and new price; the difference line; the amount inside the approve button.
@@ -74,16 +81,16 @@ Original and new price; the difference line; the amount inside the approve butto
 - Approve: `POST /errands/:errandId/price-change/:requestId/approve { merchantRoute? }` → `PriceChangeDecision` (`differencePayment`, `refundReview`).
 - Reject: `POST /errands/:errandId/price-change/:requestId/reject` → `PriceChangeDecision` (errand CANCELLED in the same transaction; refund review for a paid task).
 - Watcher: `GET /errands?status=IN_PROGRESS`, `GET /errands/:id`; socket `price_change:requested` (`{ errandId, requestId, fromPrice, toPrice, reason, createdAt }`), `errand:status_changed`. A§6 error table.
-- Money: item amount only, never fees (OA-8, A§4). No wallet or escrow words.
+- Money: item amount only, never fees (OA-8, A§4, WQ-27). The difference is `subtractKes(toPrice, fromPrice)`, and increase vs decrease is `compareKes` (A§4; never floating point). No wallet or escrow words.
 - API note (not blocking): the API still accepts new requests from QUOTED to IN_PROGRESS for admins (`PRICE_CHANGEABLE`); runners are limited to IN_PROGRESS (row 49). The web shows the dialog only for IN_PROGRESS errands.
 
 ## Accessibility and responsive
 - `role="dialog"`, `aria-modal`, labelled by the title, described by the body; focus to the title on open, trapped, returned to the opener on close (K§4.8). The stacked confirm takes focus and returns it to `Reject & cancel task` on `Go back`.
 - Actions full width, ≥ 48px.
-- Amber text (`#B8860B` on white ≈ 3.4:1) is below AA for the 13/600 difference line; OA-13 allows amber price text (mobile spec). Each amount also has the plain accessible name above.
+- Amber text (`--nitume-amber` on white ≈ 3.4:1) is below AA for the 13/600 difference line; OA-13 allows amber price text (mobile spec). Each amount also has the plain accessible name above.
 - 335px max width at every viewport; at 360px the card is 320px wide; the route rows wrap their subtitles.
 
-## Required tests (Vitest)
+## Required tests (Vitest; cited as PA Tn)
 1. Increase copy exactly as the mockup with runner short name; missing short name → `Your runner`; reason shown in quotes when present.
 2. Decrease copy, `− KSh 5,000 less` with U+2212, `Approve new price`.
 3. Compare values in `nmNum` (blue for Original, amber token for New price and the difference line); no currency prefix on the two values.
@@ -97,7 +104,8 @@ Original and new price; the difference line; the amount inside the approve butto
 11. Load failure → copy, `Try again` reloads, `Close` closes.
 12. Watcher: a fake `price_change:requested` for an IN_PROGRESS errand opens one dialog; a second event while open opens nothing; an event for a non-IN_PROGRESS errand opens nothing.
 13. Watcher resume: on shell start and on `visibilitychange` → visible it lists IN_PROGRESS errands and opens the first pending request; listing failure is silent.
-14. Amounts are item amounts only: no fee text appears in the dialog.
+14. **WQ-27**: amounts are item amounts only: no fee text and no fee figure appear in the dialog; the difference comes from `subtractKes` (`'45000.00'` − `'40000.00'` → `+ KSh 5,000 additional`; `'40000.50'` − `'40000.00'` → `+ KSh 0.50 additional`).
+15. Watcher placement: the watcher is provided only on the customer shell route; a runner shell and a marketing page start no watcher; listing failures are silent (no toast).
 
 ## Current vs design
-Not built. The Flutter dialog is the reference (`matches-design`). Web difference: "resume" = shell start + tab becoming visible (the app checks on app resume).
+Not built. The Flutter dialog is the reference (`matches-design`). Web differences: "resume" = shell start + tab becoming visible (the app checks on app resume); the dialog survives in-app navigation behind it.
