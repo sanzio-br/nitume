@@ -11,6 +11,7 @@ import { SessionStore } from '../../../core/auth/session.store';
 import { ErrandStatusChanged, RealtimeConnectionState } from '../../../core/realtime/realtime.events';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import { formatDayTime } from '../../../shared/format/formatters';
+import { CheckoutIntentStore } from '../checkout/checkout-intent.store';
 import { CUSTOMER_NOW } from '../clock';
 import { ErrandView } from '../data/errands.api';
 import { HOME_POLL_MS } from './home.page';
@@ -397,5 +398,29 @@ describe('customer v-home (#7)', () => {
     const all = text(page(h));
     expect(all).not.toMatch(/wallet|escrow|\bKES\b/i);
     expect(all).not.toMatch(/buy_for_me|pickup_delivery|inspection|representation|queue_admin|business/);
+  });
+  it('A.T8 (#8). Pay now → on an ACCEPTED card: a plain left click sets the checkout intent before navigating; a Ctrl/Meta click sets nothing; other states set nothing', async () => {
+    const h = await openHome({ active: [errand({ id: 'e-7', status: 'ACCEPTED' })] });
+    const intents = TestBed.inject(CheckoutIntentStore);
+    const order: string[] = [];
+    const set = vi.spyOn(intents, 'set').mockImplementation((id) => void order.push(`set ${id}`));
+    vi.spyOn(h.router, 'navigateByUrl').mockImplementation(async (url) => {
+      order.push(`navigate ${String(url)}`);
+      return true;
+    });
+    const link = card(h)?.querySelector('a') as HTMLAnchorElement;
+    for (const init of [{ ctrlKey: true }, { metaKey: true }]) {
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+    }
+    expect(set).not.toHaveBeenCalled();
+    link.click();
+    expect(order).toEqual(['set e-7', 'navigate /app/customer/tasks/e-7/payment']);
+    expect(set).toHaveBeenCalledWith('e-7', {});
+
+    const quoted = await openHome({ active: [errand({ id: 'e-8', status: 'QUOTED' })] });
+    const set2 = vi.spyOn(TestBed.inject(CheckoutIntentStore), 'set');
+    vi.spyOn(quoted.router, 'navigateByUrl').mockResolvedValue(true);
+    (card(quoted)?.querySelector('a') as HTMLAnchorElement).click();
+    expect(set2).not.toHaveBeenCalled();
   });
 });
