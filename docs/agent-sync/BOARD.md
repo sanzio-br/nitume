@@ -106,7 +106,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/refresh-suspended (issue #21) | merged (PR #22, c4b90a9; merge commit, not squash) | api-contract | fix/api-refresh-suspended (stacked on #20; worktree ../nitume-fix-api-refresh-suspended) | owner chose squash on merge | unit 929/929, e2e 178/178, lint/build clean at tip; 3815dc4, cba0781, 743fcd5 fail tsc alone |
 | api/suspended-access (issue #23) | merged (PR #25, 28a0c42) | — | feat/api-suspended-access (stacked on #22 → #20; worktree ../nitume-feat-api-suspended-access) | none | 8eb934d, 2e70401, 5b49108, e095f15, e187481; unit 960/960, e2e 187/187; each commit compiles |
 | admin/user-status-actions (issue #24) | merged (PR #32, be0229f) | api-contract | feat/api-user-status-audit (stacked on feat/api-suspended-access; worktree ../nitume-feat-api-user-status-audit) | #23 | schema WQ-23 approved; then design-auditor admin drawer spec, web-parity build |
-| website/customer/create-task (issue #7) | built (303c0b6…dd95c1a; 612 tests, 354.17 kB) → re-audit + WQ-2 EAT deadline update | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
+| website/customer/create-task (issue #7) | audited-fail (1 of 2; 2a80add): WQ-2 EAT deadline, Places toPlace() session, attribution clear space → fixing | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
 | website/customer/checkout (issue #8) | specced (672745a; WQ-27/28 answered) | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
 | api/merchant-details-privacy (issue #28) | merged (PR #29, 5f0ab08) | api-contract | fix/api-merchant-details-privacy (off main; worktree ../nitume-fix-api-merchant-details-privacy) | none | found while speccing #8 |
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
@@ -117,10 +117,13 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/customer/tracking (issue #9) | specced (4d1f5fa; WQ-43/44 answered); build after #7 + #8 | design-auditor | feat/website-customer-tracking (off main) | — | specs only |
 | website/runner/jobs (issue #14) | specced (75578f3; Q14-1..10 answered); build after #7 + #13/#17 shared pieces | design-auditor | feat/website-runner-jobs (off main) | — | Q-W2 browser location; web-runner flag check |
 | api/history-privacy (issue #35) | awaiting-owner (PR #37, squash; reviewer READY: unit 1104, e2e 246) | api-contract | fix/api-history-privacy (off main) | — | WQ-43, found speccing #9 |
-| api+admin/web-runner-presence (issue #36) | building (API part) | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
-| website/runner/active (issue #15) | spec in progress | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
-| website/customer/evidence (issue #10) | spec in progress | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
+| api+admin/web-runner-presence (issue #36) | API built (126ae24…c830764; unit 1137, e2e 252) → adding the runner-room event | api-contract | feat/api-web-runner-presence (off main) | — | Q14-5/6/7; admin UI after the API |
+| website/runner/active (issue #15) | specced (2e17a0a; Q15-1..6 answered) | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
+| website/customer/evidence (issue #10) | specced (6e00e0f; WQ-10-1..4 answered) | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
 | api/dispute-party-ids (issue #38) | unaudited | — | — | — | found during #35 |
+| api/evidence-upload-guard (issue #39) | building | api-contract | fix/api-evidence-upload-guard (off main) | — | SECURITY, found speccing #10 |
+| api/evidence-retention (issue #40) | unaudited | — | — | — | 1 year after close; dispute hold |
+| runner-app/active-fixes (issue #41) | unaudited | — | — | — | rows 251/258, destination, Fira Code (found speccing #15) |
 | website/customer + runner parity (issues #11, #12, #16, #18) | unaudited | — | — | #5, #6 | 14 feature-group issues on GitHub (owner request 2026-10-28); one PR per issue with `Closes #N` |
 | admin/p-runners-verification-documents (verification inbox) | awaiting-owner (row 278 table + drawer reviewed READY, matches-design) | web-parity + api-contract (A-9) | fix/admin-verification-inbox (stacked on docs/admin-verification-audit; worktree ../nitume-fix-admin-verification) + fix/api-verification-review (worktree ../nitume-fix-api-verification-review) | AQ-35..37 (rows 260–262); api A-1..A-7 | Audit 2026-10-21 FAIL (admin-gap-report "Audit 2026-10-21: verification inbox", findings 34–49, supersede 18, 19, 20, 22, 23, 28): f642187, 73fc96d, d5ef069. Owner-seen symptoms: Approve/Reject 404 (client PATCH /runners/verifications/{id}; API route is /runners/:runnerId/verifications/:verificationId); NaN date (reads submittedAt, API sends createdAt); no Front/Back (side ignored); no View image (reads documentKey, API sends hasDocument); 5 items counts approved phone check (AQ-35); raw type labels; false "runner level upgrades" copy (AQ-36); initials from profile UUID (needs api A-5). Blockers 34, 35, 36, 37, 45, 48. Do now (no owner input): 34, 35, 36, 39, 41, 42, 43, 44, 45, 47, 48, 49; after AQ-35 + A-5: 37, 38, 40, 46 |
 
@@ -607,6 +610,10 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | WQ-47 | design-auditor (#14, Q14-6) | Closed or hidden tab while online | ANSWERED: auto-offline idle web runners after 5 min (busy: flag only), issue #36 |
 | WQ-48 | design-auditor (#14, Q14-7, Q14-9, Q14-10) | Revoked location; leave prompt; countdown announcement | ANSWERED: stay online plus banner and flag; no leave prompt; announce at 1 minute |
 | WQ-49 | api-contract (#35) | Keep actorType; dispute event actorId | ANSWERED 2026-10-29: keep actorType; dispute ids follow-up (issue #38) |
+| WQ-50 | design-auditor (#15, Q15-1..6) | Job-start notice, arrived caption, no offline queue, receipt advisory, Fira Code subtitles, location-off notice | ANSWERED 2026-10-29: copy approved; no queue; receipt advisory (app fix #41); Fira Code numbers only |
+| WQ-51 | design-auditor (#10, WQ-10-1..4) | Video, report photos, customer evidence uploads, retention | ANSWERED: match the app (no playback); text only; restrict uploads (#39); keep 1 year after close (#40) |
+| WQ-52 | api-contract (#36 Q1..4) | Blocked vs closed tab; open offer; events | ANSWERED: auto-offline applies; flag only until the offer ends; admin event + runner-room event |
+| WQ-53 | design-auditor (#7, Q7-5) | EAT deadline label | ANSWERED: "Due today, 23:59 EAT." / "Due tomorrow, 23:59 EAT." |
 
 ## Session log
 
@@ -886,3 +893,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | Dispatched design-auditor for the #15 and #10 web specs. |
 | 2026-10-29 | api-contract #35 built; reviewer READY (full e2e 246/246) → PR #37 (squash: intermediate commits fail one e2e). Issue #38 opened. #7 builder still running (waiting on its own background work). |
 | 2026-10-29 | web-parity HANDOFF #7: G7-1…40 built, 73 files / 612 tests / 0 failures, initial 354.17 kB. 17 intermediate commits fail on their own (fixed from 52256af); the autosquash was blocked by permissions, so squash-merge. WQ-2 deadline EAT rule postdates the gap report: design-auditor updates the spec/gap and re-audits. |
+| 2026-10-29 | design-auditor #7 re-audit 1 FAIL (2a80add, b98ca6e), FAIL 1 of 2, sent back to web-parity. #15 (2e17a0a) and #10 (6e00e0f) specced. #36 API built; owner WQ-52; adding the runner-room event. Issues #39 (evidence upload guard, api-contract building), #40 (retention 1 yr), #41 (runner app fixes) opened. |
