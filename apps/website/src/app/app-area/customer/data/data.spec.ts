@@ -6,6 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import { CustomerAddressesApi } from './addresses.api';
 import { CreateErrandBody, CustomerErrandsApi, apiErrorOf } from './errands.api';
 import { NotificationsCountApi } from './notifications.api';
+import { sendsCredentials } from '../../../../testing/customer';
 
 const API = 'http://localhost:3000/api/v1';
 
@@ -29,12 +30,12 @@ const BODY: CreateErrandBody = {
 describe('customer data services (NC§W9.15)', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('NC§W9.15 list. GET /errands with comma-separated statuses and the limit, no withCredentials', async () => {
+  it('NC§W9.15 list. GET /errands with comma-separated statuses and the limit, no credentials flag', async () => {
     const { errands, http } = setup();
     const pending = errands.list(['REQUESTED', 'QUOTED', 'ACCEPTED'], 5);
     const req = http.expectOne(`${API}/errands?status=REQUESTED,QUOTED,ACCEPTED&limit=5`);
     expect(req.request.method).toBe('GET');
-    expect(req.request.withCredentials).toBe(false);
+    expect(sendsCredentials(req)).toBe(false);
     req.flush({ items: [], nextCursor: null });
     await expect(pending).resolves.toEqual({ items: [], nextCursor: null });
   });
@@ -44,7 +45,7 @@ describe('customer data services (NC§W9.15)', () => {
     const pending = errands.defaults();
     const req = http.expectOne(`${API}/errands/defaults`);
     expect(req.request.method).toBe('GET');
-    expect(req.request.withCredentials).toBe(false);
+    expect(sendsCredentials(req)).toBe(false);
     req.flush({ defaultDeadlineHours: 24, defaultDeadlineStartsAt: 'payment_confirmed' });
     await expect(pending).resolves.toEqual({ defaultDeadlineHours: 24, defaultDeadlineStartsAt: 'payment_confirmed' });
   });
@@ -55,7 +56,7 @@ describe('customer data services (NC§W9.15)', () => {
     const create = http.expectOne(`${API}/errands`);
     expect(create.request.method).toBe('POST');
     expect(create.request.body).toEqual(BODY);
-    expect(create.request.withCredentials).toBe(false);
+    expect(sendsCredentials(create)).toBe(false);
     create.flush({ errand: { id: 'e/1' } });
 
     void errands.submit('e/1');
@@ -69,7 +70,7 @@ describe('customer data services (NC§W9.15)', () => {
     expect(cancel.request.method).toBe('PATCH');
     expect(cancel.request.body).toEqual({ to: 'CANCELLED' });
     expect(cancel.request.headers.has('Idempotency-Key')).toBe(false);
-    expect(cancel.request.withCredentials).toBe(false);
+    expect(sendsCredentials(cancel)).toBe(false);
     cancel.flush({ errand: { id: 'e-2' } });
   });
 
@@ -77,12 +78,12 @@ describe('customer data services (NC§W9.15)', () => {
     const { addresses, notifications, http } = setup();
     const list = addresses.list();
     const a = http.expectOne(`${API}/customers/me/addresses`);
-    expect(a.request.withCredentials).toBe(false);
+    expect(sendsCredentials(a)).toBe(false);
     a.flush([{ id: 'a1', label: 'Home', addressText: 'Kilimani', lat: -1.29, lon: 36.78 }]);
     await expect(list).resolves.toHaveLength(1);
     const unread = notifications.unread();
     const n = http.expectOne(`${API}/notifications/unread-count`);
-    expect(n.request.withCredentials).toBe(false);
+    expect(sendsCredentials(n)).toBe(false);
     n.flush({ unread: 3 });
     await expect(unread).resolves.toBe(3);
   });

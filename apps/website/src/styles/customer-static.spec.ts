@@ -245,6 +245,14 @@ describe('issue #7 static checks (NC§W9.17)', () => {
     expect(out).toEqual([]);
   });
 
+  it('NC§W9.9 memory only. no localStorage or sessionStorage in the customer area (G7-3)', () => {
+    const hits = walk(resolve(appDir, 'app-area/customer'))
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.spec.ts'))
+      .filter((f) => /localStorage|sessionStorage/.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(appDir, f));
+    expect(hits).toEqual([]);
+  });
+
   it('G7-13. no type style and no colour token added to _tokens.scss (the #6 map: 35 styles, 16 colours)', () => {
     const tokens = readFileSync(resolve(srcDir, 'styles/_tokens.scss'), 'utf8');
     const styles = tokens.slice(tokens.indexOf('$nm-type-styles: ('), tokens.indexOf(');', tokens.indexOf('$nm-type-styles: (')));

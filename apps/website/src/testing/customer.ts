@@ -58,6 +58,11 @@ export function errand(overrides: Partial<ErrandView> & { id: string }): ErrandV
   };
 }
 
+/** The request's credentials flag (only `/auth/web/*` may set it, F§4.3). */
+export function sendsCredentials(req: { request: { withCredentials: boolean } }): boolean {
+  return req.request.withCredentials;
+}
+
 /** Removes overlays left in the body by a test. */
 export function clearOverlays(): void {
   document.body.querySelectorAll('nm-dialog, nm-panel').forEach((el) => el.remove());

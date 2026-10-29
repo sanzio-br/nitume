@@ -1,7 +1,7 @@
 // CustomerErrandsApi (customer-v-new-category §W5): the errand calls of the
 // customer Home and the task wizard. HttpClient only: the #6 lazy
 // interceptor adds the Bearer, refreshes and handles `account_suspended`.
-// No `withCredentials` (only `/auth/web/*` sends credentials, F§4.3).
+// No credentials flag (only `/auth/web/*` sends cookies, F§4.3).
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';

@@ -1,6 +1,5 @@
-// NC§W9.4, NC§W9.5, NC§W9.6, NC§W9.9 and ND T17: TaskDraftStore.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+// NC§W9.4, NC§W9.5, NC§W9.6, NC§W9.9 and ND T17: TaskDraftStore (the
+// memory-only scan of NC§W9.9 is in src/styles/customer-static.spec.ts).
 import { DraftPlace, TaskDraftStore } from './task-draft.store';
 
 const place = (name: string, placeId: string | null = `pid-${name}`): DraftPlace => ({
@@ -114,21 +113,11 @@ describe('TaskDraftStore', () => {
     expect(s.submitted).toBe(false);
   });
 
-  it('NC§W9.9 memory only. no localStorage or sessionStorage in the customer area', () => {
-    const dir = resolve(process.cwd(), 'src/app/app-area/customer');
-    const walk = (d: string): string[] =>
-      readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
-    const hits = walk(dir)
-      .filter((f) => f.endsWith('.ts') && !f.endsWith('.spec.ts'))
-      .filter((f) => /localStorage|sessionStorage/.test(readFileSync(f, 'utf8')));
-    expect(hits).toEqual([]);
-  });
-
   describe('ND T17 toRequest (TZ stubbed)', () => {
     let tz: string | undefined;
     beforeEach(() => {
       tz = process.env['TZ'];
-      process.env['TZ'] = 'Africa/Nairobi';
+      process.env['TZ'] = 'Etc/GMT-3'; // UTC+3, the Kenyan offset
     });
     afterEach(() => {
       if (tz === undefined) delete process.env['TZ'];
