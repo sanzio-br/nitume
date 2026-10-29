@@ -55,14 +55,18 @@ export function accountActions(
   }
 }
 
-/** Why the section shows no buttons for this account, before any request. */
+/**
+ * Why the section shows no buttons for this account, before any request:
+ * the signed-in admin's own account (known from the token, even before U-1
+ * loads) or an admin account.
+ */
 export function blockedReason(
-  user: Pick<AdminUserSummary, 'id' | 'role'> | null,
+  userId: string,
+  role: AdminUserSummary['role'] | null | undefined,
   meId: string | null,
 ): 'self' | 'admin' | null {
-  if (!user) return null;
-  if (meId && user.id === meId) return 'self';
-  if (user.role === 'admin') return 'admin';
+  if (meId && userId === meId) return 'self';
+  if (role === 'admin') return 'admin';
   return null;
 }
 
