@@ -304,6 +304,16 @@ export function formatDurationMin(seconds: number): string {
 
 const KENYAN_PHONE = /^(?:\+?254|0)([17]\d{8})$/;
 
+/**
+ * Port of `KenyanPhone.normalize` (auth-foundation §7.1): spaces and
+ * hyphens stripped, then `+254` / `254` / `0` + `7XXXXXXXX` / `1XXXXXXXX`.
+ * Returns `+2547…` / `+2541…`, or `null` when it is not a Kenyan mobile.
+ */
+export function normalizeKenyanPhone(input: string): string | null {
+  const m = KENYAN_PHONE.exec(input.trim().replace(/[\s-]/g, ''));
+  return m ? `+254${m[1]}` : null;
+}
+
 /** `+254 712 345 678`; an unparseable number is returned unchanged. */
 export function formatPhoneIntl(phone: string): string {
   const m = KENYAN_PHONE.exec(phone.trim());

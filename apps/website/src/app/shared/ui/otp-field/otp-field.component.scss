@@ -1,0 +1,79 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-otp {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+
+.nm-otp__row {
+  position: relative;
+  display: flex;
+  gap: 8px;
+}
+
+.nm-otp__box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: none;
+  width: 44px;
+  height: 52px;
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-s);
+  background-color: var(--nitume-white);
+}
+
+.nm-otp__box--filled {
+  border-color: var(--nitume-green);
+}
+
+.nm-otp__box--error {
+  border-color: var(--nitume-red);
+}
+
+// Web adaptation: the box at the next position shows the field focus ring.
+.nm-otp__box--focus {
+  @include nm-focus-ring(1px);
+}
+
+.nm-otp__digit {
+  @include nm-type(num-otp);
+}
+
+.nm-otp__placeholder {
+  @include nm-type(num-otp, $color: slate-400);
+}
+
+// The real input covers the row; its text and caret are invisible, the
+// boxes draw the value and the focus ring (.nm-otp__box--focus).
+.nm-otp__input {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px; // no zoom on focus in iOS Safari
+  outline: 2px solid transparent;
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.nm-otp__error {
+  @include nm-type(error);
+  margin: 8px 0 0;
+  text-align: center;
+}

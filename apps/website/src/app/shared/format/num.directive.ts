@@ -4,7 +4,16 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 /** Numeric type styles (§2.4 `num-*`). */
-export type NumStyle = 'amount-lg' | 'amount' | 'num' | 'sm' | 'meta-lg' | 'meta' | 'progress';
+export type NumStyle =
+  | 'amount-lg'
+  | 'amount'
+  | 'num'
+  | 'sm'
+  | 'meta-lg'
+  | 'meta'
+  | 'progress'
+  | 'otp'
+  | 'resend';
 
 @Component({
   selector: '[nmNum]',

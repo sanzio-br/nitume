@@ -1,0 +1,33 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-pushed-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  height: 56px;
+  padding: 2px 20px 6px 12px;
+  background-color: var(--nitume-slate);
+}
+
+.nm-pushed-header__title {
+  @include nm-type(pushed-title);
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nm-pushed-header__spacer {
+  flex: 1;
+}
+
+.nm-pushed-header__step {
+  flex: none;
+}

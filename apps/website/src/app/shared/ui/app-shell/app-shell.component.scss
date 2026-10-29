@@ -1,0 +1,62 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-app-shell {
+  min-height: 100dvh;
+  background-color: var(--nitume-slate);
+}
+
+.nm-app-shell--wide {
+  display: flex;
+  align-items: flex-start;
+}
+
+.nm-app-shell__skip {
+  @include nm-visually-hidden;
+
+  &:focus-visible {
+    @include nm-type(list-title);
+    top: 8px;
+    left: 8px;
+    z-index: 20;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 12px 16px;
+    overflow: visible;
+    clip-path: none;
+    border-radius: var(--nitume-r-s);
+    background-color: var(--nitume-white);
+    @include nm-focus-ring;
+  }
+}
+
+.nm-app-shell__main {
+  display: block;
+  flex: 1;
+  min-width: 0;
+
+  &:focus {
+    outline: 2px solid transparent;
+  }
+}
+
+// Room for the fixed bottom bar (52px item + 4px padding twice + border).
+.nm-app-shell--with-bar .nm-app-shell__main {
+  padding-bottom: calc(61px + env(safe-area-inset-bottom));
+}
+
+.nm-app-shell__content {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--nitume-content-max);
+  margin: 0 auto;
+  padding: 0 var(--nitume-space-screen);
+}
+
+.nm-app-shell--wide .nm-app-shell__content {
+  padding: 0 var(--nitume-space-lg);
+}

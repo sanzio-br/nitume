@@ -38,6 +38,12 @@ export class NmField implements ControlValueAccessor {
   readonly readonly = input(false);
   readonly disabled = input(false);
   readonly autocomplete = input<string | null>(null);
+  /** Keeps the `<label for>` (accessible name) but hides it visually (#6). */
+  readonly hideLabel = input(false);
+  /** Native `autocapitalize` (`null` = attribute absent). */
+  readonly autocapitalize = input<string | null>(null);
+  /** Native `spellcheck` (`null` = attribute absent). */
+  readonly spellcheck = input<boolean | null>(null);
 
   protected readonly id = `nm-field-${nextId++}`;
   protected readonly errorId = `${this.id}-error`;
@@ -45,6 +51,11 @@ export class NmField implements ControlValueAccessor {
   protected readonly value = signal('');
   private readonly disabledByForm = signal(false);
   protected readonly isDisabled = computed(() => this.disabled() || this.disabledByForm());
+
+  protected readonly spellcheckAttr = computed(() => {
+    const value = this.spellcheck();
+    return value === null ? null : String(value);
+  });
 
   protected readonly isNumeric = computed(() => this.kind() === 'money' || this.kind() === 'phone');
 

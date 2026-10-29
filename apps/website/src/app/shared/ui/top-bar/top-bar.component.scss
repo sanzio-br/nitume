@@ -1,0 +1,38 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-top-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 8px 20px 14px;
+  background-color: var(--nitume-slate);
+}
+
+.nm-top-bar__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.nm-top-bar__greeting {
+  @include nm-type(greeting);
+  margin: 0;
+}
+
+.nm-top-bar__title {
+  @include nm-type(top-bar-title);
+  margin: 0;
+}
+
+.nm-top-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  &:empty {
+    display: none;
+  }
+}
