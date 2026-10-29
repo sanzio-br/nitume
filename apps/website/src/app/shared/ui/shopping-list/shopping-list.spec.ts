@@ -1,7 +1,7 @@
 // ND T13 at component level and the G7-28 minimum for `nm-shopping-list`.
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { declared, rawStyles } from '../../../../testing/css';
+import { declared, tokensOnly } from '../../../../testing/css';
 import { NmShoppingItem, NmShoppingList } from './shopping-list.component';
 
 @Component({
@@ -118,6 +118,6 @@ describe('nm-shopping-list (G7-27)', () => {
     expect(declared('.nm-shopping-list__remove', 'width')).toEqual(['var(--nitume-tap)']);
     expect(declared('.nm-shopping-list__row + .nm-shopping-list__row', 'border-top')).toEqual(['1px solid var(--nitume-slate-line)']);
     expect(declared('.nm-shopping-list__step:focus-visible', 'outline')).toEqual(['2px solid var(--nitume-green)']);
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|box-shadow/);
+    expect(tokensOnly()).toBe(true);
   });
 });

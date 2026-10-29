@@ -2,7 +2,7 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { cssRuleValues, declared, rawStyles } from '../../../../testing/css';
+import { cssRuleValues, declared, tokensOnly } from '../../../../testing/css';
 import { NmSearchEntry } from './search-entry.component';
 
 @Component({
@@ -51,6 +51,6 @@ describe('nm-search-entry (G7-22)', () => {
     setup();
     expect(cssRuleValues(['.nm-search-entry', ':hover'], 'border-color')).toEqual(['var(--nitume-blue)']);
     expect(declared('.nm-search-entry:focus-visible', 'outline')).toEqual(['2px solid var(--nitume-green)']);
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|box-shadow/);
+    expect(tokensOnly()).toBe(true);
   });
 });

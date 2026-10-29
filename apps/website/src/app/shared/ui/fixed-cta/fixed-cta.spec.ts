@@ -1,7 +1,7 @@
 // NC§W9.14 and the G7-28 component minimum for `nm-fixed-cta`.
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { cssRuleValues, declared, rawStyles } from '../../../../testing/css';
+import { cssRuleValues, declared, noShadow, rawStyles, tokensOnly } from '../../../../testing/css';
 import { stubViewport } from '../../../../testing/media';
 import { NmFixedCta, NmFixedCtaOffset } from './fixed-cta.component';
 
@@ -43,7 +43,7 @@ describe('nm-fixed-cta (NC§W9.14)', () => {
     const cs = getComputedStyle(bar);
     expect([cs.paddingTop, cs.paddingRight, cs.paddingLeft]).toEqual(['8px', '20px', '20px']);
     expect(rawStyles()).toContain('padding:8px20px6px;padding-bottom:calc(6px+env(safe-area-inset-bottom))');
-    expect(rawStyles()).not.toContain('box-shadow');
+    expect(noShadow()).toBe(true);
   });
 
   it('NC§W9.14 from 768px. inline (declared @media (min-width: 768px) rule), 16px below the last card, no spacer', () => {
@@ -87,6 +87,6 @@ describe('nm-fixed-cta (NC§W9.14)', () => {
     expect(root.querySelector('.nm-fixed-cta__spacer')?.getAttribute('aria-hidden')).toBe('true');
     expect((root.querySelector('.cta') as HTMLButtonElement).textContent).toBe('Continue →');
     expect(cssRuleValues(['.nm-fixed-cta'], 'outline')).toEqual([]);
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/);
+    expect(tokensOnly()).toBe(true);
   });
 });

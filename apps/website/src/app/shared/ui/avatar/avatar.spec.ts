@@ -2,7 +2,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { declared, rawStyles } from '../../../../testing/css';
+import { declared, tokensOnly } from '../../../../testing/css';
 import { NmAvatar, NmAvatarSize } from './avatar.component';
 
 @Component({
@@ -74,6 +74,6 @@ describe('nm-avatar (G7-21)', () => {
     expect(root.querySelector('a')).toBeNull();
     const img = root.querySelector('[role="img"]') as HTMLElement;
     expect(img.getAttribute('aria-label')).toBe('Profile');
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|box-shadow/);
+    expect(tokensOnly()).toBe(true);
   });
 });

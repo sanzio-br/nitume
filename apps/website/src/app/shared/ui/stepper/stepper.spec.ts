@@ -1,7 +1,7 @@
 // NC§W9.12 and the G7-28 component minimum for `nm-stepper`.
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { declared, rawStyles } from '../../../../testing/css';
+import { declared, tokensOnly } from '../../../../testing/css';
 import { NmStepper } from './stepper.component';
 
 @Component({ imports: [NmStepper], template: `<nm-stepper [completed]="done()" />` })
@@ -43,6 +43,6 @@ describe('nm-stepper (NC§W9.12)', () => {
     expect(declared('.nm-stepper', 'gap')).toEqual(['6px']);
     expect(declared('.nm-stepper', 'padding-bottom')).toEqual(['16px']);
     expect(root.querySelector('[tabindex]')).toBeNull();
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/);
+    expect(tokensOnly()).toBe(true);
   });
 });

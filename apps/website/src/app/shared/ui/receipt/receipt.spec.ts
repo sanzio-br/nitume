@@ -1,7 +1,7 @@
 // NR T16 and the G7-28 component minimum for the receipt parts.
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { declared, rawStyles } from '../../../../testing/css';
+import { declared, tokensOnly } from '../../../../testing/css';
 import { NmReceiptCaption, NmReceiptGroup, NmReceiptRow } from './receipt.component';
 
 @Component({
@@ -76,6 +76,6 @@ describe('receipt parts (NR T16)', () => {
   it('G7-28. not focusable (display only, no focus ring needed); custom-property names only, no hex', () => {
     const { root } = setup();
     expect(root.querySelector('a, button, [tabindex]')).toBeNull();
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|box-shadow/);
+    expect(tokensOnly()).toBe(true);
   });
 });

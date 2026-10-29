@@ -2,7 +2,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { cssRuleValues, declared, rawStyles } from '../../../../testing/css';
+import { cssRuleValues, declared, tokensOnly } from '../../../../testing/css';
 import { ErrandStatus } from '../../status/status-presentation';
 import { NmTaskRow } from './task-row.component';
 
@@ -65,6 +65,6 @@ describe('nm-task-row (G7-24)', () => {
     expect(declared('.nm-task-row__title', 'text-overflow')).toEqual(['ellipsis']);
     expect(cssRuleValues(['.nm-task-row', ':hover'], 'border-color')).toEqual(['var(--nitume-blue)']);
     expect(declared('.nm-task-row:focus-visible', 'outline')).toEqual(['2px solid var(--nitume-green)']);
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|box-shadow/);
+    expect(tokensOnly()).toBe(true);
   });
 });

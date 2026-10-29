@@ -3,7 +3,7 @@
 // real details step (new-details.page.spec.ts).
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { cssRuleValues, declared, rawStyles } from '../../../../testing/css';
+import { cssRuleValues, declared, tokensOnly } from '../../../../testing/css';
 import { PLACE_SEARCH, PlaceDetails, PlaceSearch, PlaceSuggestion, SavedPlace } from '../../places/place-search';
 import { NmPlaceField } from './place-field.component';
 
@@ -216,6 +216,6 @@ describe('nm-place-field (G7-25)', () => {
     expect(cssRuleValues(['.nm-place-field__option', ':hover'], 'background-color')).toEqual(['var(--nitume-slate)']);
     expect(declared('.nm-place-field__option--active', 'outline')).toEqual(['2px solid var(--nitume-green)']);
     expect(cssRuleValues(['.nm-field__input', ':focus'], 'outline')).toContain('2px solid var(--nitume-green)');
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|box-shadow/);
+    expect(tokensOnly()).toBe(true);
   });
 });

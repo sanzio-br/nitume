@@ -3,7 +3,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { cssRuleValues, declared, rawStyles } from '../../../../testing/css';
+import { cssRuleValues, declared, noShadow, tokensOnly } from '../../../../testing/css';
 import { NmCategoryGrid } from './category-grid.component';
 import { NmCategoryMode } from './category-tile.component';
 
@@ -76,7 +76,7 @@ describe('nm-category-grid / nm-category-tile (G7-17)', () => {
     expect(radios()[2].getAttribute('tabindex')).toBe('0');
   });
 
-  it('selected tile: green border and a 2px green-050 inner ring (second border), no box-shadow; unselected slate-line; hover blue', () => {
+  it('selected tile: green border and a 2px green-050 inner ring (second border), no shadow; unselected slate-line; hover blue', () => {
     const { host, radios, update } = setup();
     host.selected.set('inspection');
     update();
@@ -86,7 +86,7 @@ describe('nm-category-grid / nm-category-tile (G7-17)', () => {
     expect(declared('.nm-category-tile--selected::after', 'border')).toEqual(['2px solid var(--nitume-green-050)']);
     expect(declared('.nm-category-tile', 'border')).toEqual(['1px solid var(--nitume-slate-line)']);
     expect(cssRuleValues(['.nm-category-tile', ':hover'], 'border-color')).toContain('var(--nitume-blue)');
-    expect(rawStyles()).not.toContain('box-shadow');
+    expect(noShadow()).toBe(true);
   });
 
   it('icons: blue icon in a 32px green-050 box; shopping-bag, local-shipping, fact-check, location, hourglass; icons hidden from AT', () => {
@@ -113,7 +113,7 @@ describe('nm-category-grid / nm-category-tile (G7-17)', () => {
     expect(declared('.nm-category-tile__label', 'line-height')).toContain('1.3');
     expect(declared('.nm-category-tile', 'background-color')).toEqual(['var(--nitume-white)']);
     expect(declared('.nm-category-tile', 'border-radius')).toEqual(['var(--nitume-r-m)']);
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/);
+    expect(tokensOnly()).toBe(true);
   });
 
   it('link mode: <a> to linkFor(wire), followed in-app, never selected, no radiogroup', () => {

@@ -3,7 +3,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { accessibleText, declared, rawStyles } from '../../../../testing/css';
+import { accessibleText, declared, noShadow, tokensOnly } from '../../../../testing/css';
 import { NmActiveTaskCard } from './active-task-card.component';
 
 @Component({
@@ -59,7 +59,7 @@ describe('nm-active-task-card (G7-23)', () => {
     expect(getComputedStyle(meta).fontFamily).toBe('var(--nitume-font-num)');
     expect(getComputedStyle(meta).fontSize).toBe('12px');
     expect(getComputedStyle(meta).color).toBe('var(--nitume-slate-400)');
-    expect(rawStyles()).not.toContain('box-shadow');
+    expect(noShadow()).toBe(true);
   });
 
   it('action: primary small button rendered as a link (green fill, white text), followed in-app; the card itself is not clickable', () => {
@@ -79,6 +79,6 @@ describe('nm-active-task-card (G7-23)', () => {
   it('G7-28. the action keeps the kit focus ring; custom-property names only, no hex', () => {
     setup();
     expect(declared('.nm-btn:focus-visible', 'outline').join()).toContain('var(--nitume-green)');
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/);
+    expect(tokensOnly()).toBe(true);
   });
 });

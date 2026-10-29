@@ -2,7 +2,7 @@
 // component level).
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { declared, rawStyles } from '../../../../testing/css';
+import { declared, tokensOnly } from '../../../../testing/css';
 import { NmChoiceChipGroup, NmChoiceOption } from './choice-chip-group.component';
 
 const OPTIONS: NmChoiceOption[] = [
@@ -92,6 +92,6 @@ describe('nm-choice-chip-group (G7-18)', () => {
     expect(chips()[1].textContent?.trim()).toBe('Tomorrow');
     expect(declared('.nm-choice-chip::before', 'height')).toEqual(['max(100%, var(--nitume-tap))']);
     expect(declared('.nm-choice-chip:focus-visible', 'outline')).toEqual(['2px solid var(--nitume-green)']);
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|box-shadow/);
+    expect(tokensOnly()).toBe(true);
   });
 });

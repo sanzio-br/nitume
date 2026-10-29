@@ -2,7 +2,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { declared, rawStyles } from '../../../../testing/css';
+import { declared, tokensOnly } from '../../../../testing/css';
 import { NmNotificationBell } from './notification-bell.component';
 
 @Component({
@@ -56,6 +56,6 @@ describe('nm-notification-bell (G7-20)', () => {
     expect(icon.getAttribute('data-icon')).toBe('notifications');
     expect(icon.querySelector('svg')?.getAttribute('width')).toBe('18');
     expect(declared('.nm-bell:focus-visible', 'outline')).toEqual(['2px solid var(--nitume-green)']);
-    expect(rawStyles()).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|box-shadow/);
+    expect(tokensOnly()).toBe(true);
   });
 });
