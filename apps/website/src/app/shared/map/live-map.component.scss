@@ -1,0 +1,51 @@
+@use '../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-map {
+  position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-m);
+}
+
+// No key or load failure: plain blue-050 fill (no grid, no image).
+.nm-map--placeholder {
+  background-color: var(--nitume-blue-050);
+}
+
+.nm-map__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+// Flutter EtaChip: white pill, slate-line hairline (no shadow), Code 11.5/700.
+.nm-map__eta {
+  @include nm-type(num, $size: 11.5px, $weight: 700);
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+  padding: 6px 10px;
+  background-color: var(--nitume-white);
+  border: 1px solid var(--nitume-slate-line);
+  border-radius: var(--nitume-r-pill);
+  white-space: nowrap;
+}
+
+// Bottom bar slot (runner NavigationChip, issue #15).
+.nm-map__overlay {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1;
+
+  &:empty {
+    display: none;
+  }
+}

@@ -1,0 +1,74 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: inline-flex;
+}
+
+.nm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 22px;
+}
+
+.nm-check--row {
+  min-height: var(--nitume-tap);
+  cursor: pointer;
+}
+
+.nm-check__control {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+}
+
+// Native control: invisible, centred over the box, 48×48 hit area.
+.nm-check__input {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--nitume-tap);
+  height: var(--nitume-tap);
+  margin: 0;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+
+  &:disabled {
+    cursor: default;
+  }
+
+  &:focus-visible + .nm-check__box {
+    @include nm-focus-ring;
+  }
+}
+
+.nm-check__box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--nitume-slate-line);
+  border-radius: 6px;
+  background-color: var(--nitume-white);
+  color: var(--nitume-white);
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.nm-check--checked .nm-check__box {
+  background-color: var(--nitume-green);
+  border-color: var(--nitume-green);
+}
+
+.nm-check__label {
+  @include nm-type(body);
+}

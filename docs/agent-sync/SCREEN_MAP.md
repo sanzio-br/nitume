@@ -184,3 +184,72 @@ Ops features not drawn in the mockup (API on `feat/api-owner-answers-2`; specced
 | page-business | Business | | unaudited |
 | page-diaspora | Diaspora | | unaudited |
 | page-auth | Sign in / sign up | | unaudited |
+
+## Website — signed-in app (parity, issues #5–#18)
+
+Owner decision 2026-10-28: every customer and runner app feature comes to `apps/website` as lazy-loaded, signed-in routes under `/app/customer/...` and `/app/runner/...` (auth + role guards from issue #6); the public marketing pages above stay unchanged. There are **no web mockups**: each web spec adapts the mobile mockup view, the built Flutter screen and the owner answers into a responsive layout, with identical content, copy, tokens and component patterns.
+
+| What | Path |
+|---|---|
+| Web specs | `docs/specs/website/<view-id>.md` (customer and runner views share one folder; where a view id exists on both surfaces the file is `customer-<view-id>.md` / `runner-<view-id>.md`) |
+| Shared web UI kit spec | `docs/specs/website/ui-kit.md` (token layer, components, formatting, `RealtimeService`, `LiveMapComponent`, required tests, questions WQ-1 … WQ-8) |
+| Web UI kit (built, #5) | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` |
+| Signed-in routes (to build, #6) | `/app/customer/...`, `/app/runner/...` |
+| Audits | `docs/audits/website-gap-report.md` |
+
+Status values as above. `unaudited` = no web spec yet. Mobile spec column: the source the web spec adapts.
+
+| Issue | Surface | View id | Mobile spec (source) | Web spec | Implementation file | Status |
+|---|---|---|---|---|---|---|
+| #5 | shared | ui-kit | `packages/nitume_core` + `docs/design/nitume_design_system.html` | `docs/specs/website/ui-kit.md` | `apps/website/src/styles/_tokens.scss`, `apps/website/src/app/shared/{ui,status,format,map}/`, `apps/website/src/app/core/realtime/` (branch `feat/website-ui-kit` at `8d9c7e9`); re-audit 2 PASS, G5-1…G5-41 closed in `docs/audits/website-gap-report.md` | matches-design |
+| #6 | customer | v-auth-phone | `docs/specs/customer/v-auth-phone.md` | — | — | unaudited |
+| #6 | customer | v-auth-otp | `docs/specs/customer/v-auth-otp.md` | — | — | unaudited |
+| #6 | customer | x-name-capture | `docs/specs/customer/x-name-capture.md` | — | — | unaudited |
+| #6 | customer | shell | `docs/specs/customer/_shared.md` §1 (C-13) | — | — | unaudited |
+| #6 | runner | v-auth-phone | `docs/specs/runner/v-auth-phone.md` | — | — | unaudited |
+| #6 | runner | v-auth-otp | `docs/specs/runner/v-auth-otp.md` | — | — | unaudited |
+| #6 | runner | x-name-capture | `docs/specs/runner/x-name-capture.md` | — | — | unaudited |
+| #6 | runner | shell | `docs/specs/runner/_shared.md` §1 (C-13) | — | — | unaudited |
+| #7 | customer | v-home | `docs/specs/customer/v-home.md` | — | — | unaudited |
+| #7 | customer | v-new-category | `docs/specs/customer/v-new-category.md` | — | — | unaudited |
+| #7 | customer | v-new-details | `docs/specs/customer/v-new-details.md` | — | — | unaudited |
+| #7 | customer | v-new-review | `docs/specs/customer/v-new-review.md` | — | — | unaudited |
+| #8 | customer | x-awaiting-quote | `docs/specs/customer/x-awaiting-quote.md` | — | — | unaudited |
+| #8 | customer | v-payment | `docs/specs/customer/v-payment.md` | — | — | unaudited |
+| #8 | customer | v-price-auth | `docs/specs/customer/v-price-auth.md` | — | — | unaudited |
+| #8 | customer | x-merchant-payment | `docs/specs/customer/x-merchant-payment.md` | — | — | unaudited |
+| #9 | customer | v-track | `docs/specs/customer/v-track.md` | — | — | unaudited |
+| #9 | customer | v-task-detail | `docs/specs/customer/v-task-detail.md` | — | — | unaudited |
+| #10 | customer | v-evidence-confirm | `docs/specs/customer/v-evidence-confirm.md` | — | — | unaudited |
+| #10 | customer | x-evidence-viewer | `docs/specs/customer/x-evidence-viewer.md` | — | — | unaudited |
+| #10 | customer | v-rate | `docs/specs/customer/v-rate.md` | — | — | unaudited |
+| #10 | customer | x-report-problem | `docs/specs/customer/x-report-problem.md` | — | — | unaudited |
+| #11 | customer | v-history | `docs/specs/customer/v-history.md` | — | — | unaudited |
+| #11 | customer | v-notifications | `docs/specs/customer/v-notifications.md` | — | — | unaudited |
+| #12 | customer | v-profile | `docs/specs/customer/v-profile.md` | — | — | unaudited |
+| #12 | customer | v-addresses | `docs/specs/customer/v-addresses.md` | — | — | unaudited |
+| #12 | customer | x-address-form | `docs/specs/customer/x-address-form.md` | — | — | unaudited |
+| #12 | customer | v-payment-methods | `docs/specs/customer/v-payment-methods.md` | — | — | unaudited |
+| #12 | customer | x-payment-method-form | `docs/specs/customer/x-payment-method-form.md` | — | — | unaudited |
+| #12 | customer | x-support | `docs/specs/customer/x-support.md` | — | — | unaudited |
+| #12 | customer | x-legal | `docs/specs/customer/x-legal.md` | — | — | unaudited |
+| #13 | runner | v-onboard-id | `docs/specs/runner/v-onboard-id.md` | — | — | unaudited |
+| #13 | runner | v-onboard-selfie | `docs/specs/runner/v-onboard-selfie.md` | — | — | unaudited |
+| #13 | runner | v-onboard-pending | `docs/specs/runner/v-onboard-pending.md` | — | — | unaudited |
+| #14 | runner | v-jobs | `docs/specs/runner/v-jobs.md` | — | — | unaudited |
+| #14 | runner | v-job-detail | `docs/specs/runner/v-job-detail.md` | — | — | unaudited |
+| #14 | runner | x-location-disclosure | `docs/specs/runner/x-location-disclosure.md` | — | — | unaudited (owner WQ-6 first) |
+| #15 | runner | v-active | `docs/specs/runner/v-active.md` | — | — | unaudited (owner WQ-6 first) |
+| #16 | runner | v-evidence-capture | `docs/specs/runner/v-evidence-capture.md` | — | — | unaudited |
+| #16 | runner | v-price-request | `docs/specs/runner/v-price-request.md` | — | — | unaudited |
+| #16 | runner | v-job-summary | `docs/specs/runner/v-job-summary.md` | — | — | unaudited |
+| #17 | runner | v-earnings | `docs/specs/runner/v-earnings.md` | — | — | unaudited |
+| #17 | runner | v-payout | `docs/specs/runner/v-payout.md` | — | — | unaudited |
+| #17 | runner | x-payout-history | `docs/specs/runner/x-payout-history.md` | — | — | unaudited |
+| #18 | runner | v-profile | `docs/specs/runner/v-profile.md` | — | — | unaudited |
+| #18 | runner | v-edit-skills | `docs/specs/runner/v-edit-skills.md` | — | — | unaudited |
+| #18 | runner | v-notifications | `docs/specs/runner/v-notifications.md` | — | — | unaudited |
+| #18 | runner | x-support | `docs/specs/customer/x-support.md` (runner `AppConfig` URIs) | — | — | unaudited |
+| #18 | runner | x-legal | `docs/specs/customer/x-legal.md` (runner `AppConfig` URIs) | — | — | unaudited |
+
+Not mapped to an issue: none (every customer view and every runner view in the sections above, plus both shells, is covered by #6–#18; dropped `x-recurring-tasks` stays out of MVP).

@@ -1,0 +1,42 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-card {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  background-color: var(--nitume-white);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--nitume-slate-line);
+  border-radius: var(--nitume-r-m);
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.nm-card--dashed {
+  border-style: dashed;
+}
+
+.nm-card--dashed-2 {
+  border-style: dashed;
+  border-width: 2px;
+}
+
+.nm-card--clickable {
+  cursor: pointer;
+  font: inherit;
+
+  @include nm-hover {
+    border-color: var(--nitume-blue);
+  }
+
+  &:focus-visible {
+    @include nm-focus-ring;
+  }
+}
