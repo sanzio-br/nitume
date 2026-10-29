@@ -16,6 +16,8 @@ describe('customerLinks (NC§W9.11)', () => {
     expect(customerLinks.newTaskReview()).toBe('/app/customer/new/review');
     expect(customerLinks.awaitingQuote('e-1')).toBe('/app/customer/tasks/e-1/quote');
     expect(customerLinks.payment('e 1/2')).toBe('/app/customer/tasks/e%201%2F2/payment');
+    // #8 (A.T1): the item payment.
+    expect(customerLinks.itemPayment('a/b')).toBe('/app/customer/tasks/a%2Fb/item-payment');
     expect(customerLinks.track()).toBe('/app/customer/track');
     expect(customerLinks.track('e-1')).toBe('/app/customer/track/e-1');
     expect(customerLinks.taskDetail('e-1')).toBe('/app/customer/tasks/e-1');

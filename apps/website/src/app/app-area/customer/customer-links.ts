@@ -15,6 +15,8 @@ export const customerLinks = {
   awaitingQuote: (id: string): string => `${BASE}/tasks/${enc(id)}/quote`,
   /** v-payment (#8). */
   payment: (id: string): string => `${BASE}/tasks/${enc(id)}/payment`,
+  /** x-merchant-payment (#8, A§1). */
+  itemPayment: (id: string): string => `${BASE}/tasks/${enc(id)}/item-payment`,
   /** v-track (#9). */
   track: (id?: string | null): string => (id ? `${BASE}/track/${enc(id)}` : `${BASE}/track`),
   /** v-task-detail (#9). */
