@@ -975,11 +975,110 @@ Each item gives the **current** state, the **target** (spec section) and the **e
 
 ## Issue #7 — customer home and create-task wizard
 
-- Specs: `docs/specs/website/customer-v-home.md` (cited H), `customer-v-new-category.md` (NC; it also holds the wizard foundation NC§W0–§W10), `customer-v-new-details.md` (ND), `customer-v-new-review.md` (NR). First written in `cae824c`; updated in `8feae7e` for the owner decisions and the #6 build. This section audits against `8feae7e`.
+- Specs: `docs/specs/website/customer-v-home.md` (cited H), `customer-v-new-category.md` (NC; it also holds the wizard foundation NC§W0–§W10), `customer-v-new-details.md` (ND), `customer-v-new-review.md` (NR). First written in `cae824c`; updated in `8feae7e` for the owner decisions and the #6 build. The baseline audits against `8feae7e`; re-audit 1 (2026-10-29) audits the build at `dd95c1a` against `b98ca6e` (owner WQ-2, attribution clear space, Places Details session).
 - Baseline audited: `apps/website` on `feat/website-customer-create-task` at `8feae7e`. Its website code is identical to the #6 PASS tip `32ea1a1`: `git diff --stat 32ea1a1 55af009 -- apps/` is empty. It includes the #5 kit. No #7 code exists yet.
 - Builder: `web-parity`, branch `feat/website-customer-create-task`, commit scope `angular-website`.
 - Every item G7-1 … G7-40 is **approved extension, W-Q0**.
 - Views: customer `v-home`, `v-new-category`, `v-new-details`, `v-new-review` (SCREEN_MAP #7 rows).
+
+### Verdict: FAIL (re-audit 1, 2026-10-29, `feat/website-customer-create-task` at `dd95c1a`): 2 blockers, 1 minor
+
+Built by `web-parity` in 34 commits `303c0b6` … `dd95c1a` on top of the spec/audit commits. The branch also carries the #6 tip `ed8f7b5` through merge `a0db2db`. That commit is a #6 test-only change: it freezes the clock in `auth-otp.page.spec.ts` and makes T12 and T13 assert exact values, so it strengthens #6 assertions and is not a #7 matter. Specs re-audited against `b98ca6e` (this re-audit's spec update, see "Spec updates at re-audit 1").
+
+**Auditor re-run in the worktree** (`npm ci`, then):
+- `npx ng test --watch=false` → **73 files, 612 tests, 0 failures**. This matches the builder.
+- `npx ng build --stats-json` → succeeds, **initial total 354.17 kB raw** / 96.89 kB transfer. That is ≤ 360.00 (WQ-34) and +2.73 kB on #6's 351.44.
+- The initial chunks have clean stats inputs:
+  - `main-VODTCODL.js`: the marketing files, `app.config.ts`, `app.routes.ts`, `app.component.ts`, `core/lazy-session/{lazy-session,realtime-session.tokens}.ts`; packages `@angular/{common,platform-browser,router}`.
+  - `chunk-RDpGQkek.js`: `@angular/core`, `rxjs`, `tslib`.
+  - `polyfills`: `zone.js`.
+  - No `core/auth`, `core/realtime`, `app-area`, `shared/ui`, `shared/places` or `shared/map` input, and no `@angular/google-maps`, `@angular/forms` or `socket.io-client`. **G7-39 PASS.**
+
+37 of 40 items close as built. The three findings below hold G7-25, G7-26, G7-31 and G7-33 open; G7-3 and G7-37 are open only for the deadline part of finding 1.
+- Every copy string in the four specs' "Copy (exact)" sections is present verbatim.
+- All required cases are present as their own `it(...)`: H T1–T19, NC T1–T10, ND T1–T23 (T11 in `shared/places/places.spec.ts`, T16 in `shared/kit-additions-7.spec.ts`, T17 in `task-draft.store.spec.ts`), NR T1–T17 (T16 in `shared/ui/receipt/receipt.spec.ts`), NC§W9.1–W9.17.
+- The #7 static spec (`src/styles/customer-static.spec.ts`) computes "#7 code" from the route entry points' import graph, so it includes the kit files the routes reach. It runs (a)–(f), the inline-style check, the memory-only scan and the G7-13 token count. The forbidden pattern includes `shared/places`, and the walker self-check is present.
+- None of the #5/#6 kit spec files changed (`card`, `overlay`, `field`, `back-button`, `pushed-header`, `map`, `realtime`, `template-outlet`), and all pass. That closes G7-8, G7-9, G7-10, G7-11 and G7-14.
+- Marketing paths are unchanged against `55af009`. Every new component is `OnPush`. Every commit message is conventional with scope `angular-website`.
+
+**Per-commit health (noted, not failed, per the orchestrator):** commits `1ae2dae` … `db87eba` fail `tokens.spec` case 2, and `eec45ba` does not compile. The tip is green. The orchestrator handles this with a squash merge. Formally it breaks AGENTS.md rule 4 for those intermediate commits.
+
+#### Spec updates at re-audit 1 (`b98ca6e`)
+
+1. **Owner WQ-2 (answered 2026-10-29, #7 issue comment, after the baseline report):**
+   - Activity times (greeting, Recent) use the browser's local time. Home is unchanged and already does this.
+   - **Deadlines use EAT and are labelled as EAT.** `Today`/`Tomorrow` = 23:59 EAT of the EAT calendar date, independent of the browser zone (ND Rules).
+   - Proposed label: a caption under the chips, `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` (`23:59` in Fira Code). This is **Q7-5** for the owner. ND T17 now runs under two browser zones, and ND T21a is new.
+   - G7-33 is amended (below).
+2. **Google attribution clear space:** the spec said 8px above and below. Google's attribution guidelines ask for at least 10 dp left, right and top and at least 5 dp below. **Ruling: where Google's minimum is stricter, Google's minimum applies.** ND Places and ND T22 now say at least 10px left, right and top and at least 5px below, counting the list panel's padding.
+3. **Places Details session (spec defect):** the spec told the builder to pass `sessionToken` in the `Place` constructor options. `PlaceOptions` has no such field. The Maps JS API carries the session into Details through `placePrediction.toPlace()`. ND Places and ND T11 are corrected. The builder followed the spec as written, so finding 3 is a spec-caused defect.
+
+#### Findings (re-audit 1)
+
+1. **blocker. Deadlines use the browser's zone and are not labelled as EAT (owner WQ-2).** `apps/website/src/app/app-area/customer/new-task/task-draft.store.ts:44-50`; `new-details.page.html` (deadline card); `task-draft.store.spec.ts:116-150`.
+   - Design (ND Rules, owner WQ-2):
+     - `Today` → 23:59 EAT of today's EAT date, as UTC ISO (`…T20:59:00.000Z`); `Tomorrow` → the next EAT date.
+     - Independent of the browser zone.
+     - Labelled `Due today, 23:59 EAT.` / `Due tomorrow, 23:59 EAT.` while that chip is selected (proposed copy, Q7-5).
+   - Code:
+     - `deadlineAt()` builds `new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 23, 59)` in the **browser's** zone. A London browser choosing `Today` sends 23:59 London, which is 02:59 EAT the next day.
+     - No caption is shown for `Today`/`Tomorrow`.
+     - ND T17 stubs `TZ=Etc/GMT-3`, which equals EAT, so the test cannot see the difference (`dd95c1a`).
+   - Fix:
+     - Compute the EAT calendar date with the kit EAT helpers (`eatDayKey` / the `…Eat` family in `shared/format/formatters.ts`) and send 23:59 EAT of that date (and of the next date) as UTC. No hand-written offset in the view.
+     - Add the Today/Tomorrow caption in the Flexible caption's place and style (`nm-type(greeting)`, `23:59` in `nmNum`).
+     - Update ND T17 to two zones (`Europe/London` and `Africa/Nairobi`, including 22:30 London on 1 Nov → `2026-11-02T20:59:00.000Z`) and add ND T21a.
+     - Update the `clock.ts` comment so `CUSTOMER_NOW` is described as the clock, not as the deadline zone.
+     - If the owner answers Q7-5 with other words, only the caption copy changes.
+2. **minor. Google attribution has less clear space than Google requires.** `apps/website/src/app/shared/ui/place-field/places-attribution.component.ts:13-16` (`padding: 8px 0`) inside `place-field.component.scss:11` (panel `padding: 0 4px`).
+   - Design: ND Places (re-audit 1 ruling) requires at least 10px left, right and top and at least 5px below.
+   - Code: 4px left and right, 8px top, 8px bottom.
+   - Fix: give `nm-places-attribution` the space, e.g. `padding: 10px 10px 5px` counted together with the panel's 4px. Move it to a `styleUrl` `.scss` if a token mixin is used. Extend ND T22 with the `declared()` clear-space assertion. Update the component's header comment.
+3. **blocker. Place Details is not tied to the autocomplete session (WQ-25 "session tokens").** `apps/website/src/app/shared/places/google-place-search.ts:108` (`new places.Place({ id: placeId, sessionToken: … })`); `places.spec.ts:37-43,88-91`.
+   - Design (ND Places, corrected in `b98ca6e`): Details is `placePrediction.toPlace().fetchFields({ fields: [...] })`. `toPlace()` carries the request's session token, which closes the billing session. `PlaceOptions` has no `sessionToken`. A pick from the list always has its prediction in hand.
+   - Code: passes `sessionToken` as a `Place` constructor option. The Maps JS API does not define that option, so in a real browser the Details call is likely billed outside the session. Each autocomplete request then likely bills on its own, which is the cost WQ-25 is meant to avoid. The fake library in `places.spec.ts` accepts the option, so the tests pass. This cannot be confirmed without a key (WQ-1), but the documented path is `toPlace()`.
+   - Fix:
+     - Keep each Google suggestion's `placePrediction` in the per-session cache next to the mapped suggestion (memory only, same cap and lifetime).
+     - `details()` calls `toPlace()` on it, then `fetchFields` with the four fields. Fall back to `new Place({ id })` only when no prediction is held.
+     - Update the fake (`placePrediction.toPlace` returning a recorded fake `Place`) and ND T11: no `sessionToken` key on any `Place` constructor call.
+   - Origin: spec defect (my first ND text); this is not a builder error.
+
+#### Builder choices and extras (auditor ruling)
+
+| # | Choice | Ruling | Reason |
+|---|---|---|---|
+| a | #5/#6 test-file edits: `icon.spec.ts` (list gains the 10 #7 names), `format.pipes.spec.ts` (`formatHours` row, case count 24 → 25), `app-shell.page.spec.ts` T11 (label-less stub now checked on `/app/customer/notifications`), `app.routes.spec.ts` F9.5 (Home `h1` is now the first name `Achieng`), `testing/app-harness.ts` (`providers` option) | **PASS** | Each is the minimum change the #7 spec makes necessary: §W9a adds the icons and the pipe; §W1 replaces the `new` stub, so another skeleton-only stub is used; H gives Home's `h1` as the first name. No assertion was weakened or removed. Each test still checks what it checked before. The harness option is additive (default empty) |
+| b | Deadline `nm-choice-chip-group` labelled with `[ariaLabel]="Deadline"` instead of `aria-labelledby` the card heading | **PASS** | The kit `nm-form-card` heading has no `id` (`form-card.component.ts:11`), so `aria-labelledby` would need a kit change. `ariaLabel` gives the identical accessible name. The group supports both inputs, and `labelledBy` wins when set |
+| c | `nmTemplateOutlet` gains `nmTemplateOutletContext` (used by `nm-dialog`) | **PASS** | Additive with a `null` default, so #6 call sites are unchanged. The unchanged #5 dialog spec renders a `let-ref` template (`shared/ui/overlay/overlay.spec.ts:189`), which exercises the context. Unlike `NgTemplateOutlet`, a changed context recreates the view rather than updating it in place. The dialog's `ref` and `data` are fixed for a dialog's life, so behaviour is the same |
+| d | `--nm-cta-scroll-margin` set by `nm-wizard-frame` (bar height + 16) and read by `nm-field` (`scroll-margin-bottom: var(--nm-cta-scroll-margin, 0px)`) | **PASS** | It implements NC§W4 ("a focused field is never hidden under it") without a view query. It is a layout length, not a colour. It uses the kit's private `--nm-` prefix like `--nm-toast-offset`. The `0px` fallback leaves `nm-field` unchanged outside the wizard, and the #5 field tests pass unchanged |
+| e | `QUOTE_PREVIEW_ENABLED` and `CUSTOMER_NOW` injection tokens | **PASS** | Test seams whose defaults are exactly the spec values (`environment.quotePreviewEnabled`; `new Date()`), the same pattern as #5 `MAPS_API_KEY` and #6 `APP_LINKS`. `CUSTOMER_NOW` is the clock only; the deadline zone is finding 1 |
+| f | Place Details `sessionToken` as a `Place` option | **FAIL (finding 3)** | Not a documented Maps JS option. The mechanism came from the spec and is corrected there |
+| g | G7-26 evidence grep `rg -n "maps.googleapis|places" …` hits `replaces` / `places` in comments and the place-field imports | **PASS** | The baseline grep was too broad (auditor error). Corrected evidence: `rg -n "maps\.googleapis|google\.maps|importLibrary\(" apps/website/src/app --glob '!**/*.spec.ts'` hits only `shared/map/maps-loader.service.ts`, `shared/places/google-place-search.ts` and the #5 `shared/map/live-map.component.ts`. No Google call is made outside the loader and `shared/places`, and there is no Places route in `apps/api` |
+| h | `dd95c1a` reshapes tests so the G7-3, G7-5 and G7-33 greps run clean: memory-only scan moved into `customer-static.spec.ts`, `sendsCredentials()` helper, `Etc/GMT-3` instead of `Africa/Nairobi` in the `toRequest` stub, one comment reworded | **PASS, with a note** | The assertions are unchanged. The `Etc/GMT-3` stub equals EAT, so it hides finding 1. The finding-1 fix must test two zones (ND T17 as amended) |
+
+#### Item status at re-audit 1
+
+| Item | Status | Evidence (auditor) |
+|---|---|---|
+| G7-1, G7-2 | closed | `customer.routes.ts:46-109`: componentless `new` parent with `providers`, entry guard and three titled children; five #7 stubs with `navKey: 'home'`, `pushed: true`. `customer-links.ts` paths equal NC§W1; no hard-coded `/app/customer/` elsewhere in the customer area or `shared/`; NC§W9.1, NC§W9.11 |
+| G7-3 | closed except the deadline (finding 1) | store and memory-only scan; NC§W9.4–W9.6, W9.9 |
+| G7-4, G7-5, G7-6 | closed | NC§W9.2, W9.3, W9.7, W9.8, W9.10, W9.15; no `withCredentials`/interceptor in the customer area; flag `false` in both environment files |
+| G7-7 … G7-14 | closed | `kit-additions-7.spec.ts`; #5/#6 kit spec files unchanged and passing; `_tokens.scss` unchanged against `55af009`; no `NgTemplateOutlet`/`viewChild` left in `card`, `section-label` or `dialog.component` |
+| G7-15 … G7-24, G7-27, G7-28 | closed | one spec file per component, each with render, inputs, accessible name, focus ring and token checks (`testing/css.ts` `declared`, `tokensOnly`, `noShadow`) |
+| G7-25 | **open (finding 2)** | combobox, debounce, pick and attribution placement correct; clear space short |
+| G7-26 | **open (finding 3)** | region, language, cache, fallback and no-proxy correct; Details session wrong |
+| G7-29, G7-30, G7-32 | closed | H T1–T19, NC T1–T10, NR T1–T17; copy verbatim; WQ-29 no ETA and no `locationUpdates$` (`home.page.ts` uses `statusChanges$`, `onStateChange`, one `setInterval`). G7-32's request body inherits finding 1 through `toRequest` and re-checks with it |
+| G7-31 | **open (finding 1; Places via findings 2–3)** | all other ND rules met |
+| G7-33 | **open (finding 1)** | WQ-25/26/29 met as recorded; WQ-2 deadline part not met |
+| G7-34 … G7-36, G7-38, G7-40 | closed | NC§W9.17(a)–(f) pass; scans in the evidence lines return no hits; marketing diff empty; `OnPush` on every new component; conventional commits |
+| G7-37 | closed except ND T17 / T21a (finding 1), ND T11 (finding 3), ND T22 (finding 2) | coverage complete for the original lists |
+| G7-39 | closed | 354.17 kB raw ≤ 360.00; stats inputs clean |
+
+#### Re-audit 2 checklist
+
+1. Findings 1–3 fixed. ND T11, T17, T21a and T22 as amended in `b98ca6e` are present and pass.
+2. `npx ng test --watch=false` 0 failures; `npx ng build --stats-json` initial total ≤ 360.00 kB raw with clean inputs.
+3. Owner Q7-5 (EAT label words): if answered before re-audit 2, the caption matches the answer; otherwise the proposed copy.
 
 ### Baseline verdict: FAIL (not built, 2026-10-29)
 
@@ -1004,7 +1103,7 @@ None of the four views exists. `/app/customer/home` and `/app/customer/new` are 
 | WQ-33 | — | (#6) Session layer lazy. The framework-feature rules from the #6 re-audit 2 note apply to every later issue | G7-14, G7-38 |
 | WQ-15, WQ-16 | — | (#6) Side nav kept on pushed routes from 768px, and white | G7-1 (route data) |
 
-Still open, build uses the spec default: **WQ-2** (customer times on the web: app parity, browser local time). It applies to the Home greeting, the Recent timestamps and the `Today`/`Tomorrow` deadline (H Questions, ND Questions). The code must not decide it beyond the parity default.
+**WQ-2** was open at the baseline. **Answered by the owner on 2026-10-29** (#7 issue comment): activity times (greeting, Recent) use the browser's local time; deadlines use EAT and are labelled as EAT. Applied at re-audit 1 (G7-33 amended, finding 1). Still open: **Q7-5** (EAT label words; build default = the proposed caption).
 
 ### Current-state evidence (baseline)
 
@@ -1203,7 +1302,7 @@ All of them: standalone, `OnPush`, signal inputs, `nm-` prefix, under `shared/ui
   - Saved search: label or address contains, only entries with `lat`/`lon`, `placeId: null`.
   - No key: no script, plus the C-40 notice.
   - **No API proxy** and no Nitume token sent to Google.
-- Evidence: ND T7, ND T9, ND T10, ND T11; `rg -n "maps.googleapis|places" apps/website/src/app --glob '!**/*.spec.ts'` shows only the kit loader and `shared/places/`; no new `apps/api` route.
+- Evidence: ND T7, ND T9, ND T10, ND T11; `rg -n "maps\.googleapis|google\.maps|importLibrary\(" apps/website/src/app --glob '!**/*.spec.ts'` shows only the kit loader, `shared/places/` and the #5 live map (corrected at re-audit 1; the baseline grep matched the word "replaces"); no new `apps/api` route. Re-audit 1: Details through `placePrediction.toPlace()` (finding 3).
 
 **G7-27 `nm-shopping-list`**
 - Current: none.
@@ -1269,8 +1368,10 @@ All of them: standalone, `OnPush`, signal inputs, `nm-` prefix, under `shared/ui
   - Submitting state disables Back.
 - Evidence: NR T1 … T17. The issue's feature criteria "estimate request" and "submit success/failure paths" are NR T2, T4, T5 and NR T6 … T14.
 
-**G7-33 Owner-decision behaviour (WQ-25, WQ-26, WQ-29) and WQ-2 default** (cross-check item)
-- Target:
+**G7-33 Owner-decision behaviour (WQ-25, WQ-26, WQ-29, WQ-2)** (cross-check item; **amended at re-audit 1** for owner WQ-2, answered 2026-10-29: activity times local, deadlines EAT and labelled EAT)
+- Target (as amended): WQ-25, WQ-26 and WQ-29 as below. **WQ-2:** greeting and Recent times in browser local time. `Today`/`Tomorrow` deadlines are 23:59 EAT of the EAT date, whatever the browser zone, with the EAT caption (ND Rules, proposed copy Q7-5). EAT helpers (`eatDayKey`, `…Eat` formatters) are **allowed in `app-area/customer` for deadline code only** (the store's `deadlineAt` / `toRequest` and the deadline caption); greeting, Recent and every other activity time keep the local formatters.
+- Evidence (as amended): ND T17 (two zones), ND T21a; H T1, H T14 (local); `rg -n "Africa/Nairobi|Eat\b|eatDayKey|formatDeadlineEat|formatDayTimeEat" apps/website/src/app/app-area/customer --glob '!**/*.spec.ts'` hits only deadline code (store `deadlineAt`, the deadline caption in `new-details.page.*`).
+- Baseline target (superseded for WQ-2):
   - WQ-25: browser path only, Kenya, 300 ms, session tokens, per-session cache, saved-address fallback, no proxy.
   - WQ-26: attribution shown under Google suggestions only.
   - WQ-29: no ETA and no `location:update` on Home.
@@ -1361,7 +1462,7 @@ All of them: standalone, `OnPush`, signal inputs, `nm-` prefix, under `shared/ui
 
 1. G7-1 … G7-40 each closed with the evidence above.
 2. Re-run `npx ng test --watch=false` (0 failures) and `npx ng build --stats-json` (G7-39 evidence 1–3).
-3. Owner decisions WQ-25, WQ-26 and WQ-29 are met as recorded (G7-33). WQ-2 is not decided beyond the parity default.
+3. Owner decisions WQ-25, WQ-26, WQ-29 and WQ-2 (deadlines EAT, labelled) are met as recorded (G7-33, amended at re-audit 1).
 4. Copy check against the four specs' "Copy (exact)" sections, including the discard dialog, every validation message, the service-area notice and the Places notice.
 5. Verdict PASS → `SCREEN_MAP.md` #7 rows → `matches-design`. Merge still waits for #6 and its preconditions.
 
