@@ -121,7 +121,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/runner/active (issue #15) | specced (2e17a0a; Q15-1..6 answered) | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
 | website/customer/evidence (issue #10) | specced (6e00e0f; WQ-10-1..4 answered) | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
 | api/dispute-party-ids (issue #38) | unaudited | — | — | — | found during #35 |
-| api/evidence-upload-guard (issue #39) | built (70491ee, 7a5a5c5; unit 1120, e2e 256) → in review | api-contract | fix/api-evidence-upload-guard (off main) | — | SECURITY, found speccing #10 |
+| api/evidence-upload-guard (issue #39) | awaiting-owner (PR open; reviewer READY: unit 1120, e2e 256) | api-contract | fix/api-evidence-upload-guard (off main) | — | SECURITY, found speccing #10 |
 | api/evidence-retention (issue #40) | unaudited | — | — | — | 1 year after close; dispute hold |
 | runner-app/active-fixes (issue #41) | unaudited | — | — | — | rows 251/258, destination, Fira Code (found speccing #15) |
 | website/customer + runner parity (issues #11, #12, #16, #18) | unaudited | — | — | #5, #6 | 14 feature-group issues on GitHub (owner request 2026-10-28); one PR per issue with `Closes #N` |
@@ -900,3 +900,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | api-contract #39 built: customers and non-assigned runners get 403 evidence_upload_forbidden; no client change. Sent to reviewer. |
 | 2026-10-29 | reviewer #7 READY; PR opened (squash). PR #37 merged (380be22) per the review's origin/main check. |
 | 2026-10-29 | OWNER INSTRUCTION: finish only the in-flight issues (#39 review→PR, #36 admin spec→build→PR, #8 gap report→build→PR); do NOT start any other issue until the owner approves. On hold: specced #9, #10, #13, #14, #15, #17; not started #11, #12, #16, #18, #27, #30, #38, #40, #41. Owner confirmed PR #37 merged. |
+| 2026-10-29 | reviewer #39 READY → PR opened. Deploy note: delete idem:evidence-upload:* keys to close the 24 h replay window. |
