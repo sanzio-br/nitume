@@ -2,13 +2,12 @@
 // HTTP, WINDOW, BroadcastChannel and socket for the #6 view and shell
 // suites.
 import { TestBed } from '@angular/core/testing';
-import { Router, TitleStrategy, provideRouter, withComponentInputBinding } from '@angular/router';
+import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app/app.routes';
 import { APP_LINKS } from '../app/app-area/app-links';
-import { NitumeTitleStrategy } from '../app/app-area/title.strategy';
 import { AppRole } from '../app/core/auth/auth.tokens';
-import { provideRealtimeSession } from '../app/core/auth/realtime-session';
+import { provideLazySession } from '../app/core/lazy-session/lazy-session';
 import { SignInFlow, SignInFlowStore } from '../app/core/auth/sign-in-flow.store';
 import { UserMe } from '../app/core/api-types';
 import { SOCKET_IO_FACTORY } from '../app/core/realtime/realtime.tokens';
@@ -47,8 +46,7 @@ export async function openApp(url: string, opts: OpenOptions = {}): Promise<AppH
     providers: [
       ...rig.providers,
       provideRouter(routes, withComponentInputBinding()),
-      { provide: TitleStrategy, useClass: NitumeTitleStrategy },
-      ...provideRealtimeSession(),
+      ...provideLazySession(),
       {
         provide: APP_LINKS,
         useValue: { customer: NO_LINKS, runner: NO_LINKS, ...opts.links },

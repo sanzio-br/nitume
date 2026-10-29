@@ -1,16 +1,16 @@
 import { ApplicationConfig } from '@angular/core';
 import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
-import { TitleStrategy, provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { routes } from './app/app.routes';
-import { authInterceptor } from './app/core/auth/auth.interceptor';
-import { provideRealtimeSession } from './app/core/auth/realtime-session';
-import { NitumeTitleStrategy } from './app/app-area/title.strategy';
+import { lazyAuthInterceptor, provideLazySession } from './app/core/lazy-session/lazy-session';
 
+// WQ-33: only thin shims are eager; the session layer (interceptor,
+// SessionStore, AuthApi, realtime token providers) loads on demand. Titles
+// are route `title` strings read by Angular's default TitleStrategy.
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideHttpClient(withFetch(), withInterceptors([authInterceptor])),
+    provideHttpClient(withFetch(), withInterceptors([lazyAuthInterceptor])),
     provideRouter(routes, withComponentInputBinding()),
-    { provide: TitleStrategy, useClass: NitumeTitleStrategy },
-    ...provideRealtimeSession(),
+    ...provideLazySession(),
   ],
 };

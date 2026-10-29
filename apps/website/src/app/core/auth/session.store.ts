@@ -20,6 +20,7 @@ import {
 } from './auth.tokens';
 import { isAccountSuspended } from './otp-policy';
 import { hasDisplayName, roleFromPath, roleOf } from './role-routing';
+import { removeLegacyStorageKeys } from '../lazy-session/lazy-session';
 
 export type SessionStatus = 'unknown' | 'restoring' | 'signedOut' | 'signedIn' | 'restoreFailed';
 export type RestoreResult = 'signedIn' | 'signedOut' | 'failed';
@@ -33,8 +34,7 @@ export interface SessionUser {
   readonly status: string;
 }
 
-/** Keys the old `/auth` page left in localStorage (removed on start, §1). */
-export const LEGACY_STORAGE_KEYS = ['nitume.ws.user', 'nitume.ws.access', 'nitume.ws.refresh'] as const;
+export { LEGACY_STORAGE_KEYS } from '../lazy-session/lazy-session';
 
 /** `exp` margin: a token expiring within 30 s is refreshed first. */
 const EXPIRY_MARGIN_MS = 30_000;
@@ -74,14 +74,6 @@ function refreshOutcomeOf(err: unknown): RefreshOutcome {
   return 'network'; // status 0, timeout, 5xx
 }
 
-function removeLegacyKeys(): void {
-  try {
-    for (const key of LEGACY_STORAGE_KEYS) globalThis.localStorage?.removeItem(key);
-  } catch {
-    // Storage blocked: nothing to clean.
-  }
-}
-
 @Injectable({ providedIn: 'root' })
 export class SessionStore {
   private readonly api = inject(AuthApi);
@@ -106,7 +98,7 @@ export class SessionStore {
   private signingOut: Promise<never> | null = null;
 
   constructor() {
-    removeLegacyKeys();
+    removeLegacyStorageKeys();
     const onMessage = (event: MessageEvent) => this.onBroadcast(event.data);
     this.channel?.addEventListener('message', onMessage);
     inject(DestroyRef).onDestroy(() => {

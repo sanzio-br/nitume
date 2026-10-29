@@ -416,7 +416,7 @@ describe('SessionStore (#6)', () => {
 });
 
 describe('legacy auth removed (#6, WQ-8)', () => {
-  it('F9.9 (code). no AuthStore, ApiService or storage writes remain in app code; only session.store.ts touches localStorage', () => {
+  it('F9.9 (code). no AuthStore, ApiService or storage writes remain in app code; only the legacy-key cleanup (lazy-session.ts, session.store.ts) touches localStorage', () => {
     const appDir = resolve(process.cwd(), 'src/app');
     const offenders: string[] = [];
     const walk = (dir: string): string[] =>
@@ -427,7 +427,7 @@ describe('legacy auth removed (#6, WQ-8)', () => {
       if (/\b(AuthStore|ApiService)\b|localStorage\.setItem|sessionStorage|indexedDB|document\.cookie/.test(source)) {
         offenders.push(file);
       }
-      if (/localStorage/.test(source) && !file.endsWith('core/auth/session.store.ts')) offenders.push(file);
+      if (/localStorage/.test(source) && !/core\/(auth\/session\.store|lazy-session\/lazy-session)\.ts$/.test(file)) offenders.push(file);
     }
     expect(offenders).toEqual([]);
     const types = readFileSync(resolve(appDir, 'core/api-types.ts'), 'utf8');

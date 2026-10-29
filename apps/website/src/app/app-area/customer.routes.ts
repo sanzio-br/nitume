@@ -17,19 +17,22 @@ export const CUSTOMER_ROUTES: Routes = [
   {
     path: 'sign-in',
     canActivate: [guestGuard],
-    data: { role, title: 'Sign in' },
+    title: 'Sign in · Nitume',
+    data: { role },
     loadComponent: () => import('./sign-in/auth-phone.page').then((m) => m.AuthPhonePage),
   },
   {
     path: 'sign-in/code',
     canActivate: [guestGuard, otpStepGuard],
-    data: { role, title: 'Enter the code' },
+    title: 'Enter the code · Nitume',
+    data: { role },
     loadComponent: () => import('./sign-in/auth-otp.page').then((m) => m.AuthOtpPage),
   },
   {
     path: 'name',
     canActivate: [authGuard, roleGuard(role), needsNameGuard],
-    data: { role, title: 'Your name' },
+    title: 'Your name · Nitume',
+    data: { role },
     loadComponent: () => import('./sign-in/name-capture.page').then((m) => m.NameCapturePage),
   },
   {
@@ -39,23 +42,26 @@ export const CUSTOMER_ROUTES: Routes = [
     loadComponent: () => import('./shell/app-shell.page').then((m) => m.AppShellPage),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'home' },
-      { path: 'home', data: { role, navKey: 'home', title: 'Home', stubLabel: 'Home' }, loadComponent: stub },
+      { path: 'home', title: 'Home · Nitume', data: { role, navKey: 'home', stubLabel: 'Home' }, loadComponent: stub },
       // #7 wizard: pushed; New task active from 768px.
       { path: 'new', data: { role, navKey: 'new', pushed: true }, loadComponent: stub },
-      { path: 'track', data: { role, navKey: 'track', title: 'Track', stubLabel: 'Track' }, loadComponent: stub },
+      { path: 'track', title: 'Track · Nitume', data: { role, navKey: 'track', stubLabel: 'Track' }, loadComponent: stub },
       {
         path: 'track/:errandId',
-        data: { role, navKey: 'track', title: 'Track', stubLabel: 'Track' },
+        title: 'Track · Nitume',
+        data: { role, navKey: 'track', stubLabel: 'Track' },
         loadComponent: stub,
       },
       {
         path: 'history',
-        data: { role, navKey: 'history', title: 'History', stubLabel: 'History' },
+        title: 'History · Nitume',
+        data: { role, navKey: 'history', stubLabel: 'History' },
         loadComponent: stub,
       },
       {
         path: 'profile',
-        data: { role, navKey: 'profile', title: 'Profile', stubLabel: 'Profile' },
+        title: 'Profile · Nitume',
+        data: { role, navKey: 'profile', stubLabel: 'Profile' },
         loadComponent: stub,
       },
     ],

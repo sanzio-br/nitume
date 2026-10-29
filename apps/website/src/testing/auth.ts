@@ -5,6 +5,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { EnvironmentProviders, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { lazyAuthInterceptor, registerAuthInterceptor } from '../app/core/lazy-session/lazy-session';
 import { authInterceptor } from '../app/core/auth/auth.interceptor';
 import {
   SESSION_CHANNEL,
@@ -57,11 +58,14 @@ export interface AuthRig {
 export function authRig(opts: { pathname?: string; locks?: WebLocks | null } = {}): AuthRig {
   const win = fakeWindow(opts.pathname);
   const channel = new FakeChannel();
+  // The session chunk as a loaded app has it; the cold first request is
+  // covered by lazy-session.spec.ts and the interceptor spec.
+  registerAuthInterceptor(authInterceptor);
   return {
     win,
     channel,
     providers: [
-      provideHttpClient(withInterceptors([authInterceptor])),
+      provideHttpClient(withInterceptors([lazyAuthInterceptor])),
       provideHttpClientTesting(),
       { provide: WINDOW, useValue: win },
       { provide: SESSION_CHANNEL, useValue: channel },

@@ -1,15 +1,54 @@
 // Static checks for the issue #6 files (auth-foundation §9.9 F9.48, F9.49;
 // gap report G6-40, G6-42). Outside src/app/ on purpose: the patterns below
 // would trip the #5 raw-colour scan of src/app/.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 
-const appDir = resolve(process.cwd(), 'src/app');
+const srcDir = resolve(process.cwd(), 'src');
+const appDir = resolve(srcDir, 'app');
+
+/** WQ-33 / §9.9 item 50: never statically reachable from src/main.ts. */
+const FORBIDDEN_EAGER = /^app\/(core\/auth|core\/realtime|app-area|shared\/ui)\//;
+
+/** Relative module specifiers of static imports and re-exports (not `import()`, not type-only). */
+function staticSpecifiers(source: string): string[] {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const out: string[] = [];
+  for (const m of code.matchAll(/^\s*(import|export)\s+(type\s+)?(?:[^'";]*?\sfrom\s+)?['"]([^'"]+)['"]/gm)) {
+    if (m[2]) continue; // import type / export type
+    out.push(m[3]);
+  }
+  return out;
+}
+
+function resolveModule(from: string, specifier: string): string | null {
+  if (!specifier.startsWith('.')) return null;
+  const base = resolve(dirname(from), specifier);
+  for (const candidate of [`${base}.ts`, join(base, 'index.ts')]) if (existsSync(candidate)) return candidate;
+  return null;
+}
+
+/** Files reached from `entry` through static imports and re-exports. */
+function eagerGraph(entry: string, read: (file: string) => string = (f) => readFileSync(f, 'utf8')): Set<string> {
+  const seen = new Set<string>();
+  const stack = [entry];
+  while (stack.length) {
+    const file = stack.pop() as string;
+    if (seen.has(file)) continue;
+    seen.add(file);
+    for (const spec of staticSpecifiers(read(file))) {
+      const next = resolveModule(file, spec);
+      if (next) stack.push(next);
+    }
+  }
+  return seen;
+}
 
 /** Every #6 folder (frame, session layer, chooser, new kit components). */
 const ISSUE_6_DIRS = [
   'app-area',
   'core/auth',
+  'core/lazy-session',
   'pages/auth-chooser',
   'shared/ui/icon',
   'shared/ui/wordmark',
@@ -65,17 +104,27 @@ describe('issue #6 static checks', () => {
     expect(offenders(/outline:\s*(none|0)\b/)).toEqual([]);
   });
 
-  it('F9.50 (static part). the eager entry imports no /app view, shell or socket code (only the session layer app.config needs)', () => {
-    const eager = ['../app.config.ts', 'app.routes.ts', 'app.component.ts', 'layout/marketing-layout.component.ts'];
-    for (const file of eager) {
-      const source = readFileSync(resolve(appDir, file), 'utf8');
-      const imports = [...source.matchAll(/^import [^;]*from '([^']+)'/gm)].map((m) => m[1]);
-      expect.soft(imports.filter((i) => /app-area\/(?!title\.strategy)|realtime\.service|realtime\.tokens|socket\.io|pages\/auth-chooser/.test(i)), file).toEqual([]);
-    }
-    // SessionStore (eager through the interceptor) loads RealtimeService on demand.
+  it('F9.50. the eager import graph from src/main.ts reaches no session, realtime, app-area or kit file (WQ-33)', () => {
+    const reached = [...eagerGraph(resolve(srcDir, 'main.ts'))].map((f) => relative(srcDir, f));
+    expect(reached).toContain('app.config.ts');
+    expect(reached).toContain('app/core/lazy-session/lazy-session.ts');
+    expect(reached.filter((f) => FORBIDDEN_EAGER.test(f))).toEqual([]);
+    // SessionStore loads RealtimeService on demand.
     const store = readFileSync(resolve(appDir, 'core/auth/session.store.ts'), 'utf8');
     expect(store).not.toMatch(/^import .*realtime/m);
     expect(store).toContain("await import('../realtime/realtime.service')");
+  });
+
+  it('F9.50 (walker check). a static import of session.store in app.config.ts is reported', () => {
+    const configPath = resolve(srcDir, 'app.config.ts');
+    const read = (file: string) => {
+      const source = readFileSync(file, 'utf8');
+      return file === configPath
+        ? `import { SessionStore } from './app/core/auth/session.store';\n${source}`
+        : source;
+    };
+    const reached = [...eagerGraph(resolve(srcDir, 'main.ts'), read)].map((f) => relative(srcDir, f));
+    expect(reached.filter((f) => FORBIDDEN_EAGER.test(f))).toContain('app/core/auth/session.store.ts');
   });
 
   it('F9.60. no inline component styles under src/app/ contain @use, @include, @mixin or a $ variable', () => {

@@ -1,4 +1,6 @@
-// authInterceptor (auth-foundation §5 items 1–6).
+// authInterceptor (auth-foundation §5 items 1–6). Loaded lazily through
+// lazyAuthInterceptor (core/lazy-session, WQ-33); registers itself so later
+// requests run it synchronously.
 import {
   HttpErrorResponse,
   HttpEvent,
@@ -11,6 +13,7 @@ import { Observable, catchError, from, switchMap, throwError } from 'rxjs';
 import { API_V1, SKIP_SESSION_RETRY } from './auth-api';
 import { isAccountSuspended } from './otp-policy';
 import { SessionStore } from './session.store';
+import { registerAuthInterceptor } from '../lazy-session/lazy-session';
 
 const SCOPE = `${API_V1}/`;
 
@@ -80,3 +83,5 @@ function retryOnce(
     }),
   );
 }
+
+registerAuthInterceptor(authInterceptor);

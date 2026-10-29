@@ -19,7 +19,7 @@ export const routes: Routes = [
   // WQ-12: the role chooser replaces the old /auth page; no marketing frame.
   {
     path: 'auth',
-    data: { title: 'Sign in' },
+    title: 'Sign in · Nitume',
     loadComponent: () => import('./pages/auth-chooser/auth-chooser.page').then((m) => m.AuthChooserPage),
   },
   // Signed-in app: lazy only, so the marketing bundle does not grow.

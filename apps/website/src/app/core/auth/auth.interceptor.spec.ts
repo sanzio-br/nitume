@@ -2,8 +2,9 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
-import { API, AuthRig, apiError, authRig, httpMock, jwt, settle, userJson } from '../../../testing/auth';
+import { API, AuthRig, apiError, authRig, expectRequest, httpMock, jwt, settle, userJson } from '../../../testing/auth';
 import { SessionStore } from './session.store';
+import { resetLazySessionForTests, sessionModuleLoaded } from '../lazy-session/lazy-session';
 
 const REFRESH = `${API}/auth/web/refresh`;
 const LOGOUT = `${API}/auth/web/logout`;
@@ -19,12 +20,17 @@ interface Setup {
 async function setup(): Promise<Setup> {
   TestBed.resetTestingModule();
   const rig = authRig({ pathname: '/app/customer/home' });
+  // Cold start (WQ-33): the first API request waits for the session chunk.
+  resetLazySessionForTests();
   TestBed.configureTestingModule({ providers: rig.providers });
   const store = TestBed.inject(SessionStore);
   const token = jwt(900, 'first');
   const done = store.completeSignIn({ user: userJson(), tokens: { accessToken: token } });
-  await settle();
-  httpMock().expectOne(`${API}/users/me`).flush(userJson());
+  await settle(2);
+  expect(sessionModuleLoaded()).toBe(false);
+  httpMock().expectNone(`${API}/users/me`);
+  (await expectRequest(`${API}/users/me`)).flush(userJson());
+  expect(sessionModuleLoaded()).toBe(true);
   await done;
   return { rig, http: TestBed.inject(HttpClient), store, token };
 }
@@ -42,7 +48,7 @@ async function finishSignOut(s: Setup) {
   await vi.waitFor(() => expect(s.rig.win.location.replace).toHaveBeenCalled());
 }
 
-describe('authInterceptor (#6)', () => {
+describe('authInterceptor through the lazy shim (#6, WQ-33)', () => {
   afterEach(() => httpMock().verify());
 
   it('F9.20. Bearer on /api/v1/** except otp/request and /auth/web/*; nothing outside apiBaseUrl; credentials on /auth/web/* only', async () => {

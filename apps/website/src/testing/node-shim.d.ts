@@ -10,5 +10,6 @@ declare module 'node:path' {
   export function resolve(...parts: string[]): string;
   export function join(...parts: string[]): string;
   export function relative(from: string, to: string): string;
+  export function dirname(path: string): string;
 }
 declare const process: { cwd(): string; env: Record<string, string | undefined> };

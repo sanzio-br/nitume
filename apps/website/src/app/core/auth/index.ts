@@ -8,4 +8,3 @@ export * from './role-routing';
 export * from './session.store';
 export * from './sign-in-flow.store';
 export * from './restored-destination';
-export * from './realtime-session';
