@@ -1,11 +1,12 @@
 # runner-web-presence — Web runner marker, "Pings stopped" flag and auto-offline notice (runners panel, runner drawer, live map)
 
 - Issue: GitHub **#36**. Binding owner decisions: **Q14-5 / WQ-46** (Redis-only flag, 90 s, including never-pinged web runners), **Q14-6 / WQ-47** (idle online web runners are set offline after 5 min; a busy web runner is flagged only), **Q14-7** (location revoked: stay online plus the flag), **WQ-52** (blocked location and closed tab are treated the same; an idle web runner holding an open offer is flagged only until the offer ends; admin event `runner:web_auto_offline` kept, plus a runner-room event). Recorded in the issue body and its 2026-10-29 comment, and in BOARD (`WQ-46`, `WQ-47`, `WQ-52`).
-- Mockup: **not drawn. EXTENDS MOCKUP.** `nitume_admin_dashboard.html` draws the map dots (`.runner-pt.idle|busy`, lines 285–292), the live-feed rail (`.live-row`, lines 298–304: amber/green/red/slate dots, Fira Code sub ending in a 12-hour time) and the runner drawer (lines 474–509). Nothing about the client or location pings. Every label below is *(proposed)* and needs owner confirmation (Q36-1).
+- Mockup: **not drawn. EXTENDS MOCKUP.** `nitume_admin_dashboard.html` draws the map dots (`.runner-pt.idle|busy`, lines 285–292), the live-feed rail (`.live-row`, lines 298–304: amber/green/red/slate dots, Fira Code sub ending in a 12-hour time) and the runner drawer (lines 474–509). Nothing about the client or location pings. Every label below was *(proposed)*; the owner approved all of it on 2026-10-29 (Q36-1, decided).
 - Shared conventions: `docs/specs/admin/_shared.md` (§3.1 times, §4 layout tokens, §4.1 admin palette, §5 components A-01 … A-18).
 - API: **built** on `feat/api-web-runner-presence` (`126ae24` … `dd14084`). See §9.
 - Implementation: none. Files that change: `features/admin/panels/runners.panel.ts`, `features/admin/drawers/runner-drawer.ts`, `features/admin/panels/live-map.panel.ts`, `features/admin/admin-data.service.ts`, `core/api-types.ts`, plus a **new admin Socket.IO client** (§8). No client exists today.
-- Status: missing.
+- Status: matches-design (re-audit 2026-10-29 PASS of web-parity `efa1e5c` … `cc30833`; `docs/audits/admin-gap-report.md` #36). Owner decided Q36-1 … Q36-11 on 2026-10-29: every recommendation in §13 approved.
+- Built-in deviation accepted at re-audit: the runner drawer loads as a `@defer (on immediate)` chunk with `Loading runner profile…` (bundle budget, `62e15ac`).
 
 ## 1. Purpose
 
@@ -262,9 +263,9 @@ Run with `npx ng test --watch=false` in `apps/admin`, 0 failures. `npx ng build`
 6. `status-chip.component.spec.ts`: a `label="Pings stopped" tone="pending"` case renders `chip-pending` (guards the amber use).
 7. Grep checks in the audit (no automated spec): no hex, `font-family` or `rgb(` in the changed files; `socket.io-client` imported only through a dynamic `import()`.
 
-## 13. Questions for the owner
+## 13. Questions for the owner (all DECIDED 2026-10-29: owner approved every recommendation)
 
-| Id | Question | Recommendation |
+| Id | Question | Recommendation (approved) |
 |---|---|---|
 | Q36-1 | Approve the proposed copy in §7 (chips `Web` / `App` / `Pings stopped`; rows `Client`, `Location pings`, `Flagged`; the two notices; feed titles; `Live updates paused`)? | Approve as written |
 | Q36-2 | Show the `Web` marker on an **offline** runner's card (last used the website within 24 h), or only while online or busy? | Only while online or busy (the drawer's `Client` row still shows it) |
