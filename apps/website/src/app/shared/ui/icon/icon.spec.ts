@@ -13,7 +13,7 @@ class Host {
 }
 
 describe('nm-icon (#6)', () => {
-  it('registry holds exactly the 14 names of auth-foundation §7.2 plus the 10 #7 names (§W9a)', () => {
+  it('registry holds exactly the 14 names of auth-foundation §7.2 plus the 10 #7 names (§W9a) and the 2 #8 names (A§8)', () => {
     expect(NM_ICON_NAMES.sort()).toEqual(
       [
         'home',
@@ -41,6 +41,9 @@ describe('nm-icon (#6)', () => {
         'close',
         'add',
         'remove',
+        // #8 (customer-x-awaiting-quote A§8)
+        'phone',
+        'check',
       ].sort(),
     );
   });

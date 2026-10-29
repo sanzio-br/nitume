@@ -1,5 +1,5 @@
 // Icon registry for `nm-icon` (auth-foundation §7.2; #7 additions,
-// customer-v-new-category §W9a).
+// customer-v-new-category §W9a; #8 additions, customer-x-awaiting-quote A§8).
 //
 // Paths: Google Material Icons / Material Symbols, 24×24 viewBox.
 // Copyright Google LLC. Licensed under the Apache License, Version 2.0
@@ -49,6 +49,10 @@ export const NM_ICONS = {
   close: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   add: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
   remove: 'M19 13H5v-2h14v2z',
+  // #8 (customer-x-awaiting-quote A§8): `nm-stk-status`. `phone` = phone_iphone outline.
+  phone:
+    'M15.5 1h-8C6.12 1 5 2.12 5 3.5v17C5 21.88 6.12 23 7.5 23h8c1.38 0 2.5-1.12 2.5-2.5v-17C18 2.12 16.88 1 15.5 1zm-4 21c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4.5-4H7V4h9v14z',
+  check: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
 } as const;
 
 export type NmIconName = keyof typeof NM_ICONS;
