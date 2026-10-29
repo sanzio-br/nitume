@@ -18,7 +18,7 @@
     [attr.aria-disabled]="disabled() ? 'true' : null"
     [attr.aria-busy]="loading() ? 'true' : null"
     (click)="onClick($event)"
-    ><ng-container [ngTemplateOutlet]="inner"
+    ><ng-container [nmTemplateOutlet]="inner"
   /></a>
 } @else {
   <button
@@ -29,6 +29,6 @@
     [attr.aria-busy]="loading() ? 'true' : null"
     (click)="onClick($event)"
   >
-    <ng-container [ngTemplateOutlet]="inner" />
+    <ng-container [nmTemplateOutlet]="inner" />
   </button>
 }

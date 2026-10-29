@@ -6,8 +6,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
-  Injector,
-  afterNextRender,
   inject,
   signal,
 } from '@angular/core';
@@ -63,7 +61,6 @@ export class AuthChooserPage {
   private readonly api = inject(AuthApi);
   private readonly router = inject(Router);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
-  private readonly injector = inject(Injector);
 
   protected readonly customerLink = '/app/customer/sign-in';
   protected readonly runnerLink = '/app/runner/sign-in';
@@ -85,6 +82,6 @@ export class AuthChooserPage {
     }
     // Signed out, or a failed restore (the sign-in route retries it).
     this.restoring.set(false);
-    afterNextRender(() => focusPageHeading(this.host), { injector: this.injector });
+    setTimeout(() => focusPageHeading(this.host));
   }
 }

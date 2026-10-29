@@ -5,8 +5,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
-  Injector,
-  afterNextRender,
   inject,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -31,12 +29,11 @@ import { focusPageHeading } from './focus-heading';
 export class AppAreaComponent {
   constructor() {
     const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
-    const injector = inject(Injector);
     inject(Router)
       .events.pipe(
         filter((e) => e instanceof NavigationEnd),
         takeUntilDestroyed(),
       )
-      .subscribe(() => afterNextRender(() => focusPageHeading(host), { injector }));
+      .subscribe(() => setTimeout(() => focusPageHeading(host)));
   }
 }

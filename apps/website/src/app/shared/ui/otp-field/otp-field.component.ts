@@ -2,16 +2,16 @@
 // OtpCodeField). One real input laid over six aria-hidden boxes, so typing,
 // paste and SMS autofill (`autocomplete="one-time-code"`) all reach it.
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
-  afterNextRender,
   computed,
   forwardRef,
+  inject,
   input,
   output,
   signal,
-  viewChild,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
@@ -38,7 +38,6 @@ let nextId = 0;
           </span>
         }
         <input
-          #input
           class="nm-otp__input"
           type="text"
           inputmode="numeric"
@@ -69,7 +68,7 @@ let nextId = 0;
     { provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => NmOtpField), multi: true },
   ],
 })
-export class NmOtpField implements ControlValueAccessor {
+export class NmOtpField implements ControlValueAccessor, AfterViewInit {
   readonly length = input(6);
   readonly disabled = input(false);
   /** Every border red and the message under the row (OA-13). */
@@ -93,24 +92,23 @@ export class NmOtpField implements ControlValueAccessor {
   /** The box after the last digit (the last box once full). */
   protected readonly focusIndex = computed(() => Math.min(this.value().length, this.length() - 1));
 
-  private readonly inputRef = viewChild.required<ElementRef<HTMLInputElement>>('input');
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   private onChange: (value: string) => void = () => undefined;
   private onTouched: () => void = () => undefined;
 
-  constructor() {
-    afterNextRender(() => {
-      if (this.autofocus()) this.focus();
-    });
+  ngAfterViewInit(): void {
+    if (this.autofocus()) this.focus();
   }
 
   focus(): void {
-    this.inputRef().nativeElement.focus();
+    this.input()?.focus();
   }
 
   /** Empties the boxes (wrong code, new code sent). */
   clear(): void {
-    this.inputRef().nativeElement.value = '';
+    const el = this.input();
+    if (el) el.value = '';
     this.update('');
   }
 
@@ -142,13 +140,19 @@ export class NmOtpField implements ControlValueAccessor {
     const text = event.clipboardData?.getData('text') ?? '';
     event.preventDefault();
     const next = this.digits(text);
-    this.inputRef().nativeElement.value = next;
+    const el = this.input();
+    if (el) el.value = next;
     this.update(next);
   }
 
   protected onBlur(): void {
     this.focused.set(false);
     this.onTouched();
+  }
+
+  /** The real input (a DOM lookup, not a view query: WQ-33 bundle). */
+  private input(): HTMLInputElement | null {
+    return this.host.querySelector('input.nm-otp__input');
   }
 
   private digits(text: string): string {

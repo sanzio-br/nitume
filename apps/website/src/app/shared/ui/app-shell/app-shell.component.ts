@@ -3,7 +3,7 @@
 // pushed state come from route data (`navKey`, `pushed`); the layout from
 // the 768px breakpoint. Pushed routes hide the bottom bar below 768px and
 // keep the side nav from 768px (WQ-15).
-import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, input, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, input } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRouteSnapshot, NavigationEnd, Router } from '@angular/router';
 import { filter, map } from 'rxjs';
@@ -41,7 +41,7 @@ function readRouteData(root: ActivatedRouteSnapshot): ShellRouteData {
           [homeLink]="homeLink()"
         />
       }
-      <main #main id="content" class="nm-app-shell__main" tabindex="-1">
+      <main id="content" class="nm-app-shell__main" tabindex="-1">
         <div class="nm-app-shell__content"><ng-content /></div>
       </main>
     </div>
@@ -55,7 +55,7 @@ export class NmAppShell {
   readonly homeLink = input.required<string>();
 
   private readonly router = inject(Router);
-  private readonly main = viewChild.required<ElementRef<HTMLElement>>('main');
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   protected readonly wide = mediaQuery(NM_BP_MD_QUERY);
   protected readonly route = toSignal(
@@ -70,6 +70,6 @@ export class NmAppShell {
 
   protected skipToContent(event: MouseEvent): void {
     event.preventDefault();
-    this.main().nativeElement.focus();
+    this.host.querySelector<HTMLElement>('main#content')?.focus();
   }
 }

@@ -1,22 +1,22 @@
 // `nm-button` (ui-kit spec §4.1; Flutter NitumeButton C-01…C-04).
-import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   booleanAttribute,
   Component,
   computed,
-  effect,
+  OnChanges,
   input,
   isDevMode,
   output,
 } from '@angular/core';
+import { NmTemplateOutlet } from '../template-outlet.directive';
 
 export type NmButtonVariant = 'primary' | 'secondary' | 'outline' | 'text' | 'link';
 export type NmButtonSize = 'regular' | 'small';
 
 @Component({
   selector: 'nm-button',
-  imports: [NgTemplateOutlet],
+  imports: [NmTemplateOutlet],
   templateUrl: './button.component.html',
   styleUrl: './button.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -25,7 +25,7 @@ export type NmButtonSize = 'regular' | 'small';
     '[class.nm-button--inline]': 'inline()',
   },
 })
-export class NmButton {
+export class NmButton implements OnChanges {
   readonly variant = input<NmButtonVariant>('primary');
   readonly size = input<NmButtonSize>('regular');
   /** Red label on outline and text only; ignored on fills (no red fill). */
@@ -67,15 +67,14 @@ export class NmButton {
     return out.join(' ');
   });
 
-  constructor() {
-    effect(() => {
-      if (this.destructive() && this.isFill() && isDevMode()) {
-        console.warn(
-          `nm-button: "destructive" is ignored on the ${this.variant()} variant. ` +
-            'Use the outline or text variant for a destructive action (no red fill).',
-        );
-      }
-    });
+  /** Dev warning when `destructive` is set on a fill (no `effect`: WQ-33 bundle). */
+  ngOnChanges(): void {
+    if (this.destructive() && this.isFill() && isDevMode()) {
+      console.warn(
+        `nm-button: "destructive" is ignored on the ${this.variant()} variant. ` +
+          'Use the outline or text variant for a destructive action (no red fill).',
+      );
+    }
   }
 
   protected onClick(event: MouseEvent): void {

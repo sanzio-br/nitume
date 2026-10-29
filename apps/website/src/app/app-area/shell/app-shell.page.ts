@@ -1,7 +1,7 @@
 // Customer and runner shells (customer-shell.md, runner-shell.md): the same
 // `nm-app-shell` configured by route `data.role`; realtime connects once on
 // first render. The shell asks for no location permission (#15 decides).
-import { ChangeDetectionStrategy, Component, afterNextRender, inject } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { ActivatedRoute, RouterOutlet } from '@angular/router';
 import { routeRole } from '../../core/auth/guards';
 import { ROLE_HOME } from '../../core/auth/role-routing';
@@ -42,14 +42,16 @@ export const RUNNER_NAV: readonly NavItem[] = [
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AppShellPage {
+export class AppShellPage implements AfterViewInit {
   private readonly role = routeRole(inject(ActivatedRoute).snapshot);
   protected readonly items = this.role === 'runner' ? RUNNER_NAV : CUSTOMER_NAV;
   protected readonly suffix = wordmarkSuffix(this.role);
   protected readonly home = ROLE_HOME[this.role];
 
-  constructor() {
-    const realtime = inject(RealtimeService);
-    afterNextRender(() => void realtime.connect());
+  private readonly realtime = inject(RealtimeService);
+
+  /** Once, when the shell first renders (not on tab changes). */
+  ngAfterViewInit(): void {
+    void this.realtime.connect();
   }
 }

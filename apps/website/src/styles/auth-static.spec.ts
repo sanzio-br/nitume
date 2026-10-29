@@ -138,5 +138,13 @@ describe('issue #6 static checks', () => {
     }
     expect(out).toEqual([]);
   });
+
+  it('F9.50 (framework weight). #6 code avoids the framework features that would grow the marketing bundle (WQ-33)', () => {
+    // esbuild keeps framework code used by lazy chunks in the shared Angular
+    // modules main loads; these were measured as the costly ones.
+    expect(offenders(/\bafterNextRender\(|\bviewChild\b|ReactiveFormsModule|\bNgTemplateOutlet\b|\beffect\(/)).toEqual([]);
+    const config = readFileSync(resolve(srcDir, 'app.config.ts'), 'utf8');
+    expect(config).not.toMatch(/withComponentInputBinding\(/);
+  });
 });
 

@@ -1,8 +1,6 @@
 // customer / runner `v-auth-phone` (customer-v-auth-phone.md,
 // runner-v-auth-phone.md): one component configured by route `data.role`.
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthApi } from '../../core/auth/auth-api';
 import {
@@ -20,6 +18,7 @@ import { formatPhoneIntl, normalizeKenyanPhone } from '../../shared/format/forma
 import { NmAuthFrame } from '../../shared/ui/auth-frame/auth-frame.component';
 import { NmButton } from '../../shared/ui/button/button.component';
 import { NmField } from '../../shared/ui/field/field.component';
+import { NmFieldValue } from '../../shared/ui/field/field-value.directive';
 import { NmLegalLine } from '../../shared/ui/legal-line/legal-line.component';
 import { NmToastService } from '../../shared/ui/overlay/toast.service';
 import { friendlyError } from '../../shared/ui/states/friendly-error';
@@ -43,7 +42,7 @@ const SIGNED_OUT_TOASTS: Readonly<Record<string, string>> = {
     NmField,
     NmButton,
     NmLegalLine,
-    ReactiveFormsModule,
+    NmFieldValue,
     SignInMessageComponent,
   ],
   template: `
@@ -56,7 +55,8 @@ const SIGNED_OUT_TOASTS: Readonly<Record<string, string>> = {
           label="Phone number"
           [hideLabel]="true"
           placeholder="+254 7XX XXX XXX"
-          [formControl]="phone"
+          [nmFieldValue]="phone()"
+          (nmFieldValueChange)="onPhone($event)"
           [error]="fieldError()"
           [readonly]="loading()"
         />
@@ -107,20 +107,25 @@ export class AuthPhonePage {
   protected readonly suffix = wordmarkSuffix(this.role);
   protected readonly links = inject(APP_LINKS)[this.role];
 
-  protected readonly phone = new FormControl(this.prefill(), { nonNullable: true });
+  protected readonly phone = signal(this.prefill());
   protected readonly fieldError = signal<string | null>(null);
   protected readonly other = signal<SignInMessage | null>(null);
   protected readonly loading = signal(false);
 
   constructor() {
-    this.phone.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.fieldError.set(null));
     this.showSignedOutToast();
+  }
+
+  /** Typing clears the field error. */
+  protected onPhone(value: string): void {
+    this.phone.set(value);
+    this.fieldError.set(null);
   }
 
   protected submit(event: Event): void {
     event.preventDefault();
     if (this.loading()) return;
-    const phone = normalizeKenyanPhone(this.phone.value);
+    const phone = normalizeKenyanPhone(this.phone());
     if (!phone) {
       this.fieldError.set(INVALID_PHONE_COPY);
       return;

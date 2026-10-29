@@ -2,7 +2,7 @@
 // HTTP, WINDOW, BroadcastChannel and socket for the #6 view and shell
 // suites.
 import { TestBed } from '@angular/core/testing';
-import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app/app.routes';
 import { APP_LINKS } from '../app/app-area/app-links';
@@ -45,7 +45,7 @@ export async function openApp(url: string, opts: OpenOptions = {}): Promise<AppH
   TestBed.configureTestingModule({
     providers: [
       ...rig.providers,
-      provideRouter(routes, withComponentInputBinding()),
+      provideRouter(routes),
       ...provideLazySession(),
       {
         provide: APP_LINKS,

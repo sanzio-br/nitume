@@ -2,9 +2,9 @@
 // suffix): 9px green dot, 9px gap, `Nitume` in auth-heading, optional
 // suffix in wordmark-suffix. Accessible name `Nitume` / `Nitume Runner`.
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
 import { Router } from '@angular/router';
 import { followInAppLink } from '../links';
+import { NmTemplateOutlet } from '../template-outlet.directive';
 
 @Component({
   selector: 'nm-wordmark',
@@ -18,16 +18,16 @@ import { followInAppLink } from '../links';
     </ng-template>
     @if (href(); as link) {
       <a class="nm-wordmark nm-wordmark--link" [attr.href]="link" [attr.aria-label]="name()" (click)="follow($event, link)">
-        <ng-container [ngTemplateOutlet]="mark" />
+        <ng-container [nmTemplateOutlet]="mark" />
       </a>
     } @else {
       <span class="nm-wordmark" role="img" [attr.aria-label]="name()">
-        <ng-container [ngTemplateOutlet]="mark" />
+        <ng-container [nmTemplateOutlet]="mark" />
       </span>
     }
   `,
   styleUrl: './wordmark.component.scss',
-  imports: [NgTemplateOutlet],
+  imports: [NmTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NmWordmark {

@@ -3,12 +3,9 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  Injector,
-  afterNextRender,
   computed,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -70,12 +67,13 @@ const NAME_PATH = /^\/app\/(customer|runner)\/name(?:[?#]|$)/;
     <nm-auth-frame heading="Enter the code">
       <nm-pushed-header nmAuthHeader (back)="back($event)" />
       <span nmAuthSub>We sent a 6-digit code to <span nmNum>{{ formattedPhone }}</span>.</span>
-      <form class="form" novalidate (submit)="submit($event)">
+      <form class="form" novalidate (submit)="submit($event, field)">
         <nm-otp-field
+          #field
           [error]="codeError()"
           [disabled]="fieldDisabled()"
           (codeChange)="onCode($event)"
-          (completed)="verify()"
+          (completed)="verify(field)"
         />
         <app-sign-in-message class="other centered" [message]="other()" [supportUrl]="links.supportUrl" />
         <nm-button
@@ -92,7 +90,7 @@ const NAME_PATH = /^\/app\/(customer|runner)\/name(?:[?#]|$)/;
           class="resend"
           [cooldownEndsAt]="cooldownEndsAt()"
           [sending]="sending()"
-          (resend)="resend()"
+          (resend)="resend(field)"
         />
       }
     </nm-auth-frame>
@@ -124,7 +122,6 @@ export class AuthOtpPage {
   private readonly session = inject(SessionStore);
   private readonly flow = inject(SignInFlowStore);
   private readonly toast = inject(NmToastService);
-  private readonly injector = inject(Injector);
 
   protected readonly role = routeRole(this.route.snapshot);
   protected readonly links = inject(APP_LINKS)[this.role];
@@ -132,7 +129,6 @@ export class AuthOtpPage {
   protected readonly formattedPhone = formatPhoneIntl(this.phone);
   private readonly returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
 
-  private readonly field = viewChild.required(NmOtpField);
   private code = '';
 
   protected readonly codeError = signal<string | null>(null);
@@ -151,12 +147,12 @@ export class AuthOtpPage {
     if (this.codeError() && !this.needsNewCode()) this.codeError.set(null);
   }
 
-  protected submit(event: Event): void {
+  protected submit(event: Event, field: NmOtpField): void {
     event.preventDefault();
-    void this.verify();
+    void this.verify(field);
   }
 
-  protected async verify(): Promise<void> {
+  protected async verify(field: NmOtpField): Promise<void> {
     if (this.verifying() || this.needsNewCode()) return;
     if (this.code.length < OTP_CODE_LENGTH) {
       this.codeError.set(CODE_TOO_SHORT_COPY);
@@ -169,7 +165,7 @@ export class AuthOtpPage {
     try {
       result = await firstValueFrom(this.api.verifyOtp(this.phone, this.code, this.role));
     } catch (err) {
-      await this.onVerifyError(err);
+      await this.onVerifyError(err, field);
       return;
     }
     const user = await this.session.completeSignIn(result);
@@ -180,7 +176,7 @@ export class AuthOtpPage {
       returnUrl: this.returnUrl,
     });
     if (destination.kind === 'refuse') {
-      await this.refuse(destination.reason === 'not-allowed' ? NOT_ALLOWED_COPY : WRONG_ACCOUNT_COPY);
+      await this.refuse(destination.reason === 'not-allowed' ? NOT_ALLOWED_COPY : WRONG_ACCOUNT_COPY, field);
       return;
     }
     const url = await destinationUrl(destination, this.api);
@@ -190,7 +186,7 @@ export class AuthOtpPage {
     await this.router.navigateByUrl(url, { replaceUrl: true });
   }
 
-  protected async resend(): Promise<void> {
+  protected async resend(field: NmOtpField): Promise<void> {
     if (this.sending()) return;
     this.sending.set(true);
     try {
@@ -206,7 +202,7 @@ export class AuthOtpPage {
     this.needsNewCode.set(false);
     this.codeError.set(null);
     this.other.set(null);
-    this.clearAndFocus();
+    this.clearAndFocus(field);
   }
 
   protected back(event: NmBackEvent): void {
@@ -216,16 +212,16 @@ export class AuthOtpPage {
     });
   }
 
-  private async onVerifyError(err: unknown): Promise<void> {
+  private async onVerifyError(err: unknown, field: NmOtpField): Promise<void> {
     if (isRoleMismatch(err)) {
-      await this.refuse(WRONG_ACCOUNT_COPY);
+      await this.refuse(WRONG_ACCOUNT_COPY, field);
       return;
     }
     this.verifying.set(false);
     const kind = otpErrorKind(err);
     switch (kind) {
       case 'incorrect':
-        this.clearAndFocus(); // before the error: clearing counts as typing
+        this.clearAndFocus(field); // before the error: clearing counts as typing
         this.codeError.set(CODE_INCORRECT_COPY);
         return;
       case 'attemptsExhausted':
@@ -279,11 +275,11 @@ export class AuthOtpPage {
   }
 
   /** Wrong account, role_mismatch or not-allowed: revoke what the API issued. */
-  private async refuse(text: string): Promise<void> {
+  private async refuse(text: string, field: NmOtpField): Promise<void> {
     await this.session.dropSession();
     this.verifying.set(false);
     this.other.set({ kind: 'text', text, support: true });
-    this.clearAndFocus();
+    this.clearAndFocus(field);
   }
 
   private restartCooldown(seconds: number): void {
@@ -292,9 +288,10 @@ export class AuthOtpPage {
     this.flow.setCooldown(this.role, endsAt);
   }
 
-  private clearAndFocus(): void {
-    this.field().clear();
+  /** Focus after the field is re-enabled by this change detection pass. */
+  private clearAndFocus(field: NmOtpField): void {
+    field.clear();
     this.code = '';
-    afterNextRender(() => this.field().focus(), { injector: this.injector });
+    setTimeout(() => field.focus());
   }
 }

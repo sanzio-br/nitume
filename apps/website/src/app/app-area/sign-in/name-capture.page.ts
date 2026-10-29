@@ -1,8 +1,6 @@
 // customer / runner `x-name-capture` (customer-x-name-capture.md,
 // runner-x-name-capture.md): one component configured by route `data.role`.
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthApi } from '../../core/auth/auth-api';
 import { routeRole } from '../../core/auth/guards';
@@ -11,6 +9,7 @@ import { SessionStore, SessionUser } from '../../core/auth/session.store';
 import { NmAuthFrame } from '../../shared/ui/auth-frame/auth-frame.component';
 import { NmButton } from '../../shared/ui/button/button.component';
 import { NmField } from '../../shared/ui/field/field.component';
+import { NmFieldValue } from '../../shared/ui/field/field-value.directive';
 import { NmWordmark } from '../../shared/ui/wordmark/wordmark.component';
 import {
   NAME_COPY,
@@ -22,7 +21,7 @@ import {
 
 @Component({
   selector: 'app-name-capture-page',
-  imports: [NmAuthFrame, NmWordmark, NmField, NmButton, ReactiveFormsModule],
+  imports: [NmAuthFrame, NmWordmark, NmField, NmFieldValue, NmButton],
   template: `
     <nm-auth-frame [heading]="copy.heading">
       <nm-wordmark nmAuthLead class="wordmark" [suffix]="suffix" />
@@ -34,7 +33,8 @@ import {
           autocomplete="name"
           autocapitalize="words"
           [spellcheck]="false"
-          [formControl]="name"
+          [nmFieldValue]="name()"
+          (nmFieldValueChange)="onName($event)"
           [error]="fieldError()"
           [readonly]="saving()"
         />
@@ -71,18 +71,20 @@ export class NameCapturePage {
   /** Fresh OTP sign-in in this tab: the runner onboarding step follows. */
   private readonly fresh = this.session.takeFreshSignIn();
 
-  protected readonly name = new FormControl('', { nonNullable: true });
+  protected readonly name = signal('');
   protected readonly fieldError = signal<string | null>(null);
   protected readonly saving = signal(false);
 
-  constructor() {
-    this.name.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.fieldError.set(null));
+  /** Typing clears the field error. */
+  protected onName(value: string): void {
+    this.name.set(value);
+    this.fieldError.set(null);
   }
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
     if (this.saving()) return;
-    const value = this.name.value.trim();
+    const value = this.name().trim();
     if (value.length < 2) {
       this.fieldError.set(NAME_REQUIRED_COPY);
       return;
