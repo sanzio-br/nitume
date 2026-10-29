@@ -23,6 +23,8 @@ const NOW = new Date(2026, 9, 29, 10, 0);
 class FakeRealtime {
   readonly state = signal<RealtimeConnectionState>('connected');
   readonly statusChanges$ = new Subject<ErrandStatusChanged>();
+  // #8: the customer shell's price-change watcher listens here.
+  readonly priceChangeRequests$ = new Subject<unknown>();
   locationSubscriptions = 0;
   readonly locationUpdates$ = new Observable(() => {
     this.locationSubscriptions++;
@@ -174,6 +176,8 @@ describe('customer v-home (#7)', () => {
 
   it('H T6. requests: exactly the two list calls with their status lists and limits, plus the unread count; nothing else', async () => {
     await openHome();
+    // #8: the price-change watcher's resume check on shell start (customer-v-price-auth Entry).
+    (await expectRequest(`${API}/errands?status=IN_PROGRESS&limit=20`)).flush({ items: [], nextCursor: null });
     httpMock().verify();
   });
 

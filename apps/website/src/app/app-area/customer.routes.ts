@@ -1,5 +1,6 @@
 // `/app/customer/**` (auth-foundation §2, customer-shell.md). Later issues
 // replace the ViewStubComponent routes with their views.
+import { inject, provideEnvironmentInitializer } from '@angular/core';
 import { Routes } from '@angular/router';
 import {
   authGuard,
@@ -9,6 +10,7 @@ import {
   otpStepGuard,
   roleGuard,
 } from '../core/auth/guards';
+import { CustomerPriceChangeWatcher } from './customer/checkout/price-change.watcher';
 import { TaskDraftStore } from './customer/new-task/task-draft.store';
 import { wizardEntryGuard, wizardLeaveGuard, wizardStepGuard } from './customer/new-task/wizard.guards';
 
@@ -41,6 +43,9 @@ export const CUSTOMER_ROUTES: Routes = [
     path: '',
     canActivate: [authGuard, roleGuard(role), hasNameGuard],
     data: { role },
+    // #8 (customer-v-price-auth.md Entry): the price-change watcher runs only
+    // inside the signed-in customer shell.
+    providers: [CustomerPriceChangeWatcher, provideEnvironmentInitializer(() => inject(CustomerPriceChangeWatcher).start())],
     loadComponent: () => import('./shell/app-shell.page').then((m) => m.AppShellPage),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'home' },

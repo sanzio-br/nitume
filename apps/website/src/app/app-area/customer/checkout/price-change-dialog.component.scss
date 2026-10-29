@@ -1,0 +1,76 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.pc__skeleton {
+  display: block;
+  margin-top: 8px;
+}
+
+.pc__body {
+  @include nm-type(body, $color: slate-600);
+  margin: 4px 0 0;
+}
+
+.pc__reason {
+  @include nm-type(body, 13px);
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+// Compare row: hairlines above and below, two equal centred columns.
+.pc__compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  margin: 14px 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--nitume-slate-line);
+  border-bottom: 1px solid var(--nitume-slate-line);
+  text-align: center;
+}
+
+.pc__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.pc__label {
+  @include nm-type(muted-sm, 11px);
+}
+
+.pc__value {
+  @include nm-type(num, 19px, 600);
+}
+
+.pc__value--new {
+  color: var(--nitume-amber);
+}
+
+.pc__arrow {
+  @include nm-type(body);
+  padding: 0 8px;
+  color: var(--nitume-slate-400);
+}
+
+.pc__difference {
+  @include nm-type(num, 13px, 600, $color: amber);
+  margin: 0;
+  text-align: center;
+}
+
+.pc__route-label {
+  @include nm-type(card-label);
+  margin: 16px 0 8px;
+}
+
+.pc__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
