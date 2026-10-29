@@ -1,0 +1,35 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-active-task-card {
+  box-sizing: border-box;
+  padding: 18px;
+  border-radius: var(--nitume-r-m);
+  background-color: var(--nitume-blue);
+}
+
+.nm-active-task-card__tag {
+  display: flex;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nm-active-task-card__title {
+  @include nm-type(card-title, $color: white);
+  margin: 10px 0 0;
+}
+
+.nm-active-task-card__meta {
+  @include nm-type(num-meta-lg, $color: slate-400);
+  margin: 4px 0 0;
+}
+
+.nm-active-task-card__action {
+  display: inline-flex;
+  margin-top: 14px;
+}
