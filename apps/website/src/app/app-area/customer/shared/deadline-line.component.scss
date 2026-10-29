@@ -1,0 +1,33 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-deadline-line {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--nitume-slate-line);
+}
+
+.nm-deadline-line__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+}
+
+.nm-deadline-line__label {
+  @include nm-type(row-title);
+}
+
+.nm-deadline-line__value {
+  @include nm-type(greeting);
+  margin: 4px 0 0;
+}
+
+.nm-deadline-line__none {
+  @include nm-type(muted);
+  margin: 4px 0 0;
+}
