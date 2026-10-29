@@ -3,6 +3,7 @@
 // three steps. Signals only, memory only: a reload loses the draft, as
 // killing the app does.
 import { Injectable, computed, signal } from '@angular/core';
+import { eatDayKey } from '../../../shared/format/formatters';
 import type { PlaceDetails } from '../../../shared/places/place-search';
 import type { CreatableCategory, CreateErrandBody, PointType } from '../data/errands.api';
 import { customerLinks } from '../customer-links';
@@ -41,13 +42,15 @@ const TWO_POINTS: readonly WizardCategory[] = ['pickup_delivery', 'buy_for_me'];
 const emptyItems = (): DraftItem[] => [{ name: '', quantity: 1 }];
 
 /**
- * `Today` / `Tomorrow` end at 23:59 in the browser's time zone, sent as UTC
- * (ND§Rules, app parity; WQ-2 is applied only as the gap report records it).
+ * `Today` / `Tomorrow` end at 23:59 EAT of the EAT calendar date (owner
+ * WQ-2: deadlines use EAT, whatever the browser's zone), sent as UTC. The
+ * EAT date comes from the kit helper; EAT has no daylight saving.
  */
 export function deadlineAt(choice: DeadlineChoice, now: Date): string | null {
   if (choice === 'flexible') return null;
-  const offset = choice === 'today' ? 0 : 1;
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 23, 59, 0, 0).toISOString();
+  const endOfEatDay = new Date(`${eatDayKey(now)}T23:59:00.000+03:00`);
+  const days = choice === 'today' ? 0 : 1;
+  return new Date(endOfEatDay.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 @Injectable()

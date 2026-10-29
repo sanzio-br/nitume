@@ -513,7 +513,7 @@ describe('customer v-new-details (#7)', () => {
   });
 
   it('ND T15. Flexible caption: 24 hours in nmNum; 1 → 1 hour; failure or another start → hidden; hidden for Today/Tomorrow', async () => {
-    const caption = (h: AppHarness) => h.root().querySelector('.details__caption') as HTMLElement | null;
+    const caption = (h: AppHarness) => h.root().querySelector('.details__caption--flexible') as HTMLElement | null;
     let { h, store } = await openDetails('inspection');
     expect(caption(h)).toBeNull();
     store.deadline.set('flexible');
@@ -618,6 +618,30 @@ describe('customer v-new-details (#7)', () => {
     focusIn(input(h, 'first'));
     await h.detect();
     expect(options(h, 'first')).toEqual([]);
+  });
+
+  it('ND T21a. deadline label: Today → Due today, 23:59 EAT. (23:59 in nmNum); Tomorrow → Due tomorrow; Flexible → its own caption only; the same in any browser zone', async () => {
+    const tz = process.env['TZ'];
+    try {
+      for (const zone of ['Europe/London', 'Africa/Nairobi']) {
+        process.env['TZ'] = zone;
+        const { h, store } = await openDetails('inspection');
+        const eat = () => h.root().querySelector('.details__caption--eat') as HTMLElement | null;
+        expect.soft(text(eat()), zone).toBe('Due today, 23:59 EAT.');
+        expect.soft(text(eat()?.querySelector('[nmNum]')), zone).toBe('23:59');
+        expect.soft(getComputedStyle(eat() as HTMLElement).fontSize, zone).toBe('12px');
+        store.deadline.set('tomorrow');
+        await h.detect();
+        expect.soft(text(eat()), zone).toBe('Due tomorrow, 23:59 EAT.');
+        store.deadline.set('flexible');
+        await h.detect();
+        expect.soft(eat(), zone).toBeNull();
+        expect.soft(h.root().querySelectorAll('.details__caption'), zone).toHaveLength(1);
+      }
+    } finally {
+      if (tz === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = tz;
+    }
   });
 
   it('ND T22. attribution: Google suggestions end with img[alt="Google Maps"] outside the listbox; saved-only and closed lists have none', async () => {

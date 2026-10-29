@@ -82,8 +82,13 @@
         [ariaLabel]="copy.deadlineHeading"
         (selectedChange)="onDeadline($event)"
       />
+      @if (store.deadline() === 'today') {
+        <p class="details__caption details__caption--eat">Due today, <span nmNum>23:59</span> EAT.</p>
+      } @else if (store.deadline() === 'tomorrow') {
+        <p class="details__caption details__caption--eat">Due tomorrow, <span nmNum>23:59</span> EAT.</p>
+      }
       @if (flexibleDuration(); as duration) {
-        <p class="details__caption">
+        <p class="details__caption details__caption--flexible">
           No fixed time. Your task's deadline is <span nmNum>{{ duration }}</span> after your payment is confirmed.
         </p>
       }

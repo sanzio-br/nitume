@@ -113,19 +113,19 @@ describe('TaskDraftStore', () => {
     expect(s.submitted).toBe(false);
   });
 
-  describe('ND T17 toRequest (TZ stubbed)', () => {
+  describe('ND T17 toRequest (two browser zones)', () => {
     let tz: string | undefined;
     beforeEach(() => {
       tz = process.env['TZ'];
-      process.env['TZ'] = 'Etc/GMT-3'; // UTC+3, the Kenyan offset
     });
     afterEach(() => {
       if (tz === undefined) delete process.env['TZ'];
       else process.env['TZ'] = tz;
     });
+    const ZONES = ['Europe/London', 'Africa/Nairobi'];
 
-    // 2026-10-29 10:00 local (EAT +3).
-    const now = () => new Date(2026, 9, 29, 10, 0);
+    // 2026-11-01 10:00 EAT (07:00 UTC), zone-independent.
+    const now = () => new Date(Date.UTC(2026, 10, 1, 7, 0));
 
     function inspection(): TaskDraftStore {
       const s = store();
@@ -135,32 +135,42 @@ describe('TaskDraftStore', () => {
       return s;
     }
 
-    it('ND T17 deadline. Today → local 23:59 as UTC ISO; Tomorrow → the next day; Flexible → no deadlineAt', () => {
-      const s = inspection();
-      expect(s.toRequest(now()).deadlineAt).toBe('2026-10-29T20:59:00.000Z');
-      s.deadline.set('tomorrow');
-      expect(s.toRequest(now()).deadlineAt).toBe('2026-10-30T20:59:00.000Z');
-      s.deadline.set('flexible');
-      expect('deadlineAt' in s.toRequest(now())).toBe(false);
-      // The browser's zone, not EAT: a London browser (GMT on this date).
-      process.env['TZ'] = 'Europe/London';
-      s.deadline.set('today');
-      expect(s.toRequest(new Date(2026, 9, 29, 10, 0)).deadlineAt).toBe('2026-10-29T23:59:00.000Z');
+    it('ND T17 deadline. Today/Tomorrow → 23:59 EAT of the EAT date as UTC ISO, identical in London and Nairobi; Flexible → no deadlineAt', () => {
+      for (const zone of ZONES) {
+        process.env['TZ'] = zone;
+        const s = inspection();
+        expect.soft(s.toRequest(now()).deadlineAt, zone).toBe('2026-11-01T20:59:00.000Z');
+        s.deadline.set('tomorrow');
+        expect.soft(s.toRequest(now()).deadlineAt, zone).toBe('2026-11-02T20:59:00.000Z');
+        s.deadline.set('flexible');
+        expect.soft('deadlineAt' in s.toRequest(now()), zone).toBe(false);
+      }
+    });
+
+    it('ND T17 London evening. 22:30 London on 1 Nov (01:30 EAT on 2 Nov) → Today is 2026-11-02T20:59:00.000Z', () => {
+      for (const zone of ZONES) {
+        process.env['TZ'] = zone;
+        const s = inspection();
+        const londonEvening = new Date(Date.UTC(2026, 10, 1, 22, 30)); // GMT on this date
+        expect.soft(s.toRequest(londonEvening).deadlineAt, zone).toBe('2026-11-02T20:59:00.000Z');
+        s.deadline.set('tomorrow');
+        expect.soft(s.toRequest(londonEvening).deadlineAt, zone).toBe('2026-11-03T20:59:00.000Z');
+      }
     });
 
     it('ND T17 inspection. one task_site with lon, budget 0, no items, no urgency, trimmed description, empty title omitted', () => {
+      process.env['TZ'] = 'Europe/London';
       const body = inspection().toRequest(now());
       expect(body).toEqual({
         category: 'inspection',
         description: 'Check the apartment',
         budget: 0,
-        deadlineAt: '2026-10-29T20:59:00.000Z',
+        deadlineAt: '2026-11-01T20:59:00.000Z',
         locations: [{ pointType: 'task_site', lat: -1.28, lon: 36.82, addressText: 'Nyali, Mombasa', placeId: 'p1' }],
       });
       expect(JSON.stringify(body)).not.toContain('urgency');
       expect(JSON.stringify(body)).not.toContain('"lng"');
     });
-
     it('ND T17 pickup_delivery. pickup + dropoff; budget 0 when empty; a saved address sends no placeId', () => {
       const s = store();
       s.start('/app/customer/home', 'pickup_delivery');
