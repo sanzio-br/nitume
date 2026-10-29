@@ -660,6 +660,10 @@ describe('customer v-new-details (#7)', () => {
     expect(img()?.closest('[role="listbox"]')).toBeNull();
     const panel = h.root().querySelector('[data-field="first"] .nm-place-field__panel') as HTMLElement;
     expect(panel.lastElementChild?.tagName.toLowerCase()).toBe('nm-places-attribution');
+    // Google's minimum clear space: ≥ 10px left, right and top, ≥ 5px below (the panel adds 4px left and right).
+    expect(declared('.nm-places-attribution', 'padding')).toEqual(['10px 10px 5px']);
+    expect(declared('.nm-place-field__panel', 'padding')).toEqual(['0px 4px']);
+    expect(img()?.closest('.nm-places-attribution')).not.toBeNull();
     input(h, 'first').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await h.detect();
     expect(img()).toBeNull();
