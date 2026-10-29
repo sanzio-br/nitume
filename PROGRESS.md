@@ -520,3 +520,4 @@ docs/owner-answers-13-specs, docs/admin-round-12-audit, fix/angular-admin-round-
 - In progress: #6 auth and shell (specced), #24 API part.
 - Deferred: #19 CORS/Socket.IO origin allowlist (follow-up); Google Maps browser key (WQ-1) and Firebase web config / VAPID key (WQ-4) to be provided by the owner.
 - 2026-10-28: merged to main by the owner: PR #20 (web refresh cookie, part of #6), PR #22 (#21) and PR #25 (#23).
+- 2026-10-29: #28 (merchant numbers hidden from customers until the fees are paid) built and reviewed, PR #29. #24 API complete (admin status endpoints, history, revoke-all, token cut-off, U-1/U-2); admin UI in progress. #6 in its third audit round (marketing title). Marketing bundle cap 360 kB (WQ-34).
