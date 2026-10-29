@@ -1,10 +1,10 @@
 // customer-v-new-details.md, Required tests (G7-31; places G7-25/G7-26,
 // shopping list G7-27, chips G7-18). ND T11 runs in shared/places
-// (GooglePlaceSearch), ND T16 in shared/kit-additions-7.spec.ts, ND T17 in
-// task-draft.store.spec.ts, ND T19 in new-review.page.spec.ts (it needs
-// the review step).
+// (GooglePlaceSearch), ND T16 in shared/kit-additions-7.spec.ts and ND T17
+// in task-draft.store.spec.ts.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { Location } from '@angular/common';
 import { Component, Provider, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AppHarness, text, typeInto } from '../../../../testing/app-harness';
@@ -564,6 +564,35 @@ describe('customer v-new-details (#7)', () => {
     await h.detect();
     await clickContinue(h);
     expect(alerts(h)).toEqual([DETAILS_ERRORS.budgetRequired]);
+  });
+
+  it('ND T19. a valid Continue → sets detailsValidated and opens the review; Back keeps every value, places and items included', async () => {
+    const { h, store } = await openDetails('buy_for_me');
+    typeInto(input(h, 'title'), 'Groceries');
+    typeInto(input(h, 'description'), 'Buy the weekly groceries');
+    store.first.set(P1);
+    store.dropoff.set(P2);
+    store.items.set([{ name: '2kg sugar', quantity: 2 }]);
+    typeInto(input(h, 'budget'), '4000');
+    await h.detect();
+    await clickContinue(h);
+    await vi.waitFor(() => expect(h.router.url).toBe('/app/customer/new/review'));
+    expect(store.detailsValidated).toBe(true);
+    // Header Back is history back (the previous page is step 2); the mock location does not pop.
+    const back = vi.spyOn(Location.prototype, 'back').mockImplementation(() => undefined);
+    (h.root().querySelector('button[aria-label="Back"]') as HTMLButtonElement).click();
+    expect(back).toHaveBeenCalledTimes(1);
+    await h.harness.navigateByUrl('/app/customer/new/details');
+    (await expectRequest(`${API}/customers/me/addresses`)).flush([]);
+    (await expectRequest(`${API}/errands/defaults`)).flush({ defaultDeadlineHours: 24, defaultDeadlineStartsAt: 'payment_confirmed' });
+    await h.detect();
+    expect(input(h, 'title').value).toBe('Groceries');
+    expect(input(h, 'description').value).toBe('Buy the weekly groceries');
+    expect(input(h, 'first').value).toBe('Nyali, Mombasa');
+    expect(input(h, 'dropoff').value).toBe('Kilimani, Nairobi');
+    expect(input(h, 'items').value).toBe('2kg sugar');
+    expect(input(h, 'budget').value).toBe('4000');
+    expect(store.first()).toBe(P1);
   });
 
   it('ND T20. focusOnReturn dropoff on a Get It For Me draft focuses Deliver to on entry, then is cleared', async () => {

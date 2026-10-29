@@ -1,0 +1,21 @@
+:host {
+  display: block;
+}
+
+.review__card {
+  display: block;
+  margin-top: 14px;
+}
+
+.review__skeleton {
+  display: block;
+
+  & + & {
+    margin-top: 10px;
+  }
+}
+
+.review__change {
+  display: block;
+  margin-top: 10px;
+}

@@ -67,6 +67,13 @@ export const CUSTOMER_ROUTES: Routes = [
             canDeactivate: [wizardLeaveGuard],
             loadComponent: () => import('./customer/new-task/new-details.page').then((m) => m.NewDetailsPage),
           },
+          {
+            path: 'review',
+            title: 'Review · Nitume',
+            canActivate: [wizardStepGuard(3)],
+            canDeactivate: [wizardLeaveGuard],
+            loadComponent: () => import('./customer/new-task/new-review.page').then((m) => m.NewReviewPage),
+          },
         ],
       },
       { path: 'track', title: 'Track · Nitume', data: { role, navKey: 'track', stubLabel: 'Track' }, loadComponent: stub },
