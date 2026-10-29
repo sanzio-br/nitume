@@ -11,6 +11,7 @@ import {
   statusUnchanged,
   userNotFound,
 } from './user-status.rules';
+import { UserTokenCutoffService } from './token-cutoff.service';
 import { StatusHistoryItem, StatusWrite, UserStatusStore } from './user-status.store';
 import { UserAccess, UsersService } from './users.service';
 
@@ -82,7 +83,18 @@ export class UserAccessService {
     private readonly redis: RedisService,
     private readonly events: EventEmitter2,
     private readonly store: UserStatusStore,
+    private readonly cutoff: UserTokenCutoffService,
   ) {}
+
+  /**
+   * Issue #24 (owner, 2026-10-29): true when an access token of `userId`
+   * issued at `iat` predates the user's last suspension, ban or
+   * reactivation, so it stays refused after reactivation. Reads Redis, with
+   * the status history as the fallback (`UserTokenCutoffService`).
+   */
+  isTokenRevoked(userId: string, iat: number | undefined): Promise<boolean> {
+    return this.cutoff.isRefused(userId, iat);
+  }
 
   /** Status, role and phone of `userId`, or null if no such user. */
   async accessOf(userId: string): Promise<UserAccess | null> {
@@ -172,14 +184,34 @@ export class UserAccessService {
     };
   }
 
-  /** After commit: cache from the written value, then the event if the status changed. */
+  /**
+   * After commit: cache from the written value; then, if the status changed,
+   * the access-token cut-off (issue #24) and the event.
+   */
   private async publish(userId: string, written: StatusWrite): Promise<UserStatusChangedEvent> {
     await this.writeCache(userId, written.access, written.version);
     const event: UserStatusChangedEvent = { userId, status: written.access.status, from: written.from };
     if (written.from !== written.access.status) {
+      await this.markTokenCutoff(userId, written.access.status);
       this.events.emit(USER_STATUS_CHANGED, event);
     }
     return event;
+  }
+
+  /**
+   * Suspend or ban: tokens issued up to now stay refused for good (also after
+   * a later reactivation). Reactivation repeats the cut-off at its own time,
+   * a second chance if the suspension's write was lost. A Redis failure is
+   * logged and never undoes the committed change: while the account is not
+   * active the status check refuses every token anyway, and readers that
+   * cannot reach Redis rebuild the cut-off from the status history.
+   */
+  private async markTokenCutoff(userId: string, status: UserStatus): Promise<void> {
+    try {
+      await this.cutoff.mark(userId, status);
+    } catch (err) {
+      this.logger.error(`Access-token cut-off not stored for ${userId} (${status}): ${message(err)}`);
+    }
   }
 
   /**

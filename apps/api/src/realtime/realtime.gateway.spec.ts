@@ -24,6 +24,7 @@ const build = (opts: {
     accessOf: vi.fn(() =>
       Promise.resolve(row ? { status: row.status, role: row.role, phone: row.phone } : null),
     ),
+    isTokenRevoked: vi.fn(() => Promise.resolve(false)),
   };
   const errands = {
     getById: vi.fn(opts.getById ?? (() => Promise.resolve({ id: ERRAND_ID }))),
@@ -500,5 +501,45 @@ describe('RealtimeGateway suspended accounts (issue #23)', () => {
     expect(() =>
       gateway.onUserStatusChanged({ userId: 'u-9', status: UserStatus.BANNED, from: UserStatus.ACTIVE }),
     ).not.toThrow();
+  });
+});
+
+describe('RealtimeGateway access-token cut-off (issue #24, owner 2026-10-29)', () => {
+  it('a token issued before the last suspension is treated as invalid: no code, connect then disconnect', async () => {
+    const { gateway, access, jwt } = build({ verify: () => Promise.resolve({ sub: 'u-1', type: 'access', iat: 1_790_000_000 }) });
+    access.isTokenRevoked.mockResolvedValue(true);
+    const client = socket();
+    expect(await gateway.checkHandshake(client as never)).toBeNull();
+    expect(client.data.user).toBeUndefined();
+    expect(access.isTokenRevoked).toHaveBeenCalledWith('u-1', 1_790_000_000);
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+    expect(client.join).not.toHaveBeenCalled();
+    expect(jwt.verifyAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('a suspended account still gets connect_error account_suspended (cut-off not consulted)', async () => {
+    const { gateway, access } = build({ user: { id: 'u-1', role: UserRole.CUSTOMER, phone: 'x', status: UserStatus.BANNED } });
+    const refusal = await gateway.checkHandshake(socket() as never);
+    expect(refusal?.message).toBe('account_suspended');
+    expect(access.isTokenRevoked).not.toHaveBeenCalled();
+  });
+
+  it('a failing cut-off check refuses the socket (fail closed)', async () => {
+    const { gateway, access } = build();
+    access.isTokenRevoked.mockRejectedValue(new Error('redis and db down'));
+    const client = socket();
+    await gateway.checkHandshake(client as never);
+    expect(client.data.user).toBeUndefined();
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('a token issued after the cut-off connects', async () => {
+    const { gateway } = build();
+    const client = socket();
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).not.toHaveBeenCalled();
+    expect(client.join).toHaveBeenCalledWith('user:u-1');
   });
 });

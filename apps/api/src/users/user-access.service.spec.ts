@@ -58,8 +58,9 @@ const build = (opts: { row?: UserAccess | null; redisDown?: boolean } = {}) => {
     }),
   };
   const events = { emit: vi.fn() };
-  const service = new UserAccessService(users as never, redis as never, events as never, statusStore as never);
-  return { service, users, redis, events, store };
+  const cutoff = { mark: vi.fn(() => Promise.resolve()), isRefused: vi.fn(() => Promise.resolve(false)) };
+  const service = new UserAccessService(users as never, redis as never, events as never, statusStore as never, cutoff as never);
+  return { service, users, redis, events, store, cutoff };
 };
 
 describe('UserAccessService.accessOf (issue #23)', () => {
@@ -146,5 +147,29 @@ describe('UserAccessService.setStatus (issue #23 invalidation)', () => {
     const { service, redis } = build({ redisDown: true });
     await service.setStatus('u-1', UserStatus.SUSPENDED);
     expect(redis.del).toHaveBeenCalledWith('user:access:u-1');
+  });
+});
+
+describe('UserAccessService access-token cut-off (issue #24, owner 2026-10-29)', () => {
+  it.each([UserStatus.SUSPENDED, UserStatus.BANNED, UserStatus.ACTIVE])(
+    'a change to %s marks the cut-off after the cache write',
+    async (to) => {
+      const { service, cutoff } = build({ row: { ...ACTIVE, status: to === UserStatus.ACTIVE ? UserStatus.SUSPENDED : UserStatus.ACTIVE } });
+      await service.setStatus('u-1', to);
+      expect(cutoff.mark).toHaveBeenCalledWith('u-1', to);
+    },
+  );
+
+  it('an unchanged status marks nothing', async () => {
+    const { service, cutoff } = build();
+    await service.setStatus('u-1', UserStatus.ACTIVE);
+    expect(cutoff.mark).not.toHaveBeenCalled();
+  });
+
+  it('isTokenRevoked delegates to the cut-off service', async () => {
+    const { service, cutoff } = build();
+    cutoff.isRefused.mockResolvedValueOnce(true);
+    expect(await service.isTokenRevoked('u-1', 1_700_000_000)).toBe(true);
+    expect(cutoff.isRefused).toHaveBeenCalledWith('u-1', 1_700_000_000);
   });
 });

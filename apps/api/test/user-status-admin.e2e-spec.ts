@@ -12,6 +12,7 @@ import { OTP_SENDER } from '../src/auth/otp-sender/otp-sender.provider';
 import { UserRole, UserStatus } from '../src/common/enums';
 import { AddUserStatusHistory1790103600000 } from '../src/databases/migrations/1790103600000-AddUserStatusHistory';
 import { RedisService } from '../src/infra/redis/redis.service';
+import { userTokensValidAfterKey } from '../src/users/token-cutoff.service';
 import { userAccessCacheKey } from '../src/users/user-access.service';
 import { UsersService } from '../src/users/users.service';
 import { TestSocket, connectSocket } from './support/socket-client';
@@ -39,6 +40,12 @@ describe('Admin user status actions and audit history (issue #24, e2e)', () => {
 
   const randomPhone = (): string => `+2547${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const nextSecond = async (): Promise<void> => {
+    const now = Math.floor(Date.now() / 1000);
+    while (Math.floor(Date.now() / 1000) <= now) {
+      await sleep(20);
+    }
+  };
 
   const tokenFor = (user: { id: string; role: UserRole; phone: string }): string =>
     new JwtService().sign(
@@ -135,7 +142,7 @@ describe('Admin user status actions and audit history (issue #24, e2e)', () => {
       s.close();
     }
     if (userIds.length > 0) {
-      await redis.del(...userIds.map(userAccessCacheKey));
+      await redis.del(...userIds.map(userAccessCacheKey), ...userIds.map(userTokensValidAfterKey));
       await withAppendOnlyGuardLifted(ds, 'user_status_history', async (query) => {
         await query('DELETE FROM "user_status_history" WHERE "userId" = ANY($1) OR "actorUserId" = ANY($1)', [userIds]);
       });
@@ -403,6 +410,9 @@ describe('Admin user status actions and audit history (issue #24, e2e)', () => {
         expect(whileSuspended.body.code).toBeUndefined();
         expect(whileSuspended.body.message).toBe('Refresh token revoked or expired');
 
+        // Issue #24 cut-off: the suspension refuses access tokens of its whole
+        // second, so the fresh sign-in below must come in a later one.
+        await nextSecond();
         await change(first.id, UserStatus.ACTIVE, 200, 'Appeal accepted after review');
         for (const old of [first.refreshToken, second.refreshToken]) {
           const res = await refresh(old).expect(401);

@@ -13,7 +13,7 @@ const { ACTIVE, SUSPENDED, BANNED } = UserStatus;
  * A store that behaves like UserStatusStore.write: runs `check` on the
  * locked row, then writes status and history together, or nothing.
  */
-const build = (opts: { row?: Partial<LockedUser> | null; failWrite?: boolean; redisDown?: boolean } = {}) => {
+const build = (opts: { row?: Partial<LockedUser> | null; failWrite?: boolean; redisDown?: boolean; cutoffFails?: boolean } = {}) => {
   let row: LockedUser | null =
     opts.row === null ? null : { id: USER_ID, role: UserRole.RUNNER, status: ACTIVE, phone: '+254700000002', ...opts.row };
   const history: { from: UserStatus; to: UserStatus; audit: StatusAudit }[] = [];
@@ -66,10 +66,19 @@ const build = (opts: { row?: Partial<LockedUser> | null; failWrite?: boolean; re
   };
   const users = { accessOf: vi.fn() };
   const events = { emit: vi.fn() };
-  const service = new UserAccessService(users as never, redis as never, events as never, statusStore as never);
+  const order: string[] = [];
+  events.emit.mockImplementation(() => order.push('event'));
+  const cutoff = {
+    mark: vi.fn(() => {
+      order.push('cutoff');
+      return opts.cutoffFails ? Promise.reject(new Error('redis down')) : Promise.resolve();
+    }),
+    isRefused: vi.fn(() => Promise.resolve(false)),
+  };
+  const service = new UserAccessService(users as never, redis as never, events as never, statusStore as never, cutoff as never);
   const change = (status: UserStatus, over: { actorUserId?: string; userId?: string; reason?: unknown } = {}) =>
     service.changeStatus({ actorUserId: ADMIN_ID, userId: USER_ID, status, reason: REASON, ...over });
-  return { service, change, statusStore, redis, events, cache, history, current: () => row };
+  return { service, change, statusStore, redis, events, cache, history, cutoff, order, current: () => row };
 };
 
 const codeOf = async (p: Promise<unknown>): Promise<[number, string]> => {
@@ -187,5 +196,34 @@ describe('cache ordering of concurrent changes (reviewer minor 2 on #23)', () =>
     await change(ACTIVE);
     const versions = redis.setIfNotOlder.mock.calls.map((c) => c[2]);
     expect(versions[1]).toBeGreaterThan(versions[0]);
+  });
+});
+
+describe('changeStatus access-token cut-off (issue #24, owner 2026-10-29)', () => {
+  it.each([SUSPENDED, BANNED])('%s: the cut-off is marked after commit, before the event', async (to) => {
+    const { change, cutoff, order } = build();
+    await change(to);
+    expect(cutoff.mark).toHaveBeenCalledWith(USER_ID, to);
+    expect(order).toEqual(['cutoff', 'event']);
+  });
+
+  it('reactivation marks it too (second chance if the suspension write was lost)', async () => {
+    const { change, cutoff } = build({ row: { status: SUSPENDED } });
+    await change(ACTIVE);
+    expect(cutoff.mark).toHaveBeenCalledWith(USER_ID, ACTIVE);
+  });
+
+  it('a refused change marks nothing', async () => {
+    const { change, cutoff } = build({ row: { status: BANNED } });
+    await change(SUSPENDED).catch(() => undefined);
+    expect(cutoff.mark).not.toHaveBeenCalled();
+  });
+
+  it('a Redis failure on the mark is logged; the committed change stands and the event is still emitted', async () => {
+    const { change, events, current } = build({ cutoffFails: true });
+    const out = await change(SUSPENDED);
+    expect(out.user.status).toBe(SUSPENDED);
+    expect(current()?.status).toBe(SUSPENDED);
+    expect(events.emit).toHaveBeenCalledWith(USER_STATUS_CHANGED, { userId: USER_ID, status: SUSPENDED, from: ACTIVE });
   });
 });

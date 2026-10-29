@@ -15,6 +15,8 @@ export interface JwtPayload {
   phone: string;
   type: TokenType;
   jti?: string;
+  /** Issued-at, whole seconds (set by jsonwebtoken on sign). */
+  iat?: number;
 }
 
 export interface TokenPair {

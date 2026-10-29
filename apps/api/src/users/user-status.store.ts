@@ -149,6 +149,27 @@ export class UserStatusStore {
   }
 
   /**
+   * Issue #24 token cut-off, database fallback when Redis cannot be read: the
+   * audited status changes of a user in the last `withinSeconds` (newest
+   * first, at most `limit`). Uses the (userId, createdAt DESC) index.
+   */
+  async recentChanges(
+    userId: string,
+    withinSeconds: number,
+    limit = 20,
+  ): Promise<{ toStatus: UserStatus; createdAt: Date }[]> {
+    const rows: { toStatus: UserStatus; createdAt: Date }[] = await this.history.manager.query(
+      `SELECT "toStatus"::text AS "toStatus", "createdAt"
+         FROM "user_status_history"
+        WHERE "userId" = $1 AND "createdAt" > now() - make_interval(secs => $2)
+        ORDER BY "createdAt" DESC
+        LIMIT $3`,
+      [userId, withinSeconds, limit],
+    );
+    return rows.map((r) => ({ toStatus: r.toStatus, createdAt: new Date(r.createdAt) }));
+  }
+
+  /**
    * Status history of a user, newest first, cursor on (createdAt, id) with
    * microsecond precision. Null if no such user; 400 `cursor_invalid` for an
    * unreadable cursor or one from another user's history.

@@ -186,3 +186,18 @@ describe('UserStatusStore.list (issue #24)', () => {
     expect(query).not.toHaveBeenCalled();
   });
 });
+
+describe('UserStatusStore.recentChanges (issue #24 token cut-off fallback)', () => {
+  it('reads the changes of the window, newest first, outside any transaction', async () => {
+    const { store, manager } = build();
+    manager.query.mockResolvedValueOnce([{ toStatus: 'suspended', createdAt: '2026-10-29T10:00:00.400Z' }]);
+    expect(await store.recentChanges(USER, 1200)).toEqual([
+      { toStatus: UserStatus.SUSPENDED, createdAt: new Date('2026-10-29T10:00:00.400Z') },
+    ]);
+    const [sql, params] = manager.query.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain('"createdAt" > now() - make_interval(secs => $2)');
+    expect(sql).toContain('ORDER BY "createdAt" DESC');
+    expect(params).toEqual([USER, 1200, 20]);
+    expect(manager.transaction).not.toHaveBeenCalled();
+  });
+});
