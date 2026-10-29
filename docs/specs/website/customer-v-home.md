@@ -97,7 +97,7 @@ DOM order stays top bar → search → categories → tasks at every width (read
 `nm-task-row` (port of `TaskRow`, `shared/ui/task-row/`): white, 1px slate-line, radius `--nitume-r-m`, padding 13px 15px, whole row an `<a>`; left column title `nm-type(row-title, 13px)` (13/600 blue, one line, ellipsis) over meta `num-meta` (Fira Code 11 slate-600); 10px gap; trailing `nm-status-chip` regular. Hover border blue; focus ring.
 
 ## Copy (exact)
-- Greeting by **browser local** hour (WQ-2, parity): `Good morning` before 12:00, `Good afternoon` 12:00–17:59, `Good evening` from 18:00.
+- Greeting by **browser local** hour (owner WQ-2, 2026-10-29: activity times use browser local time): `Good morning` before 12:00, `Good afternoon` 12:00–17:59, `Good evening` from 18:00.
 - Name: first word of `displayName` (OA-2), e.g. `Achieng`. No name (should not happen after `x-name-capture`): greeting line only, no empty title (`nm-top-bar` empty-title rule, Needs row 40).
 - Search row: `What do you need done?`
 - Section labels: `Categories`, `In progress`, `Recent`.
@@ -176,6 +176,6 @@ DOM order stays top bar → search → categories → tasks at every width (read
 No Home on the website; `/app/customer/home` is the #6 `ViewStubComponent` (`stubLabel: 'Home'`). The marketing `app-category-card` (`src/app/shared/category-card`) is a marketing layout and is not reused (K§1).
 
 ## Questions
-- **WQ-2 (OPEN, board)**: greeting and Recent times use the browser's local time (app parity). Build default: keep parity; do not decide it in code beyond that default. Recommendation: keep parity.
+- Answered: **WQ-2** (owner 2026-10-29): activity times (greeting, Recent row times) use the browser's local time; deadlines use EAT and are labelled as EAT (Home shows no deadline).
 - Answered: **WQ-29** (was Q7-4; owner 2026-10-29): the Home active-task card follows the built app, with no ETA.
 - Carried mobile defaults, kept: Q2 search row opens the wizard; Q3 tile preselects; Q4 button per state; Q8 one card + `+N more in progress`.

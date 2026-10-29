@@ -92,7 +92,7 @@ Responsive (web adaptation): one column, max 640px from 768px (NC§W4). Amounts 
 | 401 / `account_suspended` | Handled by the #6 interceptor (sign-out with the toast, F§5); no screen copy |
 | Leaving after a failed submit with a DRAFT | NC§W8 cancels it |
 
-The `Today` chip after 23:59 local makes a deadline in the past: the API answers `deadline_in_past` and the 400 row applies (app parity; no client pre-check).
+The `Today` chip after 23:59 EAT (WQ-2) makes a deadline in the past: the API answers `deadline_in_past` and the 400 row applies (app parity; no client pre-check).
 
 ## Numeric fields (Fira Code)
 - Every amount: item budget (both variants), estimated total (variant B).
