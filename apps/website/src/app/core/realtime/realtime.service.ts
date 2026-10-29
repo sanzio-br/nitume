@@ -255,6 +255,21 @@ export class RealtimeService {
     return visible.asReadonly();
   }
 
+  /**
+   * Calls `listener` on every later state transition (#7, §W9a: views react
+   * to `state` without `effect()` or `toObservable`). Removed when
+   * `destroyRef` is destroyed or when the returned function is called.
+   * `showReconnecting` uses the same listener set.
+   */
+  onStateChange(listener: (state: RealtimeConnectionState) => void, destroyRef: DestroyRef): () => void {
+    this.stateListeners.add(listener);
+    const remove = () => {
+      this.stateListeners.delete(listener);
+    };
+    destroyRef.onDestroy(remove);
+    return remove;
+  }
+
   // -------------------------------------------------------------------------
 
   private open(token: string): void {

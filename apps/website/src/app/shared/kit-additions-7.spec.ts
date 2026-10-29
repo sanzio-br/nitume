@@ -9,6 +9,9 @@ import { NmPushedHeader } from './ui/pushed-header/pushed-header.component';
 import { NmField } from './ui/field/field.component';
 import { NmFieldValue } from './ui/field/field-value.directive';
 import { MAPS_API_KEY, MapsLoaderService } from './map/maps-loader.service';
+import { DestroyRef } from '@angular/core';
+import { RealtimeService } from '../core/realtime/realtime.service';
+import { REALTIME_BACKOFF, REALTIME_TOKEN_PROVIDER, SOCKET_IO_FACTORY } from '../core/realtime/realtime.tokens';
 import { CUSTOMER_MVP_CATEGORIES, categoryIcon } from './format/category';
 import { NmIcon } from './ui/icon/icon.component';
 import { NM_ICONS } from './ui/icon/icons';
@@ -258,6 +261,53 @@ describe('NC§W9.16 #7 kit additions', () => {
       const pending = service.importLibrary('places');
       (scripts()[0] as HTMLScriptElement).dispatchEvent(new Event('error'));
       await expect(pending).resolves.toBeNull();
+    });
+  });
+
+  describe('RealtimeService.onStateChange (G7-11)', () => {
+    it('NC§W9.16 onStateChange. fires on each transition, stops after its DestroyRef is destroyed or the returned function is called', async () => {
+      type H = (...a: unknown[]) => void;
+      const sockets: { handlers: Map<string, H[]>; fire: (e: string) => void }[] = [];
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: SOCKET_IO_FACTORY,
+            useValue: () => {
+              const handlers = new Map<string, H[]>();
+              const s = {
+                handlers,
+                on: (e: string, h: H) => (handlers.set(e, [...(handlers.get(e) ?? []), h]), s),
+                emit: () => s,
+                disconnect: () => s,
+                fire: (e: string) => (handlers.get(e) ?? []).forEach((h) => h()),
+              };
+              sockets.push(s);
+              return s;
+            },
+          },
+          { provide: REALTIME_TOKEN_PROVIDER, useValue: () => Promise.resolve('t') },
+          { provide: REALTIME_BACKOFF, useValue: () => 60_000 },
+        ],
+      });
+      const service = TestBed.inject(RealtimeService);
+      let destroy: () => void = () => undefined;
+      const destroyRef = { onDestroy: (fn: () => void) => ((destroy = fn), () => undefined) } as unknown as DestroyRef;
+      const seen: string[] = [];
+      const other: string[] = [];
+      service.onStateChange((s) => seen.push(s), destroyRef);
+      const removeOther = service.onStateChange((s) => other.push(s), { onDestroy: () => () => undefined } as unknown as DestroyRef);
+
+      await service.connect();
+      sockets[0].fire('connect');
+      sockets[0].fire('disconnect');
+      expect(seen).toEqual(['connecting', 'connected', 'reconnecting']);
+      removeOther();
+      destroy();
+      service.disconnect();
+      expect(seen).toEqual(['connecting', 'connected', 'reconnecting']);
+      expect(other).toEqual(['connecting', 'connected', 'reconnecting']);
+      // showReconnecting keeps working on the same set.
+      expect(service.showReconnecting(10, destroyRef)()).toBe(false);
     });
   });
 });
