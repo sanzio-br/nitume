@@ -6,6 +6,7 @@ import { MAINTENANCE_QUEUE, PAYMENT_VERIFY_JOB } from '../infra/queue/queues';
 import { PaymentsService } from '../payments/payments.service';
 import { IdDocumentRetentionService } from './id-document-retention.service';
 import { LocationRetentionService } from './location-retention.service';
+import { WebPresenceSweepResult, WebPresenceSweepService } from './web-presence-sweep.service';
 
 export const DISPUTE_WINDOW_JOB = 'dispute-window';
 export const STK_RECONCILE_JOB = 'stk-reconcile';
@@ -14,6 +15,8 @@ export const OFFER_EXPIRY_JOB = 'offer-expiry';
 export const ID_DOCUMENT_PURGE_JOB = 'id-document-purge';
 /** Daily deletion of job location samples past retention (row 247). */
 export const LOCATION_PURGE_JOB = 'location-purge';
+/** Issue #36: flag web runners whose pings stopped; set idle ones offline. */
+export const WEB_PRESENCE_SWEEP_JOB = 'web-presence-sweep';
 
 /**
  * Scheduled system jobs (rows 26, 50, 52). Every write goes through the
@@ -28,6 +31,7 @@ export class MaintenanceProcessor extends WorkerHost {
     private readonly payments: PaymentsService,
     private readonly idDocuments: IdDocumentRetentionService,
     @Optional() private readonly locations?: LocationRetentionService,
+    @Optional() private readonly webPresence?: WebPresenceSweepService,
   ) {
     super();
   }
@@ -42,6 +46,8 @@ export class MaintenanceProcessor extends WorkerHost {
         return this.idDocumentPurge();
       case LOCATION_PURGE_JOB:
         return this.locationPurge();
+      case WEB_PRESENCE_SWEEP_JOB:
+        return this.webPresenceSweep();
       case STK_RECONCILE_JOB:
         return { resolved: await this.payments.resolveTimedOut() };
       case PAYMENT_VERIFY_JOB:
@@ -98,6 +104,11 @@ export class MaintenanceProcessor extends WorkerHost {
       this.logger.log(`Location purge: deleted ${out.deleted} samples of ${out.errandIds.length} tasks`);
     }
     return out;
+  }
+
+  /** Issue #36 (owner Q14-5, Q14-6): web runner presence sweep. */
+  async webPresenceSweep(): Promise<WebPresenceSweepResult> {
+    return (await this.webPresence?.sweep()) ?? { flagged: [], offlined: [] };
   }
 
   /** COMPLETED past the dispute window -> CONFIRMED, then CONFIRMED -> SETTLED. */

@@ -15,6 +15,7 @@ import {
 } from '../common/enums';
 import { RunnerLocation } from './runner-location.entity';
 import { RunnerProfile } from './runner-profile.entity';
+import { EMPTY_PRESENCE, RunnerPresenceService, RunnerPresenceView } from './runner-presence.service';
 import { RunnerServiceArea, RunnerSkillEntity } from './runner-skill.entity';
 import { RunnerVerification, RunnerVerificationSide } from './runner-verification.entity';
 import { documentTooLarge, idMaxUploadBytes, matchesImageSignature } from './upload/verification-upload';
@@ -196,6 +197,11 @@ export interface AdminVerificationQueueItem {
    * runner who is not in the queue (no ID or selfie record).
    */
   applicationStatus: VerificationStatus | null;
+  /**
+   * Issue #36: web runner presence. On `GET /runners/:id/verifications`
+   * only (the runner detail), never on the queue list.
+   */
+  presence?: RunnerPresenceView;
 }
 
 /** One runner's queue statistics row (row 260; AV-5 `applicationStatus`). */
@@ -295,6 +301,7 @@ export class RunnersService {
     private readonly documents: VerificationDocumentStorage = new ConsoleVerificationDocumentStorage(),
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly events?: EventEmitter2,
+    @Optional() private readonly presence?: RunnerPresenceService,
   ) {}
 
   async createForUser(
@@ -479,7 +486,7 @@ export class RunnersService {
       );
     }
     const id = (await this.profileByUserId(userId)).id;
-    await this.profiles.manager.transaction(async (manager) => {
+    const changed = await this.profiles.manager.transaction(async (manager) => {
       const profile = await this.lockProfile(manager, id);
       if (profile.availability === RunnerAvailability.BUSY) {
         if (availability === RunnerAvailability.OFFLINE) {
@@ -489,16 +496,93 @@ export class RunnersService {
             'Finish your active job before going offline',
           );
         }
-        return;
+        return false;
       }
       if (availability === RunnerAvailability.ONLINE) {
         await this.assertVerified(profile.id, manager);
       }
-      if (profile.availability !== availability) {
-        await manager.getRepository(RunnerProfile).update(profile.id, { availability });
-      }
+      return this.applyAvailability(manager, profile, availability);
     });
+    if (changed) {
+      await this.presence?.recordAvailability(id, availability);
+    }
     return this.selfView(userId);
+  }
+
+  /**
+   * Issue #36 (owner Q14-6): the system sets an idle web runner offline,
+   * through the same availability path as `PATCH /runners/me/availability`
+   * `offline`, under the profile row lock. Only an `online` runner moves: a
+   * `busy` runner (on an active job) is never forced offline, and an
+   * `offline` one is left alone. `canGoOffline` re-checks the caller's
+   * conditions (still silent, no open offer) inside the lock; false keeps
+   * the runner online. No task, assignment or offer is touched. Returns
+   * whether the runner went offline.
+   */
+  async setOfflineBySystem(
+    runnerProfileId: string,
+    canGoOffline: (manager: EntityManager) => Promise<boolean>,
+  ): Promise<boolean> {
+    const changed = await this.profiles.manager.transaction(async (manager) => {
+      const profile = await this.lockProfile(manager, runnerProfileId);
+      if (profile.availability !== RunnerAvailability.ONLINE || !(await canGoOffline(manager))) {
+        return false;
+      }
+      return this.applyAvailability(manager, profile, RunnerAvailability.OFFLINE);
+    });
+    if (changed) {
+      await this.presence?.recordAvailability(runnerProfileId, RunnerAvailability.OFFLINE);
+    }
+    return changed;
+  }
+
+  /** The runner-set availability write (RA-8), with the profile row locked. True when it changed. */
+  private async applyAvailability(
+    manager: EntityManager,
+    profile: RunnerProfile,
+    availability: RunnerAvailability.ONLINE | RunnerAvailability.OFFLINE,
+  ): Promise<boolean> {
+    if (profile.availability === availability) {
+      return false;
+    }
+    await manager.getRepository(RunnerProfile).update(profile.id, { availability });
+    return true;
+  }
+
+  /**
+   * Issue #36: one page of runners who are `online` or `busy` (id order,
+   * after `afterId`), for the web presence sweep. Ids and availability only.
+   */
+  async activeRunnersPage(
+    afterId: string | null,
+    limit = 500,
+  ): Promise<{ id: string; availability: RunnerAvailability }[]> {
+    const qb = this.profiles
+      .createQueryBuilder('p')
+      .select(['p.id', 'p.availability'])
+      .where('p.availability IN (:...active)', { active: [RunnerAvailability.ONLINE, RunnerAvailability.BUSY] })
+      .orderBy('p.id', 'ASC')
+      .limit(limit);
+    if (afterId) {
+      qb.andWhere('p.id > :afterId', { afterId });
+    }
+    return (await qb.getMany()).map((p) => ({ id: p.id, availability: p.availability }));
+  }
+
+  /**
+   * Issue #36: admin presence by runner. The ops flag only shows while the
+   * runner is online or busy (going offline clears it).
+   */
+  private async presenceOf(
+    profiles: { id: string; availability: RunnerAvailability }[],
+  ): Promise<Map<string, RunnerPresenceView>> {
+    const views = (await this.presence?.viewsOf(profiles.map((p) => p.id))) ?? new Map<string, RunnerPresenceView>();
+    return new Map(
+      profiles.map((p) => {
+        const v = views.get(p.id) ?? EMPTY_PRESENCE;
+        return [p.id, p.availability === RunnerAvailability.OFFLINE ? { ...v, webPingsStoppedAt: null } : v];
+      }),
+    );
   }
 
   /** RA-8: required checks of a runner (row 126). */
@@ -1292,7 +1376,7 @@ export class RunnersService {
    */
   async verificationQueueItemForAdmin(runnerProfileId: string): Promise<AdminVerificationQueueItem> {
     const notFound = () => new ApiError(HttpStatus.NOT_FOUND, 'runner_not_found', 'Runner not found');
-    const profile = await this.profiles.findOne({ where: { id: runnerProfileId }, select: { id: true } });
+    const profile = await this.profiles.findOne({ where: { id: runnerProfileId }, select: { id: true, availability: true } });
     if (!profile) {
       throw notFound();
     }
@@ -1312,7 +1396,9 @@ export class RunnersService {
     if (!item) {
       throw notFound(); // Deleted between the two reads.
     }
-    return item;
+    // Issue #36: the runner detail also carries the presence.
+    const presence = await this.presenceOf([profile]);
+    return { ...item, presence: presence.get(profile.id) ?? EMPTY_PRESENCE };
   }
 
   /**
@@ -1426,7 +1512,10 @@ export class RunnersService {
   async listForAdmin(opts: {
     limit?: number;
     cursor?: string | null;
-  }): Promise<{ items: (RunnerProfile & { skillsCount: number })[]; nextCursor: string | null }> {
+  }): Promise<{
+    items: (RunnerProfile & { skillsCount: number; presence: RunnerPresenceView })[];
+    nextCursor: string | null;
+  }> {
     const limit = Math.min(Math.max(opts.limit ?? 25, 1), 100);
     const qb = this.profiles
       .createQueryBuilder('p')
@@ -1449,9 +1538,15 @@ export class RunnersService {
     const last = page[page.length - 1];
 
     const counts = await this.skillCounts(page.map((p) => p.id));
+    const presence = await this.presenceOf(page);
     return {
-      // eslint-disable-next-line no-misused-spread -- entity → admin-list DTO shape
-      items: page.map((p) => ({ ...p, skillsCount: counts[p.id] ?? 0 })),
+      items: page.map((p) => ({
+        // eslint-disable-next-line no-misused-spread -- entity → admin-list DTO shape
+        ...p,
+        skillsCount: counts[p.id] ?? 0,
+        // Issue #36: Redis presence (client, last ping, ops flag).
+        presence: presence.get(p.id) ?? EMPTY_PRESENCE,
+      })),
       nextCursor: hasMore && last ? encodeCursor(last) : null,
     };
   }

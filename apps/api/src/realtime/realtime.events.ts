@@ -23,6 +23,11 @@
  *  - server -> client `job:offered`, `job:offer_withdrawn`,
  *    `price_change:decided` (names from the runner spec, RA-5)
  *  - client -> server `location:ping` (§4.2) with an ack (`LocationPingAck`)
+ *
+ * Web runner presence (issue #36, owner Q14-5/6/7): the handshake `auth`
+ * may carry `client: 'web'` (the website); anything else is the app. Room
+ * `admins` gets `runner:web_pings_stopped`, `runner:web_pings_resumed` and
+ * `runner:web_auto_offline`.
  */
 export const errandRoom = (errandId: string): string => `errand:${errandId}`;
 
@@ -77,6 +82,32 @@ export const SocketServerEvent = {
    * at the new amount (refetch `GET /runners/me/jobs/:errandId`).
    */
   PRICE_CHANGE_DIFFERENCE_PAID: 'price_change:difference_paid',
+  /**
+   * Issue #36 (owner Q14-5): to `admins`, once per silence, a web runner
+   * (online or busy) sent no location ping for `LOCATION_WEB_STALE_SECONDS`
+   * (default 90), including one who never pinged
+   * (`RunnerWebPingsStoppedPayload`).
+   */
+  RUNNER_WEB_PINGS_STOPPED: 'runner:web_pings_stopped',
+  /**
+   * Issue #36: to `admins`, the flag above is cleared: the runner pinged
+   * again, or reconnected from the app (`RunnerWebPingsResumedPayload`).
+   * Going offline clears the flag with no event.
+   */
+  RUNNER_WEB_PINGS_RESUMED: 'runner:web_pings_resumed',
+  /**
+   * Issue #36 (owner Q14-6): to `admins`, an idle online web runner with no
+   * ping for `LOCATION_WEB_OFFLINE_SECONDS` (default 300) was set offline by
+   * the system (`RunnerWebAutoOfflinePayload`). Busy runners never are.
+   */
+  RUNNER_WEB_AUTO_OFFLINE: 'runner:web_auto_offline',
+  /**
+   * Issue #36 (owner, 2026-10-29): to the runner's own room
+   * `runner:{id}:status`, the server changed the runner's availability
+   * (`RunnerAvailabilityChangedPayload`). Today only when the system sets an
+   * idle web runner offline (`reason: 'web_pings_stopped'`).
+   */
+  RUNNER_AVAILABILITY_CHANGED: 'runner:availability_changed',
 } as const;
 
 /** In-process domain events (EventEmitter2) the realtime module listens to. */
@@ -101,6 +132,33 @@ export const DomainEvent = {
   /** Row 248 (payments module, after the difference payment completed). */
   PRICE_CHANGE_DIFFERENCE_PAID: 'price_change.difference_paid',
 } as const;
+
+/** `runner:web_pings_stopped` (issue #36). Times ISO; `lastPingAt` null when the web runner never pinged. */
+export interface RunnerWebPingsStoppedPayload {
+  runnerProfileId: string;
+  lastPingAt: string | null;
+  at: string;
+}
+
+/** `runner:web_pings_resumed` (issue #36). */
+export interface RunnerWebPingsResumedPayload {
+  runnerProfileId: string;
+  at: string;
+}
+
+/** `runner:web_auto_offline` (issue #36). */
+export interface RunnerWebAutoOfflinePayload {
+  runnerProfileId: string;
+  lastPingAt: string | null;
+  at: string;
+}
+
+/** `runner:availability_changed` (issue #36) to the runner's own room. */
+export interface RunnerAvailabilityChangedPayload {
+  availability: 'offline';
+  reason: 'web_pings_stopped';
+  at: string;
+}
 
 /** `job:offered`: fetch the job with `GET /runners/me/jobs/:errandId`. */
 export interface JobOfferedPayload {

@@ -1360,3 +1360,137 @@ Build health, re-run by the auditor in `apps/admin`: `npx ng test --watch=false`
 
 ### Verdict
 `drawer-user-status` **PASS** (G24-1 … G24-11 closed; m-1 minor, non-blocking). `SCREEN_MAP.md` → `matches-design`. The branch carries API and admin work together; it needs owner review before `main`.
+
+## #36 — web runner presence (spec 2026-10-29, `feat/api-web-runner-presence`)
+
+Issue #36: show the web-runner presence flag in the runners panel, the runner drawer and the live map, updating live. Binding owner decisions: **WQ-46** (Q14-5: Redis-only flag at 90 s, including never-pinged web runners), **WQ-47** (Q14-6: idle online web runners set offline after 5 min; busy web runners flagged only), Q14-7 (location revoked: stay online plus the flag) and **WQ-52** (blocked location treated as a closed tab; an open offer keeps an idle runner flagged only until it ends; admin event `runner:web_auto_offline` plus a runner-room event). Spec: `docs/specs/admin/runner-web-presence.md` (new). API built on this branch (`126ae24` … `dd14084`): `presence { client, lastPingAt, webPingsStoppedAt }` on `GET /runners` items and `GET /runners/:id/verifications`; events `runner:web_pings_stopped`, `runner:web_pings_resumed`, `runner:web_auto_offline` to the `admins` room (`apps/api/src/realtime/realtime.gateway.ts:484-517`).
+
+Checked for the spec. The mockup draws no presence UI: map dots `.runner-pt.idle|busy` (`nitume_admin_dashboard.html:285-292`), feed `.live-row` with amber, green, red and slate dots and a Fira Code sub ending in a 12-hour time (lines 298–304), and the runner drawer (lines 474–509). **`apps/admin` has no realtime client**: no `socket.io-client` in `package.json`, and no socket, `EventSource` or polling code anywhere in `src/`. The live map re-reads only on `↻ Refresh`, and its class comment says so (`live-map.panel.ts:12-18`). The map dot `busy` is already amber (`_ops.scss:335-337`), so an amber dot marker for the flag would collide with "On task". The A-02 chip already has a fixed flag path (`label` + `tone`, `status-chip.component.ts:219-243`), so `Pings stopped` needs no new chip kind. Admin initial bundle at the #24 re-audit was 497.22 kB against the 500 kB ceiling.
+
+### runner-web-presence: FAIL against the new spec (missing)
+
+1. **G36-1 (blocker, owner-approved WQ-52)** new `apps/admin/src/app/core/realtime/admin-realtime.service.ts` (+ event parsers), `apps/admin/package.json`.
+   - Design (spec §8): a reduced port of the website `RealtimeService`.
+     - Connection: `/socket.io`, websocket only, `auth: { token }` from `AuthStore`, no `client` field.
+     - Token and retries: token rotated through `AuthService.refresh` when `isExpiringSoon()`; service-owned backoff (1 s … 30 s, ±20 %).
+     - `account_suspended` is final and calls `logout()`.
+     - State signal `connected | connecting | reconnecting | disconnected`.
+     - Defensive parsers for the three events.
+     - `socket.io-client` ^4.8 loaded only via dynamic `import()` behind an injectable factory, so the initial chunk stays ≤ 500 kB.
+   - Code: none.
+   - Fix: build as specced (about 180–250 lines plus tests). Start it from the dashboard shell, and stop it on logout and on destroy.
+2. **G36-2 (blocker)** `apps/admin/src/app/core/api-types.ts:751-767`.
+   - Design (spec §9): `RunnerListItem.presence?: { client: 'web' | 'app' | null; lastPingAt: string | null; webPingsStoppedAt: string | null }`. Optional, so an older API reads as `client: null`.
+   - Code: no `presence`.
+   - Fix: add the type. No service change, because `listRunners` already returns the items whole.
+3. **G36-3 (blocker, owner-approved WQ-46/47/52)** `apps/admin/src/app/features/admin/admin-data.service.ts:124-129` (`MapPoint`), `:233-237` (`feed`), `:240-249` (`mapPoints`), `:298-319` (`refresh`).
+   - Design (spec §5):
+     - Apply each event immutably to `runners`. `stopped` sets the flag, `client 'web'` and `lastPingAt`. `resumed` clears the flag only. `auto_offline` sets `availability 'offline'`, clears the flag and records the notice per runner for the session.
+     - Defensive handling: unknown runner = feed row only; malformed = dropped; older `at` ignored.
+     - Refresh handling: events received during an in-flight `refresh()` are re-applied after it. `refresh()` runs once on each reconnect after the first.
+     - Feed: presence rows (≤ 5, newest first) above the task rows, with tones amber / slate / slate and the copy in spec §3.3.
+     - `MapPoint` gains `web` and `pingsStopped`.
+     - `isFlagged = isActive && !!webPingsStoppedAt`, and never for `client` `app` or `null`.
+   - Code: none.
+   - Fix: as specced. No green tone for "resumed".
+4. **G36-4 (blocker, owner-approved WQ-46)** `apps/admin/src/app/features/admin/panels/runners.panel.ts:72-75`.
+   - Design (spec §3.1 item 2): in `.r-tags`, before the level chip:
+     - `<app-status-chip label="Web" tone="neutral" />` when web and online or busy;
+     - `<app-status-chip label="Pings stopped" tone="pending" />` when flagged.
+   - Code: level and skills chips only.
+   - Fix: add both through A-02. No new CSS or chip kind; amber only as `chip-pending`.
+5. **G36-5 (minor)** `runners.panel.ts:95-101` (`sub()`), `:103-114` (`visible()`).
+   - Design (spec §3.1 items 1, 4): append ` · {n} pings stopped` when n > 0. Search also matches `web` and `pings stopped`.
+   - Code: neither.
+   - Fix: as specced. No filter control or sort (Q36-6).
+6. **G36-6 (blocker, owner-approved WQ-46/47)** `apps/admin/src/app/features/admin/drawers/runner-drawer.ts:25-28`, `:56-58`.
+   - Design (spec §3.2):
+     - After `Availability`: row `Client` (chip `Web` / `App`, or `<b>—</b>`); then `Location pings` (chip `Pings stopped`, pending) and `Flagged` (`formatDateTime`), both only when flagged.
+     - `Last ping` moved up, with value `formatDateTime(presence.lastPingAt ?? lastPingAt)` (absolute 12-hour EAT, Fira Code).
+   - Code: `Last ping` uses the profile `lastPingAt` through `timeAgo`; no client or flag rows.
+   - Fix: as specced. The relative-to-absolute change is pending Q36-4 but is buildable as specced.
+7. **G36-7 (blocker, owner-approved WQ-47/52)** same file, new `.drawer-section` under the first card.
+   - Design (spec §3.2, §7):
+     - A-11 `info` flag note while flagged, with busy, online and never-pinged variants. The busy copy says Nitume never sets a runner offline during a task (WQ-47). The online copy has no minutes (Q36-3).
+     - A-11 `info`, dismissible auto-offline notice after `runner:web_auto_offline` while the runner is offline. Times via `formatDateTimeEat` inside `app-num-text`. Session-only.
+   - Code: none.
+   - Fix: as specced. The two notices never show together.
+8. **G36-8 (blocker, owner-approved WQ-46/52)** `apps/admin/src/app/features/admin/panels/live-map.panel.ts:84`, `:92-100`, `:125-140`.
+   - Design (spec §3.3):
+     - Dot `aria-label` and `title`: `Runner {id} · {availability}[ · Web][ · Pings stopped]`, replacing the constant `Runner dot`.
+     - Dot class flips live on auto-offline. Dot colour and legend unchanged (Q36-5).
+     - Presence feed rows from G36-3, opening the runner drawer.
+     - `.map-livemode` text `Live updates paused` while the socket is not connected.
+     - The `FLAGGED` top-stat is untouched.
+   - Code: constant label, no presence, badge always `Live ops feed`.
+   - Fix: as specced. No new dot style without Q36-5.
+9. **G36-9 (blocker)** tests and build.
+   - Design (spec §12):
+     - New `admin-realtime.service.spec.ts`, `runners.panel.spec.ts` and `runner-drawer.spec.ts`.
+     - Presence cases for `admin-data.service`.
+     - `live-map.panel.spec.ts` extended.
+     - A `Pings stopped` / `pending` case in `status-chip.component.spec.ts`.
+     - `npx ng test --watch=false` with 0 failures, and `npx ng build` initial total ≤ 500 kB (counts pasted).
+   - Code: none of these cases exist; `live-map.panel.spec.ts` has 3 time-format cases only.
+   - Fix: write the listed cases and paste the counts.
+
+Pre-existing, not counted against #36: **m-1 (minor)** `live-map.panel.ts:128`. The `.live-row` feed row is a clickable `div` with no keyboard access or role. Presence rows inherit this. Fix when `p-map` gets its full parity audit.
+
+### API items for api-contract (needs, not findings against web-parity)
+- **N36-1 (optional, not blocking)** add `client` and `lastPingAt` to `runner:web_pings_resumed`. Without them, the drawer's `Client` and `Last ping` rows only update on the next `GET /runners` after a resume.
+
+### Owner questions (BOARD, not counted)
+Q36-1 copy; Q36-2 `Web` marker on offline runners; Q36-3 minutes in the flag note; Q36-4 `Last ping` absolute and its source; **Q36-5 new map dot marker / legend (new visual pattern, not built)**; Q36-6 filter or sort; Q36-7 ops action; Q36-8 feed cap; Q36-9 no admin event for manual offline (follow-up issue); Q36-10 `socket.io-client` dependency in admin; Q36-11 runners outside the first 100. The spec §13 gives a recommendation for each.
+
+### Verdict
+Spec round. `runner-web-presence` is **missing**: G36-1, G36-2, G36-3, G36-4, G36-6, G36-7, G36-8, G36-9 (blockers) and G36-5 (minor). All of it can be built now on the owner-approved scope (WQ-46/47/52). Only the copy (Q36-1) and the flagged-dot marker (Q36-5, deliberately not specced) wait on the owner. G36-1 must land first, because G36-3 and G36-8 depend on it. `SCREEN_MAP.md`: new row `runner-web-presence`, status `missing`.
+
+## Re-audit 2026-10-29: #36 web runner presence (`feat/api-web-runner-presence` @ `cc30833`)
+
+web-parity commits `efa1e5c`, `d19d559`, `a8d75b3`, `c933030`, `62e15ac`, `499a205`, `9518f32`, `119a37f`, `3755d69`, `636863c`, `27c61c1`, `c2aff07`, `cc30833`, checked against `docs/specs/admin/runner-web-presence.md` (spec `dcfbd69`, gap list `87dd7cb`). The owner decided **Q36-1 … Q36-11 on 2026-10-29: every recommendation approved**. That covers the copy, the `Web` marker only while active, no minutes in the note, absolute `Last ping`, no new map marker, no filter or sort, no action, the feed cap of 5, accepting no admin event for a manual offline, the `socket.io-client` dependency, and the first-100 limit. The spec now records them as decided. Tags: owner-approved WQ-46/47/52.
+
+Build health, re-run by the auditor in `apps/admin` after `npm ci`:
+- `npx ng test --watch=false` → **38 files, 458 tests, 0 failures**.
+- `npx ng build` → **initial total 498.90 kB** (≤ 500 kB), no warnings or errors. The lazy chunks include `index` (socket.io-client, 42.05 kB), `admin-realtime-service` (4.57 kB) and `runner-drawer` (5.76 kB).
+- `npx tsc -p tsconfig.app.json --noEmit` is clean.
+- Prettier `--check` on every changed file is clean.
+
+Grep of the built output:
+- The three event names `runner:web_pings_stopped` / `_resumed` / `runner:web_auto_offline` appear **only** in the lazy `admin-realtime-service` chunk.
+- socket.io code appears only in lazy chunks.
+- In `src`, `socket.io-client` is reached only by `await import('socket.io-client')` (`admin-realtime.tokens.ts:27`). The service itself loads via `import()` from the shell (`admin-dashboard.component.ts:351`).
+
+Token grep on the changed `.ts` files: no added hex, `font-family`, `rgb(` or inline `style=`. Every inline style in the changed templates predates #36. No wallet, escrow or balance wording. Amber appears only as `chip-pending` (`Pings stopped`) and as the existing `.live-dot` tone in the feed. No green for "resumed".
+
+### Gap items re-checked
+| Item | Result | Evidence |
+|---|---|---|
+| G36-1 admin socket client | closed | `core/realtime/admin-realtime.service.ts`: `/socket.io`, websocket only, `auth.token`, no `client`, `reconnection: false`; rotation when `isExpiringSoon()`; backoff 1 s … 30 s ±20 %; `account_suspended` → disconnect + `logout()` once; state signal; defensive parsers (`admin-realtime.events.ts`); stops on logout (effect on `isAuthenticated`) and destroy; 15 cases |
+| G36-2 type | closed | `api-types.ts` `RunnerListItem.presence?: RunnerPresence` |
+| G36-3 store | closed | `admin-data.service.ts` `attachLive` / `applyPresence` / `withPresence` / `presenceFeedItem`; shared rules in `runner-presence.ts` (`isWeb`, `isActive`, `isFlagged` also requires `client 'web'`, `lastPing`); unknown id = feed row only; older `at` ignored; replay after an in-flight refresh; refetch on each reconnect after the first; cap 5 above task rows; 12 cases |
+| G36-4 card chips | closed | `runners.panel.ts` `.r-tags`: A-02 `label="Web" tone="neutral"` (active web), `label="Pings stopped" tone="pending"` (flagged), before the level chip |
+| G36-5 sub + search | closed | ` · {n} pings stopped` only when n > 0; search matches `web` / `pings stopped` |
+| G36-6 drawer rows | closed | `runner-drawer.ts:38-63`: `Client` (Web / App / `—`), `Location pings` + `Flagged` (`formatDateTime`) while flagged, `Last ping` = `formatDateTime(presence.lastPingAt ?? lastPingAt)` |
+| G36-7 drawer notices | closed | flag note (A-11 info) with busy, online and never-pinged copy; dismissible auto-offline notice only while offline, times via `formatDateTimeEat` in `app-num-text`; never both |
+| G36-8 live map | closed | `mapDotLabel` in `aria-label` and `title`; class flips on auto-offline; presence feed rows open the runner; `Live updates paused` unless `connected`; legend, dot colours and `FLAGGED` unchanged |
+| G36-9 tests and build | closed | all spec §12 cases present (realtime 15, store 12, runners panel 5, runner drawer 8, map 6 new, chip 2 new, shell 1); counts above |
+
+### Builder decisions ruled
+1. **Never-pinged busy flag note reads `No location has arrived from the website since this runner went online. Nitume never sets a runner offline during a task.` — PASS.** Spec §7 says "busy variant: same first sentence, then the busy tail", and the busy tail is the closing sentence about never going offline mid-task. The `live tracking … may be out of date` clause belongs to the "stopped sending" first sentence, which a never-pinged runner did not do. Copy approved under Q36-1.
+2. **Auto-offline notice also cleared by a later stop or resume event, or by a refresh that shows the runner active — PASS.** Stop and resume are only emitted for an online or busy runner, so either one means the runner came back. A refresh showing them active is server truth. Both are consistent with the spec rule "only while offline". The drawer still also checks `availability === 'offline'` (`runner-drawer.ts:163-165`). Tested (`admin-data.presence.spec.ts:138`).
+3. **Client after auto-offline keeps the existing value and falls back to `'web'` — PASS.** The API auto-offlines web runners only (WQ-47), so `'web'` is the only correct fallback, and an existing value is never overwritten with a guess.
+4. **Runner drawer behind `@defer (on immediate)` with `Loading runner profile…` (`62e15ac`) — PASS.** This is the same pattern and the same `.ops-loading` copy shape as the payout, verification and customer drawers (`Loading documents…`, `Loading runner payout…`). It was needed to keep the initial bundle at 498.90 kB. The spec header records it as an accepted deviation.
+5. **Extras beyond the gap list — PASS.**
+   - `efa1e5c`: `AuthStore.isExpiringSoon` from `computed` to a method. This is a real bug fix: the `computed` read `Date.now()` and memoised it, so it would never turn true while the token aged. The realtime service is its only caller (`rg isExpiringSoon`), and the call syntax is unchanged.
+   - `3755d69`: test only. The customer-drawer spec now waits for the deferred customer link with `whenStable()` instead of fixed ticks.
+   - `27c61c1`: the drawer feature commit. It also switches the drawer spec to the shared `AuthStore` stand-in, which removes a 1-in-13 `localStorage` flake from the deferred user-status section. That reuses the existing test helper, as ruled in #24.
+6. **socket.io-client only through dynamic `import()`, event names only in the lazy chunk — PASS** (build grep above).
+
+### Findings
+None against #36. Pre-existing **m-1 (minor)** stays open and is not counted: `live-map.panel.ts` `.live-row` is a clickable `div` with no keyboard access. It applies to the presence rows too; fix it in the `p-map` parity audit.
+
+### API follow-ups (not findings)
+N36-1 (optional, unchanged): `client` and `lastPingAt` on `runner:web_pings_resumed`. Q36-9 approved: open a follow-up issue for an admin availability event.
+
+### Verdict
+`runner-web-presence` **PASS** (G36-1 … G36-9 closed; builder decisions 1–6 PASS). `SCREEN_MAP.md` → `matches-design`. The branch carries API and admin work together and needs reviewer sign-off and owner review before `main`.

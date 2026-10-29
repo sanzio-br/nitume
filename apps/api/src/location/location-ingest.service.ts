@@ -16,6 +16,7 @@ import { ErrandsService } from '../errands/errands.service';
 import { LOCATION_CHANNEL_PATTERN, locationChannel } from '../infra/redis/channels';
 import { RedisService } from '../infra/redis/redis.service';
 import { GEOFENCE_ARRIVAL_JOB, LOCATION_PERSIST_JOB, LOCATION_QUEUE } from '../infra/queue/queues';
+import { PresenceClient, RunnerPresenceService } from '../runners/runner-presence.service';
 import { RunnersService } from '../runners/runners.service';
 
 /**
@@ -194,6 +195,7 @@ export class LocationIngestService {
     private readonly redis: RedisService,
     @InjectQueue(LOCATION_QUEUE) private readonly queue: Queue,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly presence?: RunnerPresenceService,
   ) {}
 
   private cfg(key: string, fallback: number): number {
@@ -205,7 +207,18 @@ export class LocationIngestService {
     return this.redis.channel(LOCATION_CHANNEL_PATTERN);
   }
 
-  async ingest(user: AuthContext | undefined, body: unknown, now: Date = new Date()): Promise<LocationPingResult> {
+  /**
+   * `client` (issue #36) is the socket's client from the handshake
+   * (`'web'` for the website, else `'app'`); every accepted ping, idle or
+   * job, writes it with the receipt time into the presence record, which
+   * also clears an ops "web pings stopped" flag.
+   */
+  async ingest(
+    user: AuthContext | undefined,
+    body: unknown,
+    now: Date = new Date(),
+    client: PresenceClient = 'app',
+  ): Promise<LocationPingResult> {
     if (!user || user.role !== UserRole.RUNNER) {
       return { ok: false, error: 'not_runner' };
     }
@@ -243,6 +256,7 @@ export class LocationIngestService {
         }
       }
       await this.storeLive(runner.runnerProfileId, ping);
+      await this.presence?.recordPing(runner.runnerProfileId, client, now);
       if (ping.errandId && job) {
         const message: LocationMessage = {
           errandId: ping.errandId,

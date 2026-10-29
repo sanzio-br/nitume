@@ -114,6 +114,28 @@ export class RedisService {
     return this.client.eval(script, keys.length, ...keys, ...args);
   }
 
+  /**
+   * HGETALL for several hashes in one round trip (pipeline), in `keys`
+   * order; a missing key gives `{}`. Throws when any command failed.
+   */
+  async hgetallMany(keys: string[]): Promise<Record<string, string>[]> {
+    if (keys.length === 0) {
+      return [];
+    }
+    const pipeline = this.client.pipeline();
+    for (const key of keys) {
+      pipeline.hgetall(key);
+    }
+    const replies = (await pipeline.exec()) ?? [];
+    return keys.map((_key, i) => {
+      const [err, value] = replies[i] ?? [new Error('no reply'), null];
+      if (err) {
+        throw err;
+      }
+      return (value as Record<string, string> | null) ?? {};
+    });
+  }
+
   /** Atomically fetch and delete a key (single-use semantics). */
   async getAndDelete(key: string): Promise<string | null> {
     const value = await this.client.get(key);

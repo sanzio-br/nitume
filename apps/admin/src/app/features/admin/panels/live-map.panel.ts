@@ -1,5 +1,6 @@
 import { Component, inject, output, signal } from '@angular/core';
-import { AdminDataService } from '../admin-data.service';
+import { AdminDataService, MapPoint, shortId } from '../admin-data.service';
+import { statusLabel } from '../../../shared/status-chip.component';
 import { KpiCardComponent } from '../../../shared/kpi-card.component';
 import { PanelTopbarComponent } from './panel-topbar.component';
 import { formatTime } from '../shared-format';
@@ -7,6 +8,18 @@ import { formatTime } from '../shared-format';
 /** Topbar sub-line: last sync in 12-hour East Africa Time, never the browser's zone (row 96). */
 export function liveMapSubLine(syncedAt: number): string {
   return `Nairobi · synced ${formatTime(syncedAt)}`;
+}
+
+/**
+ * Map dot label and title (#36, spec §3.3):
+ * `Runner #NT-4F2A1 · On task · Web · Pings stopped`.
+ */
+export function mapDotLabel(pt: MapPoint): string {
+  return (
+    `Runner ${shortId(pt.runnerId)} · ${statusLabel(pt.availability, 'availability')}` +
+    (pt.web ? ' · Web' : '') +
+    (pt.pingsStopped ? ' · Pings stopped' : '')
+  );
 }
 
 /**
@@ -81,7 +94,11 @@ export function liveMapSubLine(syncedAt: number): string {
               ><span>FLAGGED</span>
             </div>
           </div>
-          <div class="map-livemode"><span class="live-dot"></span>Live ops feed</div>
+          <!-- #36: the only connection indicator; the dot keeps its style. -->
+          <div class="map-livemode">
+            <span class="live-dot"></span
+            >{{ s.liveState() === 'connected' ? 'Live ops feed' : 'Live updates paused' }}
+          </div>
 
           <div class="map-zone" style="left:14%;top:22%;width:180px;height:150px;">CBD</div>
           <div class="map-zone" style="left:52%;top:38%;width:150px;height:130px;">Kilimani</div>
@@ -95,7 +112,8 @@ export function liveMapSubLine(syncedAt: number): string {
               [class]="ptClass(pt.availability)"
               [style.left.px]="pt.x"
               [style.top.px]="pt.y"
-              [attr.aria-label]="'Runner dot'"
+              [attr.aria-label]="dotLabel(pt)"
+              [title]="dotLabel(pt)"
               (click)="openRunner.emit(pt.runnerId)"
             ></button>
           } @empty {
@@ -194,6 +212,8 @@ export class LiveMapPanelComponent {
   protected disputesDelta(): string {
     return `${this.s.topStats().staleDisputes} unresolved >24h`;
   }
+
+  protected readonly dotLabel = mapDotLabel;
 
   protected ptClass(availability: string | undefined): string {
     return availability === 'online' ? 'idle' : availability === 'busy' ? 'busy' : 'offline';

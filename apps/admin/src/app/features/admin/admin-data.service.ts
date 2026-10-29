@@ -2,7 +2,14 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { apiError, FORBIDDEN_COPY } from '../../core/api-error';
-import { eatDayKey, eatWeekday } from './shared-format';
+import { eatDayKey, eatWeekday, formatTime } from './shared-format';
+import { isActive, isFlagged, isWeb } from './runner-presence';
+import type {
+  AdminLiveSource,
+  AdminRealtimeState,
+  WebAutoOffline,
+  WebPingsStopped,
+} from '../../core/realtime/admin-realtime.events';
 import type {
   AssignErrandDto,
   AssignErrandResult,
@@ -126,7 +133,20 @@ export interface MapPoint {
   x: number;
   y: number;
   availability: RunnerListItem['availability'];
+  /** Web runner, online or busy (#36). */
+  web: boolean;
+  /** `Pings stopped` flag (#36). */
+  pingsStopped: boolean;
 }
+
+type PresenceKind = 'stopped' | 'resumed' | 'offline';
+type PresenceEvent = { runnerProfileId: string; at: string; lastPingAt?: string | null };
+
+/** Auto-offline notice for the runner drawer (#36), kept for the session. */
+export type AutoOfflineNotice = Pick<WebAutoOffline, 'at' | 'lastPingAt'>;
+
+/** Presence rows kept above the task rows in the live feed (Q36-8). */
+const PRESENCE_FEED_CAP = 5;
 
 @Injectable({ providedIn: 'root' })
 export class AdminDataService {
@@ -151,6 +171,19 @@ export class AdminDataService {
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly refreshedAt = signal<number>(Date.now());
+
+  // --- Web runner presence (#36, spec runner-web-presence §5) ---
+  /** Admin socket state; anything but `connected` pauses live updates. */
+  readonly liveState = signal<AdminRealtimeState>('disconnected');
+  /** Presence feed rows, newest first, session only. */
+  readonly presenceFeed = signal<FeedItem[]>([]);
+  /** `runner:web_auto_offline` seen this session, by runner id. */
+  readonly autoOffline = signal<ReadonlyMap<string, AutoOfflineNotice>>(new Map());
+  /** Last applied presence event time per runner (out-of-order guard). */
+  private readonly presenceAt = new Map<string, number>();
+  /** Refreshes in flight, and the events received meanwhile. */
+  private refreshing = 0;
+  private duringRefresh: [PresenceKind, PresenceEvent][] = [];
 
   /** Errands that left the drafting stage (the real "task queue"). */
   readonly tasks = computed(() => this.errands().filter((e) => e.status !== 'DRAFT'));
@@ -230,11 +263,12 @@ export class AdminDataService {
     };
   });
 
-  readonly feed = computed<FeedItem[]>(() =>
-    this.tasks()
+  readonly feed = computed<FeedItem[]>(() => [
+    ...this.presenceFeed(),
+    ...this.tasks()
       .slice(0, 8)
       .map((t) => feedItemFor(t)),
-  );
+  ]);
 
   /** Deterministic pseudo-positions for the ops map (stable per runner id). */
   readonly mapPoints = computed<MapPoint[]>(() =>
@@ -245,6 +279,8 @@ export class AdminDataService {
         x: hashCoord(r.id, i, 560) + 30,
         y: hashCoord(r.id, i + 7, 400) + 40,
         availability: r.availability ?? 'offline',
+        web: isWeb(r) && isActive(r),
+        pingsStopped: isFlagged(r),
       })),
   );
 
@@ -298,6 +334,7 @@ export class AdminDataService {
   async refresh(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.refreshing++;
     try {
       const [errands, runners, me] = await Promise.all([
         firstValueFrom(this.api.listErrands()),
@@ -306,6 +343,14 @@ export class AdminDataService {
       ]);
       this.errands.set(errands.items);
       this.runners.set(runners.items);
+      // Presence events that arrived while this refresh was in flight win.
+      for (const [kind, e] of this.duringRefresh) this.applyPresence(kind, e, true);
+      // An auto-offline notice ends once the runner is active again.
+      this.autoOffline.update((m) => {
+        const next = new Map(m);
+        for (const r of this.runners()) if (isActive(r)) next.delete(r.id);
+        return next;
+      });
       this.me.set(me);
       this.refreshedAt.set(Date.now());
       void this.refreshRefundBadge();
@@ -314,8 +359,70 @@ export class AdminDataService {
     } catch (e) {
       this.error.set(syncErrorCopy(e));
     } finally {
+      if (--this.refreshing === 0) this.duringRefresh = [];
       this.loading.set(false);
     }
+  }
+
+  /**
+   * Follows the admin socket (#36): presence events update `runners` in
+   * place, and every connect after the first refetches once, because events
+   * sent while disconnected are lost. Returns the detach function.
+   */
+  attachLive(source: AdminLiveSource): () => void {
+    let connects = 0;
+    const subs = [
+      source.stateChanges$.subscribe((state) => {
+        this.liveState.set(state);
+        if (state === 'connected' && ++connects > 1) void this.refresh();
+      }),
+      source.webPingsStopped$.subscribe((e) => this.applyPresence('stopped', e)),
+      source.webPingsResumed$.subscribe((e) => this.applyPresence('resumed', e)),
+      source.webAutoOffline$.subscribe((e) => this.applyPresence('offline', e)),
+    ];
+    return () => {
+      subs.forEach((s) => s.unsubscribe());
+      this.liveState.set('disconnected');
+    };
+  }
+
+  /** Drops the auto-offline notice of a runner (dismissed in the drawer). */
+  dismissAutoOffline(runnerId: string): void {
+    this.autoOffline.update((m) => {
+      const next = new Map(m);
+      next.delete(runnerId);
+      return next;
+    });
+  }
+
+  /**
+   * Applies one presence event immutably (spec §5). An event older than the
+   * last one applied for that runner is ignored. An unknown runner gets a
+   * feed row only. `replay` re-applies an event on top of a refresh.
+   */
+  private applyPresence(kind: PresenceKind, e: PresenceEvent, replay = false): void {
+    const id = e.runnerProfileId;
+    const at = Date.parse(e.at);
+    const last = this.presenceAt.get(id);
+    if (!replay) {
+      if (last !== undefined && at < last) return;
+      this.presenceAt.set(id, at);
+      if (this.refreshing) this.duringRefresh.push([kind, e]);
+      this.presenceFeed.update((rows) =>
+        [presenceFeedItem(kind, e), ...rows].slice(0, PRESENCE_FEED_CAP),
+      );
+    }
+    this.runners.update((rows) =>
+      rows.some((r) => r.id === id)
+        ? rows.map((r) => (r.id === id ? withPresence(r, kind, e) : r))
+        : rows,
+    );
+    this.autoOffline.update((m) => {
+      const next = new Map(m);
+      if (kind === 'offline') next.set(id, { at: e.at, lastPingAt: e.lastPingAt ?? null });
+      else next.delete(id);
+      return next;
+    });
   }
 
   async refreshErrands(): Promise<void> {
@@ -833,6 +940,58 @@ function feedItemFor(t: ErrandListItem): FeedItem {
     return { tone: 'slate', title: `Quote issued — ${labelFor(t)}`, sub, errandId: t.id };
   }
   return { tone: 'slate', title: `${titleCase(status)} — ${labelFor(t)}`, sub, errandId: t.id };
+}
+
+/** Runner row after a presence event (spec §5). */
+function withPresence(r: RunnerListItem, kind: PresenceKind, e: PresenceEvent): RunnerListItem {
+  const p = r.presence ?? { client: null, lastPingAt: null, webPingsStoppedAt: null };
+  if (kind === 'stopped') {
+    return {
+      ...r,
+      presence: { client: 'web', lastPingAt: e.lastPingAt ?? null, webPingsStoppedAt: e.at },
+    };
+  }
+  if (kind === 'resumed') {
+    // The payload has no client or ping time: both stay as they are (N36-1).
+    return { ...r, presence: { ...p, webPingsStoppedAt: null } };
+  }
+  return {
+    ...r,
+    availability: 'offline',
+    presence: {
+      client: p.client ?? 'web',
+      lastPingAt: e.lastPingAt ?? p.lastPingAt,
+      webPingsStoppedAt: null,
+    },
+  };
+}
+
+/** Live feed row of a presence event (spec §3.3): amber stop, slate otherwise. */
+function presenceFeedItem(kind: PresenceKind, e: PresenceEvent): FeedItem {
+  const id = shortId(e.runnerProfileId);
+  const time = formatTime(e.at);
+  const since = (p: Pick<WebPingsStopped, 'lastPingAt'>) =>
+    p.lastPingAt
+      ? `Last ping ${formatTime(p.lastPingAt)} · ${time}`
+      : `No location received · ${time}`;
+  const row = { runnerId: e.runnerProfileId };
+  if (kind === 'stopped') {
+    return {
+      ...row,
+      tone: 'amber',
+      title: `Web pings stopped — ${id}`,
+      sub: since(e as WebPingsStopped),
+    };
+  }
+  if (kind === 'resumed') {
+    return { ...row, tone: 'slate', title: `Web pings resumed — ${id}`, sub: time };
+  }
+  return {
+    ...row,
+    tone: 'slate',
+    title: `Set offline, no web pings — ${id}`,
+    sub: since(e as WebPingsStopped),
+  };
 }
 
 function labelFor(t: ErrandListItem): string {
