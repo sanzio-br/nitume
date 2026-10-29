@@ -15,11 +15,14 @@ export function safeExternalUrl(url: string | null | undefined): string | null {
 /**
  * Follows a same-origin path through the router (no document reload) for
  * a plain left click; modified clicks keep the browser's behaviour.
+ * `beforeFollow` (#8) runs only when the link is followed in-app, before
+ * the router navigates.
  */
-export function followInAppLink(event: MouseEvent, url: string, router: Router): void {
+export function followInAppLink(event: MouseEvent, url: string, router: Router, beforeFollow?: () => void): void {
   if (event.defaultPrevented || event.button !== 0) return;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   if (!url.startsWith('/') || url.startsWith('//')) return;
   event.preventDefault();
+  beforeFollow?.();
   void router.navigateByUrl(url);
 }

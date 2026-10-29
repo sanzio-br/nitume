@@ -3,11 +3,13 @@
 // components stay unchanged and passing.
 import { Component, TemplateRef, inject, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { addKes, compareKes, formatDeadlineEat, isPositiveKes, subtractKes } from './format/formatters';
 import { NM_OVERLAY_DATA } from './ui/overlay/overlay-ref';
 import { NmPanelService } from './ui/overlay/panel.service';
+import { NmActiveTaskCard } from './ui/active-task-card/active-task-card.component';
 import { NmIcon } from './ui/icon/icon.component';
 import { NM_ICONS } from './ui/icon/icons';
 
@@ -131,6 +133,54 @@ describe('#8 kit additions (A§8)', () => {
         if (original === undefined) delete process.env['TZ'];
         else process.env['TZ'] = original;
       }
+    });
+  });
+
+  describe('nm-active-task-card followed (G8-13)', () => {
+    @Component({
+      imports: [NmActiveTaskCard],
+      template: `<nm-active-task-card
+        category="Buy For Me"
+        reference="NT-10482"
+        title="Groceries"
+        meta="Pay to confirm your task"
+        actionLabel="Pay now →"
+        actionHref="/app/customer/tasks/e-1/payment"
+        (followed)="log.push('followed')"
+      />`,
+    })
+    class Host {
+      readonly log: string[] = [];
+    }
+
+    function setup() {
+      TestBed.configureTestingModule({ providers: [provideRouter([])] });
+      const fixture = TestBed.createComponent(Host);
+      fixture.detectChanges();
+      const log = fixture.componentInstance.log;
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockImplementation(async () => {
+        log.push('navigate');
+        return true;
+      });
+      const link = (fixture.nativeElement as HTMLElement).querySelector('a.nm-btn') as HTMLAnchorElement;
+      return { log, navigate, link };
+    }
+
+    it('A.T8 card. a plain left click emits followed before the router navigates', () => {
+      const { log, link } = setup();
+      link.click();
+      expect(log).toEqual(['followed', 'navigate']);
+    });
+
+    it('A.T8 card. Ctrl, Meta, Shift and middle clicks emit nothing and leave the browser to open the link', () => {
+      const { log, navigate, link } = setup();
+      for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1 }]) {
+        const event = new MouseEvent('click', { bubbles: true, cancelable: true, ...init });
+        link.dispatchEvent(event);
+        expect.soft(event.defaultPrevented, JSON.stringify(init)).toBe(false);
+      }
+      expect(log).toEqual([]);
+      expect(navigate).not.toHaveBeenCalled();
     });
   });
 });
