@@ -107,7 +107,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | api/suspended-access (issue #23) | merged (PR #25, 28a0c42) | — | feat/api-suspended-access (stacked on #22 → #20; worktree ../nitume-feat-api-suspended-access) | none | 8eb934d, 2e70401, 5b49108, e095f15, e187481; unit 960/960, e2e 187/187; each commit compiles |
 | admin/user-status-actions (issue #24) | merged (PR #32, be0229f) | api-contract | feat/api-user-status-audit (stacked on feat/api-suspended-access; worktree ../nitume-feat-api-user-status-audit) | #23 | schema WQ-23 approved; then design-auditor admin drawer spec, web-parity build |
 | website/customer/create-task (issue #7) | merged (PR #42, 81aa065; merge commit, not squash) | design-auditor | feat/website-customer-create-task (stacked on #6; worktree ../nitume-feat-website-customer-create-task) | #6 | specs only, no SCREEN_MAP edits on this branch |
-| website/customer/checkout (issue #8) | specced → gap report (#7 merged in 528ed46; align to app-area/customer, EAT deadline) | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
+| website/customer/checkout (issue #8) | building (gap G8-1…G8-41, 4e9ff70; main merged 7d0b81e) | design-auditor | feat/website-customer-checkout (stacked on #6; worktree ../nitume-feat-website-customer-checkout) | #6 | specs only |
 | api/merchant-details-privacy (issue #28) | merged (PR #29, 5f0ab08) | api-contract | fix/api-merchant-details-privacy (off main; worktree ../nitume-fix-api-merchant-details-privacy) | none | found while speccing #8 |
 | apps/places-attribution (issue #27) | unaudited | — | — | — | WQ-26 follow-up for the Flutter apps |
 | api+web+core/socket-revoked-token (issue #30) | unaudited | — | — | #24, #6 | from the #6 review |
@@ -616,6 +616,7 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | WQ-52 | api-contract (#36 Q1..4) | Blocked vs closed tab; open offer; events | ANSWERED: auto-offline applies; flag only until the offer ends; admin event + runner-room event |
 | WQ-53 | design-auditor (#7, Q7-5) | EAT deadline label | ANSWERED: "Due today, 23:59 EAT." / "Due tomorrow, 23:59 EAT." |
 | WQ-54 | design-auditor (#36 admin, Q36-1..11) | Admin presence copy, markers, socket client, manual-offline event | ANSWERED 2026-10-29: all recommendations approved; socket.io-client in admin (lazy); manual-offline event = #44 (on hold) |
+| WQ-55 | design-auditor (#8, Q8-3) | Checkout deadline time format | ANSWERED 2026-10-29: Today, 23:59 EAT (24-hour, EAT label) |
 
 ## Session log
 
@@ -905,3 +906,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | reviewer #39 READY → PR opened. Deploy note: delete idem:evidence-upload:* keys to close the 24 h replay window. |
 | 2026-10-29 | design-auditor #36 admin spec (dcfbd69, 87dd7cb). Owner WQ-54. Issue #44 opened ON HOLD. web-parity building the #36 admin UI (in-flight issue). |
 | 2026-10-29 | Owner merged PR #42 (#7, 81aa065, merge commit, so the red intermediate commits are in main history; tip is fine) and PR #43 (#39, 22c6ac6). Still in flight: #36 admin build, #8 gap report. |
+| 2026-10-29 | design-auditor #8 gap report G8-1…41 (8b12d91, 4e9ff70). Merged origin/main into the #8 branch (7d0b81e; #7 and PR #29 present). Owner Q8-3 → WQ-55. web-parity building #8. Owner: only #36 and #8 for now. |
