@@ -9,9 +9,10 @@ import { accountSuspended, conflict } from '../common/api-error';
 import { UserRole, UserStatus } from '../common/enums';
 import { CustomersService } from '../customers/customers.service';
 import { RunnersService } from '../runners/runners.service';
+import { UserTokenCutoffService } from '../users/token-cutoff.service';
 import { PublicUser, toPublicUser, UsersService } from '../users/users.service';
 import { OtpService } from './otp.service';
-import { TokenPair, TokenService } from './token.service';
+import { REFRESH_REVOKED_MESSAGE, TokenPair, TokenService } from './token.service';
 
 const LEGACY_BUSINESS_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.BUSINESS];
 
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly tokens: TokenService,
     private readonly config: ConfigService,
+    private readonly cutoff: UserTokenCutoffService,
   ) {}
 
   /** Explicit signup. Admin/business account creation is out of scope for the API. */
@@ -135,6 +137,12 @@ export class AuthService {
    * Issue #21 (owner, 2026-10-28): a live session whose account is no longer
    * active is revoked and answered with `account_suspended`, as OTP verify
    * does. Revocation is final: reactivating the account does not revive it.
+   *
+   * Issue #33 (owner WQ-39, 2026-10-29): an active account's session issued
+   * (refresh JWT `iat`) before its last suspension, ban or reactivation, one
+   * that survived the #24 revocations, is revoked and refused exactly like a
+   * revoked token (401 'Refresh token revoked or expired'; web:
+   * `refresh_invalid`, cookie cleared). The user signs in again with OTP.
    */
   async refresh(refreshToken: string): Promise<TokenPair> {
     const session = await this.tokens.verifyRefresh(refreshToken);
@@ -145,6 +153,10 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
       throw accountSuspended();
+    }
+    if (await this.cutoff.isRefreshRefused(session.sub, session.iat)) {
+      await this.tokens.revoke(refreshToken);
+      throw new UnauthorizedException(REFRESH_REVOKED_MESSAGE);
     }
     return this.tokens.rotate(refreshToken);
   }
