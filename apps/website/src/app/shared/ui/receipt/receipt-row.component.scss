@@ -1,0 +1,36 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-receipt-row {
+  @include nm-type(body, 13px);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.nm-receipt-row__label {
+  @include nm-type(body, 13px);
+  flex: 1;
+  min-width: 0;
+}
+
+.nm-receipt-row__amount {
+  flex: none;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.nm-receipt-row--total {
+  margin-top: 6px;
+  padding: 10px 0 6px;
+  border-top: 1px solid var(--nitume-slate-line);
+  font-weight: 700;
+
+  .nm-receipt-row__label {
+    font-weight: 700;
+  }
+}

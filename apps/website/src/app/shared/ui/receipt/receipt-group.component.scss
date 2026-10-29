@@ -1,0 +1,11 @@
+@use '../../../../styles/tokens' as * with ($nm-emit-root: false);
+
+:host {
+  display: block;
+}
+
+.nm-receipt-group {
+  margin-top: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--nitume-slate-line);
+}
