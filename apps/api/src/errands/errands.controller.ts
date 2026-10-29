@@ -34,9 +34,11 @@ import {
 } from './dto/errand.dto';
 import {
   ErrandResult,
+  ErrandResultView,
   ErrandView,
   ErrandsService,
   ListErrandViewsResponse,
+  withHistoryFor,
   withoutCustomerPricing,
 } from './errands.service';
 import { Errand } from './errand.entity';
@@ -58,7 +60,7 @@ export class ErrandsController {
         type: StatusHistoryActor.CUSTOMER,
         id: user.userId,
       })
-      .then((r) => this.hideMerchantNumbers(user, r, [r.errand]));
+      .then((r) => this.hideMerchantNumbers(user, withHistoryFor(user, r), [r.errand]));
   }
 
   @Get()
@@ -218,7 +220,7 @@ export class ErrandsController {
   }
 
   @Post(':id/submit')
-  submit(@Param('id') id: string, @CurrentUser() user: AuthContext): Promise<ErrandResult> {
+  submit(@Param('id') id: string, @CurrentUser() user: AuthContext): Promise<ErrandResultView> {
     return this.errands
       .transition(
         id,
@@ -227,7 +229,7 @@ export class ErrandsController {
         undefined,
         { role: user.role, userId: user.userId },
       )
-      .then((r) => this.hideMerchantNumbers(user, r, [r.errand]));
+      .then((r) => this.hideMerchantNumbers(user, withHistoryFor(user, r), [r.errand]));
   }
 
   /**
@@ -254,12 +256,12 @@ export class ErrandsController {
     @Param('id') id: string,
     @CurrentUser() user: AuthContext,
     @Body() dto: TransitionErrandDto,
-  ): Promise<ErrandResult> {
+  ): Promise<ErrandResultView> {
     const actorType: StatusHistoryActor = this.actorTypeFor(user.role);
     return this.errands
       .transition(id, dto.to, { type: actorType, id: user.userId }, dto.note, { role: user.role, userId: user.userId })
       .then((r) => (user.role === UserRole.RUNNER ? { ...r, errand: withoutCustomerPricing(r.errand) } : r))
-      .then((r) => this.hideMerchantNumbers(user, r, [r.errand]));
+      .then((r) => this.hideMerchantNumbers(user, withHistoryFor(user, r), [r.errand]));
   }
 
   /**
