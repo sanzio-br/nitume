@@ -165,7 +165,10 @@ export interface ErrandItem {
 
 export interface Errand {
   id: string;
+  /** `customer_profiles.id`, not a user id. */
   customerId: string;
+  /** Admin errand detail only (U-2, issue #24): the customer's user id. */
+  customerUserId?: string | null;
   /** `NT-1234` (round 3). */
   reference?: string;
   title?: string | null;
@@ -313,6 +316,42 @@ export interface ErrandListItem {
 export interface ListErrandsResult {
   items: ErrandListItem[];
   nextCursor: string | null;
+}
+
+// --- Account status (issue #24, `/admin/users/:id`) ---
+
+export type UserStatus = 'active' | 'suspended' | 'banned';
+
+/** `GET /admin/users/:id` (U-1). `displayName` null until set; `phone` full number. */
+export interface AdminUserSummary {
+  id: string;
+  role: 'customer' | 'runner' | 'admin' | 'business';
+  status: UserStatus;
+  displayName: string | null;
+  phone: string;
+}
+
+export interface UserStatusHistoryItem {
+  id: string;
+  fromStatus: UserStatus;
+  toStatus: UserStatus;
+  /** Internal (10-500 characters); never shown to the user. */
+  reason: string;
+  actorType: 'customer' | 'runner' | 'admin' | 'system';
+  actor: { id: string; displayName: string | null } | null;
+  createdAt: string;
+}
+
+/** `GET /admin/users/:id/status-history`, newest first. */
+export interface UserStatusHistoryPage {
+  items: UserStatusHistoryItem[];
+  nextCursor: string | null;
+}
+
+/** `PATCH /admin/users/:id/status`. */
+export interface ChangeUserStatusResult {
+  user: { id: string; role: AdminUserSummary['role']; status: UserStatus };
+  change: UserStatusHistoryItem;
 }
 
 export interface ErrandStatusHistoryEntry {
