@@ -121,7 +121,7 @@ Stages: unaudited · specced · building · built · audited-pass · audited-fai
 | website/runner/active (issue #15) | specced (2e17a0a; Q15-1..6 answered) | design-auditor | feat/website-runner-active (off main) | — | builds on the #14 presence service |
 | website/customer/evidence (issue #10) | specced (6e00e0f; WQ-10-1..4 answered) | design-auditor | feat/website-customer-evidence (off main) | — | uses #9 nm-evidence-grid |
 | api/dispute-party-ids (issue #38) | unaudited | — | — | — | found during #35 |
-| api/evidence-upload-guard (issue #39) | building | api-contract | fix/api-evidence-upload-guard (off main) | — | SECURITY, found speccing #10 |
+| api/evidence-upload-guard (issue #39) | built (70491ee, 7a5a5c5; unit 1120, e2e 256) → in review | api-contract | fix/api-evidence-upload-guard (off main) | — | SECURITY, found speccing #10 |
 | api/evidence-retention (issue #40) | unaudited | — | — | — | 1 year after close; dispute hold |
 | runner-app/active-fixes (issue #41) | unaudited | — | — | — | rows 251/258, destination, Fira Code (found speccing #15) |
 | website/customer + runner parity (issues #11, #12, #16, #18) | unaudited | — | — | #5, #6 | 14 feature-group issues on GitHub (owner request 2026-10-28); one PR per issue with `Closes #N` |
@@ -897,3 +897,4 @@ All 17 existing customer specs + shell updated with owner answers on docs/custom
 | 2026-10-29 | web-parity #7 fixes d525420, 1527870, 6338a75 (615 tests, 354.17 kB). design-auditor re-audit 2 dispatched. |
 | 2026-10-29 | design-auditor #7 re-audit 2 PASS (cc0e1b1, e059d16): all 40 items, rows matches-design; mutation check on deadlineAt. Follow-up: the #8 deadline panel spec says '23:59 local' → must be EAT (WQ-2/53). api-contract #36 dd14084 runner-room event. reviewer #7 and design-auditor #36 admin spec dispatched. |
 | 2026-10-29 | #7 merged into the #8 branch (528ed46); design-auditor writing the #8 gap report. |
+| 2026-10-29 | api-contract #39 built: customers and non-assigned runners get 403 evidence_upload_forbidden; no client change. Sent to reviewer. |
