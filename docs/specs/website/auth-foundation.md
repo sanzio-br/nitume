@@ -76,7 +76,7 @@ Outside `/app`, at the top level of `app.routes.ts` (WQ-12): `/auth` → `AuthCh
 - `v-onboard-id` / `v-onboard-selfie` are outside the shell because the runner app replaces the stack with them (no tab bar under them); `v-onboard-pending` is inside the shell because the app shows it pushed over `v-jobs` (runner `v-auth-otp.md` routing step 3).
 - **Route stubs for later issues.** #6 declares every path in the tree above. A path whose view belongs to a later issue lazy-loads one shared `ViewStubComponent` that renders only an `h1` in the `top-bar-title` style with the nav label (`Home`, `Track`, `History`, `Profile`, `Jobs`, `Active`, `Earnings`) or, for `new` and the onboarding paths, nothing but a `nm-skeleton-card`; it has no copy of its own, no data and no TODO text on screen. Each later issue replaces its stub. The stub exists so the nav, guards and routing can be built and tested now; reviewer checks no stub is left once #7–#18 are merged.
 - Route `data`: `{ role: 'customer' | 'runner', navKey?: string, pushed?: boolean, title: string }`. `navKey` decides the highlighted nav item; `pushed: true` hides the bottom bar below 768px (§7.3).
-- Document titles (**proposed**; set through a `TitleStrategy`): chooser `Sign in · Nitume`; `Sign in · Nitume`, `Enter the code · Nitume`, `Your name · Nitume`, `Home · Nitume`, `Track · Nitume`, `History · Nitume`, `Profile · Nitume`; runner `Sign in · Nitume Runner`, `Enter the code · Nitume Runner`, `Your name · Nitume Runner`, `Jobs · Nitume Runner`, `Active · Nitume Runner`, `Earnings · Nitume Runner`, `Profile · Nitume Runner`. Later issues add theirs in the same pattern.
+- Document titles (**proposed**; route `title` strings read by Angular's default `TitleStrategy` since WQ-33, re-audit 2; the marketing parent route carries the `index.html` title `Nitume — Someone there, when you can't be.` so a marketing page reached in-app never keeps an `/app` title): chooser `Sign in · Nitume`; `Sign in · Nitume`, `Enter the code · Nitume`, `Your name · Nitume`, `Home · Nitume`, `Track · Nitume`, `History · Nitume`, `Profile · Nitume`; runner `Sign in · Nitume Runner`, `Enter the code · Nitume Runner`, `Your name · Nitume Runner`, `Jobs · Nitume Runner`, `Active · Nitume Runner`, `Earnings · Nitume Runner`, `Profile · Nitume Runner`. Later issues add theirs in the same pattern.
 - Navigation after sign-in, after name capture and after sign-out uses `replaceUrl: true` (the apps replace the stack, so browser Back never returns to the code screen).
 
 ---
@@ -478,6 +478,7 @@ The per-view lists are in each view spec (§ "Required tests"): `customer-v-auth
 63. `guestGuard` with a customer session on `/app/runner/sign-in` → `dropSession()` called, route allowed, no `signOut`.
 64. `ensureRestored()` after a `signedOut` restore → `signedOut` with no second `POST /auth/web/refresh`; after `failed` → a second refresh is made.
 65. Code screen: the not-allowed refusal clears the boxes; a customer without a name and a valid `returnUrl` → `/app/customer/name?returnUrl=…`, and the name save then opens that `returnUrl`.
+66. Titles without a strategy (re-audit 2): after `/auth` → `/` and after `/app/customer/sign-in` → `/business` (in-app navigation), the document title is the `index.html` title `Nitume — Someone there, when you can't be.` The marketing parent route carries that title (§2).
 
 ---
 

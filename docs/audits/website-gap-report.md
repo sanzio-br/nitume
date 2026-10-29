@@ -477,7 +477,69 @@ Each item gives: **severity**, **current** state in `apps/website`, **target** (
 - Builder: `web-parity`, branch `feat/website-auth-shell`, commit scope `angular-website`.
 - Every item G6-1 … G6-46 is **approved extension, W-Q0**.
 
-### Verdict: FAIL (re-audit 1, 2026-10-29, `feat/website-auth-shell` at `d2d0fc9`): 3 blockers (incl. G6-46 after owner WQ-33), 1 minor
+### Verdict: FAIL (re-audit 2, 2026-10-29, `feat/website-auth-shell` at `2dcec7f`): 0 blockers, 1 minor (finding 5)
+
+Fixes audited: `c752f27`, `a6f5d7a`, `e69e1cf`, `7870511`, `2dcec7f`. Auditor re-run in the worktree:
+- `npx ng test --watch=false` → **48 files, 411 tests, 0 failures**.
+- `npx ng build --stats-json` → succeeds, **initial total 351.39 kB raw** (limit 352.00) / 96.31 kB transfer.
+
+Findings 1–4 of re-audit 1 are **closed**. One new minor regression comes from the title change (finding 5). It is the only open item and the fix is about one route line plus a test. This is the second FAIL on #6, so it goes to the orchestrator under its two-FAIL rule.
+
+#### Re-audit 1 findings: closure
+
+| # | State | Evidence |
+|---|---|---|
+| 1 | closed | `splash.component.scss` applies `nm-visually-hidden`; F9.61 (`app-area/styles.spec.ts`) asserts `clip-path: inset(50%)`, `width: 1px`, `position: absolute`. The build output contains no `@include`, `@use` or `@mixin` (scan of every `.js`/`.css` file in `dist`) |
+| 2 | closed | `sign-in-message.component.scss` uses `nm-type(error)`; F9.62 asserts `color: var(--nitume-red)`, `font-size: 12.5px`, weight 400. F9.60 (`styles/auth-static.spec.ts`) rejects `@use`/`@include`/`@mixin`/`$var` in any inline `styles` under `src/app/` |
+| 3 | closed | F9.63 `guards.spec.ts` (dropSession, allowed, no signOut); F9.64 `session.store.spec.ts` (no second refresh after `signedOut`, refresh again after `failed`); F9.65 `auth-otp.page.spec.ts` (boxes cleared and field enabled on not-allowed; `name?returnUrl=…` then the `returnUrl` after the save) |
+| 4 (G6-46, WQ-33) | closed | WQ-33 evidence 1–5, below |
+
+WQ-33 evidence (re-audit 1, finding 4):
+1. **Size:** "Initial total" 351.39 kB raw ≤ 352.00. Pass.
+2. **Stats inputs:**
+   - `main-SHL2ZQIL.js`: `main.ts`, `app.config.ts` (62 B), `app.routes.ts`, `app.component.ts`, `environments/environment.ts`, `core/lazy-session/lazy-session.ts` (1147 B), `core/lazy-session/realtime-session.tokens.ts` (244 B), plus the marketing layout, pages and shared marketing components.
+   - `chunk-CpY1PwP9.js` and `polyfills`: only packages.
+   - Packages present: `@angular/{core,common,router,platform-browser}`, `rxjs`, `tslib`, `zone.js`.
+   - No `core/auth/**`, `core/realtime/**`, `app-area/**` or `shared/ui/**` file. Pass.
+3. **Import-graph test:** `styles/auth-static.spec.ts`:
+   - "F9.50. the eager import graph…" walks static `import`/`export … from` from `src/main.ts` (skipping `import()` and `import type`) and asserts nothing matches `^app/(core/auth|core/realtime|app-area|shared/ui)/`.
+   - "F9.50 (walker check)" injects `import { SessionStore } from './app/core/auth/session.store'` into `app.config.ts` and asserts the walker reports it.
+   - The auditor read the regex: it handles multi-line imports and `export * from`. Pass.
+4. **Full run:** 411/411. Every F9.1 … F9.65 case and every view T-case is still present. Pass.
+5. **Lazy path:**
+   - `auth.interceptor.spec.ts` now runs F9.20 … F9.29 "through the lazy shim" from a cold start (`resetLazySessionForTests()`, asserts the chunk is not loaded before the first API request and is loaded after it).
+   - `lazy-session.spec.ts`: an asset request goes out at once without loading the chunk; the first API request waits, then gets the real rules; the legacy keys are removed at start.
+   - `app.config.spec.ts` F9.56: the realtime providers resolve to the session, loaded on demand.
+   - F9.4: titles. F9.57/F9.58: chooser and `/app` restore, through `openApp` with `provideLazySession()`.
+   - Pass.
+
+Item status at re-audit 2: G6-1 … G6-46 closed except **G6-4** (titles, reopened by finding 5). G6-11, G6-20, G6-34, G6-35, G6-36 and G6-46, which were open at re-audit 1, are now closed.
+
+#### Findings (re-audit 2)
+
+5. **minor. A marketing page keeps the last signed-in title after in-app navigation.** `apps/website/src/app/app.routes.ts:8-18` (marketing parent route has no `title`), with the `NitumeTitleStrategy` removal in `7870511`.
+   - Design: F§1 says marketing pages and their output do not change. F§2 adds titles only for `/auth` and `/app/**`. The removed strategy kept "the page's original title" for routes without one (re-audit 1 G6-4).
+   - Code: Angular's default `TitleStrategy` sets a title only when the route has one. Untitled marketing routes therefore keep the previous document title. Reproduction: open `/`, click the header `Log in` (`routerLink="/auth"`, `shared/header/header.component.ts:23`), then press browser Back. The home page's tab now reads `Sign in · Nitume` instead of `Nitume — Someone there, when you can't be.` (`src/index.html:5`). The same happens through the chooser wordmark link to `/` (`nm-wordmark href="/"` follows in-app) and after any `/app` page.
+   - Fix: give the marketing parent route in `app.routes.ts` `title: "Nitume — Someone there, when you can't be."` (the exact `index.html` text; it applies to all four children; a few bytes, inside the 352.00 kB limit). Add F9.66: `/auth` then `/`, and `/app/customer/sign-in` then `/business`, each restore the `index.html` title. Do not touch the marketing components.
+
+#### Side effects of the WQ-33 fix (auditor ruling)
+
+| | Change | Ruling | Reason |
+|---|---|---|---|
+| (a) | `NitumeTitleStrategy` replaced by route `title` strings | **FAIL (minor), finding 5** | The `/auth` and `/app/**` titles are exact (F9.4 passes). The regression is on the marketing pages only, and a one-line route title fixes it without a custom strategy |
+| (b) | `withComponentInputBinding` dropped | **PASS** | No routed component reads router inputs. The marketing pages and layout have no `@Input`/`input()`. The #6 pages read `ActivatedRoute.snapshot`, and their only `input()`s belong to child components bound in templates (`splash`, `sign-in-message`). Behaviour is the same as before. Guarded by the F9.50 framework-weight test |
+| (c) | #5 kit: `nm-button` dev warning moved from `effect` to `ngOnChanges`; `nmTemplateOutlet` replaces `NgTemplateOutlet` in `nm-button`, `nm-toast-host`, `nm-wordmark`; new `nmFieldValue` | **PASS** | No #5 spec file changed since the #5 tip `ae9403a` except the additive `tokens.spec.ts` (no removed lines), and all pass. The warning condition is identical and fires on input change (signal inputs trigger `ngOnChanges`). None of the three call sites passes a context or injector, so a plain `createEmbeddedView` matches; it is tested in `template-outlet.spec.ts`. `nmFieldValue` is additive and does not change `nm-field`/`nm-otp-field`, which stay `ControlValueAccessor`s (tested in `field-value.spec.ts`). Rendered markup, classes and tokens are unchanged |
+| (d) | #6 pages avoid reactive forms, `afterNextRender`, `viewChild` (static test "F9.50 (framework weight)") | **PASS** | Focus still follows F§7.3 and the view specs. `AppAreaComponent` and the chooser move focus to the `h1` with `setTimeout` after render (F9.5, chooser test). `focusPageHeading` skips when the page already focused a control, so the code screen keeps the OTP input focused (`ngAfterViewInit` autofocus runs in the render pass, before the timeout). Wrong code / resend / refusal refocus the input after the field is re-enabled (T5, F9.65). `Skip to content` focuses `main#content` (customer-shell tests). The phone prefill, typing that clears errors, and read-only while loading are unchanged (phone T2, T4, T16; name T1–T8). Realtime connects once in `ngAfterViewInit` (shell T8 / runner T5) |
+| (e) | Legacy-key cleanup eager (`provideEnvironmentInitializer(removeLegacyStorageKeys)`) and again in `SessionStore` | **PASS** | F§1 asks for it "on app start". Its cost is inside the 1.08 kB tolerance and it is tested (`lazy-session.spec.ts`). The storage scan shows only `removeItem` of the three legacy keys |
+
+Note for the orchestrator (not a #6 finding): WQ-33 holds only while later issues (#7–#18) stay off `effect()`, `afterNextRender`, `viewChild`, `NgTemplateOutlet`, reactive forms and `withComponentInputBinding`, and off static imports of session/kit code from the eager graph. esbuild keeps framework code used by lazy chunks in the shared Angular modules that `main` loads. The F9.50 static tests apply to #6 folders and the eager graph only, so each later issue needs the same checks.
+
+#### Re-audit 3 checklist
+
+1. Finding 5 fixed; F9.66 present and passing.
+2. Initial total still ≤ 352.00 kB raw; tests 0 failures.
+
+### Re-audit 1 (2026-10-29, `feat/website-auth-shell` at `d2d0fc9`): FAIL, 3 blockers (incl. G6-46 after owner WQ-33), 1 minor (all closed at re-audit 2)
 
 Built by `web-parity` in 15 commits `9f7af20` … `d2d0fc9` on top of the spec/audit commits. Auditor re-run in the worktree `nitume-feat-website-auth-shell`: `npx ng test --watch=false` → **44 files, 398 tests, 0 failures**; `npx ng build` → **succeeds**, initial total **379.20 kB raw / 103.78 kB transfer** (was 350.92 kB at #5). 42 of 46 items close as built. G6-46 fails on the owner's WQ-33 decision (finding 4). Two components put SCSS in inline `styles`, which this project compiles as plain CSS, so their mixins never reach the browser (findings 1 and 2). That fails G6-11, G6-20 (splash), G6-34 and G6-35 (error line). Every other check passes: copy, storage, routes, tokens, fonts, contrast, the #5 kit and the marketing pages.
 
@@ -548,13 +610,13 @@ Built by `web-parity` in 15 commits `9f7af20` … `d2d0fc9` on top of the spec/a
 | G6-41, G6-42 | closed | no wallet/escrow; no bare `outline: none`; skip link visible on focus |
 | G6-43, G6-44 | closed except finding 3 | every F9.1 … F9.59 case named in a spec file; view T-cases complete for both roles |
 | G6-45 | closed | 15 conventional commits, scope `angular-website`; every new component `OnPush` except `MarketingLayoutComponent`, which F§1 requires verbatim from the old `AppComponent` (accepted) |
-| G6-46 | **open (finding 4, WQ-33)** | 379.20 kB raw against the 352.00 kB target; session layer eager |
+| G6-46 | **open (finding 4, WQ-33)** at re-audit 1; closed at re-audit 2 (351.39 kB) | 379.20 kB raw against the 352.00 kB target; session layer eager |
 
 #### Owner-decision copy and behaviour check
 
 WQ-12 chooser at `/auth`: met. WQ-13 customer flow + runner → runner destination with `fresh` kept (`role-routing.ts` row 3; F9.43): met. WQ-14 line on the code screen and in the `signedOut=not-allowed` toast: met. WQ-15 and WQ-16: met. WQ-17 `Too many attempts. Try again in N min.` (N in `nmNum`): met. WQ-18: nothing client-side sets a lifetime: met. WQ-24 chooser copy and `Too many attempts. Try again later.`: met. WQ-8: the access token lives only in the private `#token`, no storage writes (F9.6, F9.7), credentials only on `/auth/web/*`: met.
 
-#### Re-audit 2 checklist
+#### Re-audit 2 checklist (done)
 
 1. Findings 1–4 fixed; F9.60 … F9.65 and the extended F9.50 present and passing.
 2. `npx ng build` output: `rg -o "@include|@use" dist/**/*.js` finds nothing.
