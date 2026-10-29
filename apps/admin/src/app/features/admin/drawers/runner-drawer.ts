@@ -2,7 +2,8 @@ import { Component, inject, input } from '@angular/core';
 import { DrawerNavService } from '../drawer-nav.service';
 import { AdminDataService, shortId, timeAgo } from '../admin-data.service';
 import { StatusChipComponent } from '../../../shared/status-chip.component';
-import { formatKsh } from '../shared-format';
+import { formatDateTime, formatKsh } from '../shared-format';
+import { isFlagged, lastPing } from '../runner-presence';
 import { UserStatusSectionComponent } from './user-status.section';
 
 /**
@@ -25,6 +26,32 @@ import { UserStatusSectionComponent } from './user-status.section';
           <div class="drawer-row">
             <span>Availability</span
             ><app-status-chip [status]="r.availability" kind="availability" />
+          </div>
+          <!-- #36: web runner presence (spec §3.2). -->
+          <div class="drawer-row">
+            <span>Client</span>
+            @switch (r.presence?.client) {
+              @case ('web') {
+                <app-status-chip label="Web" tone="neutral" />
+              }
+              @case ('app') {
+                <app-status-chip label="App" tone="neutral" />
+              }
+              @default {
+                <b>—</b>
+              }
+            }
+          </div>
+          @if (isFlagged(r)) {
+            <div class="drawer-row">
+              <span>Location pings</span><app-status-chip label="Pings stopped" tone="pending" />
+            </div>
+            <div class="drawer-row">
+              <span>Flagged</span><b>{{ formatDateTime(r.presence?.webPingsStoppedAt) }}</b>
+            </div>
+          }
+          <div class="drawer-row">
+            <span>Last ping</span><b>{{ formatDateTime(lastPing(r)) }}</b>
           </div>
           <div class="drawer-row">
             <span>Level</span><app-status-chip [status]="r.verificationLevel" kind="level" />
@@ -52,9 +79,6 @@ import { UserStatusSectionComponent } from './user-status.section';
           </div>
           <div class="drawer-row">
             <span>Skills</span><b>{{ r.skillsCount ?? 0 }}</b>
-          </div>
-          <div class="drawer-row">
-            <span>Last ping</span><b>{{ r.lastPingAt ? timeAgo(r.lastPingAt) : '—' }}</b>
           </div>
           <div class="drawer-row">
             <span>Joined</span><b>{{ timeAgo(r.createdAt) }}</b>
@@ -125,4 +149,7 @@ export class RunnerDrawerComponent {
 
   protected readonly shortId = shortId;
   protected readonly timeAgo = timeAgo;
+  protected readonly formatDateTime = formatDateTime;
+  protected readonly isFlagged = isFlagged;
+  protected readonly lastPing = lastPing;
 }
