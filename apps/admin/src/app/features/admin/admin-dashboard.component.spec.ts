@@ -7,6 +7,8 @@ import { API, flushAsync, setupHttp } from '../../testing/admin-test-utils';
 import { AdminDataService } from './admin-data.service';
 import { AdminDashboardComponent } from './admin-dashboard.component';
 import { DrawerNavService } from './drawer-nav.service';
+import { AdminRealtimeService } from '../../core/realtime/admin-realtime.service';
+import { FakeRealtime } from '../../testing/fake-realtime';
 
 describe('AdminDashboardComponent sidebar (row 77)', () => {
   let http: HttpTestingController;
@@ -15,11 +17,21 @@ describe('AdminDashboardComponent sidebar (row 77)', () => {
       providers: [
         { provide: AuthService, useValue: { logout: () => undefined } },
         { provide: AuthStore, useValue: { userId: signal('admin-1') } },
+        { provide: AdminRealtimeService, useValue: new FakeRealtime() },
       ],
     });
     http = setupHttp();
   });
   afterEach(() => http.verify());
+
+  it('starts the admin socket from the shell and stops it on destroy (#36)', async () => {
+    const fixture = await render();
+    const rt = TestBed.inject(AdminRealtimeService) as unknown as FakeRealtime;
+    await flushAsync();
+    expect(rt.connects).toBe(1);
+    fixture.destroy();
+    expect(rt.disconnects).toBe(1);
+  });
 
   async function render() {
     const fixture = TestBed.createComponent(AdminDashboardComponent);

@@ -1,4 +1,14 @@
-import { Component, computed, effect, inject, signal, untracked, OnInit } from '@angular/core';
+import {
+  Component,
+  Injector,
+  OnDestroy,
+  OnInit,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
 import { AdminDataService, maskedId, shortId } from './admin-data.service';
 import { DrawerNavService } from './drawer-nav.service';
@@ -295,9 +305,13 @@ type Panel =
   `,
   styles: [],
 })
-export class AdminDashboardComponent implements OnInit {
+export class AdminDashboardComponent implements OnInit, OnDestroy {
   protected readonly s = inject(AdminDataService);
   private readonly auth = inject(AuthService);
+  private readonly injector = inject(Injector);
+  /** The admin socket (#36), once its lazy chunk has loaded. */
+  private live: { disconnect(): void } | null = null;
+  private destroyed = false;
 
   protected readonly nav = inject(DrawerNavService);
 
@@ -317,6 +331,24 @@ export class AdminDashboardComponent implements OnInit {
 
   ngOnInit(): void {
     void this.s.refresh();
+    void this.startLive();
+  }
+
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    this.live?.disconnect();
+  }
+
+  /**
+   * Live presence events (#36). The realtime service and socket.io-client
+   * load as a lazy chunk, so the initial bundle stays within budget.
+   */
+  private async startLive(): Promise<void> {
+    const { AdminRealtimeService } = await import('../../core/realtime/admin-realtime.service');
+    if (this.destroyed) return;
+    const rt = this.injector.get(AdminRealtimeService);
+    this.live = rt;
+    void rt.connect();
   }
 
   /** Changing panel closes any open drawer (unless it has unsaved input). */
@@ -392,6 +424,7 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   protected logout(): void {
+    this.live?.disconnect();
     this.auth.logout();
   }
 }
